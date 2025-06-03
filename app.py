@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""
+Trade Journal Web Application
+A beautiful, local web app for tracking and analyzing trades
+"""
+
+import os
+from datetime import datetime, date, timedelta
+from pathlib import Path
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from loguru import logger
+
+# Add project root to path
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from src.database.db_manager import DatabaseManager
+from src.api.tastytrade_client import TastytradeClient
+from src.models.trade_manager import TradeManager
+
+# Configure logging
+logger.add(
+    "logs/webapp_{time}.log",
+    rotation="1 day",
+    retention="7 days",
+    level="INFO"
+)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Trade Journal",
+    description="Personal Trading Journal and Analytics",
+    version="1.0.0"
+)
+
+# Add CORS middleware for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize database
+db = DatabaseManager()
+
+# Create static directory if it doesn't exist
+static_dir = Path("static")
+static_dir.mkdir(exist_ok=True)
+(static_dir / "css").mkdir(exist_ok=True)
+(static_dir / "js").mkdir(exist_ok=True)
+(static_dir / "images").mkdir(exist_ok=True)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# Pydantic models for API
+class TradeUpdate(BaseModel):
+    trade_id: str
+    status: Optional[str] = None
+    current_notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class SyncRequest(BaseModel):
+    days_back: int = 30
+
+
+class TradeFilter(BaseModel):
+    status: Optional[str] = None
+    strategy: Optional[str] = None
+    underlying: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    search_term: Optional[str] = None
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup"""
+    logger.info("Starting Trade Journal Web App")
+    db.initialize_database()
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Serve the main application"""
+    # Use the fixed version to avoid infinite rendering issues
+    with open("static/index-fixed.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/api/trades")
+async def get_trades(
+    status: Optional[str] = None,
+    strategy: Optional[str] = None,
+    underlying: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """Get trades with optional filters"""
+    try:
+        trades = db.get_trades(
+            status=status,
+            strategy=strategy,
+            underlying=underlying,
+            limit=limit,
+            offset=offset
+        )
+        return {"trades": trades, "total": len(trades)}
+    except Exception as e:
+        logger.error(f"Error fetching trades: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trades/{trade_id}")
+async def get_trade(trade_id: str):
+    """Get a specific trade with all legs"""
+    try:
+        trade = db.get_trade_details(trade_id)
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        return trade
+    except Exception as e:
+        logger.error(f"Error fetching trade {trade_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/trades/{trade_id}")
+async def update_trade(trade_id: str, trade_update: TradeUpdate):
+    """Update trade status, notes, or tags"""
+    try:
+        success = db.update_trade(
+            trade_id=trade_id,
+            status=trade_update.status,
+            current_notes=trade_update.current_notes,
+            tags=trade_update.tags
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        return {"message": "Trade updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating trade {trade_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/positions")
+async def get_positions():
+    """Get current open positions"""
+    try:
+        positions = db.get_open_positions()
+        return {"positions": positions}
+    except Exception as e:
+        logger.error(f"Error fetching positions: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/dashboard")
+async def get_dashboard_data():
+    """Get dashboard summary data"""
+    try:
+        # Get various statistics
+        total_trades = db.get_trade_count()
+        open_trades = db.get_trade_count(status="Open")
+        closed_trades = db.get_trade_count(status="Closed")
+        
+        # Get P&L data
+        total_pnl = db.get_total_pnl()
+        today_pnl = db.get_pnl_by_date(date.today())
+        week_pnl = db.get_pnl_by_date_range(
+            date.today() - timedelta(days=7),
+            date.today()
+        )
+        
+        # Get win rate
+        win_rate = db.get_win_rate()
+        
+        # Get strategy breakdown
+        strategy_stats = db.get_strategy_statistics()
+        
+        # Get recent trades
+        recent_trades = db.get_trades(limit=5)
+        
+        return {
+            "summary": {
+                "total_trades": total_trades,
+                "open_trades": open_trades,
+                "closed_trades": closed_trades,
+                "total_pnl": total_pnl,
+                "today_pnl": today_pnl,
+                "week_pnl": week_pnl,
+                "win_rate": win_rate
+            },
+            "strategy_breakdown": strategy_stats,
+            "recent_trades": recent_trades
+        }
+    except Exception as e:
+        logger.error(f"Error fetching dashboard data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sync")
+async def sync_trades(sync_request: SyncRequest):
+    """Sync trades from Tastytrade"""
+    try:
+        logger.info(f"Starting sync for last {sync_request.days_back} days")
+        
+        # Initialize clients
+        tastytrade = TastytradeClient()
+        trade_manager = TradeManager()
+        
+        # Authenticate
+        if not tastytrade.authenticate():
+            logger.error("Failed to authenticate with Tastytrade")
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
+        
+        # Fetch transactions
+        logger.info("Fetching transactions...")
+        transactions = tastytrade.get_transactions(days_back=sync_request.days_back)
+        logger.info(f"Fetched {len(transactions)} transactions")
+        
+        # Process into trades
+        logger.info("Processing transactions into trades...")
+        trades = trade_manager.process_transactions(transactions)
+        logger.info(f"Processed {len(trades)} trades")
+        
+        # Save to database
+        saved_count = 0
+        failed_count = 0
+        for trade in trades:
+            try:
+                if db.save_trade(trade):
+                    saved_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(f"Failed to save trade {trade.trade_id}")
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
+        
+        logger.info(f"Saved {saved_count} trades, {failed_count} failed")
+        
+        # Also fetch and save current positions
+        logger.info("Fetching current positions...")
+        positions = tastytrade.get_positions()
+        logger.info(f"Fetched {len(positions)} positions")
+        
+        if positions:
+            success = db.save_positions(positions)
+            if success:
+                logger.info("Successfully saved positions to database")
+            else:
+                logger.error("Failed to save positions to database")
+        
+        # Fetch and save account balance
+        logger.info("Fetching account balance...")
+        balance = tastytrade.get_account_balances()
+        if balance:
+            success = db.save_account_balance(balance)
+            if success:
+                logger.info("Successfully saved account balance")
+            else:
+                logger.error("Failed to save account balance")
+        
+        logger.info(f"Sync completed: {saved_count} trades saved, {len(positions)} positions updated")
+        
+        return {
+            "message": "Sync completed successfully",
+            "trades_processed": len(trades),
+            "trades_saved": saved_count,
+            "trades_failed": failed_count,
+            "positions_updated": len(positions)
+        }
+    except Exception as e:
+        logger.error(f"Sync error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/performance/monthly")
+async def get_monthly_performance(year: int = None):
+    """Get monthly performance data"""
+    try:
+        if year is None:
+            year = date.today().year
+        
+        monthly_data = db.get_monthly_performance(year)
+        return {"year": year, "months": monthly_data}
+    except Exception as e:
+        logger.error(f"Error fetching monthly performance: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/search")
+async def search_trades(q: str):
+    """Search trades by various criteria"""
+    try:
+        results = db.search_trades(q)
+        return {"results": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"Error searching trades: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
+def create_initial_files():
+    """Create initial HTML/CSS/JS files if they don't exist"""
+    # This will be called to create the beautiful UI files
+    pass
+
+
+if __name__ == "__main__":
+    # Create initial files if needed
+    create_initial_files()
+    
+    # Start the server
+    logger.info("Starting Trade Journal on http://localhost:8000")
+    logger.info("From Windows, also try: http://127.0.0.1:8000")
+    uvicorn.run(
+        "app:app",  # Use string import to enable reload
+        host="0.0.0.0",  # This ensures it binds to all interfaces
+        port=8000,
+        reload=True,
+        log_level="info"
+    )

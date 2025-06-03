@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        margin: 0;
+      }
+      .search-container {
+        margin-bottom: 20px;
+      }
+      input[type="text"] {
+        width: 300px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      button {
+        padding: 10px 20px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-left: 10px;
+      }
+      button:hover {
+        background-color: #3367d6;
+      }
+      .results {
+        margin-top: 20px;
+      }
+      .trade-result {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 10px;
+        background-color: #f9f9f9;
+        cursor: pointer;
+      }
+      .trade-result:hover {
+        background-color: #e8f0fe;
+      }
+      .trade-id {
+        font-weight: bold;
+        color: #1a73e8;
+        font-size: 16px;
+      }
+      .trade-details {
+        margin-top: 5px;
+        color: #5f6368;
+      }
+      .trade-pnl {
+        float: right;
+        font-weight: bold;
+      }
+      .profit {
+        color: #137333;
+      }
+      .loss {
+        color: #d93025;
+      }
+      .loading {
+        text-align: center;
+        color: #5f6368;
+        font-style: italic;
+      }
+      .no-results {
+        text-align: center;
+        color: #5f6368;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="search-container">
+      <h3>🔍 Trade Lookup</h3>
+      <p>Search by Trade ID, Underlying, Strategy, or Notes content:</p>
+      <input type="text" id="searchInput" placeholder="Enter search term..." />
+      <button onclick="searchTrades()">Search</button>
+    </div>
+    
+    <div id="results" class="results"></div>
+    
+    <script>
+      // Allow Enter key to trigger search
+      document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          searchTrades();
+        }
+      });
+      
+      // Focus on search input when dialog opens
+      document.getElementById('searchInput').focus();
+      
+      function searchTrades() {
+        const searchTerm = document.getElementById('searchInput').value.trim();
+        
+        if (!searchTerm) {
+          document.getElementById('results').innerHTML = '<div class="no-results">Please enter a search term</div>';
+          return;
+        }
+        
+        // Show loading
+        document.getElementById('results').innerHTML = '<div class="loading">Searching...</div>';
+        
+        // Call Google Apps Script function
+        google.script.run
+          .withSuccessHandler(displayResults)
+          .withFailureHandler(function(error) {
+            document.getElementById('results').innerHTML = '<div class="no-results">Error: ' + error + '</div>';
+          })
+          .searchTrades(searchTerm);
+      }
+      
+      function displayResults(results) {
+        const resultsDiv = document.getElementById('results');
+        
+        if (!results || results.length === 0) {
+          resultsDiv.innerHTML = '<div class="no-results">No trades found matching your search.</div>';
+          return;
+        }
+        
+        let html = '<h4>Found ' + results.length + ' trade(s):</h4>';
+        
+        results.forEach(function(trade) {
+          const pnlClass = trade.pnl > 0 ? 'profit' : (trade.pnl < 0 ? 'loss' : '');
+          const pnlSign = trade.pnl > 0 ? '+' : '';
+          
+          html += '<div class="trade-result" onclick="goToTrade(' + trade.row + ')">';
+          html += '<div class="trade-id">' + trade.tradeId + '</div>';
+          html += '<div class="trade-details">';
+          html += '<strong>' + trade.underlying + '</strong> • ' + trade.strategy + ' • ' + trade.status;
+          html += '<span class="trade-pnl ' + pnlClass + '">' + pnlSign + '$' + trade.pnl.toFixed(2) + '</span>';
+          html += '</div>';
+          html += '</div>';
+        });
+        
+        resultsDiv.innerHTML = html;
+      }
+      
+      function goToTrade(rowNumber) {
+        // Call Google Apps Script function to navigate
+        google.script.run
+          .withSuccessHandler(function() {
+            google.script.host.close();
+          })
+          .goToTrade(rowNumber);
+      }
+    </script>
+  </body>
+</html>

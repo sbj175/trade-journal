@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Journal - Personal Trading Analytics</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Chart.js for beautiful charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom styles -->
+    <style>
+        /* Custom dark theme colors */
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+        }
+        
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        
+        /* Glass morphism effect */
+        .glass {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+        }
+        
+        /* Gradient text */
+        .gradient-text {
+            background: linear-gradient(to right, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div x-data="tradeJournal()" x-init="init()">
+        <!-- Navigation -->
+        <nav class="glass sticky top-0 z-50 border-b border-slate-700">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <h1 class="text-2xl font-bold gradient-text">Trade Journal</h1>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <!-- Sync Button -->
+                        <button 
+                            @click="syncTrades()"
+                            :disabled="syncing"
+                            class="relative inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <i class="fas fa-sync mr-2" :class="{'animate-spin': syncing}"></i>
+                            <span x-text="syncing ? 'Syncing...' : 'Sync Trades'"></span>
+                        </button>
+                        
+                        <!-- Date Range Selector -->
+                        <select x-model="syncDays" class="bg-slate-800 text-white rounded-lg px-3 py-2 border border-slate-700 focus:border-blue-500 focus:outline-none">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Dashboard Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Total P&L Card -->
+                <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm font-medium">Total P&L</p>
+                            <p class="text-3xl font-bold mt-2" 
+                               :class="dashboard.summary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                $<span x-text="formatNumber(dashboard.summary.total_pnl)"></span>
+                            </p>
+                        </div>
+                        <div class="text-4xl" :class="dashboard.summary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                            <i :class="dashboard.summary.total_pnl >= 0 ? 'fas fa-chart-line' : 'fas fa-chart-line fa-rotate-180'"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Win Rate Card -->
+                <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm font-medium">Win Rate</p>
+                            <p class="text-3xl font-bold mt-2 text-blue-400">
+                                <span x-text="dashboard.summary.win_rate?.toFixed(1) || '0.0'"></span>%
+                            </p>
+                        </div>
+                        <div class="text-4xl text-blue-400">
+                            <i class="fas fa-percentage"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Open Trades Card -->
+                <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm font-medium">Open Trades</p>
+                            <p class="text-3xl font-bold mt-2 text-orange-400">
+                                <span x-text="dashboard.summary.open_trades || 0"></span>
+                            </p>
+                        </div>
+                        <div class="text-4xl text-orange-400">
+                            <i class="fas fa-hourglass-half"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Today's P&L Card -->
+                <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm font-medium">Today's P&L</p>
+                            <p class="text-3xl font-bold mt-2"
+                               :class="dashboard.summary.today_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                $<span x-text="formatNumber(dashboard.summary.today_pnl)"></span>
+                            </p>
+                        </div>
+                        <div class="text-4xl" :class="dashboard.summary.today_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- P&L Chart -->
+                <div class="glass rounded-xl p-6">
+                    <h3 class="text-xl font-semibold mb-4">Monthly P&L</h3>
+                    <div style="height: 256px;">
+                        <canvas id="pnlChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Strategy Breakdown -->
+                <div class="glass rounded-xl p-6">
+                    <h3 class="text-xl font-semibold mb-4">Strategy Performance</h3>
+                    <div style="height: 256px;">
+                        <canvas id="strategyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Search and Filters -->
+            <div class="glass rounded-xl p-6 mb-6">
+                <div class="flex flex-wrap gap-4">
+                    <div class="flex-1 min-w-[300px]">
+                        <input
+                            type="text"
+                            x-model="searchTerm"
+                            @input.debounce.500ms="searchTrades()"
+                            placeholder="Search trades..."
+                            class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white placeholder-slate-400"
+                        >
+                    </div>
+                    
+                    <select x-model="filterStatus" @change="loadTrades()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                        <option value="">All Status</option>
+                        <option value="Open">Open</option>
+                        <option value="Closed">Closed</option>
+                        <option value="Rolled">Rolled</option>
+                    </select>
+                    
+                    <select x-model="filterStrategy" @change="loadTrades()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                        <option value="">All Strategies</option>
+                        <option value="Iron Condor">Iron Condor</option>
+                        <option value="Vertical Spread">Vertical Spread</option>
+                        <option value="Covered Call">Covered Call</option>
+                        <option value="Cash Secured Put">Cash Secured Put</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Trades Table -->
+            <div class="glass rounded-xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-800/50">
+                            <tr class="text-left">
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">Trade ID</th>
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">Underlying</th>
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">Strategy</th>
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">Entry Date</th>
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">Status</th>
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">P&L</th>
+                                <th class="px-6 py-4 text-sm font-medium text-slate-300">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700" id="tradesTableBody">
+                            <!-- Trades will be inserted here -->
+                        </tbody>
+                    </table>
+                    
+                    <!-- Loading State -->
+                    <div x-show="loading" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
+                    </div>
+                    
+                    <!-- No Results -->
+                    <div x-show="!loading && trades.length === 0" class="text-center py-8 text-slate-400">
+                        No trades found
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="/static/js/app-fixed.js"></script>
+</body>
+</html>

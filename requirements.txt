@@ -1,0 +1,19 @@
+# Tastytrade API
+tastytrade>=10.2.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+
+# Database
+# SQLite is built-in, no additional package needed
+
+# Utilities
+python-dotenv>=1.0.0
+pandas>=2.0.0
+pytz>=2023.3
+cryptography>=41.0.0
+
+# Logging
+loguru>=0.7.0

@@ -1,0 +1,306 @@
+// Trade Journal Alpine.js Application - Fixed Version
+function tradeJournal() {
+    return {
+        // State
+        trades: [],
+        dashboard: {
+            summary: {
+                total_pnl: 0,
+                today_pnl: 0,
+                week_pnl: 0,
+                win_rate: 0,
+                open_trades: 0,
+                closed_trades: 0,
+                total_trades: 0
+            },
+            strategy_breakdown: [],
+            recent_trades: []
+        },
+        
+        // UI State
+        loading: false,
+        syncing: false,
+        
+        // Filters
+        searchTerm: '',
+        filterStatus: '',
+        filterStrategy: '',
+        filterUnderlying: '',
+        syncDays: 30,
+        
+        // Charts
+        pnlChart: null,
+        strategyChart: null,
+        
+        // Initialize
+        async init() {
+            console.log('Initializing Trade Journal...');
+            await this.loadDashboard();
+            await this.loadTrades();
+            this.initCharts();
+        },
+        
+        // Format number with commas
+        formatNumber(num) {
+            if (num === null || num === undefined) return '0.00';
+            return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        },
+        
+        // Format date
+        formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        },
+        
+        // Load dashboard data
+        async loadDashboard() {
+            try {
+                console.log('Loading dashboard...');
+                const response = await fetch('/api/dashboard');
+                const data = await response.json();
+                this.dashboard = data;
+                this.updateCharts();
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        },
+        
+        // Load trades
+        async loadTrades() {
+            this.loading = true;
+            try {
+                console.log('Loading trades...');
+                const params = new URLSearchParams();
+                if (this.filterStatus) params.append('status', this.filterStatus);
+                if (this.filterStrategy) params.append('strategy', this.filterStrategy);
+                if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
+                
+                const response = await fetch(`/api/trades?${params}`);
+                const data = await response.json();
+                this.trades = data.trades || [];
+                
+                // Manually render trades to avoid Alpine.js issues
+                this.renderTrades();
+            } catch (error) {
+                console.error('Error loading trades:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        // Manually render trades table
+        renderTrades() {
+            const tbody = document.getElementById('tradesTableBody');
+            if (!tbody) return;
+            
+            // Clear existing rows
+            tbody.innerHTML = '';
+            
+            // Add new rows
+            this.trades.forEach(trade => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-slate-800/30 transition-colors';
+                
+                const statusClass = trade.status === 'Closed' ? 'bg-green-900/30 text-green-400' :
+                                  trade.status === 'Open' ? 'bg-orange-900/30 text-orange-400' :
+                                  'bg-blue-900/30 text-blue-400';
+                
+                const pnlClass = (trade.current_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400';
+                
+                row.innerHTML = `
+                    <td class="px-6 py-4 text-sm font-mono">
+                        <span class="text-blue-400">${trade.trade_id}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm font-semibold">${trade.underlying}</td>
+                    <td class="px-6 py-4 text-sm">
+                        <span class="px-2 py-1 bg-purple-900/30 text-purple-400 rounded-md">${trade.strategy_type}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm">${this.formatDate(trade.entry_date)}</td>
+                    <td class="px-6 py-4 text-sm">
+                        <span class="px-2 py-1 rounded-md ${statusClass}">${trade.status}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm font-semibold">
+                        <span class="${pnlClass}">$${this.formatNumber(trade.current_pnl || 0)}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm">
+                        <button onclick="alert('View details: ${trade.trade_id}')" class="text-blue-400 hover:text-blue-300 mr-2">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        },
+        
+        // Search trades
+        async searchTrades() {
+            if (!this.searchTerm) {
+                await this.loadTrades();
+                return;
+            }
+            
+            this.loading = true;
+            try {
+                const response = await fetch(`/api/search?q=${encodeURIComponent(this.searchTerm)}`);
+                const data = await response.json();
+                this.trades = data.results || [];
+                this.renderTrades();
+            } catch (error) {
+                console.error('Error searching trades:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        // Sync trades from Tastytrade
+        async syncTrades() {
+            this.syncing = true;
+            try {
+                console.log('Starting sync...');
+                const response = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ days_back: parseInt(this.syncDays) })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Sync failed: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Sync completed:', result);
+                
+                // Reload data
+                await this.loadDashboard();
+                await this.loadTrades();
+                
+            } catch (error) {
+                console.error('Error syncing trades:', error);
+                alert('Sync failed: ' + error.message);
+            } finally {
+                this.syncing = false;
+            }
+        },
+        
+        // Initialize charts
+        initCharts() {
+            // P&L Chart
+            const pnlCtx = document.getElementById('pnlChart')?.getContext('2d');
+            if (pnlCtx) {
+                this.pnlChart = new Chart(pnlCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Monthly P&L',
+                            data: [],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                grid: {
+                                    color: 'rgba(71, 85, 105, 0.3)'
+                                },
+                                ticks: {
+                                    color: '#cbd5e1',
+                                    callback: function(value) {
+                                        return '$' + value.toLocaleString();
+                                    }
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(71, 85, 105, 0.3)'
+                                },
+                                ticks: {
+                                    color: '#cbd5e1'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Strategy Chart
+            const strategyCtx = document.getElementById('strategyChart')?.getContext('2d');
+            if (strategyCtx) {
+                this.strategyChart = new Chart(strategyCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            data: [],
+                            backgroundColor: [
+                                '#3b82f6',
+                                '#8b5cf6',
+                                '#10b981',
+                                '#f59e0b',
+                                '#ef4444'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: '#cbd5e1',
+                                    padding: 20
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        },
+        
+        // Update charts with data
+        async updateCharts() {
+            // Update P&L chart
+            try {
+                const response = await fetch('/api/performance/monthly');
+                const data = await response.json();
+                
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                
+                if (this.pnlChart && data.months) {
+                    this.pnlChart.data.labels = data.months.map(m => months[parseInt(m.month) - 1]);
+                    this.pnlChart.data.datasets[0].data = data.months.map(m => m.total_pnl || 0);
+                    this.pnlChart.update();
+                }
+            } catch (error) {
+                console.error('Error updating P&L chart:', error);
+            }
+            
+            // Update strategy chart
+            if (this.strategyChart && this.dashboard.strategy_breakdown) {
+                this.strategyChart.data.labels = this.dashboard.strategy_breakdown.map(s => s.strategy_type);
+                this.strategyChart.data.datasets[0].data = this.dashboard.strategy_breakdown.map(s => s.count);
+                this.strategyChart.update();
+            }
+        }
+    };
+}
