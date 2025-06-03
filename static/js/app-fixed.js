@@ -31,6 +31,14 @@ function tradeJournal() {
         filterUnderlying: '',
         syncDays: 30,
         
+        // Sorting
+        sortColumn: 'entry_date',
+        sortDirection: 'desc',
+        
+        // Modal state
+        editModalOpen: false,
+        editingTrade: null,
+        
         // Charts
         pnlChart: null,
         strategyChart: null,
@@ -170,13 +178,24 @@ function tradeJournal() {
                         <span class="${pnlClass}">$${this.formatNumber(trade.current_pnl || 0)}</span>
                     </td>
                     <td class="px-6 py-4 text-sm">
-                        <button onclick="alert('View details: ${trade.trade_id}')" class="text-blue-400 hover:text-blue-300 mr-2">
-                            <i class="fas fa-eye"></i>
+                        <span class="text-slate-400 text-xs">${trade.current_notes ? trade.current_notes.substring(0, 30) + (trade.current_notes.length > 30 ? '...' : '') : 'No comments'}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm">
+                        <button data-trade-id="${trade.trade_id}" class="edit-trade-btn text-blue-400 hover:text-blue-300 mr-2" title="Edit">
+                            <i class="fas fa-edit"></i>
                         </button>
                     </td>
                 `;
                 
                 tbody.appendChild(row);
+            });
+            
+            // Add click handlers for edit buttons
+            document.querySelectorAll('.edit-trade-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const tradeId = e.currentTarget.dataset.tradeId;
+                    this.openEditModal(tradeId);
+                });
             });
         },
         
@@ -275,6 +294,114 @@ function tradeJournal() {
                 alert('Initial sync failed: ' + error.message);
             } finally {
                 this.initialSyncing = false;
+            }
+        },
+        
+        // Sort table
+        sortTable(column) {
+            // Toggle direction if same column
+            if (this.sortColumn === column) {
+                this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortColumn = column;
+                this.sortDirection = 'asc';
+            }
+            
+            // Sort trades array
+            this.trades.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+                
+                // Handle numeric values
+                if (column === 'current_pnl') {
+                    aVal = aVal || 0;
+                    bVal = bVal || 0;
+                }
+                
+                // Handle dates
+                if (column === 'entry_date' || column === 'exit_date') {
+                    aVal = new Date(aVal || '1900-01-01');
+                    bVal = new Date(bVal || '1900-01-01');
+                }
+                
+                // Compare
+                if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+            
+            // Re-render table
+            this.renderTrades();
+        },
+        
+        // Open edit modal
+        openEditModal(tradeId) {
+            const trade = this.trades.find(t => t.trade_id === tradeId);
+            if (!trade) return;
+            
+            this.editingTrade = trade;
+            
+            // Populate modal fields
+            document.getElementById('editTradeId').value = trade.trade_id;
+            document.getElementById('displayTradeId').textContent = trade.trade_id;
+            document.getElementById('displayUnderlying').textContent = trade.underlying;
+            document.getElementById('displayStrategy').textContent = trade.strategy_type;
+            document.getElementById('editStatus').value = trade.status;
+            document.getElementById('editComments').value = trade.current_notes || '';
+            document.getElementById('editTags').value = (trade.tags || []).join(', ');
+            
+            // Show modal
+            this.editModalOpen = true;
+            document.getElementById('editModal').classList.remove('hidden');
+        },
+        
+        // Close edit modal
+        closeEditModal() {
+            console.log('Closing modal...');
+            this.editModalOpen = false;
+            this.editingTrade = null;
+            document.getElementById('editModal').classList.add('hidden');
+        },
+        
+        // Save trade changes
+        async saveTradeChanges() {
+            console.log('Saving trade changes...');
+            const tradeId = document.getElementById('editTradeId').value;
+            const status = document.getElementById('editStatus').value;
+            const comments = document.getElementById('editComments').value;
+            const tagsInput = document.getElementById('editTags').value;
+            const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+            
+            try {
+                const response = await fetch(`/api/trades/${tradeId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        trade_id: tradeId,
+                        status: status,
+                        current_notes: comments,
+                        tags: tags
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to update trade');
+                }
+                
+                // Close modal
+                this.closeEditModal();
+                
+                // Reload trades
+                await this.loadTrades();
+                
+                // Update dashboard if status changed
+                await this.loadDashboard();
+                
+            } catch (error) {
+                console.error('Error saving trade:', error);
+                alert('Failed to save changes: ' + error.message);
             }
         },
         
@@ -392,3 +519,4 @@ function tradeJournal() {
         }
     };
 }
+

@@ -1,0 +1,4357 @@
+{
+  "GLD_20250602_2legs": {
+    "trade_id": "GLD_20250602_2legs",
+    "underlying": "GLD",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "GLD   250718P00295000",
+        "underlying": "GLD",
+        "option_type": "Put",
+        "strike": 295.0,
+        "expiration": "2025-07-18",
+        "quantity": 2,
+        "entry_price": 2.13,
+        "exit_price": null,
+        "transaction_ids": [
+          "366182200"
+        ]
+      },
+      {
+        "symbol": "GLD   250718P00300000",
+        "underlying": "GLD",
+        "option_type": "Put",
+        "strike": 300.0,
+        "expiration": "2025-07-18",
+        "quantity": -2,
+        "entry_price": 3.26,
+        "exit_price": null,
+        "transaction_ids": [
+          "366182199"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "SPY_20250520_2legs": {
+    "trade_id": "SPY_20250520_2legs",
+    "underlying": "SPY",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-20",
+    "exit_date": "2025-06-02",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "SPY   250718C00606000",
+        "underlying": "SPY",
+        "option_type": "Call",
+        "strike": 606.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 9.23,
+        "exit_price": 5.7,
+        "transaction_ids": [
+          "364069371",
+          "366163534"
+        ]
+      },
+      {
+        "symbol": "SPY   250718C00601000",
+        "underlying": "SPY",
+        "option_type": "Call",
+        "strike": 601.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 11.71,
+        "exit_price": 7.72,
+        "transaction_ids": [
+          "364069370",
+          "366163533"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "SPY_20250602_5legs": {
+    "trade_id": "SPY_20250602_5legs",
+    "underlying": "SPY",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "SPY   250718P00570000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 570.0,
+        "expiration": "2025-07-18",
+        "quantity": 2,
+        "entry_price": 7.55,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158585"
+        ]
+      },
+      {
+        "symbol": "SPY   250718P00565000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 565.0,
+        "expiration": "2025-07-18",
+        "quantity": -4,
+        "entry_price": 6.59,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158584"
+        ]
+      },
+      {
+        "symbol": "SPY   250718P00555000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 555.0,
+        "expiration": "2025-07-18",
+        "quantity": 2,
+        "entry_price": 5.05,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158587"
+        ]
+      },
+      {
+        "symbol": "SPY   250718C00606000",
+        "underlying": "SPY",
+        "option_type": "Call",
+        "strike": 606.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 5.7,
+        "exit_price": null,
+        "transaction_ids": [
+          "366163534"
+        ]
+      },
+      {
+        "symbol": "SPY   250718C00601000",
+        "underlying": "SPY",
+        "option_type": "Call",
+        "strike": 601.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 7.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "366163533"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "WOLF_20250514_1legs": {
+    "trade_id": "WOLF_20250514_1legs",
+    "underlying": "WOLF",
+    "strategy_type": "Naked Put",
+    "entry_date": "2025-05-14",
+    "exit_date": "2025-06-02",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "WOLF  250620P00003000",
+        "underlying": "WOLF",
+        "option_type": "Put",
+        "strike": 3.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.97,
+        "exit_price": 1.96,
+        "transaction_ids": [
+          "362962418",
+          "366073252"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "WOLF_20250602_2legs": {
+    "trade_id": "WOLF_20250602_2legs",
+    "underlying": "WOLF",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "WOLF  250620P00003000",
+        "underlying": "WOLF",
+        "option_type": "Put",
+        "strike": 3.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 1.96,
+        "exit_price": null,
+        "transaction_ids": [
+          "366073252"
+        ]
+      },
+      {
+        "symbol": "WOLF  250815P00003000",
+        "underlying": "WOLF",
+        "option_type": "Put",
+        "strike": 3.0,
+        "expiration": "2025-08-15",
+        "quantity": -1,
+        "entry_price": 2.26,
+        "exit_price": null,
+        "transaction_ids": [
+          "366073256"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250513_2legs": {
+    "trade_id": "UNH_20250513_2legs",
+    "underlying": "UNH",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-13",
+    "exit_date": "2025-05-14",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "UNH   250620C00360000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 360.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 6.09,
+        "exit_price": 5.82,
+        "transaction_ids": [
+          "362687299",
+          "362881946"
+        ]
+      },
+      {
+        "symbol": "UNH   250620C00350000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 350.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 8.02,
+        "exit_price": 7.66,
+        "transaction_ids": [
+          "362687297",
+          "362881940"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250514_4legs": {
+    "trade_id": "UNH_20250514_4legs",
+    "underlying": "UNH",
+    "strategy_type": "Iron Condor",
+    "entry_date": "2025-05-14",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UNH   250620C00360000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 360.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 5.82,
+        "exit_price": null,
+        "transaction_ids": [
+          "362881946"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 9.55,
+        "exit_price": null,
+        "transaction_ids": [
+          "362881942"
+        ]
+      },
+      {
+        "symbol": "UNH   250620C00350000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 350.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 7.66,
+        "exit_price": null,
+        "transaction_ids": [
+          "362881940"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 7.04,
+        "exit_price": null,
+        "transaction_ids": [
+          "362881939"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250530_4legs": {
+    "trade_id": "UNH_20250530_4legs",
+    "underlying": "UNH",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-30",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UNH   250718P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 12.33,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918358"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 6.75,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918357"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 3.89,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918356"
+        ]
+      },
+      {
+        "symbol": "UNH   250718P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 16.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918355"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "RIVN_20250520_2legs": {
+    "trade_id": "RIVN_20250520_2legs",
+    "underlying": "RIVN",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-20",
+    "exit_date": "2025-05-30",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "RIVN  250620P00017500",
+        "underlying": "RIVN",
+        "option_type": "Put",
+        "strike": 17.5,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 1.43,
+        "exit_price": 3.05,
+        "transaction_ids": [
+          "364071384",
+          "365895104"
+        ]
+      },
+      {
+        "symbol": "RIVN  250620P00014000",
+        "underlying": "RIVN",
+        "option_type": "Put",
+        "strike": 14.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.21,
+        "exit_price": 0.52,
+        "transaction_ids": [
+          "364071387",
+          "365895103"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "RIVN_20250530_2legs": {
+    "trade_id": "RIVN_20250530_2legs",
+    "underlying": "RIVN",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-30",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "RIVN  250620P00017500",
+        "underlying": "RIVN",
+        "option_type": "Put",
+        "strike": 17.5,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 3.05,
+        "exit_price": null,
+        "transaction_ids": [
+          "365895104"
+        ]
+      },
+      {
+        "symbol": "RIVN  250620P00014000",
+        "underlying": "RIVN",
+        "option_type": "Put",
+        "strike": 14.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 0.52,
+        "exit_price": null,
+        "transaction_ids": [
+          "365895103"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250505_1legs": {
+    "trade_id": "MSTR_20250505_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-05",
+    "exit_date": "2025-05-07",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250509C00405000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 405.0,
+        "expiration": "2025-05-09",
+        "quantity": -8,
+        "entry_price": 2.89,
+        "exit_price": 3.9,
+        "transaction_ids": [
+          "361075103",
+          "361471734"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250507_2legs": {
+    "trade_id": "MSTR_20250507_2legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-07",
+    "exit_date": "2025-05-16",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250516C00425000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 425.0,
+        "expiration": "2025-05-16",
+        "quantity": -8,
+        "entry_price": 5.16,
+        "exit_price": 0.0,
+        "transaction_ids": [
+          "361471735",
+          "363651421"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250516_1legs": {
+    "trade_id": "MSTR_20250516_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-16",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250516C00425000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 425.0,
+        "expiration": "2025-05-16",
+        "quantity": 8,
+        "entry_price": 0.0,
+        "exit_price": null,
+        "transaction_ids": [
+          "363651421"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250519_3legs": {
+    "trade_id": "MSTR_20250519_3legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-19",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -1,
+        "entry_price": 4.3,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884090"
+        ]
+      },
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -5,
+        "entry_price": 4.3,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884089"
+        ]
+      },
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 4.37,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884091"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250523_1legs": {
+    "trade_id": "MSTR_20250523_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-23",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": 8,
+        "entry_price": 0.0,
+        "exit_price": null,
+        "transaction_ids": [
+          "364917819"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250527_6legs": {
+    "trade_id": "MSTR_20250527_6legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-27",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123796"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123801"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123799"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123797"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -2,
+        "entry_price": 3.94,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123803"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -2,
+        "entry_price": 3.94,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123802"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250530_2legs": {
+    "trade_id": "MSTR_20250530_2legs",
+    "underlying": "MSTR",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-30",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250606C00385000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 385.0,
+        "expiration": "2025-06-06",
+        "quantity": -8,
+        "entry_price": 3.91,
+        "exit_price": null,
+        "transaction_ids": [
+          "365893888"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": 8,
+        "entry_price": 0.06,
+        "exit_price": null,
+        "transaction_ids": [
+          "365893886"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "XYL_20250521_2legs": {
+    "trade_id": "XYL_20250521_2legs",
+    "underlying": "XYL",
+    "strategy_type": "Covered Call",
+    "entry_date": "2025-05-21",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "XYL   250620C00125000",
+        "underlying": "XYL",
+        "option_type": "Call",
+        "strike": 125.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 3.4,
+        "exit_price": null,
+        "transaction_ids": [
+          "364387469"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "XYL",
+        "quantity": 100,
+        "entry_price": 126.025,
+        "exit_price": null,
+        "transaction_ids": [
+          "364356860"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "XYL_20250529_1legs": {
+    "trade_id": "XYL_20250529_1legs",
+    "underlying": "XYL",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-29",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "XYL   250620C00125000",
+        "underlying": "XYL",
+        "option_type": "Call",
+        "strike": 125.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 3.3,
+        "exit_price": null,
+        "transaction_ids": [
+          "365480191"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250505_7legs": {
+    "trade_id": "IBIT_20250505_7legs",
+    "underlying": "IBIT",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-05",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250509C00055500",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 55.5,
+        "expiration": "2025-05-09",
+        "quantity": -48,
+        "entry_price": 0.28,
+        "exit_price": null,
+        "transaction_ids": [
+          "361073181"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "IBIT",
+        "quantity": 413,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071603"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 86,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071602"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 200,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071601"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 571,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071600"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 66,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071599"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 3464,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071598"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250507_2legs": {
+    "trade_id": "IBIT_20250507_2legs",
+    "underlying": "IBIT",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-07",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250509C00055500",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 55.5,
+        "expiration": "2025-05-09",
+        "quantity": 48,
+        "entry_price": 0.63,
+        "exit_price": null,
+        "transaction_ids": [
+          "361467801"
+        ]
+      },
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": -48,
+        "entry_price": 0.52,
+        "exit_price": null,
+        "transaction_ids": [
+          "361467799"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250516_8legs": {
+    "trade_id": "IBIT_20250516_8legs",
+    "underlying": "IBIT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-16",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": 6,
+        "entry_price": 1.07,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457272"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457267"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457260"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457255"
+        ]
+      },
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": 8,
+        "entry_price": 1.08,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457506"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -8,
+        "entry_price": 1.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457503"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -34,
+        "entry_price": 1.27,
+        "exit_price": null,
+        "transaction_ids": [
+          "363459185"
+        ]
+      },
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": 34,
+        "entry_price": 1.12,
+        "exit_price": null,
+        "transaction_ids": [
+          "363459183"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250521_2legs": {
+    "trade_id": "IBIT_20250521_2legs",
+    "underlying": "IBIT",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-21",
+    "exit_date": "2025-05-28",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250530C00060000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 60.0,
+        "expiration": "2025-05-30",
+        "quantity": -48,
+        "entry_price": 2.27,
+        "exit_price": 1.92,
+        "transaction_ids": [
+          "364349538",
+          "365259218"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250528_2legs": {
+    "trade_id": "IBIT_20250528_2legs",
+    "underlying": "IBIT",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-28",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250606C00061000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 61.0,
+        "expiration": "2025-06-06",
+        "quantity": -48,
+        "entry_price": 2.02,
+        "exit_price": null,
+        "transaction_ids": [
+          "365259228"
+        ]
+      },
+      {
+        "symbol": "IBIT  250530C00060000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 60.0,
+        "expiration": "2025-05-30",
+        "quantity": 48,
+        "entry_price": 1.92,
+        "exit_price": null,
+        "transaction_ids": [
+          "365259218"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UBER_20250521_2legs": {
+    "trade_id": "UBER_20250521_2legs",
+    "underlying": "UBER",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-21",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UBER  250718P00085000",
+        "underlying": "UBER",
+        "option_type": "Put",
+        "strike": 85.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 2.78,
+        "exit_price": null,
+        "transaction_ids": [
+          "364253286"
+        ]
+      },
+      {
+        "symbol": "UBER  250718P00090000",
+        "underlying": "UBER",
+        "option_type": "Put",
+        "strike": 90.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 4.84,
+        "exit_price": null,
+        "transaction_ids": [
+          "364253285"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "RBLX_20250521_2legs": {
+    "trade_id": "RBLX_20250521_2legs",
+    "underlying": "RBLX",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-21",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "RBLX  250718P00080000",
+        "underlying": "RBLX",
+        "option_type": "Put",
+        "strike": 80.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 3.65,
+        "exit_price": null,
+        "transaction_ids": [
+          "364250584"
+        ]
+      },
+      {
+        "symbol": "RBLX  250718P00085000",
+        "underlying": "RBLX",
+        "option_type": "Put",
+        "strike": 85.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 6.1,
+        "exit_price": null,
+        "transaction_ids": [
+          "364250583"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TGT_20250514_2legs": {
+    "trade_id": "TGT_20250514_2legs",
+    "underlying": "TGT",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-14",
+    "exit_date": "2025-05-19",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "TGT   250620C00120000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 120.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 0.44,
+        "exit_price": 0.62,
+        "transaction_ids": [
+          "362965233",
+          "363865153"
+        ]
+      },
+      {
+        "symbol": "TGT   250620C00110000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 110.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 1.43,
+        "exit_price": 2.04,
+        "transaction_ids": [
+          "362965231",
+          "363865152"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TGT_20250519_2legs": {
+    "trade_id": "TGT_20250519_2legs",
+    "underlying": "TGT",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-19",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TGT   250620C00120000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 120.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.62,
+        "exit_price": null,
+        "transaction_ids": [
+          "363865153"
+        ]
+      },
+      {
+        "symbol": "TGT   250620C00110000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 110.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 2.04,
+        "exit_price": null,
+        "transaction_ids": [
+          "363865152"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TGT_20250520_3legs": {
+    "trade_id": "TGT_20250520_3legs",
+    "underlying": "TGT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-20",
+    "exit_date": "2025-05-21",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "TGT   250606C00103000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 103.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 3.72,
+        "exit_price": 0.3,
+        "transaction_ids": [
+          "363982901",
+          "364196025"
+        ]
+      },
+      {
+        "symbol": "TGT   250606C00101000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 101.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 4.48,
+        "exit_price": 0.51,
+        "transaction_ids": [
+          "363982905",
+          "364196022"
+        ]
+      },
+      {
+        "symbol": "TGT   250606P00096000",
+        "underlying": "TGT",
+        "option_type": "Put",
+        "strike": 96.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 4.23,
+        "exit_price": 5.54,
+        "transaction_ids": [
+          "363982903",
+          "364196024"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TGT_20250521_3legs": {
+    "trade_id": "TGT_20250521_3legs",
+    "underlying": "TGT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-21",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TGT   250606C00103000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 103.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 0.3,
+        "exit_price": null,
+        "transaction_ids": [
+          "364196025"
+        ]
+      },
+      {
+        "symbol": "TGT   250606P00096000",
+        "underlying": "TGT",
+        "option_type": "Put",
+        "strike": 96.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 5.54,
+        "exit_price": null,
+        "transaction_ids": [
+          "364196024"
+        ]
+      },
+      {
+        "symbol": "TGT   250606C00101000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 101.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 0.51,
+        "exit_price": null,
+        "transaction_ids": [
+          "364196022"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "NFLX_20250505_2legs": {
+    "trade_id": "NFLX_20250505_2legs",
+    "underlying": "NFLX",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-05",
+    "exit_date": "2025-05-20",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "NFLX  250606C01190000",
+        "underlying": "NFLX",
+        "option_type": "Call",
+        "strike": 1190.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 26.75,
+        "exit_price": 29.45,
+        "transaction_ids": [
+          "361173873",
+          "363956871"
+        ]
+      },
+      {
+        "symbol": "NFLX  250606C01185000",
+        "underlying": "NFLX",
+        "option_type": "Call",
+        "strike": 1185.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 28.55,
+        "exit_price": 31.95,
+        "transaction_ids": [
+          "361173870",
+          "363956868"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "NFLX_20250520_2legs": {
+    "trade_id": "NFLX_20250520_2legs",
+    "underlying": "NFLX",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-20",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "NFLX  250606C01190000",
+        "underlying": "NFLX",
+        "option_type": "Call",
+        "strike": 1190.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 29.45,
+        "exit_price": null,
+        "transaction_ids": [
+          "363956871"
+        ]
+      },
+      {
+        "symbol": "NFLX  250606C01185000",
+        "underlying": "NFLX",
+        "option_type": "Call",
+        "strike": 1185.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 31.95,
+        "exit_price": null,
+        "transaction_ids": [
+          "363956868"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MRNA_20250519_4legs": {
+    "trade_id": "MRNA_20250519_4legs",
+    "underlying": "MRNA",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-19",
+    "exit_date": "2025-05-19",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MRNA  250620C00035000",
+        "underlying": "MRNA",
+        "option_type": "Call",
+        "strike": 35.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 0.35,
+        "exit_price": 0.34,
+        "transaction_ids": [
+          "363858342",
+          "363869121"
+        ]
+      },
+      {
+        "symbol": "MRNA  250620C00031000",
+        "underlying": "MRNA",
+        "option_type": "Call",
+        "strike": 31.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.81,
+        "exit_price": 0.79,
+        "transaction_ids": [
+          "363858339",
+          "363869119"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250509_4legs": {
+    "trade_id": "TSLA_20250509_4legs",
+    "underlying": "TSLA",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-09",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00200000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 200.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 0.48,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075609"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00270000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 270.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 5.86,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075608"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00210000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 210.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 0.61,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075607"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00260000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 260.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075606"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250513_4legs": {
+    "trade_id": "TSLA_20250513_4legs",
+    "underlying": "TSLA",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-13",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530C00320000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 320.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 17.02,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633882"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00260000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 260.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 1.13,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633880"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530C00310000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 22.5,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633878"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00270000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 270.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 1.77,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633876"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "AFRM_20250509_2legs": {
+    "trade_id": "AFRM_20250509_2legs",
+    "underlying": "AFRM",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-09",
+    "exit_date": "2025-05-12",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "AFRM  250620P00040000",
+        "underlying": "AFRM",
+        "option_type": "Put",
+        "strike": 40.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 1.28,
+        "exit_price": 0.39,
+        "transaction_ids": [
+          "362021794",
+          "362413552"
+        ]
+      },
+      {
+        "symbol": "AFRM  250620P00045000",
+        "underlying": "AFRM",
+        "option_type": "Put",
+        "strike": 45.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 2.84,
+        "exit_price": 1.07,
+        "transaction_ids": [
+          "362021796",
+          "362413551"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "AFRM_20250512_2legs": {
+    "trade_id": "AFRM_20250512_2legs",
+    "underlying": "AFRM",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-12",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "AFRM  250620P00040000",
+        "underlying": "AFRM",
+        "option_type": "Put",
+        "strike": 40.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.39,
+        "exit_price": null,
+        "transaction_ids": [
+          "362413552"
+        ]
+      },
+      {
+        "symbol": "AFRM  250620P00045000",
+        "underlying": "AFRM",
+        "option_type": "Put",
+        "strike": 45.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 1.07,
+        "exit_price": null,
+        "transaction_ids": [
+          "362413551"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "X_20250508_2legs": {
+    "trade_id": "X_20250508_2legs",
+    "underlying": "X",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-08",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "X     250620P00038000",
+        "underlying": "X",
+        "option_type": "Put",
+        "strike": 38.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 3.39,
+        "exit_price": null,
+        "transaction_ids": [
+          "361694614"
+        ]
+      },
+      {
+        "symbol": "X     250620P00037000",
+        "underlying": "X",
+        "option_type": "Put",
+        "strike": 37.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 3.03,
+        "exit_price": null,
+        "transaction_ids": [
+          "361694612"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "HIMS_20250508_3legs": {
+    "trade_id": "HIMS_20250508_3legs",
+    "underlying": "HIMS",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-08",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "HIMS  250620C00065000",
+        "underlying": "HIMS",
+        "option_type": "Call",
+        "strike": 65.0,
+        "expiration": "2025-06-20",
+        "quantity": -2,
+        "entry_price": 3.77,
+        "exit_price": null,
+        "transaction_ids": [
+          "361666887"
+        ]
+      },
+      {
+        "symbol": "HIMS  250620C00075000",
+        "underlying": "HIMS",
+        "option_type": "Call",
+        "strike": 75.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 2.28,
+        "exit_price": null,
+        "transaction_ids": [
+          "361666879"
+        ]
+      },
+      {
+        "symbol": "HIMS  250620C00060000",
+        "underlying": "HIMS",
+        "option_type": "Call",
+        "strike": 60.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 4.93,
+        "exit_price": null,
+        "transaction_ids": [
+          "361666873"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "ARKB_20250505_2legs": {
+    "trade_id": "ARKB_20250505_2legs",
+    "underlying": "ARKB",
+    "strategy_type": "Short Stock",
+    "entry_date": "2025-05-05",
+    "exit_date": "2025-05-05",
+    "status": "Closed",
+    "option_legs": [],
+    "stock_legs": [
+      {
+        "symbol": "ARKB",
+        "quantity": -1375,
+        "entry_price": 93.8412,
+        "exit_price": 93.8412,
+        "transaction_ids": [
+          "361070067",
+          "361070065"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "WOLF_20250514_3legs": {
+    "trade_id": "WOLF_20250514_3legs",
+    "underlying": "WOLF",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-14",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "WOLF  250620P00003000",
+        "underlying": "WOLF",
+        "option_type": "Put",
+        "strike": 3.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.97,
+        "exit_price": 1.96,
+        "transaction_ids": [
+          "362962418",
+          "366073252"
+        ]
+      },
+      {
+        "symbol": "WOLF  250815P00003000",
+        "underlying": "WOLF",
+        "option_type": "Put",
+        "strike": 3.0,
+        "expiration": "2025-08-15",
+        "quantity": -1,
+        "entry_price": 2.26,
+        "exit_price": null,
+        "transaction_ids": [
+          "366073256"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250513_6legs": {
+    "trade_id": "UNH_20250513_6legs",
+    "underlying": "UNH",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-13",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UNH   250620C00360000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 360.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 6.09,
+        "exit_price": 5.82,
+        "transaction_ids": [
+          "362687299",
+          "362881946"
+        ]
+      },
+      {
+        "symbol": "UNH   250620C00350000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 350.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 8.02,
+        "exit_price": 7.66,
+        "transaction_ids": [
+          "362687297",
+          "362881940"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 9.55,
+        "exit_price": null,
+        "transaction_ids": [
+          "362881942"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 7.04,
+        "exit_price": null,
+        "transaction_ids": [
+          "362881939"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "RIVN_20250520_4legs": {
+    "trade_id": "RIVN_20250520_4legs",
+    "underlying": "RIVN",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-20",
+    "exit_date": "2025-05-30",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "RIVN  250620P00014000",
+        "underlying": "RIVN",
+        "option_type": "Put",
+        "strike": 14.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.21,
+        "exit_price": 0.52,
+        "transaction_ids": [
+          "364071387",
+          "365895103"
+        ]
+      },
+      {
+        "symbol": "RIVN  250620P00017500",
+        "underlying": "RIVN",
+        "option_type": "Put",
+        "strike": 17.5,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 1.43,
+        "exit_price": 3.05,
+        "transaction_ids": [
+          "364071384",
+          "365895104"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250507_3legs": {
+    "trade_id": "MSTR_20250507_3legs",
+    "underlying": "MSTR",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-07",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250516C00425000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 425.0,
+        "expiration": "2025-05-16",
+        "quantity": -8,
+        "entry_price": 5.16,
+        "exit_price": 0.0,
+        "transaction_ids": [
+          "361471735",
+          "363651421"
+        ]
+      },
+      {
+        "symbol": "MSTR  250509C00405000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 405.0,
+        "expiration": "2025-05-09",
+        "quantity": 8,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "361471734"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250519_4legs": {
+    "trade_id": "MSTR_20250519_4legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-19",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -1,
+        "entry_price": 4.3,
+        "exit_price": 0.0,
+        "transaction_ids": [
+          "363884090",
+          "364917819"
+        ]
+      },
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -5,
+        "entry_price": 4.3,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884089"
+        ]
+      },
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 4.37,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884091"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "XYL_20250521_3legs": {
+    "trade_id": "XYL_20250521_3legs",
+    "underlying": "XYL",
+    "strategy_type": "Covered Call",
+    "entry_date": "2025-05-21",
+    "exit_date": "2025-05-29",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "XYL   250620C00125000",
+        "underlying": "XYL",
+        "option_type": "Call",
+        "strike": 125.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 3.4,
+        "exit_price": 3.3,
+        "transaction_ids": [
+          "364387469",
+          "365480191"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "XYL",
+        "quantity": 100,
+        "entry_price": 126.025,
+        "exit_price": null,
+        "transaction_ids": [
+          "364356860"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250505_17legs": {
+    "trade_id": "IBIT_20250505_17legs",
+    "underlying": "IBIT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-05",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250509C00055500",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 55.5,
+        "expiration": "2025-05-09",
+        "quantity": -48,
+        "entry_price": 0.28,
+        "exit_price": 0.63,
+        "transaction_ids": [
+          "361073181",
+          "361467801"
+        ]
+      },
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": -48,
+        "entry_price": 0.52,
+        "exit_price": 1.12,
+        "transaction_ids": [
+          "361467799",
+          "363457272",
+          "363457506",
+          "363459183"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457267"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457260"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457255"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -8,
+        "entry_price": 1.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457503"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -34,
+        "entry_price": 1.27,
+        "exit_price": null,
+        "transaction_ids": [
+          "363459185"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "IBIT",
+        "quantity": 413,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071603"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 86,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071602"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 200,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071601"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 571,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071600"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 66,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071599"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 3464,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071598"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TGT_20250514_4legs": {
+    "trade_id": "TGT_20250514_4legs",
+    "underlying": "TGT",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-14",
+    "exit_date": "2025-05-19",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "TGT   250620C00120000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 120.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 0.44,
+        "exit_price": 0.62,
+        "transaction_ids": [
+          "362965233",
+          "363865153"
+        ]
+      },
+      {
+        "symbol": "TGT   250620C00110000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 110.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 1.43,
+        "exit_price": 2.04,
+        "transaction_ids": [
+          "362965231",
+          "363865152"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TGT_20250520_6legs": {
+    "trade_id": "TGT_20250520_6legs",
+    "underlying": "TGT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-20",
+    "exit_date": "2025-05-21",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "TGT   250606C00101000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 101.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 4.48,
+        "exit_price": 0.51,
+        "transaction_ids": [
+          "363982905",
+          "364196022"
+        ]
+      },
+      {
+        "symbol": "TGT   250606P00096000",
+        "underlying": "TGT",
+        "option_type": "Put",
+        "strike": 96.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 4.23,
+        "exit_price": 5.54,
+        "transaction_ids": [
+          "363982903",
+          "364196024"
+        ]
+      },
+      {
+        "symbol": "TGT   250606C00103000",
+        "underlying": "TGT",
+        "option_type": "Call",
+        "strike": 103.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 3.72,
+        "exit_price": 0.3,
+        "transaction_ids": [
+          "363982901",
+          "364196025"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "NFLX_20250505_4legs": {
+    "trade_id": "NFLX_20250505_4legs",
+    "underlying": "NFLX",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-05",
+    "exit_date": "2025-05-20",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "NFLX  250606C01190000",
+        "underlying": "NFLX",
+        "option_type": "Call",
+        "strike": 1190.0,
+        "expiration": "2025-06-06",
+        "quantity": 1,
+        "entry_price": 26.75,
+        "exit_price": 29.45,
+        "transaction_ids": [
+          "361173873",
+          "363956871"
+        ]
+      },
+      {
+        "symbol": "NFLX  250606C01185000",
+        "underlying": "NFLX",
+        "option_type": "Call",
+        "strike": 1185.0,
+        "expiration": "2025-06-06",
+        "quantity": -1,
+        "entry_price": 28.55,
+        "exit_price": 31.95,
+        "transaction_ids": [
+          "361173870",
+          "363956868"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "AFRM_20250509_4legs": {
+    "trade_id": "AFRM_20250509_4legs",
+    "underlying": "AFRM",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-09",
+    "exit_date": "2025-05-12",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "AFRM  250620P00040000",
+        "underlying": "AFRM",
+        "option_type": "Put",
+        "strike": 40.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 1.28,
+        "exit_price": 0.39,
+        "transaction_ids": [
+          "362021794",
+          "362413552"
+        ]
+      },
+      {
+        "symbol": "AFRM  250620P00045000",
+        "underlying": "AFRM",
+        "option_type": "Put",
+        "strike": 45.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 2.84,
+        "exit_price": 1.07,
+        "transaction_ids": [
+          "362021796",
+          "362413551"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "GLD_20250602_1legs": {
+    "trade_id": "GLD_20250602_1legs",
+    "underlying": "GLD",
+    "strategy_type": "Naked Put",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "GLD   250718P00300000",
+        "underlying": "GLD",
+        "option_type": "Put",
+        "strike": 300.0,
+        "expiration": "2025-07-18",
+        "quantity": -2,
+        "entry_price": 3.26,
+        "exit_price": null,
+        "transaction_ids": [
+          "366182199"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "SPY_20250602_1legs": {
+    "trade_id": "SPY_20250602_1legs",
+    "underlying": "SPY",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "SPY   250718P00555000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 555.0,
+        "expiration": "2025-07-18",
+        "quantity": 2,
+        "entry_price": 5.05,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158587"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "WOLF_20250602_1legs": {
+    "trade_id": "WOLF_20250602_1legs",
+    "underlying": "WOLF",
+    "strategy_type": "Naked Put",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "WOLF  250815P00003000",
+        "underlying": "WOLF",
+        "option_type": "Put",
+        "strike": 3.0,
+        "expiration": "2025-08-15",
+        "quantity": -1,
+        "entry_price": 2.26,
+        "exit_price": null,
+        "transaction_ids": [
+          "366073256"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250514_2legs": {
+    "trade_id": "UNH_20250514_2legs",
+    "underlying": "UNH",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-14",
+    "exit_date": "2025-05-30",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "UNH   250620P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 9.55,
+        "exit_price": 6.75,
+        "transaction_ids": [
+          "362881942",
+          "365918357"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 7.04,
+        "exit_price": 3.89,
+        "transaction_ids": [
+          "362881939",
+          "365918356"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250530_1legs": {
+    "trade_id": "UNH_20250530_1legs",
+    "underlying": "UNH",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-30",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UNH   250718P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 12.33,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918358"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250507_1legs": {
+    "trade_id": "MSTR_20250507_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-07",
+    "exit_date": "2025-05-16",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250516C00425000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 425.0,
+        "expiration": "2025-05-16",
+        "quantity": -8,
+        "entry_price": 5.16,
+        "exit_price": 0.0,
+        "transaction_ids": [
+          "361471735",
+          "363651421"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250519_1legs": {
+    "trade_id": "MSTR_20250519_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-19",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -1,
+        "entry_price": 4.3,
+        "exit_price": 0.0,
+        "transaction_ids": [
+          "363884090",
+          "364917819"
+        ]
+      },
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -5,
+        "entry_price": 4.3,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884089"
+        ]
+      },
+      {
+        "symbol": "MSTR  250523C00430000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 430.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 4.37,
+        "exit_price": null,
+        "transaction_ids": [
+          "363884091"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250527_1legs": {
+    "trade_id": "MSTR_20250527_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-27",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": 0.06,
+        "transaction_ids": [
+          "365123796",
+          "365893886"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123801"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123799"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123797"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -2,
+        "entry_price": 3.94,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123803"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -2,
+        "entry_price": 3.94,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123802"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250530_1legs": {
+    "trade_id": "MSTR_20250530_1legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-30",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250606C00385000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 385.0,
+        "expiration": "2025-06-06",
+        "quantity": -8,
+        "entry_price": 3.91,
+        "exit_price": null,
+        "transaction_ids": [
+          "365893888"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "XYL_20250521_1legs": {
+    "trade_id": "XYL_20250521_1legs",
+    "underlying": "XYL",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-21",
+    "exit_date": "2025-05-29",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "XYL   250620C00125000",
+        "underlying": "XYL",
+        "option_type": "Call",
+        "strike": 125.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 3.4,
+        "exit_price": 3.3,
+        "transaction_ids": [
+          "364387469",
+          "365480191"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250505_1legs": {
+    "trade_id": "IBIT_20250505_1legs",
+    "underlying": "IBIT",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-05",
+    "exit_date": "2025-05-07",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250509C00055500",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 55.5,
+        "expiration": "2025-05-09",
+        "quantity": -48,
+        "entry_price": 0.28,
+        "exit_price": 0.63,
+        "transaction_ids": [
+          "361073181",
+          "361467801"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250507_1legs": {
+    "trade_id": "IBIT_20250507_1legs",
+    "underlying": "IBIT",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-07",
+    "exit_date": "2025-05-16",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": -48,
+        "entry_price": 0.52,
+        "exit_price": 1.12,
+        "transaction_ids": [
+          "361467799",
+          "363457272",
+          "363457506",
+          "363459183"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250516_1legs": {
+    "trade_id": "IBIT_20250516_1legs",
+    "underlying": "IBIT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-16",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": 2.11,
+        "transaction_ids": [
+          "363457267",
+          "364349537"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457260"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457255"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -8,
+        "entry_price": 1.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457503"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -34,
+        "entry_price": 1.27,
+        "exit_price": null,
+        "transaction_ids": [
+          "363459185"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250521_1legs": {
+    "trade_id": "IBIT_20250521_1legs",
+    "underlying": "IBIT",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-21",
+    "exit_date": "2025-05-28",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250530C00060000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 60.0,
+        "expiration": "2025-05-30",
+        "quantity": -48,
+        "entry_price": 2.27,
+        "exit_price": 1.92,
+        "transaction_ids": [
+          "364349538",
+          "365259218"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250528_1legs": {
+    "trade_id": "IBIT_20250528_1legs",
+    "underlying": "IBIT",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-28",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250606C00061000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 61.0,
+        "expiration": "2025-06-06",
+        "quantity": -48,
+        "entry_price": 2.02,
+        "exit_price": null,
+        "transaction_ids": [
+          "365259228"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UBER_20250521_1legs": {
+    "trade_id": "UBER_20250521_1legs",
+    "underlying": "UBER",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-21",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UBER  250718P00090000",
+        "underlying": "UBER",
+        "option_type": "Put",
+        "strike": 90.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 4.84,
+        "exit_price": null,
+        "transaction_ids": [
+          "364253285"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "RBLX_20250521_1legs": {
+    "trade_id": "RBLX_20250521_1legs",
+    "underlying": "RBLX",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-21",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "RBLX  250718P00085000",
+        "underlying": "RBLX",
+        "option_type": "Put",
+        "strike": 85.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 6.1,
+        "exit_price": null,
+        "transaction_ids": [
+          "364250583"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MRNA_20250519_2legs": {
+    "trade_id": "MRNA_20250519_2legs",
+    "underlying": "MRNA",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-19",
+    "exit_date": "2025-05-19",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MRNA  250620C00035000",
+        "underlying": "MRNA",
+        "option_type": "Call",
+        "strike": 35.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 0.35,
+        "exit_price": 0.34,
+        "transaction_ids": [
+          "363858342",
+          "363869121"
+        ]
+      },
+      {
+        "symbol": "MRNA  250620C00031000",
+        "underlying": "MRNA",
+        "option_type": "Call",
+        "strike": 31.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 0.81,
+        "exit_price": 0.79,
+        "transaction_ids": [
+          "363858339",
+          "363869119"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250509_2legs": {
+    "trade_id": "TSLA_20250509_2legs",
+    "underlying": "TSLA",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-09",
+    "exit_date": "2025-05-13",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00260000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 260.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 3.9,
+        "exit_price": 1.13,
+        "transaction_ids": [
+          "362075606",
+          "362633880"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00270000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 270.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 5.86,
+        "exit_price": 1.77,
+        "transaction_ids": [
+          "362075608",
+          "362633876"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250509_1legs": {
+    "trade_id": "TSLA_20250509_1legs",
+    "underlying": "TSLA",
+    "strategy_type": "Naked Put",
+    "entry_date": "2025-05-09",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00200000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 200.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 0.48,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075609"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250513_1legs": {
+    "trade_id": "TSLA_20250513_1legs",
+    "underlying": "TSLA",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-13",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530C00320000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 320.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 17.02,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633882"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "X_20250508_1legs": {
+    "trade_id": "X_20250508_1legs",
+    "underlying": "X",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-08",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "X     250620P00037000",
+        "underlying": "X",
+        "option_type": "Put",
+        "strike": 37.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 3.03,
+        "exit_price": null,
+        "transaction_ids": [
+          "361694612"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "HIMS_20250508_1legs": {
+    "trade_id": "HIMS_20250508_1legs",
+    "underlying": "HIMS",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-08",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "HIMS  250620C00060000",
+        "underlying": "HIMS",
+        "option_type": "Call",
+        "strike": 60.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 4.93,
+        "exit_price": null,
+        "transaction_ids": [
+          "361666873"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "ARKB_20250505_1legs": {
+    "trade_id": "ARKB_20250505_1legs",
+    "underlying": "ARKB",
+    "strategy_type": "Short Stock",
+    "entry_date": "2025-05-05",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [],
+    "stock_legs": [
+      {
+        "symbol": "ARKB",
+        "quantity": -1360,
+        "entry_price": 93.8412,
+        "exit_price": null,
+        "transaction_ids": [
+          "361070065"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "SPY_20250520_4legs": {
+    "trade_id": "SPY_20250520_4legs",
+    "underlying": "SPY",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-05-20",
+    "exit_date": "2025-06-02",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "SPY   250718C00606000",
+        "underlying": "SPY",
+        "option_type": "Call",
+        "strike": 606.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 9.23,
+        "exit_price": 5.7,
+        "transaction_ids": [
+          "364069371",
+          "366163534"
+        ]
+      },
+      {
+        "symbol": "SPY   250718C00601000",
+        "underlying": "SPY",
+        "option_type": "Call",
+        "strike": 601.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 11.71,
+        "exit_price": 7.72,
+        "transaction_ids": [
+          "364069370",
+          "366163533"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "SPY_20250602_3legs": {
+    "trade_id": "SPY_20250602_3legs",
+    "underlying": "SPY",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-06-02",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "SPY   250718P00570000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 570.0,
+        "expiration": "2025-07-18",
+        "quantity": 2,
+        "entry_price": 7.55,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158585"
+        ]
+      },
+      {
+        "symbol": "SPY   250718P00565000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 565.0,
+        "expiration": "2025-07-18",
+        "quantity": -4,
+        "entry_price": 6.59,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158584"
+        ]
+      },
+      {
+        "symbol": "SPY   250718P00555000",
+        "underlying": "SPY",
+        "option_type": "Put",
+        "strike": 555.0,
+        "expiration": "2025-07-18",
+        "quantity": 2,
+        "entry_price": 5.05,
+        "exit_price": null,
+        "transaction_ids": [
+          "366158587"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "UNH_20250513_9legs": {
+    "trade_id": "UNH_20250513_9legs",
+    "underlying": "UNH",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-13",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "UNH   250620C00360000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 360.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 6.09,
+        "exit_price": 5.82,
+        "transaction_ids": [
+          "362687299",
+          "362881946"
+        ]
+      },
+      {
+        "symbol": "UNH   250620C00350000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 350.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 8.02,
+        "exit_price": 7.66,
+        "transaction_ids": [
+          "362687297",
+          "362881940"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 9.55,
+        "exit_price": 6.75,
+        "transaction_ids": [
+          "362881942",
+          "365918357"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 7.04,
+        "exit_price": 3.89,
+        "transaction_ids": [
+          "362881939",
+          "365918356"
+        ]
+      },
+      {
+        "symbol": "UNH   250718P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 16.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918355"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250505_2legs": {
+    "trade_id": "MSTR_20250505_2legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-05",
+    "exit_date": "2025-05-07",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250509C00405000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 405.0,
+        "expiration": "2025-05-09",
+        "quantity": -8,
+        "entry_price": 2.89,
+        "exit_price": 3.9,
+        "transaction_ids": [
+          "361075103",
+          "361471734"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250527_7legs": {
+    "trade_id": "MSTR_20250527_7legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-27",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": 0.06,
+        "transaction_ids": [
+          "365123796",
+          "365893886"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123801"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123799"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 3.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123797"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -2,
+        "entry_price": 3.94,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123803"
+        ]
+      },
+      {
+        "symbol": "MSTR  250530C00390000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 390.0,
+        "expiration": "2025-05-30",
+        "quantity": -2,
+        "entry_price": 3.94,
+        "exit_price": null,
+        "transaction_ids": [
+          "365123802"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250505_18legs": {
+    "trade_id": "IBIT_20250505_18legs",
+    "underlying": "IBIT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-05",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250509C00055500",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 55.5,
+        "expiration": "2025-05-09",
+        "quantity": -48,
+        "entry_price": 0.28,
+        "exit_price": 0.63,
+        "transaction_ids": [
+          "361073181",
+          "361467801"
+        ]
+      },
+      {
+        "symbol": "IBIT  250516C00058000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 58.0,
+        "expiration": "2025-05-16",
+        "quantity": -48,
+        "entry_price": 0.52,
+        "exit_price": 1.12,
+        "transaction_ids": [
+          "361467799",
+          "363457272",
+          "363457506",
+          "363459183"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": 2.11,
+        "transaction_ids": [
+          "363457267",
+          "364349537"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457260"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -2,
+        "entry_price": 1.24,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457255"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -8,
+        "entry_price": 1.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "363457503"
+        ]
+      },
+      {
+        "symbol": "IBIT  250523C00059000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 59.0,
+        "expiration": "2025-05-23",
+        "quantity": -34,
+        "entry_price": 1.27,
+        "exit_price": null,
+        "transaction_ids": [
+          "363459185"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "IBIT",
+        "quantity": 413,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071603"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 86,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071602"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 200,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071601"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 571,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071600"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 66,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071599"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 3464,
+        "entry_price": 53.47,
+        "exit_price": null,
+        "transaction_ids": [
+          "361071598"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250509_6legs": {
+    "trade_id": "TSLA_20250509_6legs",
+    "underlying": "TSLA",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-09",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00270000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 270.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 5.86,
+        "exit_price": 1.77,
+        "transaction_ids": [
+          "362075608",
+          "362633876"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00210000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 210.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 0.61,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075607"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00260000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 260.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 3.9,
+        "exit_price": 1.13,
+        "transaction_ids": [
+          "362075606",
+          "362633880"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530C00310000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 22.5,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633878"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250326_3legs": {
+    "trade_id": "MSTR_20250326_3legs",
+    "underlying": "MSTR",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-03-26",
+    "exit_date": "2025-04-29",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250509C00317500",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 317.5,
+        "expiration": "2025-05-09",
+        "quantity": 8,
+        "entry_price": 67.9,
+        "exit_price": null,
+        "transaction_ids": [
+          "360065804"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "MSTR",
+        "quantity": 900,
+        "entry_price": 341.81,
+        "exit_price": 383.3,
+        "transaction_ids": [
+          "353495889",
+          "360065557"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250327_4legs": {
+    "trade_id": "MSTR_20250327_4legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-03-27",
+    "exit_date": "2025-03-28",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250328C00342500",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 342.5,
+        "expiration": "2025-03-28",
+        "quantity": -9,
+        "entry_price": 1.95,
+        "exit_price": 0.01,
+        "transaction_ids": [
+          "353590315",
+          "353949426",
+          "353950132",
+          "353951956"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250401_3legs": {
+    "trade_id": "MSTR_20250401_3legs",
+    "underlying": "MSTR",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-04-01",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250404C00310000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-04-04",
+        "quantity": -8,
+        "entry_price": 3.1,
+        "exit_price": 14.55,
+        "transaction_ids": [
+          "354496443",
+          "354775418"
+        ]
+      },
+      {
+        "symbol": "MSTR  250404C00310000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-04-04",
+        "quantity": -1,
+        "entry_price": 3.15,
+        "exit_price": null,
+        "transaction_ids": [
+          "354496445"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250402_2legs": {
+    "trade_id": "MSTR_20250402_2legs",
+    "underlying": "MSTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-04-02",
+    "exit_date": "2025-04-08",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250411C00315000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 315.0,
+        "expiration": "2025-04-11",
+        "quantity": -9,
+        "entry_price": 18.25,
+        "exit_price": 1.82,
+        "transaction_ids": [
+          "354775420",
+          "356114190"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "MSTR_20250408_10legs": {
+    "trade_id": "MSTR_20250408_10legs",
+    "underlying": "MSTR",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-04-08",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "MSTR  250411C00295000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 295.0,
+        "expiration": "2025-04-11",
+        "quantity": -9,
+        "entry_price": 3.8,
+        "exit_price": 7.3,
+        "transaction_ids": [
+          "356206738",
+          "357198534",
+          "357198538"
+        ]
+      },
+      {
+        "symbol": "MSTR  250417C00302500",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 302.5,
+        "expiration": "2025-04-17",
+        "quantity": -5,
+        "entry_price": 15.25,
+        "exit_price": 13.58,
+        "transaction_ids": [
+          "357198532",
+          "358261762"
+        ]
+      },
+      {
+        "symbol": "MSTR  250417C00302500",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 302.5,
+        "expiration": "2025-04-17",
+        "quantity": -4,
+        "entry_price": 15.25,
+        "exit_price": null,
+        "transaction_ids": [
+          "357198536"
+        ]
+      },
+      {
+        "symbol": "MSTR  250425C00310000",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-04-25",
+        "quantity": -9,
+        "entry_price": 15.3,
+        "exit_price": 37.97,
+        "transaction_ids": [
+          "358261761",
+          "359220137"
+        ]
+      },
+      {
+        "symbol": "MSTR  250509C00317500",
+        "underlying": "MSTR",
+        "option_type": "Call",
+        "strike": 317.5,
+        "expiration": "2025-05-09",
+        "quantity": -9,
+        "entry_price": 38.3,
+        "exit_price": 67.9,
+        "transaction_ids": [
+          "359220134",
+          "360065333"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "IBIT_20250425_2legs": {
+    "trade_id": "IBIT_20250425_2legs",
+    "underlying": "IBIT",
+    "strategy_type": "Long Stock",
+    "entry_date": "2025-04-25",
+    "exit_date": "2025-04-29",
+    "status": "Closed",
+    "option_legs": [],
+    "stock_legs": [
+      {
+        "symbol": "IBIT",
+        "quantity": 600,
+        "entry_price": 54.2299,
+        "exit_price": 54.2703,
+        "transaction_ids": [
+          "359502092",
+          "360064852"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "TSLA_20250415_12legs": {
+    "trade_id": "TSLA_20250415_12legs",
+    "underlying": "TSLA",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-04-15",
+    "exit_date": "2025-05-13",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00200000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 200.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 6.74,
+        "exit_price": 0.48,
+        "transaction_ids": [
+          "357712222",
+          "362075609"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530C00320000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 320.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 4.92,
+        "exit_price": 17.02,
+        "transaction_ids": [
+          "357712230",
+          "362633882"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530C00310000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 6.4,
+        "exit_price": 22.5,
+        "transaction_ids": [
+          "357712226",
+          "362633878"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00210000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 210.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 8.66,
+        "exit_price": 0.61,
+        "transaction_ids": [
+          "357712224",
+          "362075607"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00270000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 270.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 5.86,
+        "exit_price": 1.77,
+        "transaction_ids": [
+          "362075608",
+          "362633876"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00260000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 260.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 3.9,
+        "exit_price": 1.13,
+        "transaction_ids": [
+          "362075606",
+          "362633880"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "ARKB_20250326_3legs": {
+    "trade_id": "ARKB_20250326_3legs",
+    "underlying": "ARKB",
+    "strategy_type": "Long Stock",
+    "entry_date": "2025-03-26",
+    "exit_date": "2025-05-05",
+    "status": "Closed",
+    "option_legs": [],
+    "stock_legs": [
+      {
+        "symbol": "ARKB",
+        "quantity": 2735,
+        "entry_price": 87.98,
+        "exit_price": 93.8412,
+        "transaction_ids": [
+          "353495888",
+          "361070067",
+          "361070065"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "ARKB_20250327_8legs": {
+    "trade_id": "ARKB_20250327_8legs",
+    "underlying": "ARKB",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-03-27",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "ARKB  250516C00100000",
+        "underlying": "ARKB",
+        "option_type": "Call",
+        "strike": 100.0,
+        "expiration": "2025-05-16",
+        "quantity": -7,
+        "entry_price": 2.17,
+        "exit_price": 1.75,
+        "transaction_ids": [
+          "353594885",
+          "360066670",
+          "360066671",
+          "360066673",
+          "360066674",
+          "360066675",
+          "360066676"
+        ]
+      },
+      {
+        "symbol": "ARKB  250516C00100000",
+        "underlying": "ARKB",
+        "option_type": "Call",
+        "strike": 100.0,
+        "expiration": "2025-05-16",
+        "quantity": -8,
+        "entry_price": 2.17,
+        "exit_price": null,
+        "transaction_ids": [
+          "353594882"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "SPXS_20250404_6legs": {
+    "trade_id": "SPXS_20250404_6legs",
+    "underlying": "SPXS",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-04-04",
+    "exit_date": "2025-04-15",
+    "status": "Closed",
+    "option_legs": [
+      {
+        "symbol": "SPXS  250425P00008000",
+        "underlying": "SPXS",
+        "option_type": "Put",
+        "strike": 8.0,
+        "expiration": "2025-04-25",
+        "quantity": 10,
+        "entry_price": 0.4,
+        "exit_price": 1.02,
+        "transaction_ids": [
+          "355526198",
+          "357649923",
+          "357649927",
+          "357649926",
+          "357649925",
+          "357649924"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  },
+  "GME_20250327_1legs": {
+    "trade_id": "GME_20250327_1legs",
+    "underlying": "GME",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-03-27",
+    "exit_date": null,
+    "status": "Open",
+    "option_legs": [
+      {
+        "symbol": "GME   251017C00020000",
+        "underlying": "GME",
+        "option_type": "Call",
+        "strike": 20.0,
+        "expiration": "2025-10-17",
+        "quantity": 5,
+        "entry_price": 5.85,
+        "exit_price": null,
+        "transaction_ids": [
+          "353675314"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": []
+  }
+}
