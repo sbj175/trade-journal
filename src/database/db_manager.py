@@ -42,10 +42,23 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
+            # Accounts table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS accounts (
+                    account_number TEXT PRIMARY KEY,
+                    account_name TEXT,
+                    account_type TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Trades table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trades (
                     trade_id TEXT PRIMARY KEY,
+                    account_number TEXT NOT NULL,
                     underlying TEXT NOT NULL,
                     strategy_type TEXT NOT NULL,
                     entry_date DATE NOT NULL,
@@ -58,7 +71,8 @@ class DatabaseManager:
                     current_pnl REAL,
                     days_in_trade INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (account_number) REFERENCES accounts(account_number)
                 )
             """)
             
@@ -98,6 +112,7 @@ class DatabaseManager:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS positions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_number TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     underlying TEXT,
                     instrument_type TEXT NOT NULL,
@@ -110,7 +125,8 @@ class DatabaseManager:
                     realized_day_gain REAL,
                     unrealized_pnl REAL,
                     pnl_percent REAL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (account_number) REFERENCES accounts(account_number)
                 )
             """)
             
@@ -130,13 +146,46 @@ class DatabaseManager:
             """)
             
             # Create indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades(underlying)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_number)")
             
             logger.info("Database initialized successfully")
     
-    def save_trade(self, trade: Trade) -> bool:
+    def save_account(self, account_number: str, account_name: str = None, account_type: str = None) -> bool:
+        """Save account information"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO accounts (account_number, account_name, account_type, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """, (account_number, account_name, account_type))
+                
+                return True
+        except Exception as e:
+            logger.error(f"Error saving account {account_number}: {str(e)}")
+            return False
+    
+    def get_accounts(self) -> List[Dict[str, Any]]:
+        """Get all accounts"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM accounts WHERE is_active = 1 ORDER BY account_number")
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_account(self, account_number: str) -> Optional[Dict[str, Any]]:
+        """Get specific account"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM accounts WHERE account_number = ?", (account_number,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def save_trade(self, trade: Trade, account_number: str = None) -> bool:
         """Save a trade to the database"""
         try:
             with self.get_connection() as conn:
@@ -149,8 +198,22 @@ class DatabaseManager:
                 # Prepare trade data
                 tags_json = json.dumps(trade.tags) if trade.tags else None
                 
+                # Use account_number from parameter, trade object, or existing database record
+                if not account_number:
+                    # Try to get from trade object first
+                    account_number = getattr(trade, 'account_number', None)
+                    
+                    if not account_number:
+                        # Try to get account from existing trade or use a default
+                        if exists:
+                            cursor.execute("SELECT account_number FROM trades WHERE trade_id = ?", (trade.trade_id,))
+                            row = cursor.fetchone()
+                            account_number = row[0] if row else "UNKNOWN"
+                        else:
+                            account_number = "UNKNOWN"
+                
                 if exists:
-                    # Update existing trade (preserve user notes)
+                    # Update existing trade (preserve user notes and account)
                     cursor.execute("""
                         UPDATE trades 
                         SET strategy_type = ?, status = ?, exit_date = ?,
@@ -170,12 +233,13 @@ class DatabaseManager:
                     # Insert new trade
                     cursor.execute("""
                         INSERT INTO trades (
-                            trade_id, underlying, strategy_type, entry_date,
+                            trade_id, account_number, underlying, strategy_type, entry_date,
                             exit_date, status, original_notes, current_notes,
                             tags, net_premium, current_pnl, days_in_trade
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         trade.trade_id,
+                        account_number,
                         trade.underlying,
                         trade.strategy_type.value,
                         trade.entry_date,
@@ -235,6 +299,7 @@ class DatabaseManager:
     
     def get_trades(
         self,
+        account_number: Optional[str] = None,
         status: Optional[str] = None,
         strategy: Optional[str] = None,
         underlying: Optional[str] = None,
@@ -247,6 +312,10 @@ class DatabaseManager:
             
             query = "SELECT * FROM trades WHERE 1=1"
             params = []
+            
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
             
             if status:
                 query += " AND status = ?"
@@ -350,25 +419,26 @@ class DatabaseManager:
             cursor.execute("SELECT * FROM positions ORDER BY market_value DESC")
             return [dict(row) for row in cursor.fetchall()]
     
-    def save_positions(self, positions: List[Dict[str, Any]]) -> bool:
-        """Save current positions"""
+    def save_positions(self, positions: List[Dict[str, Any]], account_number: str) -> bool:
+        """Save current positions for an account"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Clear existing positions
-                cursor.execute("DELETE FROM positions")
+                # Clear existing positions for this account
+                cursor.execute("DELETE FROM positions WHERE account_number = ?", (account_number,))
                 
                 # Insert new positions
                 for pos in positions:
                     cursor.execute("""
                         INSERT INTO positions (
-                            symbol, underlying, instrument_type, quantity,
+                            account_number, symbol, underlying, instrument_type, quantity,
                             quantity_direction, average_open_price, close_price,
                             market_value, cost_basis, realized_day_gain,
                             unrealized_pnl, pnl_percent
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
+                        account_number,
                         pos.get('symbol'),
                         pos.get('underlying_symbol'),
                         pos.get('instrument_type'),
@@ -389,49 +459,78 @@ class DatabaseManager:
             logger.error(f"Error saving positions: {str(e)}")
             return False
     
-    def get_trade_count(self, status: Optional[str] = None) -> int:
+    def get_trade_count(self, account_number: Optional[str] = None, status: Optional[str] = None) -> int:
         """Get count of trades"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            if status:
-                cursor.execute("SELECT COUNT(*) FROM trades WHERE status = ?", (status,))
-            else:
-                cursor.execute("SELECT COUNT(*) FROM trades")
+            query = "SELECT COUNT(*) FROM trades WHERE 1=1"
+            params = []
             
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
+            
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            
+            cursor.execute(query, params)
             return cursor.fetchone()[0]
     
-    def get_total_pnl(self) -> float:
+    def get_total_pnl(self, account_number: Optional[str] = None) -> float:
         """Get total P&L across all closed trades"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT COALESCE(SUM(current_pnl), 0) FROM trades WHERE status = 'Closed'"
-            )
+            
+            query = "SELECT COALESCE(SUM(current_pnl), 0) FROM trades WHERE status = 'Closed'"
+            params = []
+            
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
+            
+            cursor.execute(query, params)
             return cursor.fetchone()[0]
     
-    def get_pnl_by_date(self, target_date: date) -> float:
+    def get_pnl_by_date(self, target_date: date, account_number: Optional[str] = None) -> float:
         """Get P&L for a specific date"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            
+            query = """
                 SELECT COALESCE(SUM(current_pnl), 0) 
                 FROM trades 
                 WHERE status = 'Closed' AND DATE(exit_date) = ?
-            """, (target_date,))
+            """
+            params = [target_date]
+            
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
+            
+            cursor.execute(query, params)
             return cursor.fetchone()[0]
     
-    def get_pnl_by_date_range(self, start_date: date, end_date: date) -> float:
+    def get_pnl_by_date_range(self, start_date: date, end_date: date, account_number: Optional[str] = None) -> float:
         """Get P&L for a date range"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            
+            query = """
                 SELECT COALESCE(SUM(current_pnl), 0) 
                 FROM trades 
                 WHERE status = 'Closed' 
                 AND DATE(exit_date) >= ? 
                 AND DATE(exit_date) <= ?
-            """, (start_date, end_date))
+            """
+            params = [start_date, end_date]
+            
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
+            
+            cursor.execute(query, params)
             return cursor.fetchone()[0]
     
     def get_win_rate(self) -> float:

@@ -100,6 +100,7 @@ async def root():
 
 @app.get("/api/trades")
 async def get_trades(
+    account_number: Optional[str] = None,
     status: Optional[str] = None,
     strategy: Optional[str] = None,
     underlying: Optional[str] = None,
@@ -109,6 +110,7 @@ async def get_trades(
     """Get trades with optional filters"""
     try:
         trades = db.get_trades(
+            account_number=account_number,
             status=status,
             strategy=strategy,
             underlying=underlying,
@@ -152,8 +154,19 @@ async def update_trade(trade_id: str, trade_update: TradeUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/accounts")
+async def get_accounts():
+    """Get all available accounts"""
+    try:
+        accounts = db.get_accounts()
+        return {"accounts": accounts}
+    except Exception as e:
+        logger.error(f"Error getting accounts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/positions")
-async def get_positions():
+async def get_positions(account_number: Optional[str] = None):
     """Get current open positions"""
     try:
         positions = db.get_open_positions()
@@ -164,20 +177,21 @@ async def get_positions():
 
 
 @app.get("/api/dashboard")
-async def get_dashboard_data():
+async def get_dashboard_data(account_number: Optional[str] = None):
     """Get dashboard summary data"""
     try:
         # Get various statistics
-        total_trades = db.get_trade_count()
-        open_trades = db.get_trade_count(status="Open")
-        closed_trades = db.get_trade_count(status="Closed")
+        total_trades = db.get_trade_count(account_number=account_number)
+        open_trades = db.get_trade_count(account_number=account_number, status="Open")
+        closed_trades = db.get_trade_count(account_number=account_number, status="Closed")
         
         # Get P&L data
-        total_pnl = db.get_total_pnl()
-        today_pnl = db.get_pnl_by_date(date.today())
+        total_pnl = db.get_total_pnl(account_number=account_number)
+        today_pnl = db.get_pnl_by_date(date.today(), account_number=account_number)
         week_pnl = db.get_pnl_by_date_range(
             date.today() - timedelta(days=7),
-            date.today()
+            date.today(),
+            account_number=account_number
         )
         
         # Get win rate
@@ -222,8 +236,19 @@ async def sync_trades(sync_request: SyncRequest):
             logger.error("Failed to authenticate with Tastytrade")
             raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
         
-        # Fetch transactions
-        logger.info("Fetching transactions...")
+        # Save all accounts to database
+        logger.info("Saving account information...")
+        accounts = tastytrade.get_all_accounts()
+        for account in accounts:
+            db.save_account(
+                account['account_number'], 
+                account['account_name'], 
+                account['account_type']
+            )
+        logger.info(f"Saved {len(accounts)} accounts")
+        
+        # Fetch transactions from all accounts
+        logger.info("Fetching transactions from all accounts...")
         transactions = tastytrade.get_transactions(days_back=sync_request.days_back)
         logger.info(f"Fetched {len(transactions)} transactions")
         
@@ -245,46 +270,65 @@ async def sync_trades(sync_request: SyncRequest):
         skipped_count = 0
         failed_count = 0
         
+        # Group trades by account for processing
+        trades_by_account = {}
         for trade in trades:
-            try:
-                if trade.trade_id in existing_trades:
-                    # Check if this trade needs updating (e.g., status changed)
-                    existing = existing_trades[trade.trade_id]
-                    if (existing['status'] != trade.status.value or 
-                        existing['exit_date'] != (trade.exit_date.isoformat() if trade.exit_date else None)):
-                        if db.save_trade(trade):
-                            updated_count += 1
-                            logger.info(f"Updated existing trade {trade.trade_id}")
+            # Get account number from trade object (set during trade creation)
+            account_number = getattr(trade, 'account_number', 'UNKNOWN')
+            
+            if not account_number or account_number == 'UNKNOWN':
+                logger.warning(f"Could not determine account for trade {trade.trade_id}")
+                account_number = "UNKNOWN"
+            
+            if account_number not in trades_by_account:
+                trades_by_account[account_number] = []
+            trades_by_account[account_number].append((trade, account_number))
+
+        for account_number, account_trades in trades_by_account.items():
+            logger.info(f"Processing {len(account_trades)} trades for account {account_number}")
+            
+            for trade, trade_account in account_trades:
+                try:
+                    if trade.trade_id in existing_trades:
+                        # Check if this trade needs updating (e.g., status changed)
+                        existing = existing_trades[trade.trade_id]
+                        if (existing['status'] != trade.status.value or 
+                            existing['exit_date'] != (trade.exit_date.isoformat() if trade.exit_date else None)):
+                            if db.save_trade(trade, trade_account):
+                                updated_count += 1
+                                logger.info(f"Updated existing trade {trade.trade_id} for account {trade_account}")
+                            else:
+                                failed_count += 1
+                        else:
+                            skipped_count += 1
+                            logger.debug(f"Skipped unchanged trade {trade.trade_id}")
+                    else:
+                        # New trade
+                        if db.save_trade(trade, trade_account):
+                            saved_count += 1
+                            logger.info(f"Saved new trade {trade.trade_id} for account {trade_account}")
                         else:
                             failed_count += 1
-                    else:
-                        skipped_count += 1
-                        logger.debug(f"Skipped unchanged trade {trade.trade_id}")
-                else:
-                    # New trade
-                    if db.save_trade(trade):
-                        saved_count += 1
-                        logger.info(f"Saved new trade {trade.trade_id}")
-                    else:
-                        failed_count += 1
-                        logger.warning(f"Failed to save trade {trade.trade_id}")
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
+                            logger.warning(f"Failed to save trade {trade.trade_id}")
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
         
         logger.info(f"Sync complete: {saved_count} new, {updated_count} updated, {skipped_count} skipped, {failed_count} failed")
         
-        # Also fetch and save current positions
-        logger.info("Fetching current positions...")
-        positions = tastytrade.get_positions()
-        logger.info(f"Fetched {len(positions)} positions")
+        # Also fetch and save current positions for all accounts
+        logger.info("Fetching current positions from all accounts...")
+        all_positions = tastytrade.get_positions()
+        total_positions = 0
         
-        if positions:
-            success = db.save_positions(positions)
-            if success:
-                logger.info("Successfully saved positions to database")
-            else:
-                logger.error("Failed to save positions to database")
+        for account_number, positions in all_positions.items():
+            if positions:
+                success = db.save_positions(positions, account_number)
+                if success:
+                    logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
+                    total_positions += len(positions)
+                else:
+                    logger.error(f"Failed to save positions for account {account_number}")
         
         # Fetch and save account balance
         logger.info("Fetching account balance...")
@@ -338,6 +382,17 @@ async def initial_sync():
             logger.error("Failed to authenticate with Tastytrade")
             raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
         
+        # Save all accounts to database
+        logger.info("Saving account information...")
+        accounts = tastytrade.get_all_accounts()
+        for account in accounts:
+            db.save_account(
+                account['account_number'], 
+                account['account_name'], 
+                account['account_type']
+            )
+        logger.info(f"Saved {len(accounts)} accounts")
+        
         # Fetch ALL transactions (longer period for initial sync)
         logger.info("Fetching ALL transactions (last 365 days)...")
         transactions = tastytrade.get_transactions(days_back=365)
@@ -365,17 +420,19 @@ async def initial_sync():
         
         logger.info(f"Saved {saved_count} trades, {failed_count} failed")
         
-        # Fetch and save current positions
-        logger.info("Fetching current positions...")
-        positions = tastytrade.get_positions()
-        logger.info(f"Fetched {len(positions)} positions")
+        # Fetch and save current positions for all accounts
+        logger.info("Fetching current positions from all accounts...")
+        all_positions = tastytrade.get_positions()
+        total_positions = 0
         
-        if positions:
-            success = db.save_positions(positions)
-            if success:
-                logger.info("Successfully saved positions to database")
-            else:
-                logger.error("Failed to save positions")
+        for account_number, positions in all_positions.items():
+            if positions:
+                success = db.save_positions(positions, account_number)
+                if success:
+                    logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
+                    total_positions += len(positions)
+                else:
+                    logger.error(f"Failed to save positions for account {account_number}")
         
         # Fetch and save account balance
         logger.info("Fetching account balance...")
@@ -387,14 +444,14 @@ async def initial_sync():
             else:
                 logger.error("Failed to save account balance")
         
-        logger.info(f"INITIAL SYNC completed: {saved_count} trades saved, {len(positions)} positions updated")
+        logger.info(f"INITIAL SYNC completed: {saved_count} trades saved, {total_positions} positions updated")
         
         return {
             "message": f"Initial sync completed successfully",
             "trades_processed": len(trades),
             "trades_saved": saved_count,
             "trades_failed": failed_count,
-            "positions_updated": len(positions),
+            "positions_updated": total_positions,
             "transactions_processed": len(transactions)
         }
     except Exception as e:

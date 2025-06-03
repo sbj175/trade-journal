@@ -79,6 +79,7 @@ class Trade:
     entry_date: date
     exit_date: Optional[date] = None
     status: TradeStatus = TradeStatus.OPEN
+    account_number: str = "UNKNOWN"  # Account this trade belongs to
     option_legs: List[OptionLeg] = field(default_factory=list)
     stock_legs: List[StockLeg] = field(default_factory=list)
     original_notes: str = ""  # Initial strategy/thesis
@@ -378,6 +379,9 @@ class StrategyRecognizer:
         else:
             entry_date = date.today()
         
+        # Extract account number from first transaction
+        account_number = first_tx.get('account_number', 'UNKNOWN')
+        
         trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs"
         
         # Create trade object
@@ -385,7 +389,8 @@ class StrategyRecognizer:
             trade_id=trade_id,
             underlying=underlying,
             strategy_type=StrategyType.UNKNOWN,
-            entry_date=entry_date
+            entry_date=entry_date,
+            account_number=account_number
         )
         
         # Process each transaction into legs

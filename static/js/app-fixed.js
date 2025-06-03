@@ -3,6 +3,8 @@ function tradeJournal() {
     return {
         // State
         trades: [],
+        accounts: [],
+        selectedAccount: '',
         dashboard: {
             summary: {
                 total_pnl: 0,
@@ -36,9 +38,35 @@ function tradeJournal() {
         // Initialize
         async init() {
             console.log('Initializing Trade Journal...');
+            await this.loadAccounts();
             await this.loadDashboard();
             await this.loadTrades();
             this.initCharts();
+        },
+        
+        // Load accounts
+        async loadAccounts() {
+            try {
+                console.log('Loading accounts...');
+                const response = await fetch('/api/accounts');
+                const data = await response.json();
+                this.accounts = data.accounts || [];
+                
+                // Set default account (first one)
+                if (this.accounts.length > 0 && !this.selectedAccount) {
+                    this.selectedAccount = this.accounts[0].account_number;
+                }
+                console.log(`Loaded ${this.accounts.length} accounts`);
+            } catch (error) {
+                console.error('Error loading accounts:', error);
+            }
+        },
+        
+        // Handle account change
+        async onAccountChange() {
+            console.log('Account changed to:', this.selectedAccount);
+            await this.loadDashboard();
+            await this.loadTrades();
         },
         
         // Format number with commas
@@ -70,7 +98,11 @@ function tradeJournal() {
         async loadDashboard() {
             try {
                 console.log('Loading dashboard...');
-                const response = await fetch('/api/dashboard');
+                let url = '/api/dashboard';
+                if (this.selectedAccount) {
+                    url += `?account_number=${encodeURIComponent(this.selectedAccount)}`;
+                }
+                const response = await fetch(url);
                 const data = await response.json();
                 this.dashboard = data;
                 this.updateCharts();
@@ -85,6 +117,7 @@ function tradeJournal() {
             try {
                 console.log('Loading trades...');
                 const params = new URLSearchParams();
+                if (this.selectedAccount) params.append('account_number', this.selectedAccount);
                 if (this.filterStatus) params.append('status', this.filterStatus);
                 if (this.filterStrategy) params.append('strategy', this.filterStrategy);
                 if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
@@ -187,7 +220,8 @@ function tradeJournal() {
                 const result = await response.json();
                 console.log('Sync completed:', result);
                 
-                // Reload data
+                // Reload data including accounts
+                await this.loadAccounts();
                 await this.loadDashboard();
                 await this.loadTrades();
                 
@@ -231,7 +265,8 @@ function tradeJournal() {
                       `Created ${result.trades_saved} trades\n` +
                       `Updated ${result.positions_updated} positions`);
                 
-                // Reload all data
+                // Reload all data including accounts
+                await this.loadAccounts();
                 await this.loadDashboard();
                 await this.loadTrades();
                 
