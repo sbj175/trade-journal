@@ -8,7 +8,7 @@ import os
 from datetime import datetime, date
 from typing import List, Dict, Optional
 from dataclasses import asdict
-from .trade_strategy import Trade, StrategyType, TradeStatus, StrategyRecognizer
+from .trade_strategy import Trade, OptionLeg, StockLeg, StrategyType, TradeStatus, StrategyRecognizer
 
 
 class TradeManager:
@@ -203,10 +203,19 @@ class TradeManager:
                 trade_dict['strategy_type'] = StrategyType(trade_dict['strategy_type'])
                 trade_dict['status'] = TradeStatus(trade_dict['status'])
                 
-                # Handle option legs
-                for leg in trade_dict['option_legs']:
-                    if leg['expiration']:
-                        leg['expiration'] = date.fromisoformat(leg['expiration'])
+                # Handle option legs - convert to OptionLeg objects
+                option_legs = []
+                for leg_dict in trade_dict['option_legs']:
+                    if leg_dict['expiration']:
+                        leg_dict['expiration'] = date.fromisoformat(leg_dict['expiration'])
+                    option_legs.append(OptionLeg(**leg_dict))
+                trade_dict['option_legs'] = option_legs
+                
+                # Handle stock legs - convert to StockLeg objects
+                stock_legs = []
+                for leg_dict in trade_dict['stock_legs']:
+                    stock_legs.append(StockLeg(**leg_dict))
+                trade_dict['stock_legs'] = stock_legs
                 
                 # Create Trade object
                 trade = Trade(**trade_dict)

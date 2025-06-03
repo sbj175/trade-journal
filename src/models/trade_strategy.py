@@ -7,6 +7,7 @@ from datetime import datetime, date
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
 import re
+import pytz
 
 
 class StrategyType(Enum):
@@ -217,32 +218,102 @@ class StrategyRecognizer:
     
     @classmethod
     def _group_related_transactions(cls, transactions: List[Dict]) -> List[List[Dict]]:
-        """Group transactions that likely belong to the same trade"""
+        """Group transactions that likely belong to the same trade
+        
+        This improved algorithm:
+        1. Identifies all opening transactions first
+        2. When it finds a closing transaction, looks for matching opening transactions
+        3. Groups all related transactions together
+        """
         
         groups = []
-        current_group = []
+        processed_indices = set()
         
+        # Build an index of opening transactions by option details
+        opening_index = {}
         for i, tx in enumerate(transactions):
-            if not current_group:
-                current_group = [tx]
-                continue
-            
-            # Check if this transaction should be grouped with current group
-            should_group = cls._should_group_transactions(current_group, tx)
-            
-            if should_group:
-                current_group.append(tx)
-            else:
-                # Start new group
-                if current_group:
-                    groups.append(current_group)
-                current_group = [tx]
+            if not cls._is_closing_transaction(tx):
+                instrument_type = str(tx.get('instrument_type', ''))
+                if 'EQUITY_OPTION' in instrument_type:
+                    symbol = tx.get('symbol', '')
+                    option_info = cls.parse_option_symbol(symbol)
+                    if option_info:
+                        key = (option_info['underlying'], option_info['expiration'], 
+                               option_info['strike'], option_info['option_type'])
+                        if key not in opening_index:
+                            opening_index[key] = []
+                        opening_index[key].append(i)
         
-        # Don't forget the last group
-        if current_group:
-            groups.append(current_group)
+        # Process transactions
+        for i, tx in enumerate(transactions):
+            if i in processed_indices:
+                continue
+                
+            group = [tx]
+            processed_indices.add(i)
+            
+            # If this is a closing transaction, find all related opening transactions
+            if cls._is_closing_transaction(tx):
+                instrument_type = str(tx.get('instrument_type', ''))
+                if 'EQUITY_OPTION' in instrument_type:
+                    symbol = tx.get('symbol', '')
+                    option_info = cls.parse_option_symbol(symbol)
+                    if option_info:
+                        key = (option_info['underlying'], option_info['expiration'],
+                               option_info['strike'], option_info['option_type'])
+                        
+                        # Find all matching opening transactions
+                        if key in opening_index:
+                            for opening_idx in opening_index[key]:
+                                if opening_idx not in processed_indices:
+                                    group.append(transactions[opening_idx])
+                                    processed_indices.add(opening_idx)
+                                    
+                                    # Also include any other options opened on the same day
+                                    # (for multi-leg strategies)
+                                    opening_tx = transactions[opening_idx]
+                                    opening_date = cls._get_transaction_date(opening_tx)
+                                    
+                                    for j, other_tx in enumerate(transactions):
+                                        if (j not in processed_indices and 
+                                            not cls._is_closing_transaction(other_tx) and
+                                            cls._get_transaction_date(other_tx) == opening_date):
+                                            other_type = str(other_tx.get('instrument_type', ''))
+                                            if 'EQUITY_OPTION' in other_type:
+                                                other_symbol = other_tx.get('symbol', '')
+                                                other_info = cls.parse_option_symbol(other_symbol)
+                                                if (other_info and 
+                                                    other_info['underlying'] == option_info['underlying'] and
+                                                    other_info['expiration'] == option_info['expiration']):
+                                                    group.append(other_tx)
+                                                    processed_indices.add(j)
+            
+            # If this is an opening transaction, check for same-day related transactions
+            else:
+                tx_date = cls._get_transaction_date(tx)
+                for j in range(i + 1, len(transactions)):
+                    if j not in processed_indices:
+                        other_tx = transactions[j]
+                        if cls._should_group_transactions(group, other_tx):
+                            group.append(other_tx)
+                            processed_indices.add(j)
+            
+            # Sort group by date
+            group.sort(key=lambda x: x.get('executed_at', ''))
+            groups.append(group)
         
         return groups
+    
+    @classmethod
+    def _get_transaction_date(cls, transaction: Dict) -> date:
+        """Get the date of a transaction with timezone handling"""
+        et_tz = pytz.timezone('US/Eastern')
+        executed_at = transaction.get('executed_at', '')
+        if executed_at:
+            dt = datetime.fromisoformat(executed_at.replace('Z', '+00:00'))
+            et_dt = dt.astimezone(et_tz)
+            return et_dt.date()
+        return date.today()
     
     @classmethod
     def _should_group_transactions(cls, current_group: List[Dict], new_tx: Dict) -> bool:
@@ -294,9 +365,19 @@ class StrategyRecognizer:
         if not transactions:
             return None
         
-        # Generate trade ID
+        # Generate trade ID with timezone handling
         first_tx = transactions[0]
-        entry_date = datetime.fromisoformat(first_tx.get('executed_at', '')).date()
+        # Convert to Eastern time for consistent date representation
+        et_tz = pytz.timezone('US/Eastern')
+        executed_at = first_tx.get('executed_at', '')
+        # Parse the timestamp and convert to Eastern time
+        if executed_at:
+            dt = datetime.fromisoformat(executed_at.replace('Z', '+00:00'))
+            et_dt = dt.astimezone(et_tz)
+            entry_date = et_dt.date()
+        else:
+            entry_date = date.today()
+        
         trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs"
         
         # Create trade object
@@ -318,10 +399,23 @@ class StrategyRecognizer:
         # Recognize the strategy
         trade.strategy_type = cls._recognize_strategy(trade)
         
-        # Determine if trade is closed
+        # Determine if trade is closed and find the latest closing date
         if cls._is_trade_closed(trade):
             trade.status = TradeStatus.CLOSED
-            trade.exit_date = datetime.fromisoformat(transactions[-1].get('executed_at', '')).date()
+            # Find the latest closing transaction date with timezone handling
+            et_tz = pytz.timezone('US/Eastern')
+            latest_date = None
+            for tx in transactions:
+                if cls._is_closing_transaction(tx):
+                    executed_at = tx.get('executed_at', '')
+                    if executed_at:
+                        dt = datetime.fromisoformat(executed_at.replace('Z', '+00:00'))
+                        et_dt = dt.astimezone(et_tz)
+                        tx_date = et_dt.date()
+                        if latest_date is None or tx_date > latest_date:
+                            latest_date = tx_date
+            
+            trade.exit_date = latest_date or entry_date
         
         return trade
     

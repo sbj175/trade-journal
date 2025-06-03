@@ -20,6 +20,7 @@ function tradeJournal() {
         // UI State
         loading: false,
         syncing: false,
+        initialSyncing: false,
         
         // Filters
         searchTerm: '',
@@ -49,12 +50,20 @@ function tradeJournal() {
         // Format date
         formatDate(dateStr) {
             if (!dateStr) return '';
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'short', 
-                day: 'numeric' 
-            });
+            // Parse as local date to avoid timezone shifts
+            // dateStr format: "2025-05-20"
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                // Create date as local time (month is 0-indexed)
+                const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                return date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+            }
+            // Fallback for other formats
+            return dateStr;
         },
         
         // Load dashboard data
@@ -187,6 +196,50 @@ function tradeJournal() {
                 alert('Sync failed: ' + error.message);
             } finally {
                 this.syncing = false;
+            }
+        },
+        
+        // Initial sync - rebuild entire database
+        async initialSync() {
+            const confirmed = confirm(
+                'Initial Sync will CLEAR the entire database and rebuild it from scratch.\n\n' +
+                'This will fetch all transactions from the last year and may take several minutes.\n\n' +
+                'Are you sure you want to continue?'
+            );
+            
+            if (!confirmed) return;
+            
+            this.initialSyncing = true;
+            try {
+                console.log('Starting initial sync...');
+                const response = await fetch('/api/sync/initial', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Initial sync failed: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Initial sync completed:', result);
+                
+                alert(`Initial sync completed successfully!\n\n` +
+                      `Processed ${result.transactions_processed} transactions\n` +
+                      `Created ${result.trades_saved} trades\n` +
+                      `Updated ${result.positions_updated} positions`);
+                
+                // Reload all data
+                await this.loadDashboard();
+                await this.loadTrades();
+                
+            } catch (error) {
+                console.error('Error during initial sync:', error);
+                alert('Initial sync failed: ' + error.message);
+            } finally {
+                this.initialSyncing = false;
             }
         },
         

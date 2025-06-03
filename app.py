@@ -232,21 +232,47 @@ async def sync_trades(sync_request: SyncRequest):
         trades = trade_manager.process_transactions(transactions)
         logger.info(f"Processed {len(trades)} trades")
         
-        # Save to database
+        # Get existing trades to avoid duplicates
+        existing_trades = {}
+        for underlying in set(trade.underlying for trade in trades):
+            existing = db.get_trades(underlying=underlying, limit=1000)
+            for existing_trade in existing:
+                existing_trades[existing_trade['trade_id']] = existing_trade
+        
+        # Save to database (avoid duplicates)
         saved_count = 0
+        updated_count = 0
+        skipped_count = 0
         failed_count = 0
+        
         for trade in trades:
             try:
-                if db.save_trade(trade):
-                    saved_count += 1
+                if trade.trade_id in existing_trades:
+                    # Check if this trade needs updating (e.g., status changed)
+                    existing = existing_trades[trade.trade_id]
+                    if (existing['status'] != trade.status.value or 
+                        existing['exit_date'] != (trade.exit_date.isoformat() if trade.exit_date else None)):
+                        if db.save_trade(trade):
+                            updated_count += 1
+                            logger.info(f"Updated existing trade {trade.trade_id}")
+                        else:
+                            failed_count += 1
+                    else:
+                        skipped_count += 1
+                        logger.debug(f"Skipped unchanged trade {trade.trade_id}")
                 else:
-                    failed_count += 1
-                    logger.warning(f"Failed to save trade {trade.trade_id}")
+                    # New trade
+                    if db.save_trade(trade):
+                        saved_count += 1
+                        logger.info(f"Saved new trade {trade.trade_id}")
+                    else:
+                        failed_count += 1
+                        logger.warning(f"Failed to save trade {trade.trade_id}")
             except Exception as e:
                 failed_count += 1
                 logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
         
-        logger.info(f"Saved {saved_count} trades, {failed_count} failed")
+        logger.info(f"Sync complete: {saved_count} new, {updated_count} updated, {skipped_count} skipped, {failed_count} failed")
         
         # Also fetch and save current positions
         logger.info("Fetching current positions...")
@@ -270,17 +296,109 @@ async def sync_trades(sync_request: SyncRequest):
             else:
                 logger.error("Failed to save account balance")
         
-        logger.info(f"Sync completed: {saved_count} trades saved, {len(positions)} positions updated")
+        logger.info(f"Sync completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {len(positions)} positions updated")
         
         return {
-            "message": "Sync completed successfully",
+            "message": f"Sync completed: {saved_count} new, {updated_count} updated, {skipped_count} unchanged",
             "trades_processed": len(trades),
-            "trades_saved": saved_count,
+            "trades_new": saved_count,
+            "trades_updated": updated_count,
+            "trades_skipped": skipped_count,
             "trades_failed": failed_count,
             "positions_updated": len(positions)
         }
     except Exception as e:
         logger.error(f"Sync error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sync/initial")
+async def initial_sync():
+    """Complete initial sync - clears database and rebuilds from scratch"""
+    try:
+        logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
+        
+        # Clear the database
+        logger.info("Clearing existing database...")
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM option_legs")
+            cursor.execute("DELETE FROM stock_legs") 
+            cursor.execute("DELETE FROM trades")
+            cursor.execute("DELETE FROM positions")
+            cursor.execute("DELETE FROM account_balances")
+            logger.info("Database cleared successfully")
+        
+        # Initialize clients
+        tastytrade = TastytradeClient()
+        trade_manager = TradeManager()
+        
+        # Authenticate
+        if not tastytrade.authenticate():
+            logger.error("Failed to authenticate with Tastytrade")
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
+        
+        # Fetch ALL transactions (longer period for initial sync)
+        logger.info("Fetching ALL transactions (last 365 days)...")
+        transactions = tastytrade.get_transactions(days_back=365)
+        logger.info(f"Fetched {len(transactions)} transactions")
+        
+        # Process into trades
+        logger.info("Processing transactions into trades...")
+        trades = trade_manager.process_transactions(transactions)
+        logger.info(f"Processed {len(trades)} trades")
+        
+        # Save all trades to database
+        saved_count = 0
+        failed_count = 0
+        
+        for trade in trades:
+            try:
+                if db.save_trade(trade):
+                    saved_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(f"Failed to save trade {trade.trade_id}")
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
+        
+        logger.info(f"Saved {saved_count} trades, {failed_count} failed")
+        
+        # Fetch and save current positions
+        logger.info("Fetching current positions...")
+        positions = tastytrade.get_positions()
+        logger.info(f"Fetched {len(positions)} positions")
+        
+        if positions:
+            success = db.save_positions(positions)
+            if success:
+                logger.info("Successfully saved positions to database")
+            else:
+                logger.error("Failed to save positions")
+        
+        # Fetch and save account balance
+        logger.info("Fetching account balance...")
+        balance = tastytrade.get_account_balances()
+        if balance:
+            success = db.save_account_balance(balance)
+            if success:
+                logger.info("Successfully saved account balance")
+            else:
+                logger.error("Failed to save account balance")
+        
+        logger.info(f"INITIAL SYNC completed: {saved_count} trades saved, {len(positions)} positions updated")
+        
+        return {
+            "message": f"Initial sync completed successfully",
+            "trades_processed": len(trades),
+            "trades_saved": saved_count,
+            "trades_failed": failed_count,
+            "positions_updated": len(positions),
+            "transactions_processed": len(transactions)
+        }
+    except Exception as e:
+        logger.error(f"Initial sync error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
