@@ -597,22 +597,29 @@ class DatabaseManager:
             cursor.execute(query, params)
             return cursor.fetchone()[0]
     
-    def get_win_rate(self) -> float:
+    def get_win_rate(self, account_number: str = None) -> float:
         """Get win rate percentage"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
+            # Build query with optional account filter
+            base_where = "WHERE status = 'Closed'"
+            params = []
+            
+            if account_number:
+                base_where += " AND account_number = ?"
+                params.append(account_number)
+            
             # Get total closed trades
-            cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'Closed'")
+            cursor.execute(f"SELECT COUNT(*) FROM trades {base_where}", params)
             total = cursor.fetchone()[0]
             
             if total == 0:
                 return 0.0
             
             # Get winning trades
-            cursor.execute(
-                "SELECT COUNT(*) FROM trades WHERE status = 'Closed' AND current_pnl > 0"
-            )
+            win_where = base_where + " AND current_pnl > 0"
+            cursor.execute(f"SELECT COUNT(*) FROM trades {win_where}", params)
             wins = cursor.fetchone()[0]
             
             return (wins / total) * 100

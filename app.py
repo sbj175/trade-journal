@@ -195,7 +195,7 @@ async def get_dashboard_data(account_number: Optional[str] = None):
         )
         
         # Get win rate
-        win_rate = db.get_win_rate()
+        win_rate = db.get_win_rate(account_number=account_number)
         
         # Get strategy breakdown
         strategy_stats = db.get_strategy_statistics()
