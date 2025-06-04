@@ -14,7 +14,9 @@
       "Bash(rm:*)",
       "Bash(git add:*)",
       "Bash(git push:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(find:*)",
+      "Bash(echo)"
     ],
     "deny": []
   }

@@ -19,6 +19,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366182200"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:13:07.677000+00:00"
         ]
       },
       {
@@ -32,6 +38,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366182199"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:13:07.677000+00:00"
         ]
       }
     ],
@@ -39,7 +51,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "SPY_20250520_4legs": {
     "trade_id": "SPY_20250520_4legs",
@@ -62,6 +74,14 @@
         "transaction_ids": [
           "364069371",
           "366163534"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T17:56:09.695000+00:00",
+          "2025-06-02T15:27:57.520000+00:00"
         ]
       },
       {
@@ -76,6 +96,14 @@
         "transaction_ids": [
           "364069370",
           "366163533"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T17:56:09.695000+00:00",
+          "2025-06-02T15:27:57.520000+00:00"
         ]
       }
     ],
@@ -83,7 +111,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "SPY_20250522_4legs": {
     "trade_id": "SPY_20250522_4legs",
@@ -105,6 +133,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364480563"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T14:09:12.845000+00:00"
         ]
       },
       {
@@ -118,6 +152,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364480561"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T14:09:12.845000+00:00"
         ]
       },
       {
@@ -131,6 +171,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364480557"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T14:09:12.845000+00:00"
         ]
       },
       {
@@ -144,6 +190,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364480556"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T14:09:12.845000+00:00"
         ]
       }
     ],
@@ -151,7 +203,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPY_20250602_3legs": {
     "trade_id": "SPY_20250602_3legs",
@@ -173,6 +225,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366158585"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T15:15:37.707000+00:00"
         ]
       },
       {
@@ -186,6 +244,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366158584"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T15:15:37.707000+00:00"
         ]
       },
       {
@@ -199,6 +263,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366158587"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T15:15:37.708000+00:00"
         ]
       }
     ],
@@ -206,7 +276,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "WOLF_20250514_3legs": {
     "trade_id": "WOLF_20250514_3legs",
@@ -229,6 +299,14 @@
         "transaction_ids": [
           "362962418",
           "366073252"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T18:04:46.420000+00:00",
+          "2025-06-02T13:31:54.330000+00:00"
         ]
       },
       {
@@ -242,6 +320,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366073256"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T13:31:54.331000+00:00"
         ]
       }
     ],
@@ -249,7 +333,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "UNH_20250513_9legs": {
     "trade_id": "UNH_20250513_9legs",
@@ -272,6 +356,14 @@
         "transaction_ids": [
           "362687299",
           "362881946"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-13T17:14:24.115000+00:00",
+          "2025-05-14T15:00:31.292000+00:00"
         ]
       },
       {
@@ -286,6 +378,14 @@
         "transaction_ids": [
           "362687297",
           "362881940"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-13T17:14:24.115000+00:00",
+          "2025-05-14T15:00:31.292000+00:00"
         ]
       },
       {
@@ -300,6 +400,14 @@
         "transaction_ids": [
           "362881942",
           "365918357"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T15:00:31.292000+00:00",
+          "2025-05-30T19:19:08.688000+00:00"
         ]
       },
       {
@@ -314,6 +422,14 @@
         "transaction_ids": [
           "362881939",
           "365918356"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T15:00:31.292000+00:00",
+          "2025-05-30T19:19:08.688000+00:00"
         ]
       },
       {
@@ -327,6 +443,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365918355"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-30T19:19:08.688000+00:00"
         ]
       }
     ],
@@ -334,7 +456,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "UNH_20250530_1legs": {
     "trade_id": "UNH_20250530_1legs",
@@ -356,6 +478,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365918358"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-30T19:19:08.688000+00:00"
         ]
       }
     ],
@@ -363,7 +491,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "RIVN_20250520_4legs": {
     "trade_id": "RIVN_20250520_4legs",
@@ -386,6 +514,14 @@
         "transaction_ids": [
           "364071387",
           "365895103"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T18:03:10.728000+00:00",
+          "2025-05-30T18:31:32.631000+00:00"
         ]
       },
       {
@@ -400,6 +536,14 @@
         "transaction_ids": [
           "364071384",
           "365895104"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T18:03:10.728000+00:00",
+          "2025-05-30T18:31:32.631000+00:00"
         ]
       }
     ],
@@ -407,7 +551,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "MSTR_20250326_3legs": {
     "trade_id": "MSTR_20250326_3legs",
@@ -429,6 +573,12 @@
         "exit_price": null,
         "transaction_ids": [
           "360065804"
+        ],
+        "transaction_actions": [
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-29T18:37:52.755000+00:00"
         ]
       }
     ],
@@ -441,13 +591,21 @@
         "transaction_ids": [
           "353495889",
           "360065557"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-26T21:00:00+00:00",
+          "2025-04-29T18:37:03.379000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250327_4legs": {
     "trade_id": "MSTR_20250327_4legs",
@@ -472,6 +630,16 @@
           "353949426",
           "353950132",
           "353951956"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T14:51:31.078000+00:00",
+          "2025-03-28T17:40:29.984000+00:00",
+          "2025-03-28T17:42:18.131000+00:00",
+          "2025-03-28T17:46:08.581000+00:00"
         ]
       }
     ],
@@ -479,7 +647,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250401_3legs": {
     "trade_id": "MSTR_20250401_3legs",
@@ -502,6 +670,14 @@
         "transaction_ids": [
           "354496443",
           "354775418"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T14:24:17.196000+00:00",
+          "2025-04-02T15:45:43.157000+00:00"
         ]
       },
       {
@@ -515,6 +691,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354496445"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T14:24:17.296000+00:00"
         ]
       }
     ],
@@ -522,7 +704,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250402_2legs": {
     "trade_id": "MSTR_20250402_2legs",
@@ -545,6 +727,14 @@
         "transaction_ids": [
           "354775420",
           "356114190"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-02T15:45:43.157000+00:00",
+          "2025-04-08T13:32:52.523000+00:00"
         ]
       }
     ],
@@ -552,7 +742,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250408_10legs": {
     "trade_id": "MSTR_20250408_10legs",
@@ -576,6 +766,15 @@
           "356206738",
           "357198534",
           "357198538"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-08T15:34:07.261000+00:00",
+          "2025-04-11T18:46:49.445000+00:00",
+          "2025-04-11T18:46:49.447000+00:00"
         ]
       },
       {
@@ -590,6 +789,14 @@
         "transaction_ids": [
           "357198532",
           "358261762"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:46:49.445000+00:00",
+          "2025-04-17T19:17:09.495000+00:00"
         ]
       },
       {
@@ -603,6 +810,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357198536"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:46:49.447000+00:00"
         ]
       },
       {
@@ -617,6 +830,14 @@
         "transaction_ids": [
           "358261761",
           "359220137"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-17T19:17:09.495000+00:00",
+          "2025-04-24T15:41:29.800000+00:00"
         ]
       },
       {
@@ -631,6 +852,14 @@
         "transaction_ids": [
           "359220134",
           "360065333"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-24T15:41:29.800000+00:00",
+          "2025-04-29T18:36:18.924000+00:00"
         ]
       }
     ],
@@ -638,7 +867,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250505_2legs": {
     "trade_id": "MSTR_20250505_2legs",
@@ -661,6 +890,14 @@
         "transaction_ids": [
           "361075103",
           "361471734"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:52:41.801000+00:00",
+          "2025-05-07T13:47:53.879000+00:00"
         ]
       }
     ],
@@ -668,7 +905,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250507_2legs": {
     "trade_id": "MSTR_20250507_2legs",
@@ -691,6 +928,14 @@
         "transaction_ids": [
           "361471735",
           "363651421"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-07T13:47:53.879000+00:00",
+          "2025-05-16T20:00:00+00:00"
         ]
       }
     ],
@@ -698,7 +943,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250519_4legs": {
     "trade_id": "MSTR_20250519_4legs",
@@ -721,6 +966,14 @@
         "transaction_ids": [
           "363884090",
           "364917819"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-19T18:48:48.331000+00:00",
+          "2025-05-23T20:00:00+00:00"
         ]
       },
       {
@@ -734,6 +987,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363884089"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-19T18:48:48.331000+00:00"
         ]
       },
       {
@@ -747,6 +1006,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363884091"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-19T18:48:48.430000+00:00"
         ]
       }
     ],
@@ -754,7 +1019,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250527_7legs": {
     "trade_id": "MSTR_20250527_7legs",
@@ -777,6 +1042,14 @@
         "transaction_ids": [
           "365123796",
           "365893886"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-27T16:57:29.690000+00:00",
+          "2025-05-30T18:28:58.153000+00:00"
         ]
       },
       {
@@ -790,6 +1063,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365123801"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-27T16:57:29.691000+00:00"
         ]
       },
       {
@@ -803,6 +1082,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365123799"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-27T16:57:29.691000+00:00"
         ]
       },
       {
@@ -816,6 +1101,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365123797"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-27T16:57:29.691000+00:00"
         ]
       },
       {
@@ -829,6 +1120,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365123803"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-27T16:57:29.791000+00:00"
         ]
       },
       {
@@ -842,6 +1139,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365123802"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-27T16:57:29.791000+00:00"
         ]
       }
     ],
@@ -849,7 +1152,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "MSTR_20250530_1legs": {
     "trade_id": "MSTR_20250530_1legs",
@@ -871,6 +1174,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365893888"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-30T18:28:58.153000+00:00"
         ]
       }
     ],
@@ -878,7 +1187,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "XYL_20250521_3legs": {
     "trade_id": "XYL_20250521_3legs",
@@ -901,6 +1210,14 @@
         "transaction_ids": [
           "364387469",
           "365480191"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T19:39:56.090000+00:00",
+          "2025-05-29T13:39:32.700000+00:00"
         ]
       }
     ],
@@ -912,13 +1229,19 @@
         "exit_price": null,
         "transaction_ids": [
           "364356860"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T18:53:23.628000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "IBIT_20250327_10legs": {
     "trade_id": "IBIT_20250327_10legs",
@@ -941,6 +1264,13 @@
         "transaction_ids": [
           "359756198",
           "359756210"
+        ],
+        "transaction_actions": [
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T14:29:09.706000+00:00",
+          "2025-04-28T14:29:09.988000+00:00"
         ]
       },
       {
@@ -955,6 +1285,14 @@
         "transaction_ids": [
           "359756195",
           "360935202"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T14:29:09.706000+00:00",
+          "2025-05-02T20:00:00+00:00"
         ]
       },
       {
@@ -968,6 +1306,12 @@
         "exit_price": null,
         "transaction_ids": [
           "359756208"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T14:29:09.988000+00:00"
         ]
       }
     ],
@@ -982,6 +1326,16 @@
           "359755016",
           "359755783",
           "360064852"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T21:00:00+00:00",
+          "2025-04-28T14:26:45.743000+00:00",
+          "2025-04-28T14:28:17.545000+00:00",
+          "2025-04-29T18:34:35.793000+00:00"
         ]
       },
       {
@@ -991,13 +1345,19 @@
         "exit_price": null,
         "transaction_ids": [
           "353746857"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T21:00:00+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250401_20legs": {
     "trade_id": "IBIT_20250401_20legs",
@@ -1020,6 +1380,14 @@
         "transaction_ids": [
           "354466496",
           "355699589"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.696000+00:00",
+          "2025-04-04T20:00:00+00:00"
         ]
       },
       {
@@ -1033,6 +1401,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466493"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.696000+00:00"
         ]
       },
       {
@@ -1046,6 +1420,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466489"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.696000+00:00"
         ]
       },
       {
@@ -1059,6 +1439,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466485"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.696000+00:00"
         ]
       },
       {
@@ -1072,6 +1458,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466481"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.696000+00:00"
         ]
       },
       {
@@ -1085,6 +1477,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466523"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1098,6 +1496,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466519"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1111,6 +1515,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466517"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1124,6 +1534,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466511"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1137,6 +1553,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466507"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1150,6 +1572,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466505"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1163,6 +1591,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466500"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.697000+00:00"
         ]
       },
       {
@@ -1176,6 +1610,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466533"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.698000+00:00"
         ]
       },
       {
@@ -1189,6 +1629,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466531"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.698000+00:00"
         ]
       },
       {
@@ -1202,6 +1648,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466529"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.698000+00:00"
         ]
       },
       {
@@ -1215,6 +1667,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466527"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.698000+00:00"
         ]
       },
       {
@@ -1228,6 +1686,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466525"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.698000+00:00"
         ]
       },
       {
@@ -1241,6 +1705,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466537"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.699000+00:00"
         ]
       },
       {
@@ -1254,6 +1724,12 @@
         "exit_price": null,
         "transaction_ids": [
           "354466535"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-01T13:45:08.699000+00:00"
         ]
       }
     ],
@@ -1261,7 +1737,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250404_1legs": {
     "trade_id": "IBIT_20250404_1legs",
@@ -1280,13 +1756,19 @@
         "exit_price": null,
         "transaction_ids": [
           "355424172"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-04T14:49:49.187000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "IBIT_20250407_40legs": {
     "trade_id": "IBIT_20250407_40legs",
@@ -1325,6 +1807,30 @@
           "357199789",
           "357199785",
           "357199782"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-07T16:48:30.871000+00:00",
+          "2025-04-11T18:49:56.050000+00:00",
+          "2025-04-11T18:49:56.052000+00:00",
+          "2025-04-11T18:49:57.585000+00:00",
+          "2025-04-11T18:49:57.585000+00:00",
+          "2025-04-11T18:49:57.586000+00:00",
+          "2025-04-11T18:49:57.586000+00:00",
+          "2025-04-11T18:50:23.511000+00:00",
+          "2025-04-11T18:50:23.639000+00:00",
+          "2025-04-11T18:50:24.471000+00:00",
+          "2025-04-11T18:50:24.471000+00:00",
+          "2025-04-11T18:50:24.594000+00:00",
+          "2025-04-11T18:50:24.595000+00:00",
+          "2025-04-11T18:50:24.719000+00:00",
+          "2025-04-11T18:50:27.016000+00:00",
+          "2025-04-11T18:50:27.132000+00:00",
+          "2025-04-11T18:50:27.132000+00:00",
+          "2025-04-11T18:50:27.132000+00:00"
         ]
       },
       {
@@ -1338,6 +1844,12 @@
         "exit_price": null,
         "transaction_ids": [
           "355969245"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-07T16:48:30.972000+00:00"
         ]
       },
       {
@@ -1352,6 +1864,14 @@
         "transaction_ids": [
           "357199574",
           "358264062"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:56.052000+00:00",
+          "2025-04-17T19:22:00.376000+00:00"
         ]
       },
       {
@@ -1365,6 +1885,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199598"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.585000+00:00"
         ]
       },
       {
@@ -1378,6 +1904,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199596"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.585000+00:00"
         ]
       },
       {
@@ -1391,6 +1923,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199602"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.586000+00:00"
         ]
       },
       {
@@ -1404,6 +1942,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199600"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.586000+00:00"
         ]
       },
       {
@@ -1417,6 +1961,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199738"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:23.511000+00:00"
         ]
       },
       {
@@ -1430,6 +1980,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199742"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:23.639000+00:00"
         ]
       },
       {
@@ -1443,6 +1999,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199750"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.471000+00:00"
         ]
       },
       {
@@ -1456,6 +2018,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199747"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.471000+00:00"
         ]
       },
       {
@@ -1469,6 +2037,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199752"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.594000+00:00"
         ]
       },
       {
@@ -1482,6 +2056,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199754"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.595000+00:00"
         ]
       },
       {
@@ -1495,6 +2075,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199756"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.719000+00:00"
         ]
       },
       {
@@ -1508,6 +2094,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199778"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.016000+00:00"
         ]
       },
       {
@@ -1521,6 +2113,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199790"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.031000+00:00"
         ]
       },
       {
@@ -1534,6 +2132,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199788"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.031000+00:00"
         ]
       },
       {
@@ -1547,6 +2151,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199783"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.031000+00:00"
         ]
       },
       {
@@ -1562,6 +2172,15 @@
           "358264060",
           "358965764",
           "358965770"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-17T19:22:00.376000+00:00",
+          "2025-04-23T14:45:09.663000+00:00",
+          "2025-04-23T14:45:09.987000+00:00"
         ]
       },
       {
@@ -1575,6 +2194,12 @@
         "exit_price": null,
         "transaction_ids": [
           "358965771"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-23T14:45:09.987000+00:00"
         ]
       }
     ],
@@ -1582,7 +2207,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250411_1legs": {
     "trade_id": "IBIT_20250411_1legs",
@@ -1604,6 +2229,12 @@
         "exit_price": null,
         "transaction_ids": [
           "357199572"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:56.050000+00:00"
         ]
       }
     ],
@@ -1611,7 +2242,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250423_1legs": {
     "trade_id": "IBIT_20250423_1legs",
@@ -1633,6 +2264,12 @@
         "exit_price": null,
         "transaction_ids": [
           "358965767"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-23T14:45:09.663000+00:00"
         ]
       }
     ],
@@ -1640,7 +2277,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250424_2legs": {
     "trade_id": "IBIT_20250424_2legs",
@@ -1659,6 +2296,12 @@
         "exit_price": null,
         "transaction_ids": [
           "359179589"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-24T14:23:48.296000+00:00"
         ]
       },
       {
@@ -1668,13 +2311,19 @@
         "exit_price": null,
         "transaction_ids": [
           "359179586"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-24T14:23:48.296000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "IBIT_20250425_1legs": {
     "trade_id": "IBIT_20250425_1legs",
@@ -1693,13 +2342,19 @@
         "exit_price": null,
         "transaction_ids": [
           "359502092"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-25T16:48:04.773000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "IBIT_20250505_34legs": {
     "trade_id": "IBIT_20250505_34legs",
@@ -1723,6 +2378,15 @@
           "361073181",
           "361467801",
           "361469425"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:47:44.088000+00:00",
+          "2025-05-07T13:42:45.033000+00:00",
+          "2025-05-07T13:44:43.923000+00:00"
         ]
       },
       {
@@ -1736,6 +2400,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361073923"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:49:48.082000+00:00"
         ]
       },
       {
@@ -1753,6 +2423,17 @@
           "363457506",
           "363459183",
           "363459182"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-07T13:42:45.033000+00:00",
+          "2025-05-16T17:55:22.387000+00:00",
+          "2025-05-16T17:55:57.225000+00:00",
+          "2025-05-16T18:00:47.997000+00:00",
+          "2025-05-16T18:00:47.997000+00:00"
         ]
       },
       {
@@ -1766,6 +2447,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361469426"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-07T13:44:43.923000+00:00"
         ]
       },
       {
@@ -1783,6 +2470,17 @@
           "364349644",
           "364350980",
           "364350976"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-16T17:55:22.387000+00:00",
+          "2025-05-21T18:34:29.831000+00:00",
+          "2025-05-21T18:34:41.649000+00:00",
+          "2025-05-21T18:37:14.722000+00:00",
+          "2025-05-21T18:37:14.722000+00:00"
         ]
       },
       {
@@ -1796,6 +2494,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363457260"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-16T17:55:22.387000+00:00"
         ]
       },
       {
@@ -1809,6 +2513,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363457255"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-16T17:55:22.387000+00:00"
         ]
       },
       {
@@ -1822,6 +2532,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363457503"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-16T17:55:57.225000+00:00"
         ]
       },
       {
@@ -1835,6 +2551,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363459185"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-16T18:00:47.997000+00:00"
         ]
       },
       {
@@ -1848,6 +2570,12 @@
         "exit_price": null,
         "transaction_ids": [
           "363459184"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-16T18:00:47.998000+00:00"
         ]
       },
       {
@@ -1864,6 +2592,16 @@
           "365254097",
           "365259218",
           "365259219"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T18:34:41.649000+00:00",
+          "2025-05-28T13:49:22.186000+00:00",
+          "2025-05-28T13:55:34.932000+00:00",
+          "2025-05-28T13:55:34.932000+00:00"
         ]
       },
       {
@@ -1877,6 +2615,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364350981"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T18:37:14.722000+00:00"
         ]
       },
       {
@@ -1890,6 +2634,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364350978"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T18:37:14.722000+00:00"
         ]
       },
       {
@@ -1903,6 +2653,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365259228"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-28T13:55:34.932000+00:00"
         ]
       },
       {
@@ -1916,6 +2672,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365259226"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-28T13:55:34.932000+00:00"
         ]
       }
     ],
@@ -1927,6 +2689,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361071603"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:44:25.070000+00:00"
         ]
       },
       {
@@ -1936,6 +2704,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361071602"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:44:25.070000+00:00"
         ]
       },
       {
@@ -1945,6 +2719,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361071601"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:44:25.070000+00:00"
         ]
       },
       {
@@ -1954,6 +2734,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361071600"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:44:25.070000+00:00"
         ]
       },
       {
@@ -1963,6 +2749,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361071599"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:44:25.070000+00:00"
         ]
       },
       {
@@ -1972,13 +2764,19 @@
         "exit_price": null,
         "transaction_ids": [
           "361071598"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T14:44:25.070000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250521_1legs": {
     "trade_id": "IBIT_20250521_1legs",
@@ -2000,6 +2798,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364349538"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T18:34:29.831000+00:00"
         ]
       }
     ],
@@ -2007,7 +2811,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "IBIT_20250522_1legs": {
     "trade_id": "IBIT_20250522_1legs",
@@ -2026,13 +2830,19 @@
         "exit_price": null,
         "transaction_ids": [
           "364564119"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T17:12:54.575000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "IBIT_20250528_1legs": {
     "trade_id": "IBIT_20250528_1legs",
@@ -2054,6 +2864,12 @@
         "exit_price": null,
         "transaction_ids": [
           "365254098"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-28T13:49:22.186000+00:00"
         ]
       }
     ],
@@ -2061,7 +2877,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "UBER_20250521_2legs": {
     "trade_id": "UBER_20250521_2legs",
@@ -2083,6 +2899,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364253286"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T15:30:38.046000+00:00"
         ]
       },
       {
@@ -2096,6 +2918,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364253285"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T15:30:38.046000+00:00"
         ]
       }
     ],
@@ -2103,7 +2931,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "RBLX_20250521_2legs": {
     "trade_id": "RBLX_20250521_2legs",
@@ -2125,6 +2953,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364250584"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T15:25:31.595000+00:00"
         ]
       },
       {
@@ -2138,6 +2972,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364250583"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-21T15:25:31.595000+00:00"
         ]
       }
     ],
@@ -2145,7 +2985,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "TGT_20250514_4legs": {
     "trade_id": "TGT_20250514_4legs",
@@ -2168,6 +3008,14 @@
         "transaction_ids": [
           "362965233",
           "363865153"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T18:12:05.566000+00:00",
+          "2025-05-19T17:51:13.625000+00:00"
         ]
       },
       {
@@ -2182,6 +3030,14 @@
         "transaction_ids": [
           "362965231",
           "363865152"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T18:12:05.566000+00:00",
+          "2025-05-19T17:51:13.625000+00:00"
         ]
       }
     ],
@@ -2189,7 +3045,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "TGT_20250520_6legs": {
     "trade_id": "TGT_20250520_6legs",
@@ -2212,6 +3068,14 @@
         "transaction_ids": [
           "363982905",
           "364196022"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T14:09:56.745000+00:00",
+          "2025-05-21T14:01:52.311000+00:00"
         ]
       },
       {
@@ -2226,6 +3090,14 @@
         "transaction_ids": [
           "363982903",
           "364196024"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T14:09:56.745000+00:00",
+          "2025-05-21T14:01:52.311000+00:00"
         ]
       },
       {
@@ -2240,6 +3112,14 @@
         "transaction_ids": [
           "363982901",
           "364196025"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-20T14:09:56.745000+00:00",
+          "2025-05-21T14:01:52.311000+00:00"
         ]
       }
     ],
@@ -2247,7 +3127,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "NFLX_20250505_4legs": {
     "trade_id": "NFLX_20250505_4legs",
@@ -2270,6 +3150,14 @@
         "transaction_ids": [
           "361173873",
           "363956871"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T19:42:48.059000+00:00",
+          "2025-05-20T13:39:44.518000+00:00"
         ]
       },
       {
@@ -2284,6 +3172,14 @@
         "transaction_ids": [
           "361173870",
           "363956868"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T19:42:48.059000+00:00",
+          "2025-05-20T13:39:44.518000+00:00"
         ]
       }
     ],
@@ -2291,7 +3187,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "MRNA_20250519_4legs": {
     "trade_id": "MRNA_20250519_4legs",
@@ -2314,6 +3210,14 @@
         "transaction_ids": [
           "363858342",
           "363869121"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-19T17:30:07.392000+00:00",
+          "2025-05-19T18:04:00.697000+00:00"
         ]
       },
       {
@@ -2328,6 +3232,14 @@
         "transaction_ids": [
           "363858339",
           "363869119"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-19T17:30:07.392000+00:00",
+          "2025-05-19T18:04:00.697000+00:00"
         ]
       }
     ],
@@ -2335,7 +3247,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "TSLA_20250415_12legs": {
     "trade_id": "TSLA_20250415_12legs",
@@ -2358,6 +3270,14 @@
         "transaction_ids": [
           "357712222",
           "362075609"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:16:44.415000+00:00",
+          "2025-05-09T17:53:06.805000+00:00"
         ]
       },
       {
@@ -2372,6 +3292,14 @@
         "transaction_ids": [
           "357712230",
           "362633882"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:16:44.416000+00:00",
+          "2025-05-13T15:21:54.191000+00:00"
         ]
       },
       {
@@ -2386,6 +3314,14 @@
         "transaction_ids": [
           "357712226",
           "362633878"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:16:44.416000+00:00",
+          "2025-05-13T15:21:54.191000+00:00"
         ]
       },
       {
@@ -2400,6 +3336,14 @@
         "transaction_ids": [
           "357712224",
           "362075607"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:16:44.416000+00:00",
+          "2025-05-09T17:53:06.805000+00:00"
         ]
       },
       {
@@ -2414,6 +3358,14 @@
         "transaction_ids": [
           "362075608",
           "362633876"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T17:53:06.805000+00:00",
+          "2025-05-13T15:21:54.191000+00:00"
         ]
       },
       {
@@ -2428,6 +3380,14 @@
         "transaction_ids": [
           "362075606",
           "362633880"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T17:53:06.805000+00:00",
+          "2025-05-13T15:21:54.191000+00:00"
         ]
       }
     ],
@@ -2435,7 +3395,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "TSLA_20250602_4legs": {
     "trade_id": "TSLA_20250602_4legs",
@@ -2457,6 +3417,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366196314"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:56:08.271000+00:00"
         ]
       },
       {
@@ -2470,6 +3436,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366196312"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:56:08.271000+00:00"
         ]
       },
       {
@@ -2483,6 +3455,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366196311"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:56:08.271000+00:00"
         ]
       },
       {
@@ -2496,6 +3474,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366196310"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:56:08.271000+00:00"
         ]
       }
     ],
@@ -2503,7 +3487,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "AFRM_20250509_4legs": {
     "trade_id": "AFRM_20250509_4legs",
@@ -2526,6 +3510,14 @@
         "transaction_ids": [
           "362021794",
           "362413552"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T15:19:14.414000+00:00",
+          "2025-05-12T17:02:16.291000+00:00"
         ]
       },
       {
@@ -2540,6 +3532,14 @@
         "transaction_ids": [
           "362021796",
           "362413551"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T15:19:14.415000+00:00",
+          "2025-05-12T17:02:16.291000+00:00"
         ]
       }
     ],
@@ -2547,7 +3547,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "X_20250508_2legs": {
     "trade_id": "X_20250508_2legs",
@@ -2569,6 +3569,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361694614"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T13:53:06.046000+00:00"
         ]
       },
       {
@@ -2582,6 +3588,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361694612"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T13:53:06.046000+00:00"
         ]
       }
     ],
@@ -2589,7 +3601,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "HIMS_20250508_3legs": {
     "trade_id": "HIMS_20250508_3legs",
@@ -2611,6 +3623,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361666887"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T13:30:10.502000+00:00"
         ]
       },
       {
@@ -2624,6 +3642,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361666879"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T13:30:10.502000+00:00"
         ]
       },
       {
@@ -2637,6 +3661,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361666873"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T13:30:10.502000+00:00"
         ]
       }
     ],
@@ -2644,7 +3674,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "ARKB_20250326_3legs": {
     "trade_id": "ARKB_20250326_3legs",
@@ -2665,13 +3695,22 @@
           "353495888",
           "361070067",
           "361070065"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-26T21:00:00+00:00",
+          "2025-05-05T14:41:58.688000+00:00",
+          "2025-05-05T14:41:58.688000+00:00"
         ]
       }
     ],
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "ARKB_20250327_8legs": {
     "trade_id": "ARKB_20250327_8legs",
@@ -2699,6 +3738,19 @@
           "360066674",
           "360066675",
           "360066676"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T14:59:00.215000+00:00",
+          "2025-04-29T18:40:26.271000+00:00",
+          "2025-04-29T18:40:26.272000+00:00",
+          "2025-04-29T18:40:26.273000+00:00",
+          "2025-04-29T18:40:26.390000+00:00",
+          "2025-04-29T18:40:26.391000+00:00",
+          "2025-04-29T18:40:26.393000+00:00"
         ]
       },
       {
@@ -2712,6 +3764,12 @@
         "exit_price": null,
         "transaction_ids": [
           "353594882"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T14:59:00.215000+00:00"
         ]
       }
     ],
@@ -2719,7 +3777,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPXS_20250404_6legs": {
     "trade_id": "SPXS_20250404_6legs",
@@ -2746,6 +3804,18 @@
           "357649926",
           "357649925",
           "357649924"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-04T17:12:52.871000+00:00",
+          "2025-04-15T15:53:10.620000+00:00",
+          "2025-04-15T15:53:10.621000+00:00",
+          "2025-04-15T15:53:10.621000+00:00",
+          "2025-04-15T15:53:10.621000+00:00",
+          "2025-04-15T15:53:10.621000+00:00"
         ]
       }
     ],
@@ -2753,7 +3823,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "GME_20250327_1legs": {
     "trade_id": "GME_20250327_1legs",
@@ -2775,6 +3845,12 @@
         "exit_price": null,
         "transaction_ids": [
           "353675314"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T18:08:37.993000+00:00"
         ]
       }
     ],
@@ -2782,7 +3858,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "GME_20250522_2legs": {
     "trade_id": "GME_20250522_2legs",
@@ -2804,6 +3880,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364573302"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T17:35:09.008000+00:00"
         ]
       },
       {
@@ -2817,6 +3899,12 @@
         "exit_price": null,
         "transaction_ids": [
           "364573297"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-22T17:35:09.008000+00:00"
         ]
       }
     ],
@@ -2824,7 +3912,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "META_20250415_8legs": {
     "trade_id": "META_20250415_8legs",
@@ -2847,6 +3935,14 @@
         "transaction_ids": [
           "357714071",
           "358422239"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:22:46.906000+00:00",
+          "2025-04-21T13:47:27.362000+00:00"
         ]
       },
       {
@@ -2861,6 +3957,14 @@
         "transaction_ids": [
           "357714070",
           "358422246"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:22:46.906000+00:00",
+          "2025-04-21T13:47:27.362000+00:00"
         ]
       },
       {
@@ -2875,6 +3979,14 @@
         "transaction_ids": [
           "357714069",
           "358422244"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:22:46.906000+00:00",
+          "2025-04-21T13:47:27.362000+00:00"
         ]
       },
       {
@@ -2889,6 +4001,14 @@
         "transaction_ids": [
           "357714068",
           "358422247"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-15T19:22:46.906000+00:00",
+          "2025-04-21T13:47:27.362000+00:00"
         ]
       }
     ],
@@ -2896,7 +4016,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "META_20250602_8legs": {
     "trade_id": "META_20250602_8legs",
@@ -2919,6 +4039,14 @@
         "transaction_ids": [
           "366185853",
           "366195896"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:25:01.780000+00:00",
+          "2025-06-02T16:54:56.546000+00:00"
         ]
       },
       {
@@ -2933,6 +4061,14 @@
         "transaction_ids": [
           "366185852",
           "366195897"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:25:01.780000+00:00",
+          "2025-06-02T16:54:56.546000+00:00"
         ]
       },
       {
@@ -2947,6 +4083,14 @@
         "transaction_ids": [
           "366185851",
           "366195894"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:25:01.780000+00:00",
+          "2025-06-02T16:54:56.546000+00:00"
         ]
       },
       {
@@ -2961,6 +4105,14 @@
         "transaction_ids": [
           "366185849",
           "366195895"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:25:01.780000+00:00",
+          "2025-06-02T16:54:56.546000+00:00"
         ]
       }
     ],
@@ -2968,7 +4120,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "USO_20250602_4legs": {
     "trade_id": "USO_20250602_4legs",
@@ -2990,6 +4142,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366184329"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:19:46.423000+00:00"
         ]
       },
       {
@@ -3003,6 +4161,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366184328"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:19:46.423000+00:00"
         ]
       },
       {
@@ -3016,6 +4180,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366184327"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:19:46.423000+00:00"
         ]
       },
       {
@@ -3029,6 +4199,12 @@
         "exit_price": null,
         "transaction_ids": [
           "366184324"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T16:19:46.423000+00:00"
         ]
       }
     ],
@@ -3036,7 +4212,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "PLTR_20250422_4legs": {
     "trade_id": "PLTR_20250422_4legs",
@@ -3059,6 +4235,14 @@
         "transaction_ids": [
           "358801407",
           "360755344"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-22T18:42:19.043000+00:00",
+          "2025-05-02T15:02:52.907000+00:00"
         ]
       },
       {
@@ -3073,6 +4257,14 @@
         "transaction_ids": [
           "358801406",
           "360755343"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-22T18:42:19.043000+00:00",
+          "2025-05-02T15:02:52.907000+00:00"
         ]
       }
     ],
@@ -3080,7 +4272,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "PLTR_20250502_2legs": {
     "trade_id": "PLTR_20250502_2legs",
@@ -3103,6 +4295,14 @@
         "transaction_ids": [
           "360755345",
           "364514765"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-02T15:02:52.907000+00:00",
+          "2025-05-22T15:05:05.309000+00:00"
         ]
       }
     ],
@@ -3110,7 +4310,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "HUT_20250505_2legs": {
     "trade_id": "HUT_20250505_2legs",
@@ -3132,6 +4332,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361138692"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T18:03:57.994000+00:00"
         ]
       },
       {
@@ -3145,6 +4351,12 @@
         "exit_price": null,
         "transaction_ids": [
           "361138690"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T18:03:57.994000+00:00"
         ]
       }
     ],
@@ -3152,7 +4364,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
   "NVDA_20250409_23legs": {
     "trade_id": "NVDA_20250409_23legs",
@@ -3176,6 +4388,15 @@
           "356505505",
           "357187776",
           "357187774"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-09T14:23:37.344000+00:00",
+          "2025-04-11T18:15:43.578000+00:00",
+          "2025-04-11T18:15:43.578000+00:00"
         ]
       },
       {
@@ -3191,6 +4412,15 @@
           "356505503",
           "357187777",
           "357187775"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-09T14:23:37.344000+00:00",
+          "2025-04-11T18:15:43.678000+00:00",
+          "2025-04-11T18:15:43.678000+00:00"
         ]
       },
       {
@@ -3205,6 +4435,14 @@
         "transaction_ids": [
           "357197529",
           "357809716"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:43:39.763000+00:00",
+          "2025-04-16T14:07:55.370000+00:00"
         ]
       },
       {
@@ -3219,6 +4457,14 @@
         "transaction_ids": [
           "357197528",
           "358432208"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:43:39.763000+00:00",
+          "2025-04-21T13:59:06.770000+00:00"
         ]
       },
       {
@@ -3233,6 +4479,14 @@
         "transaction_ids": [
           "357811095",
           "357947800"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-16T14:10:10.983000+00:00",
+          "2025-04-16T19:13:27.461000+00:00"
         ]
       },
       {
@@ -3247,6 +4501,14 @@
         "transaction_ids": [
           "357947797",
           "358436080"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-16T19:13:27.461000+00:00",
+          "2025-04-21T14:02:23.553000+00:00"
         ]
       },
       {
@@ -3261,6 +4523,14 @@
         "transaction_ids": [
           "358436083",
           "358797544"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-21T14:02:23.554000+00:00",
+          "2025-04-22T18:30:27.571000+00:00"
         ]
       },
       {
@@ -3274,6 +4544,12 @@
         "exit_price": null,
         "transaction_ids": [
           "358797542"
+        ],
+        "transaction_actions": [
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-22T18:30:27.571000+00:00"
         ]
       },
       {
@@ -3288,6 +4564,14 @@
         "transaction_ids": [
           "358800277",
           "360537844"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-22T18:38:33.477000+00:00",
+          "2025-05-01T16:40:00.869000+00:00"
         ]
       },
       {
@@ -3302,6 +4586,14 @@
         "transaction_ids": [
           "358800276",
           "359181294"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-22T18:38:33.477000+00:00",
+          "2025-04-24T14:26:20.573000+00:00"
         ]
       },
       {
@@ -3316,6 +4608,14 @@
         "transaction_ids": [
           "359181293",
           "360537843"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-24T14:26:20.573000+00:00",
+          "2025-05-01T16:40:00.869000+00:00"
         ]
       }
     ],
@@ -3323,7 +4623,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "NVDA_20250421_1legs": {
     "trade_id": "NVDA_20250421_1legs",
@@ -3345,6 +4645,12 @@
         "exit_price": null,
         "transaction_ids": [
           "358432211"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-21T13:59:06.770000+00:00"
         ]
       }
     ],
@@ -3352,7 +4658,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
   "SPX_20250428_8legs": {
     "trade_id": "SPX_20250428_8legs",
@@ -3375,6 +4681,14 @@
         "transaction_ids": [
           "359879912",
           "359998636"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T19:46:01.637000+00:00",
+          "2025-04-29T15:33:11.273000+00:00"
         ]
       },
       {
@@ -3389,6 +4703,14 @@
         "transaction_ids": [
           "359879910",
           "359998637"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T19:46:01.637000+00:00",
+          "2025-04-29T15:33:11.273000+00:00"
         ]
       },
       {
@@ -3403,6 +4725,14 @@
         "transaction_ids": [
           "359879908",
           "359998633"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T19:46:01.637000+00:00",
+          "2025-04-29T15:33:11.273000+00:00"
         ]
       },
       {
@@ -3417,6 +4747,14 @@
         "transaction_ids": [
           "359879902",
           "359998635"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T19:46:01.637000+00:00",
+          "2025-04-29T15:33:11.273000+00:00"
         ]
       }
     ],
@@ -3424,7 +4762,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPX_20250429_8legs": {
     "trade_id": "SPX_20250429_8legs",
@@ -3447,6 +4785,14 @@
         "transaction_ids": [
           "360037959",
           "360140137"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-29T17:30:04.579000+00:00",
+          "2025-04-30T13:31:02.792000+00:00"
         ]
       },
       {
@@ -3461,6 +4807,14 @@
         "transaction_ids": [
           "360037957",
           "360140132"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-29T17:30:04.579000+00:00",
+          "2025-04-30T13:31:02.792000+00:00"
         ]
       },
       {
@@ -3475,6 +4829,14 @@
         "transaction_ids": [
           "360037954",
           "360140128"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-29T17:30:04.579000+00:00",
+          "2025-04-30T13:31:02.792000+00:00"
         ]
       },
       {
@@ -3489,6 +4851,14 @@
         "transaction_ids": [
           "360037952",
           "360140122"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-29T17:30:04.579000+00:00",
+          "2025-04-30T13:31:02.792000+00:00"
         ]
       }
     ],
@@ -3496,7 +4866,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPX_20250430_8legs": {
     "trade_id": "SPX_20250430_8legs",
@@ -3519,6 +4889,14 @@
         "transaction_ids": [
           "360287191",
           "360405631"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-30T18:12:01.778000+00:00",
+          "2025-05-01T13:31:30.780000+00:00"
         ]
       },
       {
@@ -3533,6 +4911,14 @@
         "transaction_ids": [
           "360287187",
           "360405652"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-30T18:12:01.778000+00:00",
+          "2025-05-01T13:31:30.781000+00:00"
         ]
       },
       {
@@ -3547,6 +4933,14 @@
         "transaction_ids": [
           "360287185",
           "360405637"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-30T18:12:01.778000+00:00",
+          "2025-05-01T13:31:30.781000+00:00"
         ]
       },
       {
@@ -3561,6 +4955,14 @@
         "transaction_ids": [
           "360287184",
           "360405646"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-30T18:12:01.778000+00:00",
+          "2025-05-01T13:31:30.781000+00:00"
         ]
       }
     ],
@@ -3568,7 +4970,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPX_20250502_8legs": {
     "trade_id": "SPX_20250502_8legs",
@@ -3591,6 +4993,14 @@
         "transaction_ids": [
           "360826853",
           "361015606"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-02T17:30:18.997000+00:00",
+          "2025-05-05T13:32:01.089000+00:00"
         ]
       },
       {
@@ -3605,6 +5015,14 @@
         "transaction_ids": [
           "360826848",
           "361015610"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-02T17:30:18.997000+00:00",
+          "2025-05-05T13:32:01.089000+00:00"
         ]
       },
       {
@@ -3619,6 +5037,14 @@
         "transaction_ids": [
           "360826843",
           "361015611"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-02T17:30:18.997000+00:00",
+          "2025-05-05T13:32:01.089000+00:00"
         ]
       },
       {
@@ -3633,6 +5059,14 @@
         "transaction_ids": [
           "360826836",
           "361015615"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-02T17:30:18.997000+00:00",
+          "2025-05-05T13:32:01.089000+00:00"
         ]
       }
     ],
@@ -3640,7 +5074,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPX_20250505_8legs": {
     "trade_id": "SPX_20250505_8legs",
@@ -3663,6 +5097,14 @@
         "transaction_ids": [
           "361129069",
           "361228409"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T17:30:18.098000+00:00",
+          "2025-05-06T13:31:23.194000+00:00"
         ]
       },
       {
@@ -3677,6 +5119,14 @@
         "transaction_ids": [
           "361129066",
           "361228406"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T17:30:18.098000+00:00",
+          "2025-05-06T13:31:23.193000+00:00"
         ]
       },
       {
@@ -3691,6 +5141,14 @@
         "transaction_ids": [
           "361129076",
           "361228416"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T17:30:18.099000+00:00",
+          "2025-05-06T13:31:23.194000+00:00"
         ]
       },
       {
@@ -3705,6 +5163,14 @@
         "transaction_ids": [
           "361129074",
           "361228412"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-05T17:30:18.099000+00:00",
+          "2025-05-06T13:31:23.194000+00:00"
         ]
       }
     ],
@@ -3712,7 +5178,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPX_20250508_8legs": {
     "trade_id": "SPX_20250508_8legs",
@@ -3735,6 +5201,14 @@
         "transaction_ids": [
           "361825134",
           "361985528"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T17:30:03.264000+00:00",
+          "2025-05-09T14:24:11.312000+00:00"
         ]
       },
       {
@@ -3749,6 +5223,14 @@
         "transaction_ids": [
           "361825133",
           "361985521"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T17:30:03.264000+00:00",
+          "2025-05-09T14:24:11.311000+00:00"
         ]
       },
       {
@@ -3763,6 +5245,14 @@
         "transaction_ids": [
           "361825130",
           "361985534"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T17:30:03.264000+00:00",
+          "2025-05-09T14:24:11.312000+00:00"
         ]
       },
       {
@@ -3777,6 +5267,14 @@
         "transaction_ids": [
           "361825125",
           "361985517"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-08T17:30:03.264000+00:00",
+          "2025-05-09T14:24:11.311000+00:00"
         ]
       }
     ],
@@ -3784,15 +5282,15 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "SPX_20250509_10legs": {
     "trade_id": "SPX_20250509_10legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-05-09",
-    "exit_date": null,
-    "status": "Open",
+    "exit_date": "2025-05-12",
+    "status": "Closed",
     "account_number": "5WZ26959",
     "option_legs": [
       {
@@ -3803,9 +5301,21 @@
         "expiration": "2025-05-12",
         "quantity": 1,
         "entry_price": 25.81,
-        "exit_price": null,
+        "exit_price": 5685.0,
         "transaction_ids": [
-          "362067634"
+          "362067634",
+          "362513160",
+          "362513159"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "EXERCISED",
+          "CASH_SETTLED"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T17:30:03.161000+00:00",
+          "2025-05-12T21:00:00+00:00",
+          "2025-05-12T21:00:00+00:00"
         ]
       },
       {
@@ -3816,9 +5326,21 @@
         "expiration": "2025-05-12",
         "quantity": -1,
         "entry_price": 39.31,
-        "exit_price": null,
+        "exit_price": 5655.0,
         "transaction_ids": [
-          "362067630"
+          "362067630",
+          "362513162",
+          "362513161"
+        ],
+        "transaction_actions": [
+          "STO",
+          "EXERCISED",
+          "CASH_SETTLED"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T17:30:03.161000+00:00",
+          "2025-05-12T21:00:00+00:00",
+          "2025-05-12T21:00:00+00:00"
         ]
       },
       {
@@ -3833,6 +5355,14 @@
         "transaction_ids": [
           "362067627",
           "362516394"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T17:30:03.161000+00:00",
+          "2025-05-12T20:00:00+00:00"
         ]
       },
       {
@@ -3847,58 +5377,14 @@
         "transaction_ids": [
           "362067624",
           "362516390"
-        ]
-      },
-      {
-        "symbol": "SPXW  250512C05655000",
-        "underlying": "SPXW",
-        "option_type": "Call",
-        "strike": 5655.0,
-        "expiration": "2025-05-12",
-        "quantity": 1,
-        "entry_price": 0.0,
-        "exit_price": null,
-        "transaction_ids": [
-          "362513162"
-        ]
-      },
-      {
-        "symbol": "SPXW  250512C05655000",
-        "underlying": "SPXW",
-        "option_type": "Call",
-        "strike": 5655.0,
-        "expiration": "2025-05-12",
-        "quantity": 1,
-        "entry_price": 5655.0,
-        "exit_price": null,
-        "transaction_ids": [
-          "362513161"
-        ]
-      },
-      {
-        "symbol": "SPXW  250512C05685000",
-        "underlying": "SPXW",
-        "option_type": "Call",
-        "strike": 5685.0,
-        "expiration": "2025-05-12",
-        "quantity": 1,
-        "entry_price": 0.0,
-        "exit_price": null,
-        "transaction_ids": [
-          "362513160"
-        ]
-      },
-      {
-        "symbol": "SPXW  250512C05685000",
-        "underlying": "SPXW",
-        "option_type": "Call",
-        "strike": 5685.0,
-        "expiration": "2025-05-12",
-        "quantity": 1,
-        "entry_price": 5685.0,
-        "exit_price": null,
-        "transaction_ids": [
-          "362513159"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-09T17:30:03.161000+00:00",
+          "2025-05-12T20:00:00+00:00"
         ]
       }
     ],
@@ -3906,7 +5392,7 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
   "QQQ_20250331_4legs": {
     "trade_id": "QQQ_20250331_4legs",
@@ -3929,6 +5415,14 @@
         "transaction_ids": [
           "354362735",
           "354998206"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-31T19:32:26.087000+00:00",
+          "2025-04-03T13:49:11.911000+00:00"
         ]
       },
       {
@@ -3943,6 +5437,14 @@
         "transaction_ids": [
           "354362734",
           "354998207"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-31T19:32:26.087000+00:00",
+          "2025-04-03T13:49:11.912000+00:00"
         ]
       }
     ],
@@ -3950,28 +5452,37 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bearish"
   },
-  "TSLA_20250509_1legs": {
-    "trade_id": "TSLA_20250509_1legs",
-    "underlying": "TSLA",
+  "WOLF_20250514_2legs": {
+    "trade_id": "WOLF_20250514_2legs",
+    "underlying": "WOLF",
     "strategy_type": "Naked Put",
-    "entry_date": "2025-05-09",
-    "exit_date": null,
-    "status": "Open",
+    "entry_date": "2025-05-14",
+    "exit_date": "2025-06-02",
+    "status": "Closed",
     "account_number": "5WZ28644",
     "option_legs": [
       {
-        "symbol": "TSLA  250530P00200000",
-        "underlying": "TSLA",
+        "symbol": "WOLF  250620P00003000",
+        "underlying": "WOLF",
         "option_type": "Put",
-        "strike": 200.0,
-        "expiration": "2025-05-30",
+        "strike": 3.0,
+        "expiration": "2025-06-20",
         "quantity": -1,
-        "entry_price": 0.48,
-        "exit_price": null,
+        "entry_price": 0.97,
+        "exit_price": 1.96,
         "transaction_ids": [
-          "362075609"
+          "362962418",
+          "366073252"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T18:04:46.420000+00:00",
+          "2025-06-02T13:31:54.330000+00:00"
         ]
       }
     ],
@@ -3979,69 +5490,34 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
-  "TSLA_20250509_6legs": {
-    "trade_id": "TSLA_20250509_6legs",
-    "underlying": "TSLA",
-    "strategy_type": "Complex Strategy",
-    "entry_date": "2025-05-09",
+  "WOLF_20250602_1legs": {
+    "trade_id": "WOLF_20250602_1legs",
+    "underlying": "WOLF",
+    "strategy_type": "Naked Put",
+    "entry_date": "2025-06-02",
     "exit_date": null,
     "status": "Open",
     "account_number": "5WZ28644",
     "option_legs": [
       {
-        "symbol": "TSLA  250530P00270000",
-        "underlying": "TSLA",
+        "symbol": "WOLF  250815P00003000",
+        "underlying": "WOLF",
         "option_type": "Put",
-        "strike": 270.0,
-        "expiration": "2025-05-30",
+        "strike": 3.0,
+        "expiration": "2025-08-15",
         "quantity": -1,
-        "entry_price": 5.86,
-        "exit_price": 1.77,
-        "transaction_ids": [
-          "362075608",
-          "362633876"
-        ]
-      },
-      {
-        "symbol": "TSLA  250530P00210000",
-        "underlying": "TSLA",
-        "option_type": "Put",
-        "strike": 210.0,
-        "expiration": "2025-05-30",
-        "quantity": 1,
-        "entry_price": 0.61,
+        "entry_price": 2.26,
         "exit_price": null,
         "transaction_ids": [
-          "362075607"
-        ]
-      },
-      {
-        "symbol": "TSLA  250530P00260000",
-        "underlying": "TSLA",
-        "option_type": "Put",
-        "strike": 260.0,
-        "expiration": "2025-05-30",
-        "quantity": 1,
-        "entry_price": 3.9,
-        "exit_price": 1.13,
-        "transaction_ids": [
-          "362075606",
-          "362633880"
-        ]
-      },
-      {
-        "symbol": "TSLA  250530C00310000",
-        "underlying": "TSLA",
-        "option_type": "Call",
-        "strike": 310.0,
-        "expiration": "2025-05-30",
-        "quantity": 1,
-        "entry_price": 22.5,
-        "exit_price": null,
-        "transaction_ids": [
-          "362633878"
+          "366073256"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-06-02T13:31:54.331000+00:00"
         ]
       }
     ],
@@ -4049,28 +5525,103 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
-  "TSLA_20250513_1legs": {
-    "trade_id": "TSLA_20250513_1legs",
-    "underlying": "TSLA",
-    "strategy_type": "Naked Call",
+  "UNH_20250513_8legs": {
+    "trade_id": "UNH_20250513_8legs",
+    "underlying": "UNH",
+    "strategy_type": "Iron Condor",
     "entry_date": "2025-05-13",
-    "exit_date": null,
-    "status": "Open",
+    "exit_date": "2025-05-30",
+    "status": "Closed",
     "account_number": "5WZ28644",
     "option_legs": [
       {
-        "symbol": "TSLA  250530C00320000",
-        "underlying": "TSLA",
+        "symbol": "UNH   250620C00360000",
+        "underlying": "UNH",
         "option_type": "Call",
-        "strike": 320.0,
-        "expiration": "2025-05-30",
-        "quantity": -1,
-        "entry_price": 17.02,
-        "exit_price": null,
+        "strike": 360.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 6.09,
+        "exit_price": 5.82,
         "transaction_ids": [
-          "362633882"
+          "362687299",
+          "362881946"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-13T17:14:24.115000+00:00",
+          "2025-05-14T15:00:31.292000+00:00"
+        ]
+      },
+      {
+        "symbol": "UNH   250620C00350000",
+        "underlying": "UNH",
+        "option_type": "Call",
+        "strike": 350.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 8.02,
+        "exit_price": 7.66,
+        "transaction_ids": [
+          "362687297",
+          "362881940"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-13T17:14:24.115000+00:00",
+          "2025-05-14T15:00:31.292000+00:00"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
+        "expiration": "2025-06-20",
+        "quantity": -1,
+        "entry_price": 9.55,
+        "exit_price": 6.75,
+        "transaction_ids": [
+          "362881942",
+          "365918357"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T15:00:31.292000+00:00",
+          "2025-05-30T19:19:08.688000+00:00"
+        ]
+      },
+      {
+        "symbol": "UNH   250620P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-06-20",
+        "quantity": 1,
+        "entry_price": 7.04,
+        "exit_price": 3.89,
+        "transaction_ids": [
+          "362881939",
+          "365918356"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-05-14T15:00:31.292000+00:00",
+          "2025-05-30T19:19:08.688000+00:00"
         ]
       }
     ],
@@ -4078,53 +5629,53 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
   },
-  "ARKB_20250505_1legs": {
-    "trade_id": "ARKB_20250505_1legs",
-    "underlying": "ARKB",
-    "strategy_type": "Short Stock",
-    "entry_date": "2025-05-05",
+  "UNH_20250530_2legs": {
+    "trade_id": "UNH_20250530_2legs",
+    "underlying": "UNH",
+    "strategy_type": "Bull Put Spread",
+    "entry_date": "2025-05-30",
     "exit_date": null,
     "status": "Open",
     "account_number": "5WZ28644",
-    "option_legs": [],
-    "stock_legs": [
-      {
-        "symbol": "ARKB",
-        "quantity": -1360,
-        "entry_price": 93.8412,
-        "exit_price": null,
-        "transaction_ids": [
-          "361070065"
-        ]
-      }
-    ],
-    "original_notes": "",
-    "current_notes": "",
-    "tags": [],
-    "strategy_direction": null
-  },
-  "PLTR_20250522_1legs": {
-    "trade_id": "PLTR_20250522_1legs",
-    "underlying": "PLTR",
-    "strategy_type": "Naked Call",
-    "entry_date": "2025-05-22",
-    "exit_date": null,
-    "status": "Open",
-    "account_number": "5WZ27378",
     "option_legs": [
       {
-        "symbol": "PLTR  250718C00090000",
-        "underlying": "PLTR",
-        "option_type": "Call",
-        "strike": 90.0,
+        "symbol": "UNH   250718P00280000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 280.0,
+        "expiration": "2025-07-18",
+        "quantity": 1,
+        "entry_price": 12.33,
+        "exit_price": null,
+        "transaction_ids": [
+          "365918358"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-30T19:19:08.688000+00:00"
+        ]
+      },
+      {
+        "symbol": "UNH   250718P00290000",
+        "underlying": "UNH",
+        "option_type": "Put",
+        "strike": 290.0,
         "expiration": "2025-07-18",
         "quantity": -1,
-        "entry_price": 37.05,
+        "entry_price": 16.25,
         "exit_price": null,
         "transaction_ids": [
-          "364514765"
+          "365918355"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-05-30T19:19:08.688000+00:00"
         ]
       }
     ],
@@ -4132,28 +5683,163 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Bullish"
   },
-  "SPX_20250505_1legs": {
-    "trade_id": "SPX_20250505_1legs",
-    "underlying": "SPX",
+  "IBIT_20250327_7legs": {
+    "trade_id": "IBIT_20250327_7legs",
+    "underlying": "IBIT",
     "strategy_type": "Unknown",
-    "entry_date": "2025-05-05",
+    "entry_date": "2025-03-27",
+    "exit_date": "2025-04-29",
+    "status": "Closed",
+    "account_number": "5WZ26959",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250815C00057000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 57.0,
+        "expiration": "2025-08-15",
+        "quantity": 120,
+        "entry_price": 5.31,
+        "exit_price": 5.31,
+        "transaction_ids": [
+          "359756198",
+          "359756210"
+        ],
+        "transaction_actions": [
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T14:29:09.706000+00:00",
+          "2025-04-28T14:29:09.988000+00:00"
+        ]
+      }
+    ],
+    "stock_legs": [
+      {
+        "symbol": "IBIT",
+        "quantity": 800,
+        "entry_price": 49.18,
+        "exit_price": 54.2703,
+        "transaction_ids": [
+          "353746859",
+          "359755016",
+          "359755783",
+          "360064852"
+        ],
+        "transaction_actions": [
+          "BTO",
+          "STC"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T21:00:00+00:00",
+          "2025-04-28T14:26:45.743000+00:00",
+          "2025-04-28T14:28:17.545000+00:00",
+          "2025-04-29T18:34:35.793000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT",
+        "quantity": 18400,
+        "entry_price": 49.18,
+        "exit_price": null,
+        "transaction_ids": [
+          "353746857"
+        ],
+        "transaction_actions": [
+          "BTO"
+        ],
+        "transaction_timestamps": [
+          "2025-03-27T21:00:00+00:00"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": "Neutral"
+  },
+  "IBIT_20250407_19legs": {
+    "trade_id": "IBIT_20250407_19legs",
+    "underlying": "IBIT",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-04-07",
     "exit_date": null,
     "status": "Open",
     "account_number": "5WZ26959",
     "option_legs": [
       {
-        "symbol": "SPXW  250505C05685000",
-        "underlying": "SPXW",
+        "symbol": "IBIT  250411C00047000",
+        "underlying": "IBIT",
         "option_type": "Call",
-        "strike": 5685.0,
-        "expiration": "2025-05-05",
-        "quantity": 1,
-        "entry_price": 4.91,
+        "strike": 47.0,
+        "expiration": "2025-04-11",
+        "quantity": -8,
+        "entry_price": 0.4,
+        "exit_price": 0.68,
+        "transaction_ids": [
+          "355969243",
+          "357199571",
+          "357199573",
+          "357199597",
+          "357199595",
+          "357199601",
+          "357199599",
+          "357199737",
+          "357199739",
+          "357199748",
+          "357199745",
+          "357199751",
+          "357199753",
+          "357199755",
+          "357199777",
+          "357199789",
+          "357199785",
+          "357199782"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-07T16:48:30.871000+00:00",
+          "2025-04-11T18:49:56.050000+00:00",
+          "2025-04-11T18:49:56.052000+00:00",
+          "2025-04-11T18:49:57.585000+00:00",
+          "2025-04-11T18:49:57.585000+00:00",
+          "2025-04-11T18:49:57.586000+00:00",
+          "2025-04-11T18:49:57.586000+00:00",
+          "2025-04-11T18:50:23.511000+00:00",
+          "2025-04-11T18:50:23.639000+00:00",
+          "2025-04-11T18:50:24.471000+00:00",
+          "2025-04-11T18:50:24.471000+00:00",
+          "2025-04-11T18:50:24.594000+00:00",
+          "2025-04-11T18:50:24.595000+00:00",
+          "2025-04-11T18:50:24.719000+00:00",
+          "2025-04-11T18:50:27.016000+00:00",
+          "2025-04-11T18:50:27.132000+00:00",
+          "2025-04-11T18:50:27.132000+00:00",
+          "2025-04-11T18:50:27.132000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250411C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-11",
+        "quantity": -172,
+        "entry_price": 0.4,
         "exit_price": null,
         "transaction_ids": [
-          "361015606"
+          "355969245"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-07T16:48:30.972000+00:00"
         ]
       }
     ],
@@ -4161,6 +5847,448 @@
     "original_notes": "",
     "current_notes": "",
     "tags": [],
-    "strategy_direction": null
+    "strategy_direction": "Neutral"
+  },
+  "IBIT_20250411_22legs": {
+    "trade_id": "IBIT_20250411_22legs",
+    "underlying": "IBIT",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-04-11",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ26959",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": 1.19,
+        "transaction_ids": [
+          "357199572",
+          "358264062"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:56.050000+00:00",
+          "2025-04-17T19:22:00.376000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199574"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:56.052000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199598"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.585000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199596"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.585000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199602"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.586000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199600"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:49:57.586000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199738"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:23.511000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199742"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:23.639000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -3,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199750"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.471000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -4,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199747"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.471000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -6,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199752"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.594000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -2,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199754"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.595000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -12,
+        "entry_price": 1.72,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199756"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:24.719000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -1,
+        "entry_price": 1.7,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199778"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.016000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -30,
+        "entry_price": 1.7,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199790"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.031000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -57,
+        "entry_price": 1.7,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199788"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.031000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250417C00047000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 47.0,
+        "expiration": "2025-04-17",
+        "quantity": -57,
+        "entry_price": 1.7,
+        "exit_price": null,
+        "transaction_ids": [
+          "357199783"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-11T18:50:27.031000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250425C00048000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 48.0,
+        "expiration": "2025-04-25",
+        "quantity": -180,
+        "entry_price": 1.2,
+        "exit_price": 5.1,
+        "transaction_ids": [
+          "358264060",
+          "358965764",
+          "358965770"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-17T19:22:00.376000+00:00",
+          "2025-04-23T14:45:09.663000+00:00",
+          "2025-04-23T14:45:09.987000+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250815C00057000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 57.0,
+        "expiration": "2025-08-15",
+        "quantity": -60,
+        "entry_price": 5.12,
+        "exit_price": null,
+        "transaction_ids": [
+          "358965771"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-23T14:45:09.987000+00:00"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": "Neutral"
+  },
+  "IBIT_20250428_3legs": {
+    "trade_id": "IBIT_20250428_3legs",
+    "underlying": "IBIT",
+    "strategy_type": "Vertical Spread",
+    "entry_date": "2025-04-28",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ26959",
+    "option_legs": [
+      {
+        "symbol": "IBIT  250502C00057000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 57.0,
+        "expiration": "2025-05-02",
+        "quantity": -120,
+        "entry_price": 0.2,
+        "exit_price": 0.0,
+        "transaction_ids": [
+          "359756195",
+          "360935202"
+        ],
+        "transaction_actions": [
+          "STO",
+          "BTC"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T14:29:09.706000+00:00",
+          "2025-05-02T20:00:00+00:00"
+        ]
+      },
+      {
+        "symbol": "IBIT  250502C00057000",
+        "underlying": "IBIT",
+        "option_type": "Call",
+        "strike": 57.0,
+        "expiration": "2025-05-02",
+        "quantity": -60,
+        "entry_price": 0.2,
+        "exit_price": null,
+        "transaction_ids": [
+          "359756208"
+        ],
+        "transaction_actions": [
+          "STO"
+        ],
+        "transaction_timestamps": [
+          "2025-04-28T14:29:09.988000+00:00"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": "Neutral"
   }
 }
