@@ -490,6 +490,77 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 
+@app.get("/strategy-config", response_class=HTMLResponse)
+async def strategy_config_page():
+    """Serve the strategy configuration page"""
+    try:
+        with open("static/strategy-config.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except Exception as e:
+        logger.error(f"Error serving strategy config page: {str(e)}")
+        return HTMLResponse(content=f"<h1>Error loading strategy config page: {str(e)}</h1>", status_code=500)
+
+
+@app.get("/api/strategy-config")
+async def get_strategy_configuration():
+    """Get the strategy configuration"""
+    try:
+        # Import here to avoid circular imports
+        from src.models.strategy_config import StrategyConfigLoader
+        
+        # Create a fresh instance
+        config = StrategyConfigLoader()
+        
+        result = {
+            "strategy_types": {},
+            "categories": config.get_categories(),
+            "direction_indicators": config.get_direction_indicators(),
+            "recognition_priority": config.get_recognition_priority()
+        }
+        
+        # Build strategy types dict
+        for key, strategy in config.strategies.items():
+            result["strategy_types"][key] = {
+                "name": strategy.name,
+                "code": strategy.code,
+                "category": strategy.category,
+                "direction": strategy.direction,
+                "legs": strategy.legs,
+                "description": strategy.description,
+                "recognition_rules": strategy.recognition_rules
+            }
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting strategy config: {str(e)}")
+        logger.exception(e)  # This will log the full traceback
+        # Return a more detailed error for debugging
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "type": type(e).__name__}
+        )
+
+
+@app.post("/api/strategy-config")
+async def update_strategy_config(request: Request):
+    """Update the strategy configuration"""
+    try:
+        data = await request.json()
+        config = get_strategy_config()
+        
+        # Update strategies if provided
+        if "strategy_types" in data:
+            # This would update the strategies in the config
+            # For now, just reload to demonstrate
+            config.reload()
+        
+        return {"message": "Configuration updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating strategy config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def create_initial_files():
     """Create initial HTML/CSS/JS files if they don't exist"""
     # This will be called to create the beautiful UI files

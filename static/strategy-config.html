@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Configuration - Trade Journal</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+        .glass {
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(71, 85, 105, 0.2);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div x-data="strategyConfig()" x-init="init()">
+        <!-- Navigation -->
+        <nav class="glass sticky top-0 z-50 border-b border-slate-700">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center space-x-6">
+                        <h1 class="text-2xl font-bold text-white">Strategy Configuration</h1>
+                        <a href="/" class="text-blue-400 hover:text-blue-300">
+                            <i class="fas fa-arrow-left"></i> Back to Journal
+                        </a>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button @click="saveConfig()" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg">
+                            <i class="fas fa-save mr-2"></i>Save Changes
+                        </button>
+                        <button @click="reloadConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
+                            <i class="fas fa-sync mr-2"></i>Reload
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Loading State -->
+            <div x-show="loading" class="text-center py-12">
+                <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
+                <p class="mt-4 text-slate-400">Loading strategy configuration...</p>
+            </div>
+            
+            <!-- Content -->
+            <div x-show="!loading">
+            <!-- Strategy Categories -->
+            <div class="mb-8">
+                <h2 class="text-xl font-semibold mb-4">Strategy Categories</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <template x-for="(category, key) in categories" :key="key">
+                        <div 
+                            @click="selectedCategory = key" 
+                            class="glass p-4 rounded-lg cursor-pointer transition-all"
+                            :class="selectedCategory === key ? 'ring-2 ring-blue-500' : 'hover:bg-slate-800/50'"
+                        >
+                            <h3 class="font-medium" x-text="category.name"></h3>
+                            <p class="text-sm text-slate-400">Order: <span x-text="category.order"></span></p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Strategy List -->
+            <div class="glass rounded-xl p-6">
+                <h2 class="text-xl font-semibold mb-4">
+                    Strategies 
+                    <span x-show="selectedCategory" class="text-sm text-slate-400">
+                        in <span x-text="categories[selectedCategory]?.name"></span>
+                    </span>
+                </h2>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-800/50">
+                            <tr class="text-left">
+                                <th class="px-4 py-3 text-sm">Code</th>
+                                <th class="px-4 py-3 text-sm">Name</th>
+                                <th class="px-4 py-3 text-sm">Direction</th>
+                                <th class="px-4 py-3 text-sm">Legs</th>
+                                <th class="px-4 py-3 text-sm">Description</th>
+                                <th class="px-4 py-3 text-sm">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700">
+                            <template x-for="strategy in filteredStrategies" :key="strategy.key">
+                                <tr class="hover:bg-slate-800/30">
+                                    <td class="px-4 py-3 font-mono text-sm" x-text="strategy.code"></td>
+                                    <td class="px-4 py-3 font-medium" x-text="strategy.name"></td>
+                                    <td class="px-4 py-3">
+                                        <span 
+                                            class="px-2 py-1 text-xs rounded"
+                                            :class="{
+                                                'bg-green-900/30 text-green-400': strategy.direction === 'bullish',
+                                                'bg-red-900/30 text-red-400': strategy.direction === 'bearish',
+                                                'bg-gray-900/30 text-gray-400': strategy.direction === 'neutral',
+                                                'bg-purple-900/30 text-purple-400': strategy.direction === 'volatility'
+                                            }"
+                                            x-text="strategy.direction"
+                                        ></span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center" x-text="strategy.legs"></td>
+                                    <td class="px-4 py-3 text-sm text-slate-300" x-text="strategy.description"></td>
+                                    <td class="px-4 py-3">
+                                        <button 
+                                            @click="editStrategy(strategy)"
+                                            class="text-blue-400 hover:text-blue-300 mr-2"
+                                        >
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recognition Rules Preview -->
+            <div x-show="selectedStrategy" class="mt-8 glass rounded-xl p-6">
+                <h3 class="text-lg font-semibold mb-4">
+                    Recognition Rules for <span x-text="selectedStrategy?.name"></span>
+                </h3>
+                <pre class="bg-slate-800 rounded p-4 text-sm overflow-x-auto">
+                    <code x-text="JSON.stringify(selectedStrategy?.recognition_rules, null, 2)"></code>
+                </pre>
+            </div>
+            </div> <!-- End content div -->
+        </main>
+    </div>
+
+    <script>
+        function strategyConfig() {
+            return {
+                config: null,
+                categories: {},
+                strategies: [],
+                selectedCategory: '',
+                selectedStrategy: null,
+                loading: true,
+                
+                async init() {
+                    await this.loadConfig();
+                },
+                
+                async loadConfig() {
+                    try {
+                        console.log('Loading strategy configuration...');
+                        const response = await fetch('/api/strategy-config');
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            console.error('API Error:', errorData);
+                            alert(`Error loading configuration: ${errorData.error || response.statusText}`);
+                            return;
+                        }
+                        
+                        this.config = await response.json();
+                        console.log('Loaded config:', this.config);
+                        
+                        this.categories = this.config.categories || {};
+                        this.strategies = Object.entries(this.config.strategy_types || {}).map(([key, data]) => ({
+                            key,
+                            ...data
+                        }));
+                        
+                        console.log(`Loaded ${this.strategies.length} strategies in ${Object.keys(this.categories).length} categories`);
+                    } catch (error) {
+                        console.error('Error loading config:', error);
+                        alert('Failed to load strategy configuration. Check console for details.');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                get filteredStrategies() {
+                    if (!this.selectedCategory) return this.strategies;
+                    return this.strategies.filter(s => s.category === this.selectedCategory);
+                },
+                
+                editStrategy(strategy) {
+                    this.selectedStrategy = strategy;
+                    // In a full implementation, this would open an edit modal
+                    console.log('Edit strategy:', strategy);
+                },
+                
+                async saveConfig() {
+                    alert('Save functionality would be implemented here');
+                },
+                
+                async reloadConfig() {
+                    await this.loadConfig();
+                }
+            };
+        }
+    </script>
+</body>
+</html>

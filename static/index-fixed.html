@@ -109,6 +109,12 @@
                     </div>
                     
                     <div class="flex items-center space-x-4">
+                        <!-- Strategy Config Link -->
+                        <a href="/strategy-config" class="text-blue-400 hover:text-blue-300 flex items-center">
+                            <i class="fas fa-cog mr-2"></i>
+                            <span class="hidden sm:inline">Strategy Config</span>
+                        </a>
+                        
                         <!-- Sync Button -->
                         <button 
                             @click="syncTrades()"
@@ -248,10 +254,26 @@
                     
                     <select x-model="filterStrategy" @change="loadTrades()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
                         <option value="">All Strategies</option>
-                        <option value="Iron Condor">Iron Condor</option>
-                        <option value="Vertical Spread">Vertical Spread</option>
-                        <option value="Covered Call">Covered Call</option>
-                        <option value="Cash Secured Put">Cash Secured Put</option>
+                        <optgroup label="Multi-leg Complex">
+                            <option value="Iron Condor">Iron Condor</option>
+                            <option value="Iron Butterfly">Iron Butterfly</option>
+                            <option value="Broken Wing Butterfly">Broken Wing Butterfly</option>
+                            <option value="Butterfly">Butterfly</option>
+                        </optgroup>
+                        <optgroup label="Vertical Spreads">
+                            <option value="Bull Put Spread">Bull Put Spread</option>
+                            <option value="Bear Call Spread">Bear Call Spread</option>
+                            <option value="Bull Call Spread">Bull Call Spread</option>
+                            <option value="Bear Put Spread">Bear Put Spread</option>
+                        </optgroup>
+                        <optgroup label="Volatility Plays">
+                            <option value="Straddle">Straddle</option>
+                            <option value="Strangle">Strangle</option>
+                        </optgroup>
+                        <optgroup label="Stock + Option">
+                            <option value="Covered Call">Covered Call</option>
+                            <option value="Cash Secured Put">Cash Secured Put</option>
+                        </optgroup>
                     </select>
                 </div>
             </div>

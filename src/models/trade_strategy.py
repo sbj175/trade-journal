@@ -11,22 +11,51 @@ import pytz
 
 
 class StrategyType(Enum):
+    # Multi-leg Complex Strategies
     IRON_CONDOR = "Iron Condor"
     IRON_BUTTERFLY = "Iron Butterfly"
     BROKEN_WING_BUTTERFLY = "Broken Wing Butterfly"
-    VERTICAL_SPREAD = "Vertical Spread"
+    BUTTERFLY = "Butterfly"
+    
+    # Vertical Spreads
+    BULL_PUT_SPREAD = "Bull Put Spread"
+    BEAR_CALL_SPREAD = "Bear Call Spread"
+    BULL_CALL_SPREAD = "Bull Call Spread"
+    BEAR_PUT_SPREAD = "Bear Put Spread"
+    VERTICAL_SPREAD = "Vertical Spread"  # Generic vertical
+    
+    # Time Spreads
     CALENDAR_SPREAD = "Calendar Spread"
     DIAGONAL_SPREAD = "Diagonal Spread"
+    
+    # Volatility Plays
     STRADDLE = "Straddle"
     STRANGLE = "Strangle"
+    
+    # Stock + Option Combos
     COVERED_CALL = "Covered Call"
     CASH_SECURED_PUT = "Cash Secured Put"
+    
+    # Single Leg
     NAKED_PUT = "Naked Put"
     NAKED_CALL = "Naked Call"
+    LONG_CALL = "Long Call"
+    LONG_PUT = "Long Put"
+    
+    # Stock Only
     LONG_STOCK = "Long Stock"
     SHORT_STOCK = "Short Stock"
+    
+    # Other
     COMPLEX_STRATEGY = "Complex Strategy"
     UNKNOWN = "Unknown"
+
+
+class StrategyDirection(Enum):
+    BULLISH = "Bullish"
+    BEARISH = "Bearish"
+    NEUTRAL = "Neutral"
+    VOLATILITY = "Volatility"
 
 
 class TradeStatus(Enum):
@@ -85,6 +114,7 @@ class Trade:
     original_notes: str = ""  # Initial strategy/thesis
     current_notes: str = ""   # Latest analysis/plan
     tags: List[str] = field(default_factory=list)
+    strategy_direction: Optional[StrategyDirection] = None
     
     @property
     def days_in_trade(self) -> Optional[int]:
@@ -403,6 +433,7 @@ class StrategyRecognizer:
         
         # Recognize the strategy
         trade.strategy_type = cls._recognize_strategy(trade)
+        trade.strategy_direction = cls._determine_strategy_direction(trade)
         
         # Determine if trade is closed and find the latest closing date
         if cls._is_trade_closed(trade):
@@ -512,20 +543,27 @@ class StrategyRecognizer:
     
     @classmethod
     def _recognize_strategy(cls, trade: Trade) -> StrategyType:
-        """Recognize the strategy type from the legs"""
+        """Enhanced strategy recognition based on comprehensive coding system"""
         
         option_legs = trade.option_legs
         stock_legs = trade.stock_legs
         
-        # Stock-only strategies
-        if not option_legs and stock_legs:
-            if len(stock_legs) == 1:
-                return StrategyType.LONG_STOCK if stock_legs[0].quantity > 0 else StrategyType.SHORT_STOCK
+        if not option_legs and not stock_legs:
+            return StrategyType.UNKNOWN
+        
+        # Stock only strategies
+        if stock_legs and not option_legs:
+            if stock_legs[0].quantity > 0:
+                return StrategyType.LONG_STOCK
+            else:
+                return StrategyType.SHORT_STOCK
         
         # Single option strategies
         if len(option_legs) == 1 and not stock_legs:
             leg = option_legs[0]
-            if leg.is_short:
+            if leg.is_long:
+                return StrategyType.LONG_CALL if leg.option_type == 'Call' else StrategyType.LONG_PUT
+            else:
                 return StrategyType.NAKED_CALL if leg.option_type == 'Call' else StrategyType.NAKED_PUT
         
         # Covered call
@@ -539,44 +577,197 @@ class StrategyRecognizer:
             option_legs[0].is_short and option_legs[0].option_type == 'Put'):
             return StrategyType.CASH_SECURED_PUT
         
-        # Vertical spreads
+        # Two-leg strategies
         if len(option_legs) == 2 and not stock_legs:
-            leg1, leg2 = option_legs
-            if (leg1.option_type == leg2.option_type and 
-                leg1.expiration == leg2.expiration and
-                leg1.strike != leg2.strike):
-                return StrategyType.VERTICAL_SPREAD
+            return cls._recognize_two_leg_strategy(option_legs)
         
-        # Straddle/Strangle
-        if len(option_legs) == 2 and not stock_legs:
-            leg1, leg2 = option_legs
-            if (leg1.expiration == leg2.expiration and
-                leg1.option_type != leg2.option_type):
+        # Three-leg strategies (Butterflies)
+        if len(option_legs) == 3 and not stock_legs:
+            return cls._recognize_butterfly_strategy(option_legs)
+        
+        # Four-leg strategies
+        if len(option_legs) == 4 and not stock_legs:
+            return cls._recognize_four_leg_strategy(option_legs)
+        
+        # Default for complex strategies
+        if len(option_legs) > 4:
+            return StrategyType.COMPLEX_STRATEGY
+        
+        return StrategyType.UNKNOWN
+    
+    @classmethod
+    def _recognize_two_leg_strategy(cls, legs: List[OptionLeg]) -> StrategyType:
+        """Recognize two-leg strategies"""
+        leg1, leg2 = sorted(legs, key=lambda x: x.strike)
+        
+        # Same expiration check
+        if leg1.expiration == leg2.expiration:
+            # Same option type = Vertical Spread
+            if leg1.option_type == leg2.option_type:
+                # Put spreads
+                if leg1.option_type == 'Put':
+                    if leg1.is_long and leg2.is_short:
+                        return StrategyType.BULL_PUT_SPREAD
+                    elif leg1.is_short and leg2.is_long:
+                        return StrategyType.BEAR_PUT_SPREAD
+                # Call spreads
+                else:  # Call
+                    if leg1.is_long and leg2.is_short:
+                        return StrategyType.BULL_CALL_SPREAD
+                    elif leg1.is_short and leg2.is_long:
+                        return StrategyType.BEAR_CALL_SPREAD
+                
+                return StrategyType.VERTICAL_SPREAD
+            
+            # Different option types = Straddle/Strangle
+            else:
                 if leg1.strike == leg2.strike:
                     return StrategyType.STRADDLE
                 else:
                     return StrategyType.STRANGLE
         
-        # Iron Condor (4 legs: short strangle + long strangle)
-        if len(option_legs) == 4 and not stock_legs:
-            # Group by option type
-            calls = [leg for leg in option_legs if leg.option_type == 'Call']
-            puts = [leg for leg in option_legs if leg.option_type == 'Put']
+        # Different expirations
+        else:
+            if leg1.option_type == leg2.option_type:
+                if leg1.strike == leg2.strike:
+                    return StrategyType.CALENDAR_SPREAD
+                else:
+                    return StrategyType.DIAGONAL_SPREAD
+        
+        return StrategyType.VERTICAL_SPREAD
+    
+    @classmethod
+    def _recognize_butterfly_strategy(cls, legs: List[OptionLeg]) -> StrategyType:
+        """Recognize butterfly strategies"""
+        # Sort by strike
+        sorted_legs = sorted(legs, key=lambda x: x.strike)
+        
+        # Check if all same expiration and option type
+        if (all(leg.expiration == sorted_legs[0].expiration for leg in sorted_legs) and
+            all(leg.option_type == sorted_legs[0].option_type for leg in sorted_legs)):
             
-            if len(calls) == 2 and len(puts) == 2:
-                # Check if it forms an iron condor pattern
-                calls.sort(key=lambda x: x.strike)
-                puts.sort(key=lambda x: x.strike)
+            # Classic butterfly: long-short-short-long or similar pattern
+            strikes = [leg.strike for leg in sorted_legs]
+            
+            # Check for butterfly pattern (1 long low, 2 short middle, 1 long high)
+            if len(set(strikes)) == 3:  # Three unique strikes
+                # Count legs at each strike
+                strike_counts = {}
+                for leg in sorted_legs:
+                    if leg.strike not in strike_counts:
+                        strike_counts[leg.strike] = {'long': 0, 'short': 0}
+                    if leg.is_long:
+                        strike_counts[leg.strike]['long'] += 1
+                    else:
+                        strike_counts[leg.strike]['short'] += 1
                 
-                if (calls[0].is_long and calls[1].is_short and 
-                    puts[0].is_long and puts[1].is_short):
+                # Check for butterfly pattern
+                strikes_list = sorted(strike_counts.keys())
+                if len(strikes_list) == 3:
+                    low_count = strike_counts[strikes_list[0]]
+                    mid_count = strike_counts[strikes_list[1]]
+                    high_count = strike_counts[strikes_list[2]]
+                    
+                    # Classic butterfly
+                    if (low_count['long'] == 1 and mid_count['short'] == 2 and high_count['long'] == 1):
+                        return StrategyType.BUTTERFLY
+                    
+                    # Broken wing butterfly (uneven strikes)
+                    if (low_count['long'] == 1 and mid_count['short'] == 1 and high_count['long'] == 1):
+                        # Check if strikes are uneven
+                        if (strikes_list[1] - strikes_list[0]) != (strikes_list[2] - strikes_list[1]):
+                            return StrategyType.BROKEN_WING_BUTTERFLY
+        
+        return StrategyType.COMPLEX_STRATEGY
+    
+    @classmethod
+    def _recognize_four_leg_strategy(cls, legs: List[OptionLeg]) -> StrategyType:
+        """Recognize four-leg strategies"""
+        # Group by option type
+        calls = [leg for leg in legs if leg.option_type == 'Call']
+        puts = [leg for leg in legs if leg.option_type == 'Put']
+        
+        # Check same expiration
+        if all(leg.expiration == legs[0].expiration for leg in legs):
+            # Check for Iron Butterfly first (more specific pattern)
+            if len(calls) == 2 and len(puts) == 2:
+                # Get all strikes
+                all_strikes = sorted(set(leg.strike for leg in legs))
+                
+                # Iron butterfly has only 3 unique strikes
+                if len(all_strikes) == 3:
+                    # Check if middle strike has both call and put
+                    middle_strike = all_strikes[1]
+                    middle_calls = [c for c in calls if c.strike == middle_strike]
+                    middle_puts = [p for p in puts if p.strike == middle_strike]
+                    
+                    if middle_calls and middle_puts:
+                        # Verify it's sold at the middle
+                        if middle_calls[0].is_short and middle_puts[0].is_short:
+                            return StrategyType.IRON_BUTTERFLY
+            
+            # Iron Condor: 2 calls + 2 puts (4 different strikes)
+            if len(calls) == 2 and len(puts) == 2:
+                calls_sorted = sorted(calls, key=lambda x: x.strike)
+                puts_sorted = sorted(puts, key=lambda x: x.strike)
+                
+                # Classic iron condor pattern
+                # Lower put is long, higher put is short
+                # Lower call is short, higher call is long
+                if (puts_sorted[0].is_long and puts_sorted[1].is_short and 
+                    calls_sorted[0].is_short and calls_sorted[1].is_long):
                     return StrategyType.IRON_CONDOR
+            
+            # Regular butterfly (all same type)
+            if len(calls) == 4 or len(puts) == 4:
+                return cls._recognize_butterfly_strategy(legs)
         
-        # Default for complex strategies
-        if len(option_legs) > 2:
-            return StrategyType.COMPLEX_STRATEGY
+        return StrategyType.COMPLEX_STRATEGY
+    
+    @classmethod
+    def _determine_strategy_direction(cls, trade: Trade) -> StrategyDirection:
+        """Determine the directional bias of a strategy"""
+        strategy_type = trade.strategy_type
         
-        return StrategyType.UNKNOWN
+        # Bullish strategies
+        if strategy_type in [StrategyType.BULL_PUT_SPREAD, StrategyType.BULL_CALL_SPREAD,
+                           StrategyType.COVERED_CALL, StrategyType.LONG_CALL]:
+            return StrategyDirection.BULLISH
+        
+        # Bearish strategies  
+        elif strategy_type in [StrategyType.BEAR_PUT_SPREAD, StrategyType.BEAR_CALL_SPREAD,
+                             StrategyType.LONG_PUT]:
+            return StrategyDirection.BEARISH
+        
+        # Neutral strategies
+        elif strategy_type in [StrategyType.IRON_CONDOR, StrategyType.IRON_BUTTERFLY,
+                             StrategyType.CASH_SECURED_PUT]:
+            return StrategyDirection.NEUTRAL
+        
+        # Volatility plays
+        elif strategy_type in [StrategyType.STRADDLE, StrategyType.STRANGLE]:
+            # Check if long or short volatility
+            if trade.option_legs:
+                if all(leg.is_long for leg in trade.option_legs):
+                    return StrategyDirection.VOLATILITY  # Long volatility
+                elif all(leg.is_short for leg in trade.option_legs):
+                    return StrategyDirection.NEUTRAL  # Short volatility
+        
+        # Butterfly strategies - typically neutral
+        elif strategy_type in [StrategyType.BUTTERFLY, StrategyType.BROKEN_WING_BUTTERFLY]:
+            return StrategyDirection.NEUTRAL
+        
+        # Calendar/Diagonal - typically neutral
+        elif strategy_type in [StrategyType.CALENDAR_SPREAD, StrategyType.DIAGONAL_SPREAD]:
+            return StrategyDirection.NEUTRAL
+        
+        # Stock positions
+        elif strategy_type == StrategyType.LONG_STOCK:
+            return StrategyDirection.BULLISH
+        elif strategy_type == StrategyType.SHORT_STOCK:
+            return StrategyDirection.BEARISH
+        
+        return StrategyDirection.NEUTRAL
     
     @classmethod
     def _is_closing_transaction(cls, transaction: Dict) -> bool:

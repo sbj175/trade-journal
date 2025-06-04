@@ -2,7 +2,7 @@
   "GLD_20250602_2legs": {
     "trade_id": "GLD_20250602_2legs",
     "underlying": "GLD",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bull Put Spread",
     "entry_date": "2025-06-02",
     "exit_date": null,
     "status": "Open",
@@ -38,12 +38,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPY_20250520_4legs": {
     "trade_id": "SPY_20250520_4legs",
     "underlying": "SPY",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bull Call Spread",
     "entry_date": "2025-05-20",
     "exit_date": "2025-06-02",
     "status": "Closed",
@@ -81,12 +82,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPY_20250522_4legs": {
     "trade_id": "SPY_20250522_4legs",
     "underlying": "SPY",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Condor",
     "entry_date": "2025-05-22",
     "exit_date": null,
     "status": "Open",
@@ -148,12 +150,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPY_20250602_3legs": {
     "trade_id": "SPY_20250602_3legs",
     "underlying": "SPY",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Broken Wing Butterfly",
     "entry_date": "2025-06-02",
     "exit_date": null,
     "status": "Open",
@@ -202,12 +205,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "WOLF_20250514_3legs": {
     "trade_id": "WOLF_20250514_3legs",
     "underlying": "WOLF",
-    "strategy_type": "Unknown",
+    "strategy_type": "Calendar Spread",
     "entry_date": "2025-05-14",
     "exit_date": null,
     "status": "Open",
@@ -244,7 +248,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "UNH_20250513_9legs": {
     "trade_id": "UNH_20250513_9legs",
@@ -328,12 +333,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "UNH_20250530_1legs": {
     "trade_id": "UNH_20250530_1legs",
     "underlying": "UNH",
-    "strategy_type": "Unknown",
+    "strategy_type": "Long Put",
     "entry_date": "2025-05-30",
     "exit_date": null,
     "status": "Open",
@@ -356,12 +362,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "RIVN_20250520_4legs": {
     "trade_id": "RIVN_20250520_4legs",
     "underlying": "RIVN",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Put Spread",
     "entry_date": "2025-05-20",
     "exit_date": "2025-05-30",
     "status": "Closed",
@@ -399,7 +406,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250326_3legs": {
     "trade_id": "MSTR_20250326_3legs",
@@ -438,7 +446,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250327_4legs": {
     "trade_id": "MSTR_20250327_4legs",
@@ -469,12 +478,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250401_3legs": {
     "trade_id": "MSTR_20250401_3legs",
     "underlying": "MSTR",
-    "strategy_type": "Unknown",
+    "strategy_type": "Vertical Spread",
     "entry_date": "2025-04-01",
     "exit_date": null,
     "status": "Open",
@@ -511,7 +521,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250402_2legs": {
     "trade_id": "MSTR_20250402_2legs",
@@ -540,7 +551,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250408_10legs": {
     "trade_id": "MSTR_20250408_10legs",
@@ -625,7 +637,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250505_2legs": {
     "trade_id": "MSTR_20250505_2legs",
@@ -654,7 +667,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250507_2legs": {
     "trade_id": "MSTR_20250507_2legs",
@@ -683,7 +697,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250519_4legs": {
     "trade_id": "MSTR_20250519_4legs",
@@ -738,7 +753,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250527_7legs": {
     "trade_id": "MSTR_20250527_7legs",
@@ -832,7 +848,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MSTR_20250530_1legs": {
     "trade_id": "MSTR_20250530_1legs",
@@ -860,7 +877,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "XYL_20250521_3legs": {
     "trade_id": "XYL_20250521_3legs",
@@ -899,12 +917,13 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250327_10legs": {
     "trade_id": "IBIT_20250327_10legs",
     "underlying": "IBIT",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Unknown",
     "entry_date": "2025-03-27",
     "exit_date": null,
     "status": "Open",
@@ -977,7 +996,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250401_20legs": {
     "trade_id": "IBIT_20250401_20legs",
@@ -1240,7 +1260,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250404_1legs": {
     "trade_id": "IBIT_20250404_1legs",
@@ -1264,7 +1285,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250407_40legs": {
     "trade_id": "IBIT_20250407_40legs",
@@ -1559,7 +1581,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250411_1legs": {
     "trade_id": "IBIT_20250411_1legs",
@@ -1587,7 +1610,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250423_1legs": {
     "trade_id": "IBIT_20250423_1legs",
@@ -1615,12 +1639,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250424_2legs": {
     "trade_id": "IBIT_20250424_2legs",
     "underlying": "IBIT",
-    "strategy_type": "Unknown",
+    "strategy_type": "Long Stock",
     "entry_date": "2025-04-24",
     "exit_date": null,
     "status": "Open",
@@ -1648,7 +1673,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250425_1legs": {
     "trade_id": "IBIT_20250425_1legs",
@@ -1672,7 +1698,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250505_34legs": {
     "trade_id": "IBIT_20250505_34legs",
@@ -1950,7 +1977,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250521_1legs": {
     "trade_id": "IBIT_20250521_1legs",
@@ -1978,7 +2006,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250522_1legs": {
     "trade_id": "IBIT_20250522_1legs",
@@ -2002,7 +2031,8 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "IBIT_20250528_1legs": {
     "trade_id": "IBIT_20250528_1legs",
@@ -2030,12 +2060,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "UBER_20250521_2legs": {
     "trade_id": "UBER_20250521_2legs",
     "underlying": "UBER",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Put Spread",
     "entry_date": "2025-05-21",
     "exit_date": null,
     "status": "Open",
@@ -2071,12 +2102,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "RBLX_20250521_2legs": {
     "trade_id": "RBLX_20250521_2legs",
     "underlying": "RBLX",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Put Spread",
     "entry_date": "2025-05-21",
     "exit_date": null,
     "status": "Open",
@@ -2112,12 +2144,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "TGT_20250514_4legs": {
     "trade_id": "TGT_20250514_4legs",
     "underlying": "TGT",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Call Spread",
     "entry_date": "2025-05-14",
     "exit_date": "2025-05-19",
     "status": "Closed",
@@ -2155,7 +2188,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "TGT_20250520_6legs": {
     "trade_id": "TGT_20250520_6legs",
@@ -2212,12 +2246,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "NFLX_20250505_4legs": {
     "trade_id": "NFLX_20250505_4legs",
     "underlying": "NFLX",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Call Spread",
     "entry_date": "2025-05-05",
     "exit_date": "2025-05-20",
     "status": "Closed",
@@ -2255,12 +2290,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "MRNA_20250519_4legs": {
     "trade_id": "MRNA_20250519_4legs",
     "underlying": "MRNA",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Call Spread",
     "entry_date": "2025-05-19",
     "exit_date": "2025-05-19",
     "status": "Closed",
@@ -2298,7 +2334,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "TSLA_20250415_12legs": {
     "trade_id": "TSLA_20250415_12legs",
@@ -2397,12 +2434,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "TSLA_20250602_4legs": {
     "trade_id": "TSLA_20250602_4legs",
     "underlying": "TSLA",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Condor",
     "entry_date": "2025-06-02",
     "exit_date": null,
     "status": "Open",
@@ -2464,12 +2502,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "AFRM_20250509_4legs": {
     "trade_id": "AFRM_20250509_4legs",
     "underlying": "AFRM",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bull Put Spread",
     "entry_date": "2025-05-09",
     "exit_date": "2025-05-12",
     "status": "Closed",
@@ -2507,12 +2546,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "X_20250508_2legs": {
     "trade_id": "X_20250508_2legs",
     "underlying": "X",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bull Put Spread",
     "entry_date": "2025-05-08",
     "exit_date": null,
     "status": "Open",
@@ -2548,12 +2588,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "HIMS_20250508_3legs": {
     "trade_id": "HIMS_20250508_3legs",
     "underlying": "HIMS",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Broken Wing Butterfly",
     "entry_date": "2025-05-08",
     "exit_date": null,
     "status": "Open",
@@ -2602,7 +2643,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "ARKB_20250326_3legs": {
     "trade_id": "ARKB_20250326_3legs",
@@ -2628,12 +2670,13 @@
     ],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "ARKB_20250327_8legs": {
     "trade_id": "ARKB_20250327_8legs",
     "underlying": "ARKB",
-    "strategy_type": "Unknown",
+    "strategy_type": "Vertical Spread",
     "entry_date": "2025-03-27",
     "exit_date": null,
     "status": "Open",
@@ -2675,12 +2718,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPXS_20250404_6legs": {
     "trade_id": "SPXS_20250404_6legs",
     "underlying": "SPXS",
-    "strategy_type": "Unknown",
+    "strategy_type": "Long Put",
     "entry_date": "2025-04-04",
     "exit_date": "2025-04-15",
     "status": "Closed",
@@ -2708,12 +2752,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "GME_20250327_1legs": {
     "trade_id": "GME_20250327_1legs",
     "underlying": "GME",
-    "strategy_type": "Unknown",
+    "strategy_type": "Long Call",
     "entry_date": "2025-03-27",
     "exit_date": null,
     "status": "Open",
@@ -2736,12 +2781,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "GME_20250522_2legs": {
     "trade_id": "GME_20250522_2legs",
     "underlying": "GME",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bull Call Spread",
     "entry_date": "2025-05-22",
     "exit_date": null,
     "status": "Open",
@@ -2777,12 +2823,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "META_20250415_8legs": {
     "trade_id": "META_20250415_8legs",
     "underlying": "META",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Condor",
     "entry_date": "2025-04-15",
     "exit_date": "2025-04-21",
     "status": "Closed",
@@ -2848,12 +2895,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "META_20250602_8legs": {
     "trade_id": "META_20250602_8legs",
     "underlying": "META",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Condor",
     "entry_date": "2025-06-02",
     "exit_date": "2025-06-02",
     "status": "Closed",
@@ -2919,12 +2967,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "USO_20250602_4legs": {
     "trade_id": "USO_20250602_4legs",
     "underlying": "USO",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Condor",
     "entry_date": "2025-06-02",
     "exit_date": null,
     "status": "Open",
@@ -2986,12 +3035,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "PLTR_20250422_4legs": {
     "trade_id": "PLTR_20250422_4legs",
     "underlying": "PLTR",
-    "strategy_type": "Unknown",
+    "strategy_type": "Diagonal Spread",
     "entry_date": "2025-04-22",
     "exit_date": "2025-05-02",
     "status": "Closed",
@@ -3029,12 +3079,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "PLTR_20250502_2legs": {
     "trade_id": "PLTR_20250502_2legs",
     "underlying": "PLTR",
-    "strategy_type": "Unknown",
+    "strategy_type": "Long Call",
     "entry_date": "2025-05-02",
     "exit_date": "2025-05-22",
     "status": "Closed",
@@ -3058,12 +3109,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "HUT_20250505_2legs": {
     "trade_id": "HUT_20250505_2legs",
     "underlying": "HUT",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Call Spread",
     "entry_date": "2025-05-05",
     "exit_date": null,
     "status": "Open",
@@ -3099,7 +3151,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "NVDA_20250409_23legs": {
     "trade_id": "NVDA_20250409_23legs",
@@ -3269,12 +3322,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "NVDA_20250421_1legs": {
     "trade_id": "NVDA_20250421_1legs",
     "underlying": "NVDA",
-    "strategy_type": "Unknown",
+    "strategy_type": "Long Call",
     "entry_date": "2025-04-21",
     "exit_date": null,
     "status": "Open",
@@ -3297,12 +3351,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250428_8legs": {
     "trade_id": "SPX_20250428_8legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-04-28",
     "exit_date": "2025-04-29",
     "status": "Closed",
@@ -3368,12 +3423,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250429_8legs": {
     "trade_id": "SPX_20250429_8legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-04-29",
     "exit_date": "2025-04-30",
     "status": "Closed",
@@ -3439,12 +3495,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250430_8legs": {
     "trade_id": "SPX_20250430_8legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-04-30",
     "exit_date": "2025-05-01",
     "status": "Closed",
@@ -3510,12 +3567,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250502_8legs": {
     "trade_id": "SPX_20250502_8legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-05-02",
     "exit_date": "2025-05-05",
     "status": "Closed",
@@ -3581,12 +3639,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250505_8legs": {
     "trade_id": "SPX_20250505_8legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-05-05",
     "exit_date": "2025-05-06",
     "status": "Closed",
@@ -3652,12 +3711,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250508_8legs": {
     "trade_id": "SPX_20250508_8legs",
     "underlying": "SPX",
-    "strategy_type": "Complex Strategy",
+    "strategy_type": "Iron Butterfly",
     "entry_date": "2025-05-08",
     "exit_date": "2025-05-09",
     "status": "Closed",
@@ -3723,7 +3783,8 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "SPX_20250509_10legs": {
     "trade_id": "SPX_20250509_10legs",
@@ -3844,12 +3905,13 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
   },
   "QQQ_20250331_4legs": {
     "trade_id": "QQQ_20250331_4legs",
     "underlying": "QQQ",
-    "strategy_type": "Vertical Spread",
+    "strategy_type": "Bear Put Spread",
     "entry_date": "2025-03-31",
     "exit_date": "2025-04-03",
     "status": "Closed",
@@ -3887,6 +3949,218 @@
     "stock_legs": [],
     "original_notes": "",
     "current_notes": "",
-    "tags": []
+    "tags": [],
+    "strategy_direction": null
+  },
+  "TSLA_20250509_1legs": {
+    "trade_id": "TSLA_20250509_1legs",
+    "underlying": "TSLA",
+    "strategy_type": "Naked Put",
+    "entry_date": "2025-05-09",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ28644",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00200000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 200.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 0.48,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075609"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": null
+  },
+  "TSLA_20250509_6legs": {
+    "trade_id": "TSLA_20250509_6legs",
+    "underlying": "TSLA",
+    "strategy_type": "Complex Strategy",
+    "entry_date": "2025-05-09",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ28644",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530P00270000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 270.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 5.86,
+        "exit_price": 1.77,
+        "transaction_ids": [
+          "362075608",
+          "362633876"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00210000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 210.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 0.61,
+        "exit_price": null,
+        "transaction_ids": [
+          "362075607"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530P00260000",
+        "underlying": "TSLA",
+        "option_type": "Put",
+        "strike": 260.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 3.9,
+        "exit_price": 1.13,
+        "transaction_ids": [
+          "362075606",
+          "362633880"
+        ]
+      },
+      {
+        "symbol": "TSLA  250530C00310000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 310.0,
+        "expiration": "2025-05-30",
+        "quantity": 1,
+        "entry_price": 22.5,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633878"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": null
+  },
+  "TSLA_20250513_1legs": {
+    "trade_id": "TSLA_20250513_1legs",
+    "underlying": "TSLA",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-13",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ28644",
+    "option_legs": [
+      {
+        "symbol": "TSLA  250530C00320000",
+        "underlying": "TSLA",
+        "option_type": "Call",
+        "strike": 320.0,
+        "expiration": "2025-05-30",
+        "quantity": -1,
+        "entry_price": 17.02,
+        "exit_price": null,
+        "transaction_ids": [
+          "362633882"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": null
+  },
+  "ARKB_20250505_1legs": {
+    "trade_id": "ARKB_20250505_1legs",
+    "underlying": "ARKB",
+    "strategy_type": "Short Stock",
+    "entry_date": "2025-05-05",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ28644",
+    "option_legs": [],
+    "stock_legs": [
+      {
+        "symbol": "ARKB",
+        "quantity": -1360,
+        "entry_price": 93.8412,
+        "exit_price": null,
+        "transaction_ids": [
+          "361070065"
+        ]
+      }
+    ],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": null
+  },
+  "PLTR_20250522_1legs": {
+    "trade_id": "PLTR_20250522_1legs",
+    "underlying": "PLTR",
+    "strategy_type": "Naked Call",
+    "entry_date": "2025-05-22",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ27378",
+    "option_legs": [
+      {
+        "symbol": "PLTR  250718C00090000",
+        "underlying": "PLTR",
+        "option_type": "Call",
+        "strike": 90.0,
+        "expiration": "2025-07-18",
+        "quantity": -1,
+        "entry_price": 37.05,
+        "exit_price": null,
+        "transaction_ids": [
+          "364514765"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": null
+  },
+  "SPX_20250505_1legs": {
+    "trade_id": "SPX_20250505_1legs",
+    "underlying": "SPX",
+    "strategy_type": "Unknown",
+    "entry_date": "2025-05-05",
+    "exit_date": null,
+    "status": "Open",
+    "account_number": "5WZ26959",
+    "option_legs": [
+      {
+        "symbol": "SPXW  250505C05685000",
+        "underlying": "SPXW",
+        "option_type": "Call",
+        "strike": 5685.0,
+        "expiration": "2025-05-05",
+        "quantity": 1,
+        "entry_price": 4.91,
+        "exit_price": null,
+        "transaction_ids": [
+          "361015606"
+        ]
+      }
+    ],
+    "stock_legs": [],
+    "original_notes": "",
+    "current_notes": "",
+    "tags": [],
+    "strategy_direction": null
   }
 }
