@@ -216,7 +216,12 @@ function tradeJournal() {
             
             this.loading = true;
             try {
-                const response = await fetch(`/api/search?q=${encodeURIComponent(this.searchTerm)}`);
+                let url = `/api/search?q=${encodeURIComponent(this.searchTerm)}`;
+                if (this.selectedAccount) {
+                    url += `&account_number=${encodeURIComponent(this.selectedAccount)}`;
+                }
+                
+                const response = await fetch(url);
                 const data = await response.json();
                 this.trades = data.results || [];
                 this.renderTrades();

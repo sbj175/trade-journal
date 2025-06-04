@@ -24,6 +24,7 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(71, 85, 105, 0.2);
         }
+        [x-cloak] { display: none !important; }
     </style>
 </head>
 <body class="min-h-screen bg-slate-900">
@@ -38,14 +39,9 @@
                             <i class="fas fa-arrow-left"></i> Back to Journal
                         </a>
                     </div>
-                    <div class="flex items-center space-x-4">
-                        <button @click="saveConfig()" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg">
-                            <i class="fas fa-save mr-2"></i>Save Changes
-                        </button>
-                        <button @click="reloadConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
-                            <i class="fas fa-sync mr-2"></i>Reload
-                        </button>
-                    </div>
+                    <button @click="reloadConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
+                        <i class="fas fa-sync mr-2"></i>Reload
+                    </button>
                 </div>
             </div>
         </nav>
@@ -95,14 +91,19 @@
                                 <th class="px-4 py-3 text-sm">Direction</th>
                                 <th class="px-4 py-3 text-sm">Legs</th>
                                 <th class="px-4 py-3 text-sm">Description</th>
-                                <th class="px-4 py-3 text-sm">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-700">
                             <template x-for="strategy in filteredStrategies" :key="strategy.key">
                                 <tr class="hover:bg-slate-800/30">
                                     <td class="px-4 py-3 font-mono text-sm" x-text="strategy.code"></td>
-                                    <td class="px-4 py-3 font-medium" x-text="strategy.name"></td>
+                                    <td class="px-4 py-3 font-medium">
+                                        <button 
+                                            @click="editStrategy(strategy)"
+                                            class="text-blue-400 hover:text-blue-300 hover:underline transition-all"
+                                            x-text="strategy.name"
+                                        ></button>
+                                    </td>
                                     <td class="px-4 py-3">
                                         <span 
                                             class="px-2 py-1 text-xs rounded"
@@ -117,14 +118,6 @@
                                     </td>
                                     <td class="px-4 py-3 text-center" x-text="strategy.legs"></td>
                                     <td class="px-4 py-3 text-sm text-slate-300" x-text="strategy.description"></td>
-                                    <td class="px-4 py-3">
-                                        <button 
-                                            @click="editStrategy(strategy)"
-                                            class="text-blue-400 hover:text-blue-300 mr-2"
-                                        >
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                    </td>
                                 </tr>
                             </template>
                         </tbody>
@@ -132,17 +125,116 @@
                 </div>
             </div>
 
-            <!-- Recognition Rules Preview -->
-            <div x-show="selectedStrategy" class="mt-8 glass rounded-xl p-6">
-                <h3 class="text-lg font-semibold mb-4">
-                    Recognition Rules for <span x-text="selectedStrategy?.name"></span>
-                </h3>
-                <pre class="bg-slate-800 rounded p-4 text-sm overflow-x-auto">
-                    <code x-text="JSON.stringify(selectedStrategy?.recognition_rules, null, 2)"></code>
-                </pre>
-            </div>
             </div> <!-- End content div -->
         </main>
+
+        <!-- Edit Strategy Modal -->
+        <div x-show="showEditModal" 
+             x-cloak
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             @click.away="closeEditModal()"
+             @keydown.escape.window="closeEditModal()"
+             class="fixed inset-0 z-50 overflow-y-auto">
+            
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-black bg-opacity-50"></div>
+            
+            <!-- Modal Content -->
+            <div class="relative min-h-screen flex items-center justify-center p-4">
+                <div class="relative glass rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+                     @click.stop>
+                    
+                    <!-- Modal Header -->
+                    <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xl font-semibold">
+                                Strategy Details: <span x-text="editingStrategy?.name"></span>
+                            </h3>
+                            <button @click="closeEditModal()" 
+                                    class="text-slate-400 hover:text-white">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Modal Body -->
+                    <div class="p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
+                        <div class="space-y-6">
+                            <!-- Basic Info -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Strategy Code</label>
+                                    <div class="w-full px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-600/50 text-slate-300"
+                                         x-text="editingStrategy.code"></div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Name</label>
+                                    <div class="w-full px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-600/50 text-slate-300"
+                                         x-text="editingStrategy.name"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Category</label>
+                                    <div class="w-full px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-600/50 text-slate-300"
+                                         x-text="categories[editingStrategy.category]?.name || editingStrategy.category"></div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Direction</label>
+                                    <div class="w-full px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-600/50">
+                                        <span class="px-2 py-1 text-xs rounded capitalize"
+                                              :class="{
+                                                  'bg-green-900/30 text-green-400': editingStrategy.direction === 'bullish',
+                                                  'bg-red-900/30 text-red-400': editingStrategy.direction === 'bearish',
+                                                  'bg-gray-900/30 text-gray-400': editingStrategy.direction === 'neutral',
+                                                  'bg-purple-900/30 text-purple-400': editingStrategy.direction === 'volatility'
+                                              }"
+                                              x-text="editingStrategy.direction"></span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Number of Legs</label>
+                                    <div class="w-full px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-600/50 text-slate-300"
+                                         x-text="editingStrategy.legs"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Description</label>
+                                <div class="w-full px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-600/50 text-slate-300"
+                                     x-text="editingStrategy.description"></div>
+                            </div>
+                            
+                            <!-- Recognition Rules -->
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Recognition Rules</label>
+                                <div class="bg-slate-800 rounded-lg p-4">
+                                    <pre class="text-sm overflow-x-auto">
+                                        <code x-text="JSON.stringify(editingStrategy?.recognition_rules || {}, null, 2)"></code>
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Modal Footer -->
+                    <div class="bg-slate-800/50 px-6 py-4 border-t border-slate-700">
+                        <div class="flex justify-end">
+                            <button @click="closeEditModal()" 
+                                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -154,6 +246,8 @@
                 selectedCategory: '',
                 selectedStrategy: null,
                 loading: true,
+                showEditModal: false,
+                editingStrategy: null,
                 
                 async init() {
                     await this.loadConfig();
@@ -195,13 +289,14 @@
                 },
                 
                 editStrategy(strategy) {
-                    this.selectedStrategy = strategy;
-                    // In a full implementation, this would open an edit modal
-                    console.log('Edit strategy:', strategy);
+                    // Show strategy details in modal
+                    this.editingStrategy = strategy;
+                    this.showEditModal = true;
                 },
                 
-                async saveConfig() {
-                    alert('Save functionality would be implemented here');
+                closeEditModal() {
+                    this.showEditModal = false;
+                    this.editingStrategy = null;
                 },
                 
                 async reloadConfig() {

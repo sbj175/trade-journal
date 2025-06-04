@@ -645,24 +645,30 @@ class DatabaseManager:
             
             return results
     
-    def search_trades(self, search_term: str) -> List[Dict[str, Any]]:
+    def search_trades(self, search_term: str, account_number: str = None) -> List[Dict[str, Any]]:
         """Search trades by various fields"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Search in multiple fields
-            query = """
+            # Build query with optional account filter
+            base_query = """
                 SELECT * FROM trades 
-                WHERE trade_id LIKE ? 
+                WHERE (trade_id LIKE ? 
                 OR underlying LIKE ? 
                 OR strategy_type LIKE ?
                 OR original_notes LIKE ?
-                OR current_notes LIKE ?
-                ORDER BY entry_date DESC
+                OR current_notes LIKE ?)
             """
             
             search_pattern = f"%{search_term}%"
             params = [search_pattern] * 5
+            
+            # Add account filter if specified
+            if account_number:
+                base_query += " AND account_number = ?"
+                params.append(account_number)
+            
+            query = base_query + " ORDER BY entry_date DESC"
             
             cursor.execute(query, params)
             

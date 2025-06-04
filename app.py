@@ -510,10 +510,10 @@ async def get_monthly_performance(year: int = None):
 
 
 @app.get("/api/search")
-async def search_trades(q: str):
+async def search_trades(q: str, account_number: Optional[str] = None):
     """Search trades by various criteria"""
     try:
-        results = db.search_trades(q)
+        results = db.search_trades(q, account_number=account_number)
         return {"results": results, "count": len(results)}
     except Exception as e:
         logger.error(f"Error searching trades: {str(e)}")

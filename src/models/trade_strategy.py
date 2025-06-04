@@ -216,6 +216,19 @@ class StrategyRecognizer:
     def group_transactions_into_trades(cls, transactions: List[Dict]) -> List[Trade]:
         """Group individual transactions into logical trades"""
         
+        # Global duplicate prevention - remove duplicate transactions by ID first
+        seen_transaction_ids = set()
+        unique_transactions = []
+        
+        for tx in transactions:
+            tx_id = str(tx.get('id', ''))
+            if tx_id and tx_id not in seen_transaction_ids:
+                seen_transaction_ids.add(tx_id)
+                unique_transactions.append(tx)
+        
+        # Use deduplicated transactions for the rest of the process
+        transactions = unique_transactions
+        
         # First, separate transactions by underlying and date
         grouped_by_underlying = {}
         
@@ -410,6 +423,11 @@ class StrategyRecognizer:
         last_date = datetime.fromisoformat(last_tx.get('executed_at', ''))
         new_date = datetime.fromisoformat(new_tx.get('executed_at', ''))
         
+        # Check for roll pattern: closing transaction followed immediately by opening transaction
+        # with different expiration (should NOT be grouped)
+        if cls._is_roll_pattern(current_group, new_tx):
+            return False
+        
         # Group if transactions are within same day or very close
         time_diff = abs((new_date - last_date).total_seconds())
         if time_diff <= 3600:  # Within 1 hour
@@ -425,6 +443,45 @@ class StrategyRecognizer:
             for tx in current_group:
                 if cls._matches_opening_transaction(tx, new_tx):
                     return True
+        
+        return False
+    
+    @classmethod
+    def _is_roll_pattern(cls, current_group: List[Dict], new_tx: Dict) -> bool:
+        """Check if this looks like a roll pattern (closing + opening different expiration)"""
+        
+        # Only check if the new transaction is an opening transaction
+        if cls._is_closing_transaction(new_tx):
+            return False
+        
+        # Check if the current group contains any closing transactions
+        has_closing = any(cls._is_closing_transaction(tx) for tx in current_group)
+        if not has_closing:
+            return False
+        
+        # Check if both are options
+        new_instrument_type = str(new_tx.get('instrument_type', ''))
+        if 'EQUITY_OPTION' not in new_instrument_type:
+            return False
+        
+        # Parse new transaction option info
+        new_option_info = cls.parse_option_symbol(new_tx.get('symbol', ''))
+        if not new_option_info:
+            return False
+        
+        # Check if any closing transaction in the group has different expiration
+        for tx in current_group:
+            if cls._is_closing_transaction(tx):
+                tx_instrument_type = str(tx.get('instrument_type', ''))
+                if 'EQUITY_OPTION' in tx_instrument_type:
+                    tx_option_info = cls.parse_option_symbol(tx.get('symbol', ''))
+                    if (tx_option_info and 
+                        tx_option_info['underlying'] == new_option_info['underlying'] and
+                        tx_option_info['option_type'] == new_option_info['option_type'] and
+                        tx_option_info['strike'] == new_option_info['strike'] and
+                        tx_option_info['expiration'] != new_option_info['expiration']):
+                        # This looks like a roll: same underlying/type/strike, different expiration
+                        return True
         
         return False
     
@@ -642,18 +699,17 @@ class StrategyRecognizer:
             if leg.is_long:
                 return StrategyType.LONG_CALL if leg.option_type == 'Call' else StrategyType.LONG_PUT
             else:
-                return StrategyType.NAKED_CALL if leg.option_type == 'Call' else StrategyType.NAKED_PUT
+                # Short single options
+                if leg.option_type == 'Call':
+                    return StrategyType.NAKED_CALL
+                else:  # Put
+                    return StrategyType.CASH_SECURED_PUT  # Prefer CSP over Naked Put
         
         # Covered call
         if (len(option_legs) == 1 and len(stock_legs) == 1 and
             option_legs[0].is_short and option_legs[0].option_type == 'Call' and
             stock_legs[0].quantity > 0):
             return StrategyType.COVERED_CALL
-        
-        # Cash-secured put
-        if (len(option_legs) == 1 and not stock_legs and
-            option_legs[0].is_short and option_legs[0].option_type == 'Put'):
-            return StrategyType.CASH_SECURED_PUT
         
         # Two-leg strategies
         if len(option_legs) == 2 and not stock_legs:
