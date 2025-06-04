@@ -118,7 +118,7 @@ class Trade:
     original_notes: str = ""  # Initial strategy/thesis
     current_notes: str = ""   # Latest analysis/plan
     tags: List[str] = field(default_factory=list)
-    strategy_direction: Optional[StrategyDirection] = None
+    strategy_direction: Optional[str] = None
     
     @property
     def days_in_trade(self) -> Optional[int]:
@@ -259,12 +259,27 @@ class StrategyRecognizer:
         1. Identifies all opening transactions first
         2. When it finds a closing transaction, looks for matching opening transactions
         3. Groups all related transactions together
+        4. Prevents orphaned closing transactions by finding their opening trades
+        5. Prevents duplicate transaction processing
         """
+        
+        # Remove duplicate transactions based on transaction ID
+        seen_transaction_ids = set()
+        unique_transactions = []
+        
+        for tx in transactions:
+            tx_id = str(tx.get('id', ''))
+            if tx_id and tx_id not in seen_transaction_ids:
+                seen_transaction_ids.add(tx_id)
+                unique_transactions.append(tx)
+        
+        # Use the deduplicated transactions
+        transactions = unique_transactions
         
         groups = []
         processed_indices = set()
         
-        # Build an index of opening transactions by option details
+        # Build an index of ALL opening transactions by option details (including already processed ones)
         opening_index = {}
         for i, tx in enumerate(transactions):
             if not cls._is_closing_transaction(tx):
@@ -279,15 +294,15 @@ class StrategyRecognizer:
                             opening_index[key] = []
                         opening_index[key].append(i)
         
+        # Track which group each transaction belongs to
+        transaction_to_group = {}
+        
         # Process transactions
         for i, tx in enumerate(transactions):
             if i in processed_indices:
                 continue
                 
-            group = [tx]
-            processed_indices.add(i)
-            
-            # If this is a closing transaction, find all related opening transactions
+            # If this is a closing transaction, try to find its opening transaction
             if cls._is_closing_transaction(tx):
                 instrument_type = str(tx.get('instrument_type', ''))
                 if 'EQUITY_OPTION' in instrument_type:
@@ -297,15 +312,31 @@ class StrategyRecognizer:
                         key = (option_info['underlying'], option_info['expiration'],
                                option_info['strike'], option_info['option_type'])
                         
-                        # Find all matching opening transactions
+                        # Find matching opening transactions (even if already processed)
+                        found_existing_group = False
                         if key in opening_index:
                             for opening_idx in opening_index[key]:
-                                if opening_idx not in processed_indices:
-                                    group.append(transactions[opening_idx])
+                                # Check if this opening transaction is already in a group
+                                if opening_idx in transaction_to_group:
+                                    # Add this closing transaction to the existing group
+                                    existing_group_idx = transaction_to_group[opening_idx]
+                                    groups[existing_group_idx].append(tx)
+                                    transaction_to_group[i] = existing_group_idx
+                                    processed_indices.add(i)
+                                    found_existing_group = True
+                                    break
+                                elif opening_idx not in processed_indices:
+                                    # Create new group with opening and closing transactions
+                                    group = [tx, transactions[opening_idx]]
+                                    processed_indices.add(i)
                                     processed_indices.add(opening_idx)
                                     
-                                    # Also include any other options opened on the same day
-                                    # (for multi-leg strategies)
+                                    # Track group membership
+                                    group_idx = len(groups)
+                                    transaction_to_group[i] = group_idx
+                                    transaction_to_group[opening_idx] = group_idx
+                                    
+                                    # Include other options opened on the same day (for multi-leg strategies)
                                     opening_tx = transactions[opening_idx]
                                     opening_date = cls._get_transaction_date(opening_tx)
                                     
@@ -322,9 +353,28 @@ class StrategyRecognizer:
                                                     other_info['expiration'] == option_info['expiration']):
                                                     group.append(other_tx)
                                                     processed_indices.add(j)
+                                                    transaction_to_group[j] = group_idx
+                                    
+                                    # Sort group by date and add to groups
+                                    group.sort(key=lambda x: x.get('executed_at', ''))
+                                    groups.append(group)
+                                    found_existing_group = True
+                                    break
+                        
+                        # If no matching opening transaction found, this is likely an orphaned closing transaction
+                        # Skip it to prevent creating single-leg trades
+                        if not found_existing_group:
+                            processed_indices.add(i)
+                            continue
             
-            # If this is an opening transaction, check for same-day related transactions
-            else:
+            # If this is an opening transaction and not yet processed
+            elif i not in processed_indices:
+                group = [tx]
+                processed_indices.add(i)
+                group_idx = len(groups)
+                transaction_to_group[i] = group_idx
+                
+                # Check for same-day related transactions
                 tx_date = cls._get_transaction_date(tx)
                 for j in range(i + 1, len(transactions)):
                     if j not in processed_indices:
@@ -332,17 +382,18 @@ class StrategyRecognizer:
                         if cls._should_group_transactions(group, other_tx):
                             group.append(other_tx)
                             processed_indices.add(j)
-            
-            # Sort group by date
-            group.sort(key=lambda x: x.get('executed_at', ''))
-            groups.append(group)
+                            transaction_to_group[j] = group_idx
+                
+                # Sort group by date and add to groups
+                group.sort(key=lambda x: x.get('executed_at', ''))
+                groups.append(group)
         
         return groups
     
     @classmethod
     def _get_transaction_date(cls, transaction: Dict) -> date:
         """Get the date of a transaction with timezone handling"""
-        et_tz = pytz.timezone('US/Eastern')
+        et_tz = pytz.timezone('America/New_York')
         executed_at = transaction.get('executed_at', '')
         if executed_at:
             dt = datetime.fromisoformat(executed_at.replace('Z', '+00:00'))
@@ -403,7 +454,7 @@ class StrategyRecognizer:
         # Generate trade ID with timezone handling
         first_tx = transactions[0]
         # Convert to Eastern time for consistent date representation
-        et_tz = pytz.timezone('US/Eastern')
+        et_tz = pytz.timezone('America/New_York')
         executed_at = first_tx.get('executed_at', '')
         # Parse the timestamp and convert to Eastern time
         if executed_at:
@@ -437,13 +488,14 @@ class StrategyRecognizer:
         
         # Recognize the strategy
         trade.strategy_type = cls._recognize_strategy(trade)
-        trade.strategy_direction = cls._determine_strategy_direction(trade)
+        direction = cls._determine_strategy_direction(trade)
+        trade.strategy_direction = direction.value if direction else None
         
         # Determine if trade is closed and find the latest closing date
         if cls._is_trade_closed(trade):
             trade.status = TradeStatus.CLOSED
             # Find the latest closing transaction date with timezone handling
-            et_tz = pytz.timezone('US/Eastern')
+            et_tz = pytz.timezone('America/New_York')
             latest_date = None
             for tx in transactions:
                 if cls._is_closing_transaction(tx):
