@@ -90,6 +90,8 @@ class DatabaseManager:
                     entry_price REAL NOT NULL,
                     exit_price REAL,
                     transaction_ids TEXT,
+                    transaction_actions TEXT,
+                    transaction_timestamps TEXT,
                     FOREIGN KEY (trade_id) REFERENCES trades(trade_id)
                 )
             """)
@@ -104,6 +106,8 @@ class DatabaseManager:
                     entry_price REAL NOT NULL,
                     exit_price REAL,
                     transaction_ids TEXT,
+                    transaction_actions TEXT,
+                    transaction_timestamps TEXT,
                     FOREIGN KEY (trade_id) REFERENCES trades(trade_id)
                 )
             """)
@@ -152,7 +156,44 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_number)")
             
+            # Add transaction action and timestamp columns if they don't exist
+            self._add_transaction_columns()
+            
             logger.info("Database initialized successfully")
+    
+    def _add_transaction_columns(self):
+        """Add transaction action and timestamp columns to existing tables"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if columns exist and add them if they don't
+            try:
+                # Check option_legs table
+                cursor.execute("PRAGMA table_info(option_legs)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'transaction_actions' not in columns:
+                    cursor.execute("ALTER TABLE option_legs ADD COLUMN transaction_actions TEXT")
+                    logger.info("Added transaction_actions column to option_legs")
+                    
+                if 'transaction_timestamps' not in columns:
+                    cursor.execute("ALTER TABLE option_legs ADD COLUMN transaction_timestamps TEXT")
+                    logger.info("Added transaction_timestamps column to option_legs")
+                
+                # Check stock_legs table
+                cursor.execute("PRAGMA table_info(stock_legs)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'transaction_actions' not in columns:
+                    cursor.execute("ALTER TABLE stock_legs ADD COLUMN transaction_actions TEXT")
+                    logger.info("Added transaction_actions column to stock_legs")
+                    
+                if 'transaction_timestamps' not in columns:
+                    cursor.execute("ALTER TABLE stock_legs ADD COLUMN transaction_timestamps TEXT")
+                    logger.info("Added transaction_timestamps column to stock_legs")
+                    
+            except Exception as e:
+                logger.error(f"Error adding transaction columns: {e}")
     
     def save_account(self, account_number: str, account_name: str = None, account_type: str = None) -> bool:
         """Save account information"""
@@ -259,8 +300,9 @@ class DatabaseManager:
                     cursor.execute("""
                         INSERT INTO option_legs (
                             trade_id, symbol, underlying, option_type, strike,
-                            expiration, quantity, entry_price, exit_price, transaction_ids
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            expiration, quantity, entry_price, exit_price, transaction_ids,
+                            transaction_actions, transaction_timestamps
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         trade.trade_id,
                         leg.symbol,
@@ -271,7 +313,9 @@ class DatabaseManager:
                         leg.quantity,
                         leg.entry_price,
                         leg.exit_price,
-                        json.dumps(leg.transaction_ids)
+                        json.dumps(leg.transaction_ids),
+                        json.dumps(leg.transaction_actions),
+                        json.dumps(leg.transaction_timestamps)
                     ))
                 
                 # Save stock legs
@@ -280,15 +324,17 @@ class DatabaseManager:
                     cursor.execute("""
                         INSERT INTO stock_legs (
                             trade_id, symbol, quantity, entry_price,
-                            exit_price, transaction_ids
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                            exit_price, transaction_ids, transaction_actions, transaction_timestamps
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         trade.trade_id,
                         leg.symbol,
                         leg.quantity,
                         leg.entry_price,
                         leg.exit_price,
-                        json.dumps(leg.transaction_ids)
+                        json.dumps(leg.transaction_ids),
+                        json.dumps(leg.transaction_actions),
+                        json.dumps(leg.transaction_timestamps)
                     ))
                 
                 return True
@@ -362,11 +408,29 @@ class DatabaseManager:
             
             # Get option legs
             cursor.execute("SELECT * FROM option_legs WHERE trade_id = ?", (trade_id,))
-            trade['option_legs'] = [dict(row) for row in cursor.fetchall()]
+            option_legs = []
+            for row in cursor.fetchall():
+                leg = dict(row)
+                # Parse JSON fields
+                if leg.get('transaction_actions'):
+                    leg['transaction_actions'] = json.loads(leg['transaction_actions'])
+                if leg.get('transaction_timestamps'):
+                    leg['transaction_timestamps'] = json.loads(leg['transaction_timestamps'])
+                option_legs.append(leg)
+            trade['option_legs'] = option_legs
             
             # Get stock legs
             cursor.execute("SELECT * FROM stock_legs WHERE trade_id = ?", (trade_id,))
-            trade['stock_legs'] = [dict(row) for row in cursor.fetchall()]
+            stock_legs = []
+            for row in cursor.fetchall():
+                leg = dict(row)
+                # Parse JSON fields
+                if leg.get('transaction_actions'):
+                    leg['transaction_actions'] = json.loads(leg['transaction_actions'])
+                if leg.get('transaction_timestamps'):
+                    leg['transaction_timestamps'] = json.loads(leg['transaction_timestamps'])
+                stock_legs.append(leg)
+            trade['stock_legs'] = stock_legs
             
             return trade
     

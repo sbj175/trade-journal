@@ -79,6 +79,8 @@ class OptionLeg:
     entry_price: float
     exit_price: Optional[float] = None
     transaction_ids: List[str] = field(default_factory=list)
+    transaction_actions: List[str] = field(default_factory=list)
+    transaction_timestamps: List[str] = field(default_factory=list)
     
     @property
     def is_long(self) -> bool:
@@ -97,6 +99,8 @@ class StockLeg:
     entry_price: float
     exit_price: Optional[float] = None
     transaction_ids: List[str] = field(default_factory=list)
+    transaction_actions: List[str] = field(default_factory=list)
+    transaction_timestamps: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -489,8 +493,17 @@ class StrategyRecognizer:
             # This is a closing transaction - update the existing leg
             existing_leg.exit_price = entry_price
             existing_leg.transaction_ids.append(str(transaction.get('id', '')))
+            
+            # Normalize and add action (avoid duplicates)
+            normalized_action = cls._normalize_action(action_str, transaction)
+            if normalized_action not in existing_leg.transaction_actions:
+                existing_leg.transaction_actions.append(normalized_action)
+            
+            if transaction.get('executed_at'):
+                existing_leg.transaction_timestamps.append(transaction.get('executed_at'))
         else:
             # This is an opening transaction - create new leg
+            normalized_action = cls._normalize_action(action_str, transaction)
             leg = OptionLeg(
                 symbol=symbol,
                 underlying=option_info['underlying'],
@@ -499,7 +512,9 @@ class StrategyRecognizer:
                 expiration=option_info['expiration'],
                 quantity=quantity,
                 entry_price=entry_price,
-                transaction_ids=[str(transaction.get('id', ''))]
+                transaction_ids=[str(transaction.get('id', ''))],
+                transaction_actions=[normalized_action],
+                transaction_timestamps=[transaction.get('executed_at')] if transaction.get('executed_at') else []
             )
             
             trade.option_legs.append(leg)
@@ -530,13 +545,24 @@ class StrategyRecognizer:
             # This is a closing transaction - update the existing leg
             existing_leg.exit_price = entry_price
             existing_leg.transaction_ids.append(str(transaction.get('id', '')))
+            
+            # Normalize and add action (avoid duplicates)
+            normalized_action = cls._normalize_action(action_str, transaction)
+            if normalized_action not in existing_leg.transaction_actions:
+                existing_leg.transaction_actions.append(normalized_action)
+            
+            if transaction.get('executed_at'):
+                existing_leg.transaction_timestamps.append(transaction.get('executed_at'))
         else:
             # This is an opening transaction - create new leg
+            normalized_action = cls._normalize_action(action_str, transaction)
             leg = StockLeg(
                 symbol=transaction.get('symbol', ''),
                 quantity=quantity,
                 entry_price=entry_price,
-                transaction_ids=[str(transaction.get('id', ''))]
+                transaction_ids=[str(transaction.get('id', ''))],
+                transaction_actions=[normalized_action],
+                transaction_timestamps=[transaction.get('executed_at')] if transaction.get('executed_at') else []
             )
             
             trade.stock_legs.append(leg)
@@ -770,6 +796,82 @@ class StrategyRecognizer:
         return StrategyDirection.NEUTRAL
     
     @classmethod
+    def _normalize_action(cls, action_str: str, transaction: Dict = None) -> str:
+        """Normalize transaction action to clean format"""
+        if not action_str or action_str == 'None':
+            # Check if this is an assignment/expiration based on other fields
+            if transaction:
+                description = str(transaction.get('description', '')).upper()
+                sub_type = str(transaction.get('transaction_sub_type', '')).upper()
+                
+                # Check for specific assignment/expiration indicators
+                if any(indicator in description for indicator in ['CASH SETTLEMENT', 'CASH SETTLED']):
+                    return 'CASH_SETTLED'
+                elif any(indicator in description for indicator in ['REMOVAL OF OPTION DUE TO EXERCISE', 'REMOVAL OF OPTION']):
+                    return 'EXERCISED'
+                elif any(indicator in description for indicator in ['ASSIGNMENT', 'ASSIGNED']):
+                    return 'ASSIGNED'
+                elif any(indicator in description for indicator in ['EXPIRATION', 'EXPIRED']):
+                    return 'EXPIRED'
+                elif any(indicator in description for indicator in ['EXERCISE', 'EXERCISED']):
+                    return 'EXERCISED'
+                elif any(indicator in description for indicator in ['RECEIVE_DELIVER', 'RECEIVE DELIVER']):
+                    return 'ASSIGNED/EXPIRED'
+                
+                # Check transaction_sub_type  
+                if any(indicator in sub_type for indicator in ['CASH SETTLEMENT', 'CASH SETTLED']):
+                    return 'CASH_SETTLED'
+                elif any(indicator in sub_type for indicator in ['ASSIGNMENT', 'ASSIGNED']):
+                    return 'ASSIGNED'
+                elif any(indicator in sub_type for indicator in ['EXPIRATION', 'EXPIRED']):
+                    return 'EXPIRED'
+                elif any(indicator in sub_type for indicator in ['EXERCISE', 'EXERCISED']):
+                    return 'EXERCISED'
+                
+                # Check if the price is 0 or equals strike price (strong indicator of assignment/expiration)
+                price = transaction.get('price')
+                if price is not None:
+                    try:
+                        price_float = float(price)
+                        if price_float == 0:
+                            return 'EXERCISED'  # Zero price usually means removal/exercise
+                        elif price_float > 1000 and 'SPX' in str(transaction.get('symbol', '')):  # SPX strikes are high
+                            return 'CASH_SETTLED'  # High price likely cash settlement value
+                    except (ValueError, TypeError):
+                        pass
+            
+            return 'UNKNOWN'
+        
+        action = str(action_str).upper()
+        
+        # Handle specific patterns
+        if 'CASH SETTLEMENT' in action or 'CASH SETTLED' in action:
+            return 'CASH_SETTLED'
+        elif 'REMOVAL OF OPTION' in action:
+            return 'EXERCISED'
+        elif 'RECEIVE_DELIVER' in action or 'RECEIVE DELIVER' in action:
+            return 'ASSIGNED/EXPIRED'
+        elif 'EXERCISE' in action or 'EXERCISED' in action:
+            return 'EXERCISED'
+        elif 'ASSIGNMENT' in action or 'ASSIGNED' in action:
+            return 'ASSIGNED'
+        elif 'EXPIRATION' in action or 'EXPIRED' in action:
+            return 'EXPIRED'
+        elif 'BUY_TO_OPEN' in action or 'BTO' in action:
+            return 'BTO'
+        elif 'BUY_TO_CLOSE' in action or 'BTC' in action:
+            return 'BTC'
+        elif 'SELL_TO_OPEN' in action or 'STO' in action:
+            return 'STO'
+        elif 'SELL_TO_CLOSE' in action or 'STC' in action:
+            return 'STC'
+        elif 'ORDERACTION.' in action:
+            # Handle OrderAction.BUY_TO_OPEN format
+            return action.split('.')[-1].replace('_', '').replace('TO', '_TO_')
+        
+        return action
+    
+    @classmethod
     def _is_closing_transaction(cls, transaction: Dict) -> bool:
         """Check if a transaction is a closing transaction based on indicators"""
         
@@ -781,7 +883,19 @@ class StrategyRecognizer:
             'SOLD TO CLOSE',
             'SOLD TO COVER',
             'STC',
-            'CLOSE'
+            'CLOSE',
+            'RECEIVE_DELIVER',
+            'RECEIVE DELIVER',
+            'ASSIGNED',
+            'ASSIGNMENT',
+            'CASH SETTLED ASSIGNMENT',
+            'CASH SETTLEMENT',
+            'REMOVAL OF OPTION DUE TO EXERCISE',
+            'REMOVAL OF OPTION',
+            'EXERCISE',
+            'EXERCISED',
+            'EXPIRED',
+            'EXPIRATION'
         ]
         
         for indicator in closing_indicators:
@@ -797,6 +911,31 @@ class StrategyRecognizer:
         action = str(transaction.get('action', '')).upper()
         if 'CLOSE' in action:
             return True
+        
+        # Enhanced detection for assignment/expiration transactions
+        # Use the same logic as _normalize_action for consistency
+        if not transaction.get('action') or transaction.get('action') == 'None':
+            # Check for assignment/expiration based on price patterns
+            price = transaction.get('price')
+            if price is not None:
+                try:
+                    price_float = float(price)
+                    # Zero price or strike-like price (for SPX) indicates assignment/expiration
+                    if price_float == 0 or (price_float > 1000 and 'SPX' in str(transaction.get('symbol', ''))):
+                        return True
+                except (ValueError, TypeError):
+                    pass
+            
+            # Check sub_type and description for assignment indicators
+            assignment_indicators = [
+                'RECEIVE_DELIVER', 'RECEIVE DELIVER', 'ASSIGNED', 'ASSIGNMENT',
+                'CASH SETTLED ASSIGNMENT', 'CASH SETTLEMENT', 'REMOVAL OF OPTION DUE TO EXERCISE',
+                'REMOVAL OF OPTION', 'EXERCISE', 'EXERCISED', 'EXPIRED', 'EXPIRATION'
+            ]
+            if any(indicator in description for indicator in assignment_indicators):
+                return True
+            if any(indicator in sub_type for indicator in assignment_indicators):
+                return True
         
         return False
     

@@ -39,9 +39,10 @@ function tradeJournal() {
         editModalOpen: false,
         editingTrade: null,
         
-        // Charts
-        pnlChart: null,
-        strategyChart: null,
+        // Trade details modal state
+        tradeDetailsModalOpen: false,
+        loadingTradeDetails: false,
+        tradeDetails: null,
         
         // Initialize
         async init() {
@@ -49,7 +50,6 @@ function tradeJournal() {
             await this.loadAccounts();
             await this.loadDashboard();
             await this.loadTrades();
-            this.initCharts();
         },
         
         // Load accounts
@@ -113,7 +113,6 @@ function tradeJournal() {
                 const response = await fetch(url);
                 const data = await response.json();
                 this.dashboard = data;
-                this.updateCharts();
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             }
@@ -164,7 +163,9 @@ function tradeJournal() {
                 
                 row.innerHTML = `
                     <td class="px-6 py-4 text-sm font-mono">
-                        <span class="text-blue-400">${trade.trade_id}</span>
+                        <button data-trade-id="${trade.trade_id}" class="view-trade-btn text-blue-400 hover:text-blue-300 hover:underline cursor-pointer" title="View Trade Details">
+                            ${trade.trade_id}
+                        </button>
                     </td>
                     <td class="px-6 py-4 text-sm font-semibold">${trade.underlying}</td>
                     <td class="px-6 py-4 text-sm">
@@ -190,11 +191,18 @@ function tradeJournal() {
                 tbody.appendChild(row);
             });
             
-            // Add click handlers for edit buttons
+            // Add click handlers for buttons
             document.querySelectorAll('.edit-trade-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const tradeId = e.currentTarget.dataset.tradeId;
                     this.openEditModal(tradeId);
+                });
+            });
+            
+            document.querySelectorAll('.view-trade-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const tradeId = e.currentTarget.dataset.tradeId;
+                    this.openTradeDetailsModal(tradeId);
                 });
             });
         },
@@ -405,117 +413,47 @@ function tradeJournal() {
             }
         },
         
-        // Initialize charts
-        initCharts() {
-            // P&L Chart
-            const pnlCtx = document.getElementById('pnlChart')?.getContext('2d');
-            if (pnlCtx) {
-                this.pnlChart = new Chart(pnlCtx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Monthly P&L',
-                            data: [],
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                grid: {
-                                    color: 'rgba(71, 85, 105, 0.3)'
-                                },
-                                ticks: {
-                                    color: '#cbd5e1',
-                                    callback: function(value) {
-                                        return '$' + value.toLocaleString();
-                                    }
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    color: 'rgba(71, 85, 105, 0.3)'
-                                },
-                                ticks: {
-                                    color: '#cbd5e1'
-                                }
-                            }
-                        }
-                    }
-                });
-            }
+        // Open trade details modal
+        async openTradeDetailsModal(tradeId) {
+            console.log('Opening trade details for:', tradeId);
+            this.tradeDetailsModalOpen = true;
+            this.loadingTradeDetails = true;
+            this.tradeDetails = null;
             
-            // Strategy Chart
-            const strategyCtx = document.getElementById('strategyChart')?.getContext('2d');
-            if (strategyCtx) {
-                this.strategyChart = new Chart(strategyCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            data: [],
-                            backgroundColor: [
-                                '#3b82f6',
-                                '#8b5cf6',
-                                '#10b981',
-                                '#f59e0b',
-                                '#ef4444'
-                            ]
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: {
-                                    color: '#cbd5e1',
-                                    padding: 20
-                                }
-                            }
-                        }
-                    }
-                });
+            // Show modal
+            document.getElementById('tradeDetailsModal').classList.remove('hidden');
+            
+            try {
+                const response = await fetch(`/api/trades/${tradeId}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch trade details: ${response.statusText}`);
+                }
+                
+                this.tradeDetails = await response.json();
+                
+                // Sort option legs by strike price (ascending)
+                if (this.tradeDetails.option_legs) {
+                    this.tradeDetails.option_legs.sort((a, b) => a.strike - b.strike);
+                }
+                
+                console.log('Loaded trade details:', this.tradeDetails);
+                
+            } catch (error) {
+                console.error('Error loading trade details:', error);
+                alert('Failed to load trade details: ' + error.message);
+                this.closeTradeDetailsModal();
+            } finally {
+                this.loadingTradeDetails = false;
             }
         },
         
-        // Update charts with data
-        async updateCharts() {
-            // Update P&L chart
-            try {
-                const response = await fetch('/api/performance/monthly');
-                const data = await response.json();
-                
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                
-                if (this.pnlChart && data.months) {
-                    this.pnlChart.data.labels = data.months.map(m => months[parseInt(m.month) - 1]);
-                    this.pnlChart.data.datasets[0].data = data.months.map(m => m.total_pnl || 0);
-                    this.pnlChart.update();
-                }
-            } catch (error) {
-                console.error('Error updating P&L chart:', error);
-            }
-            
-            // Update strategy chart
-            if (this.strategyChart && this.dashboard.strategy_breakdown) {
-                this.strategyChart.data.labels = this.dashboard.strategy_breakdown.map(s => s.strategy_type);
-                this.strategyChart.data.datasets[0].data = this.dashboard.strategy_breakdown.map(s => s.count);
-                this.strategyChart.update();
-            }
+        // Close trade details modal
+        closeTradeDetailsModal() {
+            console.log('Closing trade details modal...');
+            this.tradeDetailsModalOpen = false;
+            this.tradeDetails = null;
+            this.loadingTradeDetails = false;
+            document.getElementById('tradeDetailsModal').classList.add('hidden');
         }
     };
 }

@@ -362,6 +362,23 @@ async def initial_sync():
     try:
         logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
         
+        # Preserve user data before clearing database
+        logger.info("Preserving user comments and tags...")
+        user_data = {}
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            # Save user comments and tags for existing trades
+            cursor.execute("SELECT trade_id, current_notes, tags FROM trades WHERE current_notes IS NOT NULL OR tags IS NOT NULL")
+            for row in cursor.fetchall():
+                trade_id, notes, tags = row
+                if notes or tags:
+                    user_data[trade_id] = {
+                        'current_notes': notes,
+                        'tags': tags
+                    }
+        
+        logger.info(f"Preserved user data for {len(user_data)} trades")
+        
         # Clear the database
         logger.info("Clearing existing database...")
         with db.get_connection() as conn:
@@ -419,6 +436,25 @@ async def initial_sync():
                 logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
         
         logger.info(f"Saved {saved_count} trades, {failed_count} failed")
+        
+        # Restore user comments and tags
+        logger.info("Restoring user comments and tags...")
+        restored_count = 0
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            for trade_id, data in user_data.items():
+                try:
+                    cursor.execute("""
+                        UPDATE trades 
+                        SET current_notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE trade_id = ?
+                    """, (data['current_notes'], data['tags'], trade_id))
+                    if cursor.rowcount > 0:
+                        restored_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to restore user data for trade {trade_id}: {str(e)}")
+        
+        logger.info(f"Restored user data for {restored_count} trades")
         
         # Fetch and save current positions for all accounts
         logger.info("Fetching current positions from all accounts...")

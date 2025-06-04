@@ -14,9 +14,6 @@
     <!-- Alpine.js for interactivity -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
-    <!-- Chart.js for beautiful charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -80,7 +77,7 @@
     </style>
 </head>
 <body class="min-h-screen bg-slate-900">
-    <div x-data="tradeJournal()" x-init="init()" @keydown.escape.window="closeEditModal()">
+    <div x-data="tradeJournal()" x-init="init()" @keydown.escape.window="closeEditModal(); closeTradeDetailsModal()">
         <!-- Navigation -->
         <nav class="glass sticky top-0 z-50 border-b border-slate-700">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -213,24 +210,6 @@
                 </div>
             </div>
             
-            <!-- Charts Section -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <!-- P&L Chart -->
-                <div class="glass rounded-xl p-6">
-                    <h3 class="text-xl font-semibold mb-4">Monthly P&L</h3>
-                    <div style="height: 256px;">
-                        <canvas id="pnlChart"></canvas>
-                    </div>
-                </div>
-                
-                <!-- Strategy Breakdown -->
-                <div class="glass rounded-xl p-6">
-                    <h3 class="text-xl font-semibold mb-4">Strategy Performance</h3>
-                    <div style="height: 256px;">
-                        <canvas id="strategyChart"></canvas>
-                    </div>
-                </div>
-            </div>
             
             <!-- Search and Filters -->
             <div class="glass rounded-xl p-6 mb-6">
@@ -324,6 +303,205 @@
             </div>
         </main>
         
+        <!-- Trade Details Modal -->
+        <div id="tradeDetailsModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <!-- Background overlay -->
+                <div class="fixed inset-0 transition-opacity" aria-hidden="true" @click="closeTradeDetailsModal()">
+                    <div class="absolute inset-0 bg-gray-900 opacity-75"></div>
+                </div>
+
+                <!-- Modal panel -->
+                <div class="inline-block align-bottom bg-slate-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full sm:p-6">
+                    <div>
+                        <h3 class="text-lg leading-6 font-medium text-white mb-4">
+                            Trade Details
+                        </h3>
+                        
+                        <!-- Loading state -->
+                        <div x-show="loadingTradeDetails" class="text-center py-8">
+                            <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
+                            <p class="mt-4 text-slate-400">Loading trade details...</p>
+                        </div>
+                        
+                        <!-- Trade Details Content -->
+                        <div x-show="!loadingTradeDetails && tradeDetails" class="space-y-6">
+                            <!-- Trade Summary -->
+                            <div class="bg-slate-700 rounded-lg p-4">
+                                <h4 class="text-md font-semibold text-white mb-3">Trade Summary</h4>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                        <span class="text-slate-400">Trade ID:</span>
+                                        <span class="block font-mono text-blue-400" x-text="tradeDetails?.trade_id"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Underlying:</span>
+                                        <span class="block font-semibold" x-text="tradeDetails?.underlying"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Strategy:</span>
+                                        <span class="block text-purple-400" x-text="tradeDetails?.strategy_type"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Status:</span>
+                                        <span class="block" x-text="tradeDetails?.status"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Entry Date:</span>
+                                        <span class="block" x-text="formatDate(tradeDetails?.entry_date)"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Exit Date:</span>
+                                        <span class="block" x-text="tradeDetails?.exit_date ? formatDate(tradeDetails.exit_date) : 'N/A'"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">P&L:</span>
+                                        <span class="block font-semibold" 
+                                              :class="(tradeDetails?.current_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                              x-text="'$' + formatNumber(tradeDetails?.current_pnl || 0)"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Max Risk:</span>
+                                        <span class="block" x-text="'$' + formatNumber(tradeDetails?.max_risk || 0)"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Option Legs -->
+                            <div x-show="tradeDetails?.option_legs && tradeDetails.option_legs.length > 0">
+                                <h4 class="text-md font-semibold text-white mb-3">Option Legs</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full bg-slate-700 rounded-lg">
+                                        <thead class="bg-slate-800">
+                                            <tr class="text-left">
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Symbol</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Actions</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Type</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Strike</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Expiration</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Qty</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Entry Price</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Exit Price</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Position</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Timestamps</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-600">
+                                            <template x-for="leg in tradeDetails?.option_legs || []" :key="leg.id">
+                                                <tr class="text-sm">
+                                                    <td class="px-3 py-2 font-mono text-blue-400" x-text="leg.symbol"></td>
+                                                    <td class="px-3 py-2 text-xs">
+                                                        <div x-show="leg.transaction_actions && leg.transaction_actions.length > 0">
+                                                            <template x-for="(action, index) in leg.transaction_actions" :key="index">
+                                                                <div class="mb-1">
+                                                                    <span class="px-1 py-0.5 bg-blue-900/30 text-blue-400 rounded text-xs" x-text="action"></span>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                        <span x-show="!leg.transaction_actions || leg.transaction_actions.length === 0" class="text-slate-500">N/A</span>
+                                                    </td>
+                                                    <td class="px-3 py-2" x-text="leg.option_type"></td>
+                                                    <td class="px-3 py-2" x-text="'$' + leg.strike"></td>
+                                                    <td class="px-3 py-2" x-text="formatDate(leg.expiration)"></td>
+                                                    <td class="px-3 py-2 text-center" x-text="Math.abs(leg.quantity)"></td>
+                                                    <td class="px-3 py-2" x-text="'$' + leg.entry_price?.toFixed(2)"></td>
+                                                    <td class="px-3 py-2" x-text="leg.exit_price ? '$' + leg.exit_price.toFixed(2) : 'N/A'"></td>
+                                                    <td class="px-3 py-2">
+                                                        <span class="px-2 py-1 text-xs rounded"
+                                                              :class="leg.quantity > 0 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
+                                                              x-text="leg.quantity > 0 ? 'Long' : 'Short'"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2 text-xs">
+                                                        <div x-show="leg.transaction_timestamps && leg.transaction_timestamps.length > 0">
+                                                            <template x-for="(timestamp, index) in leg.transaction_timestamps" :key="index">
+                                                                <div class="mb-1 text-slate-400" x-text="new Date(timestamp).toLocaleString()"></div>
+                                                            </template>
+                                                        </div>
+                                                        <span x-show="!leg.transaction_timestamps || leg.transaction_timestamps.length === 0" class="text-slate-500">N/A</span>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Stock Legs -->
+                            <div x-show="tradeDetails?.stock_legs && tradeDetails.stock_legs.length > 0">
+                                <h4 class="text-md font-semibold text-white mb-3">Stock Legs</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full bg-slate-700 rounded-lg">
+                                        <thead class="bg-slate-800">
+                                            <tr class="text-left">
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Symbol</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Actions</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Quantity</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Entry Price</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Exit Price</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Position</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Timestamps</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-600">
+                                            <template x-for="leg in tradeDetails?.stock_legs || []" :key="leg.id">
+                                                <tr class="text-sm">
+                                                    <td class="px-3 py-2 font-mono text-blue-400" x-text="leg.symbol"></td>
+                                                    <td class="px-3 py-2 text-xs">
+                                                        <div x-show="leg.transaction_actions && leg.transaction_actions.length > 0">
+                                                            <template x-for="(action, index) in leg.transaction_actions" :key="index">
+                                                                <div class="mb-1">
+                                                                    <span class="px-1 py-0.5 bg-blue-900/30 text-blue-400 rounded text-xs" x-text="action"></span>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                        <span x-show="!leg.transaction_actions || leg.transaction_actions.length === 0" class="text-slate-500">N/A</span>
+                                                    </td>
+                                                    <td class="px-3 py-2 text-center" x-text="Math.abs(leg.quantity)"></td>
+                                                    <td class="px-3 py-2" x-text="'$' + leg.entry_price?.toFixed(2)"></td>
+                                                    <td class="px-3 py-2" x-text="leg.exit_price ? '$' + leg.exit_price.toFixed(2) : 'N/A'"></td>
+                                                    <td class="px-3 py-2">
+                                                        <span class="px-2 py-1 text-xs rounded"
+                                                              :class="leg.quantity > 0 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
+                                                              x-text="leg.quantity > 0 ? 'Long' : 'Short'"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2 text-xs">
+                                                        <div x-show="leg.transaction_timestamps && leg.transaction_timestamps.length > 0">
+                                                            <template x-for="(timestamp, index) in leg.transaction_timestamps" :key="index">
+                                                                <div class="mb-1 text-slate-400" x-text="new Date(timestamp).toLocaleString()"></div>
+                                                            </template>
+                                                        </div>
+                                                        <span x-show="!leg.transaction_timestamps || leg.transaction_timestamps.length === 0" class="text-slate-500">N/A</span>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Notes -->
+                            <div x-show="tradeDetails?.current_notes">
+                                <h4 class="text-md font-semibold text-white mb-3">Notes</h4>
+                                <div class="bg-slate-700 rounded-lg p-4">
+                                    <p class="text-sm text-slate-300" x-text="tradeDetails?.current_notes"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-5 sm:mt-6">
+                        <button 
+                            type="button" 
+                            @click="closeTradeDetailsModal()"
+                            class="w-full inline-flex justify-center rounded-md border border-slate-600 shadow-sm px-4 py-2 bg-slate-700 text-base font-medium text-white hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 sm:text-sm"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Edit Trade Modal -->
         <div id="editModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
