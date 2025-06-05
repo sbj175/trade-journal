@@ -213,6 +213,34 @@ class StrategyRecognizer:
         }
     
     @classmethod
+    def get_stock_positions(cls, transactions: List[Dict]) -> Dict[str, int]:
+        """
+        Calculate cumulative stock positions from transactions
+        
+        Returns:
+            Dict of symbol -> share count
+        """
+        positions = {}
+        
+        # Sort by date to process in order
+        sorted_txs = sorted(transactions, key=lambda x: x.get('executed_at', ''))
+        
+        for tx in sorted_txs:
+            if str(tx.get('instrument_type', '')).upper() == 'EQUITY':
+                symbol = tx.get('symbol', '')
+                quantity = tx.get('quantity', 0)
+                
+                # Handle sell transactions
+                if 'SELL' in tx.get('action', ''):
+                    quantity = -quantity
+                
+                if symbol not in positions:
+                    positions[symbol] = 0
+                positions[symbol] += quantity
+        
+        return positions
+    
+    @classmethod
     def group_transactions_into_trades(cls, transactions: List[Dict]) -> List[Trade]:
         """Group individual transactions into logical trades"""
         
@@ -228,6 +256,9 @@ class StrategyRecognizer:
         
         # Use deduplicated transactions for the rest of the process
         transactions = unique_transactions
+        
+        # Calculate stock positions first (for covered call recognition)
+        stock_positions = cls.get_stock_positions(transactions)
         
         # First, separate transactions by underlying and date
         grouped_by_underlying = {}
@@ -258,7 +289,7 @@ class StrategyRecognizer:
             
             # Convert each group to a Trade object
             for group in trade_groups:
-                trade = cls._create_trade_from_transactions(underlying, group)
+                trade = cls._create_trade_from_transactions(underlying, group, stock_positions)
                 if trade:
                     trades.append(trade)
         
@@ -428,9 +459,32 @@ class StrategyRecognizer:
         if cls._is_roll_pattern(current_group, new_tx):
             return False
         
+        # Special handling for covered calls: Don't group stock with unrelated options
+        if cls._is_covered_call_candidate(current_group, new_tx):
+            # Only group if the option is a short call on the same underlying
+            # and happens reasonably close in time (within 30 days)
+            time_diff_days = abs((new_date - last_date).days)
+            if time_diff_days <= 30:
+                return True
+            else:
+                return False
+        
         # Group if transactions are within same day or very close
         time_diff = abs((new_date - last_date).total_seconds())
+        # Don't group if it's just time-based and involves mixing stock and options
+        # (unless it's a covered call candidate)
         if time_diff <= 3600:  # Within 1 hour
+            # Check if this would create an invalid grouping
+            has_stock_in_group = any(str(tx.get('instrument_type', '')).upper() == 'EQUITY' for tx in current_group)
+            new_is_stock = str(new_tx.get('instrument_type', '')).upper() == 'EQUITY'
+            has_option_in_group = any('EQUITY_OPTION' in str(tx.get('instrument_type', '')).upper() for tx in current_group)
+            new_is_option = 'EQUITY_OPTION' in str(new_tx.get('instrument_type', '')).upper()
+            
+            # If mixing stock and options, only allow if it's a valid covered call pattern
+            if (has_stock_in_group and new_is_option) or (has_option_in_group and new_is_stock):
+                # Don't group just based on time - need covered call pattern
+                return False
+            
             return True
         
         # Group if they're opening/closing positions on same expiration
@@ -443,6 +497,46 @@ class StrategyRecognizer:
             for tx in current_group:
                 if cls._matches_opening_transaction(tx, new_tx):
                     return True
+        
+        return False
+    
+    @classmethod
+    def _is_covered_call_candidate(cls, current_group: List[Dict], new_tx: Dict) -> bool:
+        """Check if this could be a covered call (stock + short call)"""
+        
+        # Check if current group has stock and new tx is option (or vice versa)
+        has_stock = any(str(tx.get('instrument_type', '')).upper() == 'EQUITY' for tx in current_group)
+        has_option = any('EQUITY_OPTION' in str(tx.get('instrument_type', '')).upper() for tx in current_group)
+        
+        new_is_stock = str(new_tx.get('instrument_type', '')).upper() == 'EQUITY'
+        new_is_option = 'EQUITY_OPTION' in str(new_tx.get('instrument_type', '')).upper()
+        
+        # Case 1: Group has stock, new tx is short call
+        if has_stock and new_is_option:
+            action = str(new_tx.get('action', ''))
+            if 'SELL' in action and 'OPEN' in action:
+                # Check if it's a call option on the same underlying
+                option_info = cls.parse_option_symbol(new_tx.get('symbol', ''))
+                if option_info and option_info['option_type'] == 'Call':
+                    # Check if underlying matches stock in group
+                    for tx in current_group:
+                        if str(tx.get('instrument_type', '')).upper() == 'EQUITY':
+                            stock_symbol = tx.get('symbol', '')
+                            if stock_symbol == option_info['underlying']:
+                                return True
+        
+        # Case 2: Group has short call, new tx is stock
+        elif has_option and new_is_stock:
+            # Check if group has short calls
+            for tx in current_group:
+                if 'EQUITY_OPTION' in str(tx.get('instrument_type', '')):
+                    action = str(tx.get('action', ''))
+                    if 'SELL' in action and 'OPEN' in action:
+                        option_info = cls.parse_option_symbol(tx.get('symbol', ''))
+                        if option_info and option_info['option_type'] == 'Call':
+                            # Check if new stock matches the underlying
+                            if new_tx.get('symbol', '') == option_info['underlying']:
+                                return True
         
         return False
     
@@ -502,7 +596,7 @@ class StrategyRecognizer:
         return False
     
     @classmethod
-    def _create_trade_from_transactions(cls, underlying: str, transactions: List[Dict]) -> Optional[Trade]:
+    def _create_trade_from_transactions(cls, underlying: str, transactions: List[Dict], stock_positions: Dict[str, int] = None) -> Optional[Trade]:
         """Create a Trade object from a group of transactions"""
         
         if not transactions:
@@ -544,7 +638,10 @@ class StrategyRecognizer:
                 cls._add_stock_leg(trade, tx)
         
         # Recognize the strategy
-        trade.strategy_type = cls._recognize_strategy(trade)
+        if stock_positions:
+            trade.strategy_type = cls._recognize_strategy_with_positions(trade, stock_positions)
+        else:
+            trade.strategy_type = cls._recognize_strategy(trade)
         direction = cls._determine_strategy_direction(trade)
         trade.strategy_direction = direction.value if direction else None
         
@@ -675,6 +772,49 @@ class StrategyRecognizer:
             )
             
             trade.stock_legs.append(leg)
+    
+    @classmethod
+    def _recognize_strategy_with_positions(cls, trade: Trade, stock_positions: Dict[str, int]) -> StrategyType:
+        """
+        Enhanced strategy recognition that considers existing stock positions
+        for covered call determination
+        """
+        
+        option_legs = trade.option_legs
+        stock_legs = trade.stock_legs
+        
+        if not option_legs and not stock_legs:
+            return StrategyType.UNKNOWN
+        
+        # Stock only strategies
+        if stock_legs and not option_legs:
+            if stock_legs[0].quantity > 0:
+                return StrategyType.LONG_STOCK
+            else:
+                return StrategyType.SHORT_STOCK
+        
+        # Single option strategies
+        if len(option_legs) == 1 and not stock_legs:
+            leg = option_legs[0]
+            
+            # Check if this is a short call that could be covered
+            if leg.is_short and leg.option_type == 'Call':
+                # Check existing stock position
+                underlying = trade.underlying
+                existing_shares = stock_positions.get(underlying, 0)
+                contracts = abs(leg.quantity)
+                shares_needed = contracts * 100
+                
+                if existing_shares >= shares_needed:
+                    return StrategyType.COVERED_CALL
+                else:
+                    return StrategyType.NAKED_CALL
+            
+            # Other single options - use regular recognition
+            return cls._recognize_strategy(trade)
+        
+        # For all other cases, use regular recognition
+        return cls._recognize_strategy(trade)
     
     @classmethod
     def _recognize_strategy(cls, trade: Trade) -> StrategyType:
