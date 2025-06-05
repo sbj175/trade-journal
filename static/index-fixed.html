@@ -376,13 +376,13 @@
                                             <tr class="text-left">
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Symbol</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Actions</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Position</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Type</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Strike</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Expiration</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Qty</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Entry Price</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Exit Price</th>
-                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Position</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Timestamps</th>
                                             </tr>
                                         </thead>
@@ -400,17 +400,17 @@
                                                         </div>
                                                         <span x-show="!leg.transaction_actions || leg.transaction_actions.length === 0" class="text-slate-500">N/A</span>
                                                     </td>
+                                                    <td class="px-3 py-2">
+                                                        <span class="px-2 py-1 text-xs rounded"
+                                                              :class="leg.quantity > 0 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
+                                                              x-text="leg.quantity > 0 ? 'Long' : 'Short'"></span>
+                                                    </td>
                                                     <td class="px-3 py-2" x-text="leg.option_type"></td>
                                                     <td class="px-3 py-2" x-text="'$' + leg.strike"></td>
                                                     <td class="px-3 py-2" x-text="formatDate(leg.expiration)"></td>
                                                     <td class="px-3 py-2 text-center" x-text="Math.abs(leg.quantity)"></td>
                                                     <td class="px-3 py-2" x-text="'$' + leg.entry_price?.toFixed(2)"></td>
                                                     <td class="px-3 py-2" x-text="leg.exit_price ? '$' + leg.exit_price.toFixed(2) : 'N/A'"></td>
-                                                    <td class="px-3 py-2">
-                                                        <span class="px-2 py-1 text-xs rounded"
-                                                              :class="leg.quantity > 0 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
-                                                              x-text="leg.quantity > 0 ? 'Long' : 'Short'"></span>
-                                                    </td>
                                                     <td class="px-3 py-2 text-xs">
                                                         <div x-show="leg.transaction_timestamps && leg.transaction_timestamps.length > 0">
                                                             <template x-for="(timestamp, index) in leg.transaction_timestamps" :key="index">
@@ -435,10 +435,10 @@
                                             <tr class="text-left">
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Symbol</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Actions</th>
+                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Position</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Quantity</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Entry Price</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Exit Price</th>
-                                                <th class="px-3 py-2 text-xs font-medium text-slate-300">Position</th>
                                                 <th class="px-3 py-2 text-xs font-medium text-slate-300">Timestamps</th>
                                             </tr>
                                         </thead>
@@ -456,14 +456,14 @@
                                                         </div>
                                                         <span x-show="!leg.transaction_actions || leg.transaction_actions.length === 0" class="text-slate-500">N/A</span>
                                                     </td>
-                                                    <td class="px-3 py-2 text-center" x-text="Math.abs(leg.quantity)"></td>
-                                                    <td class="px-3 py-2" x-text="'$' + leg.entry_price?.toFixed(2)"></td>
-                                                    <td class="px-3 py-2" x-text="leg.exit_price ? '$' + leg.exit_price.toFixed(2) : 'N/A'"></td>
                                                     <td class="px-3 py-2">
                                                         <span class="px-2 py-1 text-xs rounded"
                                                               :class="leg.quantity > 0 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
                                                               x-text="leg.quantity > 0 ? 'Long' : 'Short'"></span>
                                                     </td>
+                                                    <td class="px-3 py-2 text-center" x-text="Math.abs(leg.quantity)"></td>
+                                                    <td class="px-3 py-2" x-text="'$' + leg.entry_price?.toFixed(2)"></td>
+                                                    <td class="px-3 py-2" x-text="leg.exit_price ? '$' + leg.exit_price.toFixed(2) : 'N/A'"></td>
                                                     <td class="px-3 py-2 text-xs">
                                                         <div x-show="leg.transaction_timestamps && leg.transaction_timestamps.length > 0">
                                                             <template x-for="(timestamp, index) in leg.transaction_timestamps" :key="index">

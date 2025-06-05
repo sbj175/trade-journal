@@ -32,8 +32,8 @@ function tradeJournal() {
         syncDays: 30,
         
         // Sorting
-        sortColumn: 'entry_date',
-        sortDirection: 'desc',
+        sortColumn: 'underlying',
+        sortDirection: 'asc',
         
         // Modal state
         editModalOpen: false,
@@ -133,8 +133,8 @@ function tradeJournal() {
                 const data = await response.json();
                 this.trades = data.trades || [];
                 
-                // Manually render trades to avoid Alpine.js issues
-                this.renderTrades();
+                // Apply default sorting without toggling
+                this.applyDefaultSort();
             } catch (error) {
                 console.error('Error loading trades:', error);
             } finally {
@@ -224,7 +224,9 @@ function tradeJournal() {
                 const response = await fetch(url);
                 const data = await response.json();
                 this.trades = data.results || [];
-                this.renderTrades();
+                
+                // Apply default sorting without toggling
+                this.applyDefaultSort();
             } catch (error) {
                 console.error('Error searching trades:', error);
             } finally {
@@ -308,6 +310,35 @@ function tradeJournal() {
             } finally {
                 this.initialSyncing = false;
             }
+        },
+        
+        // Apply default sort without toggling
+        applyDefaultSort() {
+            // Sort trades array using current sortColumn and sortDirection
+            this.trades.sort((a, b) => {
+                let aVal = a[this.sortColumn];
+                let bVal = b[this.sortColumn];
+                
+                // Handle numeric values
+                if (this.sortColumn === 'current_pnl') {
+                    aVal = aVal || 0;
+                    bVal = bVal || 0;
+                }
+                
+                // Handle dates
+                if (this.sortColumn === 'entry_date' || this.sortColumn === 'exit_date') {
+                    aVal = new Date(aVal || '1900-01-01');
+                    bVal = new Date(bVal || '1900-01-01');
+                }
+                
+                // Compare
+                if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+            
+            // Re-render table
+            this.renderTrades();
         },
         
         // Sort table
