@@ -267,43 +267,56 @@ class StrategyRecognizer:
         # Use deduplicated transactions for the rest of the process
         transactions = unique_transactions
         
-        # Calculate stock positions first (for covered call recognition)
-        stock_positions = cls.get_stock_positions(transactions)
-        
-        # First, separate transactions by underlying and date
-        grouped_by_underlying = {}
-        
+        # Process each account separately to prevent cross-account grouping
+        accounts = {}
         for tx in transactions:
-            instrument_type = str(tx.get('instrument_type', ''))
-            if 'EQUITY' not in instrument_type:
-                continue
+            account_number = tx.get('account_number', 'UNKNOWN')
+            if account_number not in accounts:
+                accounts[account_number] = []
+            accounts[account_number].append(tx)
+        
+        all_trades = []
+        
+        # Process each account independently
+        for account_number, account_txs in accounts.items():
+            logger.info(f"Processing {len(account_txs)} transactions for account {account_number}")
+            
+            # Calculate stock positions for this account only
+            stock_positions = cls.get_stock_positions(account_txs)
+            
+            # Group transactions by underlying within this account
+            grouped_by_underlying = {}
+            
+            for tx in account_txs:
+                instrument_type = str(tx.get('instrument_type', ''))
+                if 'EQUITY' not in instrument_type:
+                    continue
+                    
+                underlying = tx.get('underlying_symbol', tx.get('symbol', ''))
+                if not underlying:
+                    continue
+                    
+                if underlying not in grouped_by_underlying:
+                    grouped_by_underlying[underlying] = []
                 
-            underlying = tx.get('underlying_symbol', tx.get('symbol', ''))
-            if not underlying:
-                continue
+                grouped_by_underlying[underlying].append(tx)
+            
+            # Process each underlying within this account
+            for underlying, txs in grouped_by_underlying.items():
+                # Sort by date
+                txs.sort(key=lambda x: x.get('executed_at', ''))
                 
-            if underlying not in grouped_by_underlying:
-                grouped_by_underlying[underlying] = []
-            
-            grouped_by_underlying[underlying].append(tx)
+                # Group transactions that likely belong to the same strategy
+                trade_groups = cls._group_related_transactions(txs)
+                
+                # Convert each group to a Trade object
+                for group in trade_groups:
+                    trade = cls._create_trade_from_transactions(underlying, group, stock_positions)
+                    if trade:
+                        all_trades.append(trade)
         
-        trades = []
-        
-        # Process each underlying separately
-        for underlying, txs in grouped_by_underlying.items():
-            # Sort by date
-            txs.sort(key=lambda x: x.get('executed_at', ''))
-            
-            # Group transactions that likely belong to the same strategy
-            trade_groups = cls._group_related_transactions(txs)
-            
-            # Convert each group to a Trade object
-            for group in trade_groups:
-                trade = cls._create_trade_from_transactions(underlying, group, stock_positions)
-                if trade:
-                    trades.append(trade)
-        
-        return trades
+        logger.info(f"Created {len(all_trades)} trades from {len(transactions)} transactions across {len(accounts)} accounts")
+        return all_trades
     
     @classmethod
     def _group_related_transactions(cls, transactions: List[Dict]) -> List[List[Dict]]:

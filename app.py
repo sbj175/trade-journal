@@ -262,29 +262,36 @@ async def sync_trades(sync_request: SyncRequest):
         from src.models.transaction_matcher import TransactionMatcher
         from src.models.trade_strategy import StrategyRecognizer
         
-        # Calculate existing stock positions for covered call detection
-        existing_positions = {}
+        # Process each account separately to prevent cross-account grouping
+        all_trades = []
+        matcher = TransactionMatcher()
+        
         for account in accounts:
             account_number = account['account_number']
-            stock_positions = StrategyRecognizer.get_stock_positions(
-                [tx for tx in transactions if tx.get('account_number') == account_number]
-            )
+            account_transactions = [tx for tx in transactions if tx.get('account_number') == account_number]
+            
+            if not account_transactions:
+                continue
+                
+            logger.info(f"Processing {len(account_transactions)} transactions for account {account_number}")
+            
+            # Calculate stock positions for this account only
+            stock_positions = StrategyRecognizer.get_stock_positions(account_transactions)
+            existing_positions = {}
             for symbol, quantity in stock_positions.items():
-                if symbol not in existing_positions:
-                    existing_positions[symbol] = {'stock': 0, 'options': {}}
-                existing_positions[symbol]['stock'] += quantity
+                existing_positions[symbol] = {'stock': quantity, 'options': {}}
+            
+            # Use TransactionMatcher for this account only
+            strategy_matches = matcher.match_transactions_to_strategies(account_transactions, existing_positions)
+            
+            # Convert StrategyMatch objects to Trade objects
+            for match in strategy_matches:
+                # Create Trade object from StrategyMatch
+                trade = StrategyRecognizer._create_trade_from_strategy_match(match)
+                if trade:
+                    all_trades.append(trade)
         
-        # Use TransactionMatcher for superior grouping
-        matcher = TransactionMatcher()
-        strategy_matches = matcher.match_transactions_to_strategies(transactions, existing_positions)
-        
-        # Convert StrategyMatch objects to Trade objects
-        trades = []
-        for match in strategy_matches:
-            # Create Trade object from StrategyMatch
-            trade = StrategyRecognizer._create_trade_from_strategy_match(match)
-            if trade:
-                trades.append(trade)
+        trades = all_trades
         
         logger.info(f"Processed {len(trades)} trades using order-based grouping")
         
@@ -456,29 +463,36 @@ async def initial_sync():
         from src.models.transaction_matcher import TransactionMatcher
         from src.models.trade_strategy import StrategyRecognizer
         
-        # Calculate existing stock positions for covered call detection
-        existing_positions = {}
+        # Process each account separately to prevent cross-account grouping
+        all_trades = []
+        matcher = TransactionMatcher()
+        
         for account in accounts:
             account_number = account['account_number']
-            stock_positions = StrategyRecognizer.get_stock_positions(
-                [tx for tx in transactions if tx.get('account_number') == account_number]
-            )
+            account_transactions = [tx for tx in transactions if tx.get('account_number') == account_number]
+            
+            if not account_transactions:
+                continue
+                
+            logger.info(f"Processing {len(account_transactions)} transactions for account {account_number}")
+            
+            # Calculate stock positions for this account only
+            stock_positions = StrategyRecognizer.get_stock_positions(account_transactions)
+            existing_positions = {}
             for symbol, quantity in stock_positions.items():
-                if symbol not in existing_positions:
-                    existing_positions[symbol] = {'stock': 0, 'options': {}}
-                existing_positions[symbol]['stock'] += quantity
+                existing_positions[symbol] = {'stock': quantity, 'options': {}}
+            
+            # Use TransactionMatcher for this account only
+            strategy_matches = matcher.match_transactions_to_strategies(account_transactions, existing_positions)
+            
+            # Convert StrategyMatch objects to Trade objects
+            for match in strategy_matches:
+                # Create Trade object from StrategyMatch
+                trade = StrategyRecognizer._create_trade_from_strategy_match(match)
+                if trade:
+                    all_trades.append(trade)
         
-        # Use TransactionMatcher for superior grouping
-        matcher = TransactionMatcher()
-        strategy_matches = matcher.match_transactions_to_strategies(transactions, existing_positions)
-        
-        # Convert StrategyMatch objects to Trade objects
-        trades = []
-        for match in strategy_matches:
-            # Create Trade object from StrategyMatch
-            trade = StrategyRecognizer._create_trade_from_strategy_match(match)
-            if trade:
-                trades.append(trade)
+        trades = all_trades
         
         logger.info(f"Processed {len(trades)} trades using order-based grouping")
         
