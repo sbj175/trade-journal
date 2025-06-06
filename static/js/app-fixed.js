@@ -179,7 +179,7 @@ function tradeJournal() {
                         <span class="${pnlClass}">$${this.formatNumber(trade.current_pnl || 0)}</span>
                     </td>
                     <td class="px-6 py-4 text-sm">
-                        <span class="text-slate-400 text-xs">${trade.current_notes ? trade.current_notes.substring(0, 30) + (trade.current_notes.length > 30 ? '...' : '') : 'No comments'}</span>
+                        ${trade.current_notes ? '<span class="text-slate-400 text-xs">' + trade.current_notes.substring(0, 30) + (trade.current_notes.length > 30 ? '...' : '') + '</span>' : ''}
                     </td>
                     <td class="px-6 py-4 text-sm">
                         <button data-trade-id="${trade.trade_id}" class="edit-trade-btn text-blue-400 hover:text-blue-300 mr-2" title="Edit">
