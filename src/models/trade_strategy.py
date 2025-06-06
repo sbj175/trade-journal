@@ -233,12 +233,15 @@ class StrategyRecognizer:
         sorted_txs = sorted(transactions, key=lambda x: x.get('executed_at', ''))
         
         for tx in sorted_txs:
-            if str(tx.get('instrument_type', '')).upper() == 'EQUITY':
+            instrument_type = str(tx.get('instrument_type', ''))
+            # Check for stock transactions (EQUITY but not EQUITY_OPTION)
+            if 'EQUITY' in instrument_type and 'OPTION' not in instrument_type:
                 symbol = tx.get('symbol', '')
-                quantity = tx.get('quantity', 0)
+                quantity = tx.get('quantity', 0) or 0
                 
-                # Handle sell transactions
-                if 'SELL' in tx.get('action', ''):
+                # Handle sell transactions (make them negative)
+                action = str(tx.get('action', ''))
+                if 'SELL' in action:
                     quantity = -quantity
                 
                 if symbol not in positions:
