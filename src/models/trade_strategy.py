@@ -718,7 +718,9 @@ class StrategyRecognizer:
         # Extract account number from first transaction
         account_number = first_tx.get('account_number', 'UNKNOWN')
         
-        trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs"
+        # Include account suffix to prevent ID collisions across accounts
+        account_suffix = account_number[-3:] if account_number != 'UNKNOWN' else 'UNK'
+        trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs_{account_suffix}"
         
         # Create trade object
         trade = Trade(
@@ -1404,7 +1406,26 @@ class StrategyRecognizer:
                 entry_date = date.today()
             
             # Generate trade ID
-            trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs"
+            # Include account suffix to prevent ID collisions across accounts
+            account_suffix = account_number[-3:] if account_number != 'UNKNOWN' else 'UNK'
+            trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs_{account_suffix}"
+            
+            # Determine trade status based on StrategyMatch metadata
+            trade_status = cls._determine_trade_status_from_strategy_match(strategy_match, exit_date)
+            
+            # Update exit_date based on strategy metadata
+            if hasattr(strategy_match, 'roll_closure_info'):
+                roll_info = strategy_match.roll_closure_info
+                if roll_info.get('closed_by_roll'):
+                    exit_date = roll_info.get('closure_timestamp')
+                    if exit_date and hasattr(exit_date, 'date'):
+                        exit_date = exit_date.date()
+            
+            # Clear exit_date if strategy is forced open
+            if hasattr(strategy_match, 'status_info'):
+                status_info = strategy_match.status_info
+                if status_info.get('force_open'):
+                    exit_date = None
             
             # Create trade object
             trade = Trade(
@@ -1414,7 +1435,7 @@ class StrategyRecognizer:
                 entry_date=entry_date,
                 exit_date=exit_date,
                 account_number=account_number,
-                status=TradeStatus.CLOSED if exit_date else TradeStatus.OPEN
+                status=trade_status
             )
             
             # Process transactions into legs
@@ -1443,3 +1464,24 @@ class StrategyRecognizer:
         except Exception as e:
             logger.error(f"Failed to create trade from StrategyMatch: {e}")
             return None
+    
+    @classmethod
+    def _determine_trade_status_from_strategy_match(cls, strategy_match, exit_date) -> TradeStatus:
+        """Determine trade status based on StrategyMatch metadata and exit date"""
+        
+        # Check for roll closure metadata
+        if hasattr(strategy_match, 'roll_closure_info'):
+            roll_info = strategy_match.roll_closure_info
+            if roll_info.get('closed_by_roll'):
+                return TradeStatus.CLOSED
+        
+        # Check for forced status metadata
+        if hasattr(strategy_match, 'status_info'):
+            status_info = strategy_match.status_info
+            if status_info.get('force_open'):
+                return TradeStatus.OPEN
+            elif status_info.get('force_closed'):
+                return TradeStatus.CLOSED
+        
+        # Default logic: closed if has exit date, otherwise open
+        return TradeStatus.CLOSED if exit_date else TradeStatus.OPEN

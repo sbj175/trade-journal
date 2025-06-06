@@ -152,7 +152,7 @@
       "name": "Cash Secured Put",
       "code": "CSP",
       "category": "stock_option_combo",
-      "direction": "neutral",
+      "direction": "bearish",
       "legs": 1,
       "description": "Short put with cash collateral",
       "recognition_rules": {

@@ -137,16 +137,22 @@ class TransactionMatcher:
                 strategies = self._detect_strategies_in_group(group)
                 potential_strategies.extend(strategies)
         
-        # Phase 3: Resolve conflicts
-        resolved_strategies = self._resolve_conflicts(potential_strategies)
+        # Phase 3: Match cross-order-ID closing transactions
+        cross_order_matched = self._match_closing_transactions(potential_strategies)
         
-        # Phase 4: Handle remaining single transactions
+        # Phase 4: Resolve conflicts
+        resolved_strategies = self._resolve_conflicts(cross_order_matched)
+        
+        # Phase 5: Handle remaining single transactions
         unmatched = self._find_unmatched_transactions(raw_transactions, resolved_strategies)
         single_strategies = self._process_single_transactions(unmatched)
         
-        # Phase 5: Final validation
-        final_strategies = resolved_strategies + single_strategies
-        validated_strategies = self._validate_strategies(final_strategies)
+        # Phase 6: Link roll chains and update statuses
+        all_strategies = resolved_strategies + single_strategies
+        roll_linked_strategies = self._link_roll_chains(all_strategies)
+        
+        # Phase 7: Final validation
+        validated_strategies = self._validate_strategies(roll_linked_strategies)
         
         return validated_strategies
     
@@ -910,3 +916,427 @@ class TransactionMatcher:
             return time_span <= self.TIMING_WINDOWS['SAME_SESSION']
             
         return True  # Default to valid
+    
+    def _match_closing_transactions(self, potential_strategies: List[StrategyMatch]) -> List[StrategyMatch]:
+        """
+        Match orphaned closing transactions to their opening trades across different order IDs
+        
+        This handles cases where closing transactions have different order IDs than opening transactions
+        but represent the closing of the same position (e.g., AFRM Bull Put Spread case)
+        """
+        if not potential_strategies:
+            return potential_strategies
+        
+        # Separate strategies into open positions and potential closings
+        open_strategies = []
+        closing_strategies = []
+        
+        for strategy in potential_strategies:
+            if self._is_orphaned_closing_strategy(strategy):
+                closing_strategies.append(strategy)
+            else:
+                open_strategies.append(strategy)
+        
+        # Try to match each closing strategy to an open strategy
+        matched_strategies = []
+        unmatched_closings = []
+        
+        for closing_strategy in closing_strategies:
+            best_match = None
+            best_score = 0.0
+            
+            for open_strategy in open_strategies:
+                score = self._calculate_closing_match_score(open_strategy, closing_strategy)
+                if score > best_score and score >= 0.9:  # 90% confidence threshold
+                    best_score = score
+                    best_match = open_strategy
+            
+            if best_match:
+                # Merge the closing strategy into the opening strategy
+                merged_strategy = self._merge_closing_strategy(best_match, closing_strategy)
+                matched_strategies.append(merged_strategy)
+                
+                # Remove the matched opening strategy from future matching
+                if best_match in open_strategies:
+                    open_strategies.remove(best_match)
+            else:
+                # Keep orphaned closing as-is (might be a standalone trade)
+                unmatched_closings.append(closing_strategy)
+        
+        # Return all unmatched open strategies + matched strategies + unmatched closings
+        return open_strategies + matched_strategies + unmatched_closings
+    
+    def _is_orphaned_closing_strategy(self, strategy: StrategyMatch) -> bool:
+        """
+        Check if this strategy looks like an orphaned closing transaction
+        (same-day entry/exit with only closing actions)
+        """
+        # Check if all transactions are closing actions
+        all_closing = True
+        for tx in strategy.transactions:
+            action = tx.get('action', '')
+            if not any(closing_action in str(action) for closing_action in ['BTC', 'STC', 'CLOSE']):
+                all_closing = False
+                break
+        
+        if not all_closing:
+            return False
+        
+        # Check if it's same-day entry/exit (likely orphaned closing)
+        group = strategy.group
+        if hasattr(group, 'time_span') and group.time_span.total_seconds() < 86400:  # Same day
+            return True
+        
+        # Alternative check: Look at timestamps directly
+        timestamps = []
+        for tx in strategy.transactions:
+            if tx.get('executed_at'):
+                timestamps.append(tx.get('executed_at'))
+        
+        if len(timestamps) > 0:
+            dates = set(ts[:10] for ts in timestamps)  # Extract dates
+            if len(dates) == 1:  # All on same date
+                return True
+        
+        return False
+    
+    def _calculate_closing_match_score(self, open_strategy: StrategyMatch, closing_strategy: StrategyMatch) -> float:
+        """
+        Calculate how well a closing strategy matches an opening strategy
+        """
+        # Must be same underlying
+        open_underlying = self._get_strategy_underlying(open_strategy)
+        closing_underlying = self._get_strategy_underlying(closing_strategy)
+        
+        if open_underlying != closing_underlying:
+            return 0.0
+        
+        # Get option positions from each strategy
+        open_positions = self._extract_option_positions(open_strategy)
+        closing_positions = self._extract_option_positions(closing_strategy)
+        
+        if len(open_positions) != len(closing_positions):
+            return 0.0
+        
+        # Calculate match score based on strike/expiration/type matching
+        matches = 0
+        total = len(open_positions)
+        
+        for open_pos in open_positions:
+            for closing_pos in closing_positions:
+                if (open_pos['strike'] == closing_pos['strike'] and
+                    open_pos['expiration'] == closing_pos['expiration'] and
+                    open_pos['option_type'] == closing_pos['option_type']):
+                    
+                    # Check if quantities are opposite (closing should reverse opening)
+                    open_qty = open_pos['quantity']
+                    closing_qty = closing_pos['quantity']
+                    
+                    if abs(open_qty) == abs(closing_qty) and (open_qty * closing_qty) < 0:
+                        matches += 1
+                        break
+        
+        return matches / total if total > 0 else 0.0
+    
+    def _get_strategy_underlying(self, strategy: StrategyMatch) -> str:
+        """Get the underlying symbol from a strategy"""
+        if strategy.transactions:
+            return strategy.transactions[0].get('underlying_symbol', '')
+        return ''
+    
+    def _extract_option_positions(self, strategy: StrategyMatch) -> List[Dict]:
+        """Extract option positions from a strategy"""
+        positions = []
+        
+        for tx in strategy.transactions:
+            instrument_type = str(tx.get('instrument_type', ''))
+            if 'OPTION' in instrument_type:
+                # Parse option symbol
+                symbol = tx.get('symbol', '')
+                # Basic parsing - could be enhanced
+                if ' ' in symbol:
+                    parts = symbol.split()
+                    if len(parts) >= 2:
+                        option_code = parts[1]
+                        if len(option_code) >= 7:
+                            expiration = option_code[:6]  # YYMMDD
+                            option_type = 'Call' if 'C' in option_code[6:8] else 'Put'
+                            strike_str = option_code[7:] if len(option_code) > 7 else '0'
+                            strike = float(strike_str) / 1000 if strike_str.isdigit() else 0
+                            
+                            # Apply proper quantity sign based on action
+                            quantity = int(tx.get('quantity', 0))
+                            action_str = str(tx.get('action', ''))
+                            if 'SELL' in action_str:
+                                quantity = -abs(quantity)  # Short position
+                            
+                            positions.append({
+                                'strike': strike,
+                                'expiration': expiration,
+                                'option_type': option_type,
+                                'quantity': quantity
+                            })
+        
+        return positions
+    
+    def _merge_closing_strategy(self, open_strategy: StrategyMatch, closing_strategy: StrategyMatch) -> StrategyMatch:
+        """
+        Merge a closing strategy into an opening strategy to create a complete closed trade
+        """
+        # Create new strategy with combined transactions
+        combined_transactions = open_strategy.transactions + closing_strategy.transactions
+        
+        # Update the group to include closing transactions
+        combined_group = TransactionGroup(
+            transactions=combined_transactions,
+            grouping_method='cross_order_matched',
+            group_key=f"{open_strategy.group.group_key}_merged_{closing_strategy.group.group_key}"
+        )
+        
+        # Add timestamps from both groups
+        if hasattr(open_strategy.group, 'timestamps'):
+            combined_group.timestamps.extend(open_strategy.group.timestamps)
+        if hasattr(closing_strategy.group, 'timestamps'):
+            combined_group.timestamps.extend(closing_strategy.group.timestamps)
+        
+        # Create merged strategy
+        merged_strategy = StrategyMatch(
+            strategy_type=open_strategy.strategy_type,  # Keep original strategy type
+            transactions=combined_transactions,
+            confidence=ConfidenceLevel.HIGH,  # High confidence for matched closing
+            quality_flags=[QualityFlag.VERIFIED],
+            precedence_score=open_strategy.precedence_score,
+            group=combined_group,
+            components=open_strategy.components  # Keep original components
+        )
+        
+        return merged_strategy
+    
+    def _link_roll_chains(self, strategies: List[StrategyMatch]) -> List[StrategyMatch]:
+        """
+        Link roll chains and update trade statuses based on position closure/opening logic
+        
+        This identifies when a roll closes a previous position and opens a new one,
+        updating the statuses accordingly (previous trade -> ROLLED, roll -> OPEN)
+        """
+        if len(strategies) < 2:
+            return strategies
+        
+        # Group strategies by underlying symbol for roll chain analysis
+        by_underlying = defaultdict(list)
+        for strategy in strategies:
+            underlying = self._get_strategy_underlying(strategy)
+            if underlying:
+                by_underlying[underlying].append(strategy)
+        
+        updated_strategies = []
+        
+        for underlying, underlying_strategies in by_underlying.items():
+            if len(underlying_strategies) < 2:
+                updated_strategies.extend(underlying_strategies)
+                continue
+            
+            # Sort by earliest transaction timestamp (chronological order)
+            underlying_strategies.sort(key=lambda s: s.group.earliest_timestamp)
+            
+            # Identify and link roll chains
+            roll_linked = self._process_roll_chains_for_underlying(underlying_strategies)
+            updated_strategies.extend(roll_linked)
+        
+        return updated_strategies
+    
+    def _process_roll_chains_for_underlying(self, strategies: List[StrategyMatch]) -> List[StrategyMatch]:
+        """Process roll chains for a single underlying symbol"""
+        # Create a working copy that we can modify
+        working_strategies = strategies.copy()
+        
+        # First pass: Handle roll strategies that open new positions (regardless of chain relationships)
+        for i in range(len(working_strategies)):
+            strategy = working_strategies[i]
+            
+            # If this is a roll strategy, check if it opens new positions
+            if 'ROLL' in strategy.strategy_type.value.upper():
+                if self._roll_opens_new_position(strategy):
+                    # Mark as open since it contains opening transactions
+                    working_strategies[i] = self._mark_strategy_as_open(strategy)
+                else:
+                    # Mark as closed since it only contains closing transactions
+                    working_strategies[i] = self._mark_strategy_as_closed(strategy)
+        
+        # Second pass: Handle chain relationships (only if multiple strategies)
+        if len(working_strategies) >= 2:
+            # Look for roll patterns between different strategies
+            for i in range(len(working_strategies)):
+                current_strategy = working_strategies[i]
+                
+                # Look for subsequent rolls that might close this position
+                for j in range(i + 1, len(working_strategies)):
+                    potential_roll = working_strategies[j]
+                    
+                    # Check if this is a roll that closes the current strategy
+                    if self._roll_closes_position(current_strategy, potential_roll):
+                        # Update the current strategy to show it was closed by the roll
+                        current_strategy = self._mark_strategy_as_rolled(current_strategy, potential_roll)
+                        working_strategies[i] = current_strategy
+                        break  # Found the roll for this position
+        
+        return working_strategies
+    
+    def _roll_closes_position(self, original_strategy: StrategyMatch, roll_strategy: StrategyMatch) -> bool:
+        """
+        Check if a roll strategy closes the position opened by the original strategy
+        """
+        # Must be a roll strategy
+        if 'ROLL' not in roll_strategy.strategy_type.value.upper():
+            return False
+        
+        # Get positions opened by original strategy
+        original_positions = self._get_opened_positions_from_strategy(original_strategy)
+        
+        # Get positions closed by roll strategy  
+        roll_closed_positions = self._get_closed_positions_from_strategy(roll_strategy)
+        
+        # Check if any position opened by original is closed by roll
+        for orig_pos in original_positions:
+            for roll_pos in roll_closed_positions:
+                if self._positions_match(orig_pos, roll_pos):
+                    return True
+        
+        return False
+    
+    def _roll_opens_new_position(self, roll_strategy: StrategyMatch) -> bool:
+        """Check if a roll opens new positions (contains STO/BTO opening actions)"""
+        opening_actions = ['STO', 'BTO', 'SELL_TO_OPEN', 'BUY_TO_OPEN']
+        
+        for tx in roll_strategy.transactions:
+            action = str(tx.get('action', '')).upper()
+            if any(opening_action in action for opening_action in opening_actions):
+                return True
+        
+        return False
+    
+    def _get_opened_positions_from_strategy(self, strategy: StrategyMatch) -> List[Dict]:
+        """Get positions opened by a strategy"""
+        opened_positions = []
+        opening_actions = ['STO', 'BTO', 'SELL_TO_OPEN', 'BUY_TO_OPEN']
+        
+        for tx in strategy.transactions:
+            instrument_type = str(tx.get('instrument_type', ''))
+            if 'OPTION' in instrument_type:
+                action = str(tx.get('action', '')).upper()
+                if any(opening_action in action for opening_action in opening_actions):
+                    position = self._extract_position_from_transaction(tx)
+                    if position:
+                        opened_positions.append(position)
+        
+        return opened_positions
+    
+    def _get_closed_positions_from_strategy(self, strategy: StrategyMatch) -> List[Dict]:
+        """Get positions closed by a strategy"""
+        closed_positions = []
+        closing_actions = ['BTC', 'STC', 'BUY_TO_CLOSE', 'SELL_TO_CLOSE']
+        
+        for tx in strategy.transactions:
+            instrument_type = str(tx.get('instrument_type', ''))
+            if 'OPTION' in instrument_type:
+                action = str(tx.get('action', '')).upper()
+                if any(closing_action in action for closing_action in closing_actions):
+                    position = self._extract_position_from_transaction(tx)
+                    if position:
+                        closed_positions.append(position)
+        
+        return closed_positions
+    
+    def _extract_position_from_transaction(self, tx: Dict) -> Optional[Dict]:
+        """Extract position details from a transaction"""
+        symbol = tx.get('symbol', '')
+        if ' ' in symbol:
+            parts = symbol.split()
+            if len(parts) >= 2:
+                option_code = parts[1]
+                if len(option_code) >= 7:
+                    expiration = option_code[:6]  # YYMMDD
+                    option_type = 'Call' if 'C' in option_code[6:8] else 'Put'
+                    strike_str = option_code[7:] if len(option_code) > 7 else '0'
+                    strike = float(strike_str) / 1000 if strike_str.isdigit() else 0
+                    
+                    return {
+                        'strike': strike,
+                        'expiration': expiration,
+                        'option_type': option_type,
+                        'underlying': parts[0]
+                    }
+        return None
+    
+    def _positions_match(self, pos1: Dict, pos2: Dict) -> bool:
+        """Check if two positions represent the same contract"""
+        return (pos1.get('strike') == pos2.get('strike') and
+                pos1.get('expiration') == pos2.get('expiration') and
+                pos1.get('option_type') == pos2.get('option_type') and
+                pos1.get('underlying') == pos2.get('underlying'))
+    
+    def _mark_strategy_as_rolled(self, strategy: StrategyMatch, roll_strategy: StrategyMatch) -> StrategyMatch:
+        """Mark a strategy as rolled (closed by a subsequent roll)"""
+        # Create updated strategy with ROLLED status indication
+        # We'll add metadata to indicate this was closed by a roll
+        updated_strategy = StrategyMatch(
+            strategy_type=strategy.strategy_type,
+            transactions=strategy.transactions,
+            confidence=strategy.confidence,
+            quality_flags=strategy.quality_flags + [QualityFlag.VERIFIED],
+            precedence_score=strategy.precedence_score,
+            group=strategy.group,
+            components=strategy.components
+        )
+        
+        # Add roll closure metadata
+        if not hasattr(updated_strategy, 'roll_closure_info'):
+            updated_strategy.roll_closure_info = {
+                'closed_by_roll': True,
+                'closing_roll_group_key': roll_strategy.group.group_key,
+                'closure_timestamp': roll_strategy.group.earliest_timestamp
+            }
+        
+        return updated_strategy
+    
+    def _mark_strategy_as_open(self, strategy: StrategyMatch) -> StrategyMatch:
+        """Mark a strategy as open (has unclosed positions)"""
+        updated_strategy = StrategyMatch(
+            strategy_type=strategy.strategy_type,
+            transactions=strategy.transactions,
+            confidence=strategy.confidence,
+            quality_flags=strategy.quality_flags + [QualityFlag.VERIFIED],
+            precedence_score=strategy.precedence_score,
+            group=strategy.group,
+            components=strategy.components
+        )
+        
+        # Add open status metadata
+        if not hasattr(updated_strategy, 'status_info'):
+            updated_strategy.status_info = {
+                'force_open': True,
+                'reason': 'Contains opening transactions (STO/BTO)'
+            }
+        
+        return updated_strategy
+    
+    def _mark_strategy_as_closed(self, strategy: StrategyMatch) -> StrategyMatch:
+        """Mark a strategy as closed"""
+        updated_strategy = StrategyMatch(
+            strategy_type=strategy.strategy_type,
+            transactions=strategy.transactions,
+            confidence=strategy.confidence,
+            quality_flags=strategy.quality_flags + [QualityFlag.VERIFIED],
+            precedence_score=strategy.precedence_score,
+            group=strategy.group,
+            components=strategy.components
+        )
+        
+        # Add closed status metadata
+        if not hasattr(updated_strategy, 'status_info'):
+            updated_strategy.status_info = {
+                'force_closed': True,
+                'reason': 'No opening transactions found'
+            }
+        
+        return updated_strategy
