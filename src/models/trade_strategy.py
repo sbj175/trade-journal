@@ -8,6 +8,9 @@ from typing import List, Dict, Optional, Tuple
 from enum import Enum
 import re
 import pytz
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class StrategyType(Enum):
@@ -35,6 +38,10 @@ class StrategyType(Enum):
     # Stock + Option Combos
     COVERED_CALL = "Covered Call"
     CASH_SECURED_PUT = "Cash Secured Put"
+    
+    # Position Management
+    CALL_ROLL = "Call Roll"
+    PUT_ROLL = "Put Roll"
     
     # Single Leg
     NAKED_PUT = "Naked Put"
@@ -418,12 +425,13 @@ class StrategyRecognizer:
                 group_idx = len(groups)
                 transaction_to_group[i] = group_idx
                 
-                # Check for same-day related transactions
+                # Group related transactions more conservatively
+                # Allow multi-leg strategies but prevent massive over-grouping
                 tx_date = cls._get_transaction_date(tx)
                 for j in range(i + 1, len(transactions)):
                     if j not in processed_indices:
                         other_tx = transactions[j]
-                        if cls._should_group_transactions(group, other_tx):
+                        if cls._should_group_conservatively(group, other_tx):
                             group.append(other_tx)
                             processed_indices.add(j)
                             transaction_to_group[j] = group_idx
@@ -444,6 +452,82 @@ class StrategyRecognizer:
             et_dt = dt.astimezone(et_tz)
             return et_dt.date()
         return date.today()
+    
+    @classmethod
+    def _should_group_conservatively(cls, current_group: List[Dict], new_tx: Dict) -> bool:
+        """
+        Conservative grouping that allows multi-leg strategies but prevents over-grouping
+        
+        Rules:
+        1. Same exact contract (expiration/strike/type) - always group
+        2. Same expiration, different strikes - allow (vertical spreads, iron condors)
+        3. Same day, limited legs (≤4) - allow (complex strategies)
+        4. Multiple expirations with many legs - prevent over-grouping
+        """
+        
+        # Get the first transaction in the group for comparison
+        first_tx = current_group[0]
+        
+        # Same exact contract - always group
+        if cls._is_same_contract(first_tx, new_tx):
+            return True
+        
+        # Check if both are options
+        first_type = str(first_tx.get('instrument_type', ''))
+        new_type = str(new_tx.get('instrument_type', ''))
+        
+        if 'EQUITY_OPTION' in first_type and 'EQUITY_OPTION' in new_type:
+            first_option = cls.parse_option_symbol(first_tx.get('symbol', ''))
+            new_option = cls.parse_option_symbol(new_tx.get('symbol', ''))
+            
+            if first_option and new_option and first_option['underlying'] == new_option['underlying']:
+                # Same expiration - allow (vertical spreads, butterflies)
+                if first_option['expiration'] == new_option['expiration']:
+                    return True
+                
+                # Different expirations - be extremely conservative
+                # Only allow calendar spreads (same strike, different expiration) or diagonal spreads
+                if (len(current_group) == 1 and  # Only pair transactions, no big groups
+                    first_option['strike'] == new_option['strike']):  # Same strike = calendar/diagonal
+                    # Check if transactions are very close in time (within 1 hour)
+                    import datetime
+                    first_time = datetime.datetime.fromisoformat(first_tx.get('executed_at', '').replace('Z', '+00:00'))
+                    new_time = datetime.datetime.fromisoformat(new_tx.get('executed_at', '').replace('Z', '+00:00'))
+                    time_diff = abs((new_time - first_time).total_seconds())
+                    if time_diff <= 3600:  # Within 1 hour
+                        return True
+        
+        # Stock transactions with same symbol
+        elif ('EQUITY' in first_type and 'OPTION' not in first_type and 
+              'EQUITY' in new_type and 'OPTION' not in new_type):
+            return first_tx.get('symbol', '') == new_tx.get('symbol', '')
+        
+        return False
+    
+    @classmethod
+    def _is_same_contract(cls, tx1: Dict, tx2: Dict) -> bool:
+        """Check if two transactions are for the same contract"""
+        
+        type1 = str(tx1.get('instrument_type', ''))
+        type2 = str(tx2.get('instrument_type', ''))
+        
+        # Stock transactions: same symbol
+        if ('EQUITY' in type1 and 'OPTION' not in type1 and 
+            'EQUITY' in type2 and 'OPTION' not in type2):
+            return tx1.get('symbol', '') == tx2.get('symbol', '')
+        
+        # Option transactions: same underlying, expiration, strike, type
+        if 'EQUITY_OPTION' in type1 and 'EQUITY_OPTION' in type2:
+            option1 = cls.parse_option_symbol(tx1.get('symbol', ''))
+            option2 = cls.parse_option_symbol(tx2.get('symbol', ''))
+            
+            if option1 and option2:
+                return (option1['underlying'] == option2['underlying'] and
+                        option1['expiration'] == option2['expiration'] and
+                        option1['strike'] == option2['strike'] and
+                        option1['option_type'] == option2['option_type'])
+        
+        return False
     
     @classmethod
     def _should_group_transactions(cls, current_group: List[Dict], new_tx: Dict) -> bool:
@@ -1241,3 +1325,105 @@ class StrategyRecognizer:
             return True
         
         return False
+    
+    @classmethod
+    def _create_trade_from_strategy_match(cls, strategy_match) -> Optional[Trade]:
+        """
+        Convert a StrategyMatch object from TransactionMatcher into a Trade object
+        
+        Args:
+            strategy_match: StrategyMatch object containing strategy identification and transactions
+            
+        Returns:
+            Trade object or None if conversion fails
+        """
+        try:
+            from .transaction_matcher import StrategyMatch
+            
+            if not isinstance(strategy_match, StrategyMatch):
+                logger.error(f"Expected StrategyMatch object, got {type(strategy_match)}")
+                return None
+                
+            transactions = strategy_match.transactions
+            if not transactions:
+                logger.warning("StrategyMatch has no transactions")
+                return None
+                
+            # Extract basic trade information
+            first_tx = transactions[0]
+            underlying = first_tx.get('underlying_symbol', '').upper()
+            account_number = first_tx.get('account_number', 'UNKNOWN')
+            
+            if not underlying:
+                logger.warning("No underlying symbol found in transactions")
+                return None
+            
+            # Determine entry date (earliest transaction date)
+            et_tz = pytz.timezone('America/New_York')
+            entry_date = None
+            exit_date = None
+            
+            for tx in transactions:
+                executed_at = tx.get('executed_at', '')
+                if executed_at:
+                    try:
+                        # Parse and convert to Eastern Time
+                        dt = datetime.fromisoformat(executed_at.replace('Z', '+00:00'))
+                        et_dt = dt.astimezone(et_tz)
+                        tx_date = et_dt.date()
+                        
+                        if entry_date is None or tx_date < entry_date:
+                            entry_date = tx_date
+                            
+                        # Track latest closing transaction for exit date
+                        if cls._is_closing_transaction(tx):
+                            if exit_date is None or tx_date > exit_date:
+                                exit_date = tx_date
+                                
+                    except Exception as e:
+                        logger.warning(f"Failed to parse transaction date {executed_at}: {e}")
+                        continue
+            
+            if not entry_date:
+                entry_date = date.today()
+            
+            # Generate trade ID
+            trade_id = f"{underlying}_{entry_date.strftime('%Y%m%d')}_{len(transactions)}legs"
+            
+            # Create trade object
+            trade = Trade(
+                trade_id=trade_id,
+                underlying=underlying,
+                strategy_type=strategy_match.strategy_type,
+                entry_date=entry_date,
+                exit_date=exit_date,
+                account_number=account_number,
+                status=TradeStatus.CLOSED if exit_date else TradeStatus.OPEN
+            )
+            
+            # Process transactions into legs
+            for tx in transactions:
+                instrument_type = str(tx.get('instrument_type', ''))
+                if 'EQUITY_OPTION' in instrument_type:
+                    cls._add_option_leg(trade, tx)
+                elif 'EQUITY' in instrument_type and 'OPTION' not in instrument_type:
+                    cls._add_stock_leg(trade, tx)
+            
+            # Set strategy direction
+            direction = cls._determine_strategy_direction(trade)
+            trade.strategy_direction = direction.value if direction else None
+            
+            # Add metadata from StrategyMatch
+            confidence_notes = f"Confidence: {strategy_match.confidence.value}"
+            if strategy_match.quality_flags:
+                flag_str = ", ".join([flag.value for flag in strategy_match.quality_flags])
+                confidence_notes += f", Flags: {flag_str}"
+            
+            trade.original_notes = confidence_notes
+            
+            logger.info(f"Successfully created trade {trade_id} from StrategyMatch: {strategy_match.strategy_type.value}")
+            return trade
+            
+        except Exception as e:
+            logger.error(f"Failed to create trade from StrategyMatch: {e}")
+            return None

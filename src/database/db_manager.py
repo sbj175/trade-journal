@@ -434,6 +434,109 @@ class DatabaseManager:
             
             return trade
     
+    def save_raw_transactions(self, transactions: List[Dict]) -> int:
+        """Save raw transactions to database for order-based grouping"""
+        saved_count = 0
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            for txn in transactions:
+                try:
+                    # Check if transaction already exists
+                    cursor.execute(
+                        "SELECT id FROM raw_transactions WHERE id = ?",
+                        (txn.get('id'),)
+                    )
+                    
+                    if cursor.fetchone():
+                        continue  # Skip duplicates
+                    
+                    # Insert raw transaction
+                    cursor.execute("""
+                        INSERT INTO raw_transactions (
+                            id, account_number, order_id, transaction_type,
+                            transaction_sub_type, description, executed_at,
+                            transaction_date, action, symbol, instrument_type,
+                            underlying_symbol, quantity, price, value,
+                            regulatory_fees, clearing_fees, commission,
+                            net_value, is_estimated_fee
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        txn.get('id'),
+                        txn.get('account_number'),
+                        txn.get('order_id'),
+                        txn.get('transaction_type'),
+                        txn.get('transaction_sub_type'),
+                        txn.get('description'),
+                        txn.get('executed_at'),
+                        txn.get('transaction_date'),
+                        txn.get('action'),
+                        txn.get('symbol'),
+                        txn.get('instrument_type'),
+                        txn.get('underlying_symbol'),
+                        txn.get('quantity'),
+                        txn.get('price'),
+                        txn.get('value'),
+                        txn.get('regulatory_fees'),
+                        txn.get('clearing_fees'),
+                        txn.get('commission'),
+                        txn.get('net_value'),
+                        txn.get('is_estimated_fee')
+                    ))
+                    
+                    saved_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"Failed to save transaction {txn.get('id')}: {e}")
+                    continue
+            
+            conn.commit()
+            logger.info(f"Saved {saved_count} raw transactions to database")
+            
+        return saved_count
+    
+    def get_raw_transactions(
+        self,
+        account_number: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        underlying: Optional[str] = None
+    ) -> List[Dict]:
+        """Get raw transactions with optional filters"""
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            query = "SELECT * FROM raw_transactions WHERE 1=1"
+            params = []
+            
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
+                
+            if start_date:
+                query += " AND executed_at >= ?"
+                params.append(start_date)
+                
+            if end_date:
+                query += " AND executed_at <= ?"
+                params.append(end_date)
+                
+            if underlying:
+                query += " AND underlying_symbol = ?"
+                params.append(underlying)
+            
+            query += " ORDER BY executed_at DESC"
+            
+            cursor.execute(query, params)
+            transactions = []
+            
+            for row in cursor.fetchall():
+                transactions.append(dict(row))
+                
+            return transactions
+    
     def update_trade(
         self,
         trade_id: str,

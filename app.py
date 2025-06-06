@@ -252,10 +252,41 @@ async def sync_trades(sync_request: SyncRequest):
         transactions = tastytrade.get_transactions(days_back=sync_request.days_back)
         logger.info(f"Fetched {len(transactions)} transactions")
         
-        # Process into trades
-        logger.info("Processing transactions into trades...")
-        trades = trade_manager.process_transactions(transactions)
-        logger.info(f"Processed {len(trades)} trades")
+        # Save raw transactions first (for order ID support)
+        logger.info("Saving raw transactions...")
+        raw_saved = db.save_raw_transactions(transactions)
+        logger.info(f"Saved {raw_saved} raw transactions")
+        
+        # Process into trades using new TransactionMatcher
+        logger.info("Processing transactions into trades with order-based grouping...")
+        from src.models.transaction_matcher import TransactionMatcher
+        from src.models.trade_strategy import StrategyRecognizer
+        
+        # Calculate existing stock positions for covered call detection
+        existing_positions = {}
+        for account in accounts:
+            account_number = account['account_number']
+            stock_positions = StrategyRecognizer.get_stock_positions(
+                [tx for tx in transactions if tx.get('account_number') == account_number]
+            )
+            for symbol, quantity in stock_positions.items():
+                if symbol not in existing_positions:
+                    existing_positions[symbol] = {'stock': 0, 'options': {}}
+                existing_positions[symbol]['stock'] += quantity
+        
+        # Use TransactionMatcher for superior grouping
+        matcher = TransactionMatcher()
+        strategy_matches = matcher.match_transactions_to_strategies(transactions, existing_positions)
+        
+        # Convert StrategyMatch objects to Trade objects
+        trades = []
+        for match in strategy_matches:
+            # Create Trade object from StrategyMatch
+            trade = StrategyRecognizer._create_trade_from_strategy_match(match)
+            if trade:
+                trades.append(trade)
+        
+        logger.info(f"Processed {len(trades)} trades using order-based grouping")
         
         # Get existing trades to avoid duplicates
         existing_trades = {}
@@ -340,7 +371,7 @@ async def sync_trades(sync_request: SyncRequest):
             else:
                 logger.error("Failed to save account balance")
         
-        logger.info(f"Sync completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {len(positions)} positions updated")
+        logger.info(f"Sync completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {total_positions} positions updated")
         
         return {
             "message": f"Sync completed: {saved_count} new, {updated_count} updated, {skipped_count} unchanged",
@@ -349,7 +380,7 @@ async def sync_trades(sync_request: SyncRequest):
             "trades_updated": updated_count,
             "trades_skipped": skipped_count,
             "trades_failed": failed_count,
-            "positions_updated": len(positions)
+            "positions_updated": total_positions
         }
     except Exception as e:
         logger.error(f"Sync error: {str(e)}", exc_info=True)
@@ -415,27 +446,100 @@ async def initial_sync():
         transactions = tastytrade.get_transactions(days_back=365)
         logger.info(f"Fetched {len(transactions)} transactions")
         
-        # Process into trades
-        logger.info("Processing transactions into trades...")
-        trades = trade_manager.process_transactions(transactions)
-        logger.info(f"Processed {len(trades)} trades")
+        # Save raw transactions first (for order ID support)
+        logger.info("Saving raw transactions...")
+        raw_saved = db.save_raw_transactions(transactions)
+        logger.info(f"Saved {raw_saved} raw transactions")
         
-        # Save all trades to database
+        # Process into trades using new TransactionMatcher
+        logger.info("Processing transactions into trades with order-based grouping...")
+        from src.models.transaction_matcher import TransactionMatcher
+        from src.models.trade_strategy import StrategyRecognizer
+        
+        # Calculate existing stock positions for covered call detection
+        existing_positions = {}
+        for account in accounts:
+            account_number = account['account_number']
+            stock_positions = StrategyRecognizer.get_stock_positions(
+                [tx for tx in transactions if tx.get('account_number') == account_number]
+            )
+            for symbol, quantity in stock_positions.items():
+                if symbol not in existing_positions:
+                    existing_positions[symbol] = {'stock': 0, 'options': {}}
+                existing_positions[symbol]['stock'] += quantity
+        
+        # Use TransactionMatcher for superior grouping
+        matcher = TransactionMatcher()
+        strategy_matches = matcher.match_transactions_to_strategies(transactions, existing_positions)
+        
+        # Convert StrategyMatch objects to Trade objects
+        trades = []
+        for match in strategy_matches:
+            # Create Trade object from StrategyMatch
+            trade = StrategyRecognizer._create_trade_from_strategy_match(match)
+            if trade:
+                trades.append(trade)
+        
+        logger.info(f"Processed {len(trades)} trades using order-based grouping")
+        
+        # Save all trades to database (avoid duplicates)
         saved_count = 0
+        updated_count = 0
+        skipped_count = 0
         failed_count = 0
         
-        for trade in trades:
-            try:
-                if db.save_trade(trade):
-                    saved_count += 1
-                else:
-                    failed_count += 1
-                    logger.warning(f"Failed to save trade {trade.trade_id}")
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
+        # Get existing trades to avoid duplicates
+        existing_trades = {}
+        for underlying in set(trade.underlying for trade in trades):
+            existing = db.get_trades(underlying=underlying, limit=1000)
+            for existing_trade in existing:
+                existing_trades[existing_trade['trade_id']] = existing_trade
         
-        logger.info(f"Saved {saved_count} trades, {failed_count} failed")
+        # Group trades by account for processing
+        trades_by_account = {}
+        for trade in trades:
+            # Get account number from trade object (set during trade creation)
+            account_number = getattr(trade, 'account_number', 'UNKNOWN')
+            
+            if not account_number or account_number == 'UNKNOWN':
+                logger.warning(f"Could not determine account for trade {trade.trade_id}")
+                account_number = "UNKNOWN"
+            
+            if account_number not in trades_by_account:
+                trades_by_account[account_number] = []
+            trades_by_account[account_number].append((trade, account_number))
+
+        for account_number, account_trades in trades_by_account.items():
+            logger.info(f"Processing {len(account_trades)} trades for account {account_number}")
+            
+            for trade, trade_account in account_trades:
+                try:
+                    if trade.trade_id in existing_trades:
+                        # Check if this trade needs updating (e.g., status changed)
+                        existing = existing_trades[trade.trade_id]
+                        if (existing['status'] != trade.status.value or 
+                            existing['exit_date'] != (trade.exit_date.isoformat() if trade.exit_date else None)):
+                            if db.save_trade(trade, trade_account):
+                                updated_count += 1
+                                logger.info(f"Updated existing trade {trade.trade_id} for account {trade_account}")
+                            else:
+                                failed_count += 1
+                        else:
+                            skipped_count += 1
+                            logger.debug(f"Skipped unchanged trade {trade.trade_id}")
+                    else:
+                        # New trade
+                        if db.save_trade(trade, trade_account):
+                            saved_count += 1
+                            logger.info(f"Saved new trade {trade.trade_id} for account {trade_account}")
+                        else:
+                            failed_count += 1
+                            logger.warning(f"Failed to save trade {trade.trade_id}")
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
+        
+        logger.info(f"Initial sync complete: {saved_count} new, {updated_count} updated, {skipped_count} skipped, {failed_count} failed")
         
         # Restore user comments and tags
         logger.info("Restoring user comments and tags...")
@@ -480,12 +584,14 @@ async def initial_sync():
             else:
                 logger.error("Failed to save account balance")
         
-        logger.info(f"INITIAL SYNC completed: {saved_count} trades saved, {total_positions} positions updated")
+        logger.info(f"INITIAL SYNC completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {total_positions} positions updated")
         
         return {
             "message": f"Initial sync completed successfully",
             "trades_processed": len(trades),
-            "trades_saved": saved_count,
+            "trades_new": saved_count,
+            "trades_updated": updated_count,
+            "trades_skipped": skipped_count,
             "trades_failed": failed_count,
             "positions_updated": total_positions,
             "transactions_processed": len(transactions)
