@@ -126,6 +126,7 @@ class Trade:
     current_notes: str = ""   # Latest analysis/plan
     tags: List[str] = field(default_factory=list)
     strategy_direction: Optional[str] = None
+    includes_roll: bool = False  # True if this trade involves rolling a position
     
     @property
     def days_in_trade(self) -> Optional[int]:
@@ -1435,7 +1436,8 @@ class StrategyRecognizer:
                 entry_date=entry_date,
                 exit_date=exit_date,
                 account_number=account_number,
-                status=trade_status
+                status=trade_status,
+                includes_roll=getattr(strategy_match, 'includes_roll', False)
             )
             
             # Process transactions into legs

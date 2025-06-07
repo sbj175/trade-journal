@@ -160,6 +160,7 @@ function tradeJournal() {
                                   'bg-blue-900/30 text-blue-400';
                 
                 const pnlClass = (trade.current_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400';
+                const rollBadge = trade.includes_roll ? '<span class="ml-1 bg-red-600 text-white text-xs px-1 py-0.5 rounded">R</span>' : '';
                 
                 row.innerHTML = `
                     <td class="px-6 py-4 text-sm font-mono">
@@ -169,7 +170,7 @@ function tradeJournal() {
                     </td>
                     <td class="px-6 py-4 text-sm font-semibold">${trade.underlying}</td>
                     <td class="px-6 py-4 text-sm">
-                        <span class="px-2 py-1 bg-purple-900/30 text-purple-400 rounded-md">${trade.strategy_type}</span>
+                        <span class="px-2 py-1 bg-purple-900/30 text-purple-400 rounded-md">${trade.strategy_type}${rollBadge}</span>
                     </td>
                     <td class="px-6 py-4 text-sm">${this.formatDate(trade.entry_date)}</td>
                     <td class="px-6 py-4 text-sm">

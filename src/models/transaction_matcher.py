@@ -60,6 +60,7 @@ class StrategyMatch:
     precedence_score: int
     group: TransactionGroup
     components: Dict[str, List[Dict]]  # 'options', 'stock', etc.
+    includes_roll: bool = False  # True if this trade involves rolling a position
     
 
 class TransactionMatcher:
@@ -402,14 +403,21 @@ class TransactionMatcher:
                 
         elif len(option_details) > 4:
             # Complex multi-leg strategy
+            # Analyze for roll metadata
+            includes_roll, base_strategy = self._analyze_roll_metadata(options_txns)
+            strategy_type = StrategyType.COMPLEX_STRATEGY
+            if includes_roll:
+                strategy_type = base_strategy
+                
             strategy = StrategyMatch(
-                strategy_type=StrategyType.COMPLEX_STRATEGY,
+                strategy_type=strategy_type,
                 transactions=options_txns,
                 confidence=ConfidenceLevel.LOW,
                 quality_flags=[QualityFlag.MANUAL_REVIEW],
-                precedence_score=self.STRATEGY_PRECEDENCE.get(StrategyType.COMPLEX_STRATEGY, 0),
+                precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
                 group=group,
-                components={'options': options_txns}
+                components={'options': options_txns},
+                includes_roll=includes_roll
             )
             strategies.append(strategy)
             
@@ -448,6 +456,11 @@ class TransactionMatcher:
         confidence = (ConfidenceLevel.HIGH if group.grouping_method == 'order_id' 
                      else ConfidenceLevel.MEDIUM)
         
+        # Analyze for roll metadata
+        includes_roll, base_strategy = self._analyze_roll_metadata([txn])
+        if includes_roll:
+            strategy_type = base_strategy
+        
         return StrategyMatch(
             strategy_type=strategy_type,
             transactions=[txn],
@@ -455,7 +468,8 @@ class TransactionMatcher:
             quality_flags=[QualityFlag.VERIFIED],
             precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
             group=group,
-            components={'options': [txn]}
+            components={'options': [txn]},
+            includes_roll=includes_roll
         )
     
     def _identify_two_option_strategy(self, option_details: List[Dict], group: TransactionGroup) -> Optional[StrategyMatch]:
@@ -491,99 +505,66 @@ class TransactionMatcher:
         
         # Different expirations
         else:
-            # Check for ROLL pattern first (closing one position, opening another)
-            if (opt1['option_type'] == opt2['option_type'] and 
-                self._is_closing(opt1) and self._is_opening(opt2)):
-                # Closing one position and opening another = ROLL
-                if opt1['option_type'] == 'Call':
-                    strategy_type = StrategyType.CALL_ROLL
-                else:
-                    strategy_type = StrategyType.PUT_ROLL
-            elif (opt1['option_type'] == opt2['option_type'] and 
-                  self._is_opening(opt1) and self._is_closing(opt2)):
-                # Opening one position and closing another = ROLL (reverse order)
-                if opt1['option_type'] == 'Call':
-                    strategy_type = StrategyType.CALL_ROLL
-                else:
-                    strategy_type = StrategyType.PUT_ROLL
-            elif opt1['strike'] == opt2['strike'] and opt1['option_type'] == opt2['option_type']:
+            if opt1['strike'] == opt2['strike'] and opt1['option_type'] == opt2['option_type']:
                 # Same strike and type = Calendar Spread
                 strategy_type = StrategyType.CALENDAR_SPREAD
             else:
                 # Different strikes = Diagonal Spread
                 strategy_type = StrategyType.DIAGONAL_SPREAD
         
+        # Analyze for roll metadata and determine base strategy
+        transactions = [opt1['transaction'], opt2['transaction']]
+        includes_roll, base_strategy = self._analyze_roll_metadata(transactions)
+        if includes_roll:
+            strategy_type = base_strategy
+        
         confidence = (ConfidenceLevel.HIGH if group.grouping_method == 'order_id' 
                      else ConfidenceLevel.MEDIUM)
         
         return StrategyMatch(
             strategy_type=strategy_type,
-            transactions=[opt1['transaction'], opt2['transaction']],
+            transactions=transactions,
             confidence=confidence,
             quality_flags=[QualityFlag.VERIFIED],
             precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
             group=group,
-            components={'options': [opt1['transaction'], opt2['transaction']]}
+            components={'options': transactions},
+            includes_roll=includes_roll
         )
     
     def _identify_four_option_strategy(self, option_details: List[Dict], group: TransactionGroup) -> Optional[StrategyMatch]:
-        """Identify four-option strategies (Iron Condor, Iron Butterfly, Double-leg Rolls)"""
-        # Check for double-leg roll first (2 closing + 2 opening transactions)
-        closing_txns = [opt for opt in option_details if self._is_closing(opt)]
-        opening_txns = [opt for opt in option_details if self._is_opening(opt)]
+        """Identify four-option strategies (Iron Condor, Iron Butterfly, or multi-leg rolls)"""
+        # Standard 4-leg strategies
+        # Separate by option type
+        calls = [opt for opt in option_details if opt['option_type'] == 'Call']
+        puts = [opt for opt in option_details if opt['option_type'] == 'Put']
         
-        if len(closing_txns) == 2 and len(opening_txns) == 2:
-            # Check if it's a spread roll (same option types on each side)
-            closing_types = set(opt['option_type'] for opt in closing_txns)
-            opening_types = set(opt['option_type'] for opt in opening_txns)
+        # Check if all same expiration
+        expirations = set(opt['expiration'] for opt in option_details)
+        if len(expirations) == 1 and len(calls) == 2 and len(puts) == 2:
+            # Get unique strikes
+            all_strikes = sorted(set(opt['strike'] for opt in option_details))
             
-            # Double-leg roll: closing and opening same types
-            if closing_types == opening_types:
-                if len(closing_types) == 1:
-                    # Single option type roll (e.g., rolling a vertical spread)
-                    option_type = list(closing_types)[0]
-                    if option_type == 'Call':
-                        strategy_type = StrategyType.CALL_ROLL
-                    else:
-                        strategy_type = StrategyType.PUT_ROLL
-                elif len(closing_types) == 2:
-                    # Both calls and puts being rolled (e.g., rolling an Iron Condor)
-                    # For now, classify as the more generic "Complex Strategy" 
-                    # Could add specific Iron Condor Roll type later
-                    strategy_type = StrategyType.COMPLEX_STRATEGY
-                else:
-                    strategy_type = StrategyType.COMPLEX_STRATEGY
+            if len(all_strikes) == 3:
+                # Iron Butterfly: 3 unique strikes
+                strategy_type = StrategyType.IRON_BUTTERFLY
+            elif len(all_strikes) == 4:
+                # Iron Condor: 4 unique strikes
+                strategy_type = StrategyType.IRON_CONDOR
             else:
-                # Mixed closing/opening different types - complex strategy
                 strategy_type = StrategyType.COMPLEX_STRATEGY
         else:
-            # Not a roll pattern, check for standard 4-leg strategies
-            # Separate by option type
-            calls = [opt for opt in option_details if opt['option_type'] == 'Call']
-            puts = [opt for opt in option_details if opt['option_type'] == 'Put']
+            strategy_type = StrategyType.COMPLEX_STRATEGY
             
-            # Check if all same expiration
-            expirations = set(opt['expiration'] for opt in option_details)
-            if len(expirations) == 1 and len(calls) == 2 and len(puts) == 2:
-                # Get unique strikes
-                all_strikes = sorted(set(opt['strike'] for opt in option_details))
-                
-                if len(all_strikes) == 3:
-                    # Iron Butterfly: 3 unique strikes
-                    strategy_type = StrategyType.IRON_BUTTERFLY
-                elif len(all_strikes) == 4:
-                    # Iron Condor: 4 unique strikes
-                    strategy_type = StrategyType.IRON_CONDOR
-                else:
-                    strategy_type = StrategyType.COMPLEX_STRATEGY
-            else:
-                strategy_type = StrategyType.COMPLEX_STRATEGY
+        # Analyze for roll metadata and determine base strategy
+        transactions = [opt['transaction'] for opt in option_details]
+        includes_roll, base_strategy = self._analyze_roll_metadata(transactions)
+        if includes_roll:
+            strategy_type = base_strategy
             
         # Calculate confidence based on grouping method and strategy type
         if group.grouping_method == 'order_id':
             confidence = ConfidenceLevel.HIGH
-        elif 'ROLL' in strategy_type.value:
-            confidence = ConfidenceLevel.MEDIUM  # Rolls without order ID are less certain
         else:
             expirations = set(opt['expiration'] for opt in option_details)
             confidence = (ConfidenceLevel.MEDIUM if len(expirations) == 1
@@ -594,12 +575,13 @@ class TransactionMatcher:
         
         return StrategyMatch(
             strategy_type=strategy_type,
-            transactions=[opt['transaction'] for opt in option_details],
+            transactions=transactions,
             confidence=confidence,
             quality_flags=quality_flags,
             precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
             group=group,
-            components={'options': [opt['transaction'] for opt in option_details]}
+            components={'options': transactions},
+            includes_roll=includes_roll
         )
     
     def _identify_stock_option_combos(self, stock_txns: List[Dict], options_txns: List[Dict], 
@@ -632,14 +614,21 @@ class TransactionMatcher:
                 
                 if stock_position >= shares_needed:
                     # This is a covered call
+                    # Analyze for roll metadata
+                    includes_roll, base_strategy = self._analyze_roll_metadata([option_txn])
+                    strategy_type = StrategyType.COVERED_CALL
+                    if includes_roll:
+                        strategy_type = base_strategy
+                    
                     strategy = StrategyMatch(
-                        strategy_type=StrategyType.COVERED_CALL,
+                        strategy_type=strategy_type,
                         transactions=[option_txn],  # Only the option leg
                         confidence=ConfidenceLevel.HIGH,
                         quality_flags=[QualityFlag.VERIFIED],
-                        precedence_score=self.STRATEGY_PRECEDENCE[StrategyType.COVERED_CALL],
+                        precedence_score=self.STRATEGY_PRECEDENCE[strategy_type],
                         group=group,
-                        components={'options': [option_txn], 'stock_context': stock_position}
+                        components={'options': [option_txn], 'stock_context': stock_position},
+                        includes_roll=includes_roll
                     )
                     strategies.append(strategy)
         
@@ -665,6 +654,67 @@ class TransactionMatcher:
         action = str(option_detail.get('action', '') or '')
         return 'OPEN' in action
     
+    def _analyze_roll_metadata(self, transactions: List[Dict]) -> Tuple[bool, StrategyType]:
+        """
+        Analyze transactions to determine if this includes a roll and what the base strategy is
+        
+        Returns:
+            Tuple of (includes_roll: bool, base_strategy_type: StrategyType)
+        """
+        has_closing = False
+        has_opening = False
+        opening_transactions = []
+        
+        # Check for both closing and opening actions
+        for tx in transactions:
+            action = str(tx.get('action', '')).upper()
+            
+            # Check for closing actions (including expiry)
+            if any(close_action in action for close_action in ['BTC', 'STC', 'CLOSE', 'RECEIVE_DELIVER', 'RECEIVE DELIVER']):
+                has_closing = True
+            # Check for opening actions  
+            elif any(open_action in action for open_action in ['BTO', 'STO', 'OPEN']):
+                has_opening = True
+                opening_transactions.append(tx)
+        
+        includes_roll = has_closing and has_opening
+        
+        # If this includes a roll, determine strategy type from opening transactions only
+        if includes_roll and opening_transactions:
+            # Use existing logic to determine strategy from opening transactions
+            # For now, analyze the opening transactions to determine base strategy
+            option_opening_txns = [tx for tx in opening_transactions 
+                                 if 'OPTION' in str(tx.get('instrument_type', ''))]
+            stock_opening_txns = [tx for tx in opening_transactions 
+                                if tx.get('instrument_type', '') == 'Equity']
+            
+            # Determine base strategy from opening transactions
+            if len(option_opening_txns) == 1 and not stock_opening_txns:
+                # Single option
+                tx = option_opening_txns[0]
+                action = str(tx.get('action', '')).upper()
+                if 'SELL' in action and 'OPEN' in action:
+                    # Check option type from symbol
+                    symbol = tx.get('symbol', '')
+                    if 'C' in symbol:  # Rough check for call
+                        # Could be covered call, but need to check existing positions
+                        return includes_roll, StrategyType.COVERED_CALL
+                    else:
+                        return includes_roll, StrategyType.CASH_SECURED_PUT
+                elif 'BUY' in action and 'OPEN' in action:
+                    if 'C' in symbol:
+                        return includes_roll, StrategyType.LONG_CALL
+                    else:
+                        return includes_roll, StrategyType.LONG_PUT
+            
+            # For more complex strategies, return a generic type for now
+            # This can be enhanced later with more sophisticated analysis
+            if len(option_opening_txns) > 1:
+                return includes_roll, StrategyType.VERTICAL_SPREAD
+        
+        # Default fallback - no roll detected or unable to determine
+        return includes_roll, StrategyType.UNKNOWN
+    
     def _identify_three_option_strategy(self, option_details: List[Dict], group: TransactionGroup) -> Optional[StrategyMatch]:
         """Identify three-option strategies (butterflies, broken wing butterflies)"""
         # Check if all same expiration and option type
@@ -684,17 +734,24 @@ class TransactionMatcher:
         else:
             strategy_type = StrategyType.COMPLEX_STRATEGY
             
+        # Analyze for roll metadata and determine base strategy
+        transactions = [opt['transaction'] for opt in option_details]
+        includes_roll, base_strategy = self._analyze_roll_metadata(transactions)
+        if includes_roll:
+            strategy_type = base_strategy
+            
         confidence = (ConfidenceLevel.HIGH if group.grouping_method == 'order_id'
                      else ConfidenceLevel.MEDIUM)
         
         return StrategyMatch(
             strategy_type=strategy_type,
-            transactions=[opt['transaction'] for opt in option_details],
+            transactions=transactions,
             confidence=confidence,
             quality_flags=[QualityFlag.ASSUMED],
             precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
             group=group,
-            components={'options': [opt['transaction'] for opt in option_details]}
+            components={'options': transactions},
+            includes_roll=includes_roll
         )
     
     def _identify_stock_strategies(self, stock_txns: List[Dict], group: TransactionGroup) -> List[StrategyMatch]:
@@ -712,6 +769,9 @@ class TransactionMatcher:
             # Net zero position - likely a completed trade
             return strategies
             
+        # Stock-only strategies don't typically involve rolls, but check anyway
+        includes_roll, base_strategy = self._analyze_roll_metadata(stock_txns)
+        
         strategy = StrategyMatch(
             strategy_type=strategy_type,
             transactions=stock_txns,
@@ -719,7 +779,8 @@ class TransactionMatcher:
             quality_flags=[QualityFlag.VERIFIED],
             precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
             group=group,
-            components={'stock': stock_txns}
+            components={'stock': stock_txns},
+            includes_roll=includes_roll
         )
         strategies.append(strategy)
         
@@ -1107,7 +1168,8 @@ class TransactionMatcher:
             quality_flags=[QualityFlag.VERIFIED],
             precedence_score=open_strategy.precedence_score,
             group=combined_group,
-            components=open_strategy.components  # Keep original components
+            components=open_strategy.components,  # Keep original components
+            includes_roll=getattr(open_strategy, 'includes_roll', False)
         )
         
         return merged_strategy
@@ -1286,7 +1348,8 @@ class TransactionMatcher:
             quality_flags=strategy.quality_flags + [QualityFlag.VERIFIED],
             precedence_score=strategy.precedence_score,
             group=strategy.group,
-            components=strategy.components
+            components=strategy.components,
+            includes_roll=getattr(strategy, 'includes_roll', False)
         )
         
         # Add roll closure metadata
@@ -1308,7 +1371,8 @@ class TransactionMatcher:
             quality_flags=strategy.quality_flags + [QualityFlag.VERIFIED],
             precedence_score=strategy.precedence_score,
             group=strategy.group,
-            components=strategy.components
+            components=strategy.components,
+            includes_roll=getattr(strategy, 'includes_roll', False)
         )
         
         # Add open status metadata
@@ -1329,7 +1393,8 @@ class TransactionMatcher:
             quality_flags=strategy.quality_flags + [QualityFlag.VERIFIED],
             precedence_score=strategy.precedence_score,
             group=strategy.group,
-            components=strategy.components
+            components=strategy.components,
+            includes_roll=getattr(strategy, 'includes_roll', False)
         )
         
         # Add closed status metadata

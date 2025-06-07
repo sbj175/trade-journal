@@ -191,6 +191,14 @@ class DatabaseManager:
                 if 'transaction_timestamps' not in columns:
                     cursor.execute("ALTER TABLE stock_legs ADD COLUMN transaction_timestamps TEXT")
                     logger.info("Added transaction_timestamps column to stock_legs")
+                
+                # Check trades table for includes_roll column
+                cursor.execute("PRAGMA table_info(trades)")
+                trade_columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'includes_roll' not in trade_columns:
+                    cursor.execute("ALTER TABLE trades ADD COLUMN includes_roll BOOLEAN DEFAULT 0")
+                    logger.info("Added includes_roll column to trades")
                     
             except Exception as e:
                 logger.error(f"Error adding transaction columns: {e}")
@@ -259,7 +267,7 @@ class DatabaseManager:
                         UPDATE trades 
                         SET strategy_type = ?, status = ?, exit_date = ?,
                             net_premium = ?, current_pnl = ?, days_in_trade = ?,
-                            updated_at = CURRENT_TIMESTAMP
+                            includes_roll = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE trade_id = ?
                     """, (
                         trade.strategy_type.value,
@@ -268,6 +276,7 @@ class DatabaseManager:
                         trade.net_premium,
                         trade.current_pnl,
                         trade.days_in_trade,
+                        trade.includes_roll,
                         trade.trade_id
                     ))
                 else:
@@ -276,8 +285,8 @@ class DatabaseManager:
                         INSERT INTO trades (
                             trade_id, account_number, underlying, strategy_type, entry_date,
                             exit_date, status, original_notes, current_notes,
-                            tags, net_premium, current_pnl, days_in_trade
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            tags, net_premium, current_pnl, days_in_trade, includes_roll
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         trade.trade_id,
                         account_number,
@@ -291,7 +300,8 @@ class DatabaseManager:
                         tags_json,
                         trade.net_premium,
                         trade.current_pnl,
-                        trade.days_in_trade
+                        trade.days_in_trade,
+                        trade.includes_roll
                     ))
                 
                 # Save option legs
