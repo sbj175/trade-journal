@@ -419,6 +419,14 @@ class TransactionMatcher:
                 components={'options': options_txns},
                 includes_roll=includes_roll
             )
+            
+            # If this is a roll with opening transactions, mark it as forced open
+            if includes_roll and self._roll_opens_new_position(strategy):
+                strategy.status_info = {
+                    'force_open': True,
+                    'reason': 'Roll contains opening transactions (STO/BTO)'
+                }
+            
             strategies.append(strategy)
             
         return strategies
@@ -461,7 +469,7 @@ class TransactionMatcher:
         if includes_roll:
             strategy_type = base_strategy
         
-        return StrategyMatch(
+        strategy_match = StrategyMatch(
             strategy_type=strategy_type,
             transactions=[txn],
             confidence=confidence,
@@ -471,6 +479,15 @@ class TransactionMatcher:
             components={'options': [txn]},
             includes_roll=includes_roll
         )
+        
+        # If this is a roll with opening transactions, mark it as forced open
+        if includes_roll and self._roll_opens_new_position(strategy_match):
+            strategy_match.status_info = {
+                'force_open': True,
+                'reason': 'Roll contains opening transactions (STO/BTO)'
+            }
+        
+        return strategy_match
     
     def _identify_two_option_strategy(self, option_details: List[Dict], group: TransactionGroup) -> Optional[StrategyMatch]:
         """Identify two-option strategies (spreads, straddles, strangles)"""
@@ -521,7 +538,7 @@ class TransactionMatcher:
         confidence = (ConfidenceLevel.HIGH if group.grouping_method == 'order_id' 
                      else ConfidenceLevel.MEDIUM)
         
-        return StrategyMatch(
+        strategy_match = StrategyMatch(
             strategy_type=strategy_type,
             transactions=transactions,
             confidence=confidence,
@@ -531,6 +548,15 @@ class TransactionMatcher:
             components={'options': transactions},
             includes_roll=includes_roll
         )
+        
+        # If this is a roll with opening transactions, mark it as forced open
+        if includes_roll and self._roll_opens_new_position(strategy_match):
+            strategy_match.status_info = {
+                'force_open': True,
+                'reason': 'Roll contains opening transactions (STO/BTO)'
+            }
+        
+        return strategy_match
     
     def _identify_four_option_strategy(self, option_details: List[Dict], group: TransactionGroup) -> Optional[StrategyMatch]:
         """Identify four-option strategies (Iron Condor, Iron Butterfly, or multi-leg rolls)"""
@@ -573,7 +599,7 @@ class TransactionMatcher:
         quality_flags = ([QualityFlag.VERIFIED] if confidence == ConfidenceLevel.HIGH
                         else [QualityFlag.ASSUMED])
         
-        return StrategyMatch(
+        strategy_match = StrategyMatch(
             strategy_type=strategy_type,
             transactions=transactions,
             confidence=confidence,
@@ -583,6 +609,15 @@ class TransactionMatcher:
             components={'options': transactions},
             includes_roll=includes_roll
         )
+        
+        # If this is a roll with opening transactions, mark it as forced open
+        if includes_roll and self._roll_opens_new_position(strategy_match):
+            strategy_match.status_info = {
+                'force_open': True,
+                'reason': 'Roll contains opening transactions (STO/BTO)'
+            }
+        
+        return strategy_match
     
     def _identify_stock_option_combos(self, stock_txns: List[Dict], options_txns: List[Dict], 
                                     group: TransactionGroup) -> List[StrategyMatch]:
@@ -630,6 +665,14 @@ class TransactionMatcher:
                         components={'options': [option_txn], 'stock_context': stock_position},
                         includes_roll=includes_roll
                     )
+                    
+                    # If this is a roll with opening transactions, mark it as forced open
+                    if includes_roll and self._roll_opens_new_position(strategy):
+                        strategy.status_info = {
+                            'force_open': True,
+                            'reason': 'Roll contains opening transactions (STO/BTO)'
+                        }
+                    
                     strategies.append(strategy)
         
         return strategies
@@ -743,7 +786,7 @@ class TransactionMatcher:
         confidence = (ConfidenceLevel.HIGH if group.grouping_method == 'order_id'
                      else ConfidenceLevel.MEDIUM)
         
-        return StrategyMatch(
+        strategy_match = StrategyMatch(
             strategy_type=strategy_type,
             transactions=transactions,
             confidence=confidence,
@@ -753,6 +796,15 @@ class TransactionMatcher:
             components={'options': transactions},
             includes_roll=includes_roll
         )
+        
+        # If this is a roll with opening transactions, mark it as forced open
+        if includes_roll and self._roll_opens_new_position(strategy_match):
+            strategy_match.status_info = {
+                'force_open': True,
+                'reason': 'Roll contains opening transactions (STO/BTO)'
+            }
+        
+        return strategy_match
     
     def _identify_stock_strategies(self, stock_txns: List[Dict], group: TransactionGroup) -> List[StrategyMatch]:
         """Identify stock-only strategies"""
@@ -1217,7 +1269,7 @@ class TransactionMatcher:
             strategy = working_strategies[i]
             
             # If this is a roll strategy, check if it opens new positions
-            if 'ROLL' in strategy.strategy_type.value.upper():
+            if getattr(strategy, 'includes_roll', False):
                 if self._roll_opens_new_position(strategy):
                     # Mark as open since it contains opening transactions
                     working_strategies[i] = self._mark_strategy_as_open(strategy)
@@ -1249,7 +1301,7 @@ class TransactionMatcher:
         Check if a roll strategy closes the position opened by the original strategy
         """
         # Must be a roll strategy
-        if 'ROLL' not in roll_strategy.strategy_type.value.upper():
+        if not getattr(roll_strategy, 'includes_roll', False):
             return False
         
         # Get positions opened by original strategy
