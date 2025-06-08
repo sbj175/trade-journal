@@ -693,9 +693,9 @@ class TransactionMatcher:
                 # Single option
                 tx = option_opening_txns[0]
                 action = str(tx.get('action', '')).upper()
+                symbol = tx.get('symbol', '')
                 if 'SELL' in action and 'OPEN' in action:
                     # Check option type from symbol
-                    symbol = tx.get('symbol', '')
                     if 'C' in symbol:  # Rough check for call
                         # Could be covered call, but need to check existing positions
                         return includes_roll, StrategyType.COVERED_CALL
