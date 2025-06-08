@@ -252,6 +252,51 @@ class StrategyRecognizer:
         return positions
     
     @classmethod
+    def get_stock_positions_at_time(cls, transactions: List[Dict], cutoff_time: str, underlying: str, account_number: str = None) -> int:
+        """
+        Calculate stock position for a specific underlying at a specific point in time
+        
+        Args:
+            transactions: All account transactions
+            cutoff_time: ISO timestamp - only consider transactions before this time
+            underlying: Symbol to calculate position for
+            account_number: Only consider transactions from this account (optional)
+            
+        Returns:
+            Share count for the underlying at the cutoff time
+        """
+        position = 0
+        
+        # Sort by date to process in order
+        sorted_txs = sorted(transactions, key=lambda x: x.get('executed_at', ''))
+        
+        for tx in sorted_txs:
+            # Only consider transactions before the cutoff time
+            tx_time = tx.get('executed_at', '')
+            if tx_time and tx_time >= cutoff_time:
+                break
+            
+            # Filter by account if specified
+            if account_number and tx.get('account_number') != account_number:
+                continue
+                
+            instrument_type = str(tx.get('instrument_type', ''))
+            # Check for stock transactions (EQUITY but not EQUITY_OPTION)
+            if ('EQUITY' in instrument_type and 'OPTION' not in instrument_type and 
+                tx.get('symbol', '') == underlying):
+                
+                quantity = tx.get('quantity', 0) or 0
+                
+                # Handle sell transactions (make them negative)
+                action = str(tx.get('action', ''))
+                if 'SELL' in action:
+                    quantity = -quantity
+                
+                position += quantity
+        
+        return position
+    
+    @classmethod
     def group_transactions_into_trades(cls, transactions: List[Dict]) -> List[Trade]:
         """Group individual transactions into logical trades"""
         
@@ -312,7 +357,7 @@ class StrategyRecognizer:
                 
                 # Convert each group to a Trade object
                 for group in trade_groups:
-                    trade = cls._create_trade_from_transactions(underlying, group, stock_positions)
+                    trade = cls._create_trade_from_transactions(underlying, group, stock_positions, account_txs)
                     if trade:
                         all_trades.append(trade)
         
@@ -697,7 +742,7 @@ class StrategyRecognizer:
         return False
     
     @classmethod
-    def _create_trade_from_transactions(cls, underlying: str, transactions: List[Dict], stock_positions: Dict[str, int] = None) -> Optional[Trade]:
+    def _create_trade_from_transactions(cls, underlying: str, transactions: List[Dict], stock_positions: Dict[str, int] = None, all_account_transactions: List[Dict] = None) -> Optional[Trade]:
         """Create a Trade object from a group of transactions"""
         
         if not transactions:
@@ -741,7 +786,9 @@ class StrategyRecognizer:
                 cls._add_stock_leg(trade, tx)
         
         # Recognize the strategy
-        if stock_positions:
+        if stock_positions and all_account_transactions:
+            trade.strategy_type = cls._recognize_strategy_with_positions(trade, stock_positions, all_account_transactions)
+        elif stock_positions:
             trade.strategy_type = cls._recognize_strategy_with_positions(trade, stock_positions)
         else:
             trade.strategy_type = cls._recognize_strategy(trade)
@@ -877,7 +924,7 @@ class StrategyRecognizer:
             trade.stock_legs.append(leg)
     
     @classmethod
-    def _recognize_strategy_with_positions(cls, trade: Trade, stock_positions: Dict[str, int]) -> StrategyType:
+    def _recognize_strategy_with_positions(cls, trade: Trade, stock_positions: Dict[str, int], all_account_transactions: List[Dict] = None) -> StrategyType:
         """
         Enhanced strategy recognition that considers existing stock positions
         for covered call determination
@@ -902,16 +949,29 @@ class StrategyRecognizer:
             
             # Check if this is a short call that could be covered
             if leg.is_short and leg.option_type == 'Call':
-                # Check existing stock position
                 underlying = trade.underlying
-                existing_shares = stock_positions.get(underlying, 0)
                 contracts = abs(leg.quantity)
                 shares_needed = contracts * 100
                 
-                if existing_shares >= shares_needed:
-                    return StrategyType.COVERED_CALL
+                # If we have all account transactions, check position at time of option trade
+                if all_account_transactions and leg.transaction_timestamps:
+                    # Get the timestamp of the first option transaction (when the call was sold)
+                    option_time = leg.transaction_timestamps[0]
+                    # Calculate stock position at that time for the same account
+                    existing_shares = cls.get_stock_positions_at_time(all_account_transactions, option_time, underlying, trade.account_number)
+                    
+                    if existing_shares >= shares_needed:
+                        return StrategyType.COVERED_CALL
+                    else:
+                        return StrategyType.NAKED_CALL
                 else:
-                    return StrategyType.NAKED_CALL
+                    # Fallback to current position calculation
+                    existing_shares = stock_positions.get(underlying, 0)
+                    
+                    if existing_shares >= shares_needed:
+                        return StrategyType.COVERED_CALL
+                    else:
+                        return StrategyType.NAKED_CALL
             
             # Other single options - use regular recognition
             return cls._recognize_strategy(trade)

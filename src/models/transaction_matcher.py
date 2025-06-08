@@ -109,7 +109,8 @@ class TransactionMatcher:
     def match_transactions_to_strategies(
         self, 
         raw_transactions: List[Dict], 
-        existing_positions: Dict[str, Dict] = None
+        existing_positions: Dict[str, Dict] = None,
+        all_account_transactions: List[Dict] = None
     ) -> List[StrategyMatch]:
         """
         Complete procedure for matching transactions to strategies
@@ -117,12 +118,19 @@ class TransactionMatcher:
         Args:
             raw_transactions: List of transaction dictionaries
             existing_positions: Dict of symbol -> {'stock': quantity, 'options': {...}}
+            all_account_transactions: Complete transaction history for historical position lookups
             
         Returns:
             List of identified strategies with metadata
         """
         if existing_positions:
             self.existing_positions = existing_positions
+        
+        # Store full transaction history for historical position checks
+        if all_account_transactions:
+            self.all_account_transactions = all_account_transactions
+        else:
+            self.all_account_transactions = raw_transactions
             
         # Phase 1: Prepare data
         consolidated = self._consolidate_transactions(raw_transactions)
@@ -380,6 +388,11 @@ class TransactionMatcher:
         # Sort by strike for easier pattern matching
         option_details.sort(key=lambda x: (x['expiration'], x['strike'], x['option_type']))
         
+        # Before identifying multi-leg strategies, check for covered calls
+        # This handles cases where calls have both opening and closing transactions
+        covered_call_strategies = self._check_for_covered_calls(option_details, group)
+        strategies.extend(covered_call_strategies)
+        
         # Identify based on number of legs
         if len(option_details) == 1:
             strategy = self._identify_single_option(option_details[0], group)
@@ -431,14 +444,77 @@ class TransactionMatcher:
             
         return strategies
     
+    def _check_for_covered_calls(self, option_details: List[Dict], group: TransactionGroup) -> List[StrategyMatch]:
+        """Check for covered calls in any option group with call opening transactions"""
+        strategies = []
+        
+        # Look for call opening transactions (STO)
+        for option_detail in option_details:
+            txn = option_detail['transaction']
+            action = option_detail['action']
+            
+            # Check if this is a short call opening transaction
+            if (option_detail['option_type'] == 'Call' and 
+                action and 'SELL' in action and 'OPEN' in action):
+                
+                underlying = option_detail['underlying']
+                contracts = abs(option_detail['quantity'])
+                shares_needed = contracts * 100
+                
+                # Check historical stock position at time of call sale
+                if hasattr(self, 'all_account_transactions') and txn.get('executed_at'):
+                    from .trade_strategy import StrategyRecognizer
+                    stock_position = StrategyRecognizer.get_stock_positions_at_time(
+                        self.all_account_transactions, 
+                        txn.get('executed_at'), 
+                        underlying, 
+                        txn.get('account_number', '')
+                    )
+                else:
+                    # Fallback to current position
+                    stock_position = self.existing_positions.get(underlying, {}).get('stock', 0)
+                
+                # If covered, create a covered call strategy for this group
+                if stock_position >= shares_needed:
+                    # Analyze for roll metadata
+                    all_transactions = [od['transaction'] for od in option_details]
+                    includes_roll, base_strategy = self._analyze_roll_metadata(all_transactions)
+                    
+                    strategy_type = StrategyType.COVERED_CALL
+                    if includes_roll:
+                        strategy_type = base_strategy
+                    
+                    strategy = StrategyMatch(
+                        strategy_type=strategy_type,
+                        transactions=all_transactions,
+                        confidence=ConfidenceLevel.HIGH,
+                        quality_flags=[QualityFlag.VERIFIED],
+                        precedence_score=self.STRATEGY_PRECEDENCE.get(strategy_type, 0),
+                        group=group,
+                        components={'options': all_transactions, 'stock_context': stock_position},
+                        includes_roll=includes_roll
+                    )
+                    
+                    # If this is a roll with opening transactions, mark it as forced open
+                    if includes_roll and self._roll_opens_new_position(strategy):
+                        strategy.status_info = {
+                            'force_open': True,
+                            'reason': 'Roll contains opening transactions (STO/BTO)'
+                        }
+                    
+                    strategies.append(strategy)
+                    break  # Only create one covered call strategy per group
+        
+        return strategies
+    
     def _identify_single_option(self, option_detail: Dict, group: TransactionGroup) -> Optional[StrategyMatch]:
         """Identify single option strategies"""
         txn = option_detail['transaction']
         action = option_detail['action']
         
         # Determine if long or short
-        is_long = 'BUY' in action and 'OPEN' in action
-        is_short = 'SELL' in action and 'OPEN' in action
+        is_long = action and 'BUY' in action and 'OPEN' in action
+        is_short = action and 'SELL' in action and 'OPEN' in action
         
         if is_long:
             strategy_type = (StrategyType.LONG_CALL if option_detail['option_type'] == 'Call' 
@@ -447,10 +523,22 @@ class TransactionMatcher:
             # Check if this could be a covered call or cash-secured put
             underlying = option_detail['underlying']
             if option_detail['option_type'] == 'Call':
-                # Check existing stock position for covered call
-                stock_position = self.existing_positions.get(underlying, {}).get('stock', 0)
+                # Check historical stock position at time of call sale for covered call
                 contracts = abs(option_detail['quantity'])
                 shares_needed = contracts * 100
+                
+                # Use historical position checking if available
+                if hasattr(self, 'all_account_transactions') and txn.get('executed_at'):
+                    from .trade_strategy import StrategyRecognizer
+                    stock_position = StrategyRecognizer.get_stock_positions_at_time(
+                        self.all_account_transactions, 
+                        txn.get('executed_at'), 
+                        underlying, 
+                        txn.get('account_number', '')
+                    )
+                else:
+                    # Fallback to current position
+                    stock_position = self.existing_positions.get(underlying, {}).get('stock', 0)
                 
                 if stock_position >= shares_needed:
                     strategy_type = StrategyType.COVERED_CALL
@@ -643,9 +731,22 @@ class TransactionMatcher:
                 'OPEN' in option_txn.get('action', '')):
                 
                 underlying = option_txn.get('underlying_symbol', '')
-                stock_position = self.existing_positions.get(underlying, {}).get('stock', 0)
                 contracts = abs(option_txn.get('quantity', 0))
                 shares_needed = contracts * 100
+                
+                # Check historical position at the time of option sale
+                option_time = option_txn.get('executed_at', '')
+                account_number = option_txn.get('account_number', '')
+                
+                # Use StrategyRecognizer to get historical position at trade time
+                if option_time and hasattr(self, 'all_account_transactions'):
+                    from .trade_strategy import StrategyRecognizer
+                    stock_position = StrategyRecognizer.get_stock_positions_at_time(
+                        self.all_account_transactions, option_time, underlying, account_number
+                    )
+                else:
+                    # Fallback to existing position calculation
+                    stock_position = self.existing_positions.get(underlying, {}).get('stock', 0)
                 
                 if stock_position >= shares_needed:
                     # This is a covered call

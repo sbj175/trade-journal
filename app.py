@@ -23,6 +23,73 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.database.db_manager import DatabaseManager
 from src.api.tastytrade_client import TastytradeClient
 from src.models.trade_manager import TradeManager
+from src.models.trade_strategy import StrategyType
+
+def fix_covered_call_detection(trades, db):
+    """
+    Post-process trades to detect covered calls based on historical positions at trade time.
+    
+    This fixes cases where short calls were not grouped with their covering stock
+    due to timing or grouping algorithm limitations.
+    """
+    from src.models.trade_strategy import StrategyRecognizer
+    
+    fixed_trades = []
+    
+    for trade in trades:
+        # Only check naked call trades with single option legs
+        if (trade.strategy_type == StrategyType.NAKED_CALL and 
+            len(trade.option_legs) == 1 and 
+            len(trade.stock_legs) == 0):
+            
+            option_leg = trade.option_legs[0]
+            
+            # Check if this is a short call
+            if option_leg.is_short and option_leg.option_type == 'Call':
+                try:
+                    # Get all transactions for this account to check historical positions
+                    with db.get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('''
+                            SELECT * FROM raw_transactions 
+                            WHERE account_number = ?
+                            ORDER BY executed_at
+                        ''', (trade.account_number,))
+                        
+                        columns = [description[0] for description in cursor.description]
+                        rows = cursor.fetchall()
+                        account_transactions = [dict(zip(columns, row)) for row in rows]
+                    
+                    # Check if we have transaction timestamps for the option leg
+                    if option_leg.transaction_timestamps:
+                        # Get the timestamp of the first option transaction (when the call was sold)
+                        option_time = option_leg.transaction_timestamps[0]
+                        
+                        # Calculate stock position at that time for the same account
+                        existing_shares = StrategyRecognizer.get_stock_positions_at_time(
+                            account_transactions, option_time, trade.underlying, trade.account_number
+                        )
+                        
+                        contracts = abs(option_leg.quantity)
+                        shares_needed = contracts * 100
+                        
+                        # If we had enough shares to cover the calls at the time of sale
+                        if existing_shares >= shares_needed:
+                            logger.info(f"Converting {trade.trade_id} from Naked Call to Covered Call "
+                                      f"(had {existing_shares} shares at time of sale, needed {shares_needed})")
+                            trade.strategy_type = StrategyType.COVERED_CALL
+                        else:
+                            logger.info(f"Keeping {trade.trade_id} as Naked Call "
+                                      f"(had {existing_shares} shares at time of sale, needed {shares_needed})")
+                    else:
+                        logger.warning(f"No transaction timestamps found for option leg in trade {trade.trade_id}")
+                        
+                except Exception as e:
+                    logger.error(f"Error checking historical positions for trade {trade.trade_id}: {e}")
+        
+        fixed_trades.append(trade)
+    
+    return fixed_trades
 
 # Configure logging
 logger.add(
@@ -270,19 +337,30 @@ async def sync_trades(sync_request: SyncRequest):
             account_number = account['account_number']
             account_transactions = [tx for tx in transactions if tx.get('account_number') == account_number]
             
-            if not account_transactions:
+            # Filter out non-trading transactions (Money Movement, etc.)
+            trading_transactions = [
+                tx for tx in account_transactions 
+                if tx.get('instrument_type') is not None and tx.get('symbol') is not None
+            ]
+            
+            if not trading_transactions:
+                logger.info(f"No trading transactions found for account {account_number}")
                 continue
                 
-            logger.info(f"Processing {len(account_transactions)} transactions for account {account_number}")
+            logger.info(f"Processing {len(trading_transactions)} trading transactions for account {account_number} (filtered from {len(account_transactions)} total)")
             
             # Calculate stock positions for this account only
-            stock_positions = StrategyRecognizer.get_stock_positions(account_transactions)
+            stock_positions = StrategyRecognizer.get_stock_positions(trading_transactions)
             existing_positions = {}
             for symbol, quantity in stock_positions.items():
                 existing_positions[symbol] = {'stock': quantity, 'options': {}}
             
             # Use TransactionMatcher for this account only
-            strategy_matches = matcher.match_transactions_to_strategies(account_transactions, existing_positions)
+            try:
+                strategy_matches = matcher.match_transactions_to_strategies(trading_transactions, existing_positions, account_transactions)
+            except Exception as e:
+                logger.error(f"Error in TransactionMatcher for account {account_number}: {str(e)}", exc_info=True)
+                raise
             
             # Convert StrategyMatch objects to Trade objects
             for match in strategy_matches:
@@ -293,7 +371,7 @@ async def sync_trades(sync_request: SyncRequest):
         
         trades = all_trades
         
-        logger.info(f"Processed {len(trades)} trades using order-based grouping")
+        logger.info(f"Processed {len(trades)} trades using order-based grouping with historical position checking")
         
         # Get existing trades to avoid duplicates
         existing_trades = {}
@@ -471,19 +549,30 @@ async def initial_sync():
             account_number = account['account_number']
             account_transactions = [tx for tx in transactions if tx.get('account_number') == account_number]
             
-            if not account_transactions:
+            # Filter out non-trading transactions (Money Movement, etc.)
+            trading_transactions = [
+                tx for tx in account_transactions 
+                if tx.get('instrument_type') is not None and tx.get('symbol') is not None
+            ]
+            
+            if not trading_transactions:
+                logger.info(f"No trading transactions found for account {account_number}")
                 continue
                 
-            logger.info(f"Processing {len(account_transactions)} transactions for account {account_number}")
+            logger.info(f"Processing {len(trading_transactions)} trading transactions for account {account_number} (filtered from {len(account_transactions)} total)")
             
             # Calculate stock positions for this account only
-            stock_positions = StrategyRecognizer.get_stock_positions(account_transactions)
+            stock_positions = StrategyRecognizer.get_stock_positions(trading_transactions)
             existing_positions = {}
             for symbol, quantity in stock_positions.items():
                 existing_positions[symbol] = {'stock': quantity, 'options': {}}
             
             # Use TransactionMatcher for this account only
-            strategy_matches = matcher.match_transactions_to_strategies(account_transactions, existing_positions)
+            try:
+                strategy_matches = matcher.match_transactions_to_strategies(trading_transactions, existing_positions, account_transactions)
+            except Exception as e:
+                logger.error(f"Error in TransactionMatcher for account {account_number}: {str(e)}", exc_info=True)
+                raise
             
             # Convert StrategyMatch objects to Trade objects
             for match in strategy_matches:
