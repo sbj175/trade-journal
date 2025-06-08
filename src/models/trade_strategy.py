@@ -857,6 +857,10 @@ class StrategyRecognizer:
             
             if transaction.get('executed_at'):
                 existing_leg.transaction_timestamps.append(transaction.get('executed_at'))
+        elif is_closing and not existing_leg:
+            # This is a closing transaction with no existing leg to close
+            # Likely closing a position from a previous trade - skip creating a new leg
+            return
         else:
             # This is an opening transaction - create new leg
             normalized_action = cls._normalize_action(action_str, transaction)
