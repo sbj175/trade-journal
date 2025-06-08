@@ -3,8 +3,10 @@ function tradeJournal() {
     return {
         // State
         trades: [],
+        chains: [],
         accounts: [],
         selectedAccount: '',
+        availableUnderlyings: [],
         dashboard: {
             summary: {
                 total_pnl: 0,
@@ -49,7 +51,9 @@ function tradeJournal() {
             console.log('Initializing Trade Journal...');
             await this.loadAccounts();
             await this.loadDashboard();
+            await this.loadAvailableUnderlyings();
             await this.loadTrades();
+            await this.loadChains();
         },
         
         // Load accounts
@@ -74,7 +78,9 @@ function tradeJournal() {
         async onAccountChange() {
             console.log('Account changed to:', this.selectedAccount);
             await this.loadDashboard();
+            await this.loadAvailableUnderlyings();
             await this.loadTrades();
+            await this.loadChains();
         },
         
         // Format number with commas
@@ -133,12 +139,55 @@ function tradeJournal() {
                 const data = await response.json();
                 this.trades = data.trades || [];
                 
+                // Note: Available underlyings are loaded separately to show all options
+                
                 // Apply default sorting without toggling
                 this.applyDefaultSort();
             } catch (error) {
                 console.error('Error loading trades:', error);
             } finally {
                 this.loading = false;
+            }
+        },
+        
+        // Load trade chains
+        async loadChains() {
+            this.loading = true;
+            try {
+                console.log('Loading chains...');
+                const params = new URLSearchParams();
+                if (this.selectedAccount) params.append('account_number', this.selectedAccount);
+                if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
+                
+                const response = await fetch(`/api/chains?${params}`);
+                const data = await response.json();
+                this.chains = data.chains || [];
+                
+                console.log(`Loaded ${this.chains.length} chains`);
+            } catch (error) {
+                console.error('Error loading chains:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        // Load all available underlyings for the filter
+        async loadAvailableUnderlyings() {
+            try {
+                // Fetch all trades without filters to get complete underlying list
+                const params = new URLSearchParams();
+                if (this.selectedAccount) params.append('account_number', this.selectedAccount);
+                params.append('limit', '1000'); // Get more trades to ensure we see all underlyings
+                
+                const response = await fetch(`/api/trades?${params}`);
+                const data = await response.json();
+                const allTrades = data.trades || [];
+                
+                // Extract unique underlyings
+                const underlyings = [...new Set(allTrades.map(trade => trade.underlying))];
+                this.availableUnderlyings = underlyings.sort();
+            } catch (error) {
+                console.error('Error loading available underlyings:', error);
             }
         },
         

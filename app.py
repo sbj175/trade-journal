@@ -25,6 +25,199 @@ from src.api.tastytrade_client import TastytradeClient
 from src.models.trade_manager import TradeManager
 from src.models.trade_strategy import StrategyType
 
+def group_trades_into_chains(trades):
+    """
+    Group trades into chains based on underlying and roll relationships
+    
+    A chain represents a complete position lifecycle:
+    - Opening trade (determines strategy)
+    - Zero or more rolls (continuations)
+    - Closing trade (optional if still open)
+    
+    Returns list of chain objects with trade lists and aggregate data
+    """
+    if not trades:
+        return []
+    
+    # Group by underlying first
+    by_underlying = {}
+    for trade in trades:
+        underlying = trade.get('underlying', 'UNKNOWN')
+        if underlying not in by_underlying:
+            by_underlying[underlying] = []
+        by_underlying[underlying].append(trade)
+    
+    all_chains = []
+    
+    for underlying, underlying_trades in by_underlying.items():
+        # Sort by entry date to process chronologically
+        underlying_trades.sort(key=lambda t: t.get('entry_date', ''))
+        
+        # Detect chains within this underlying
+        chains = detect_chains_for_underlying(underlying_trades)
+        all_chains.extend(chains)
+    
+    return all_chains
+
+def detect_chains_for_underlying(trades):
+    """
+    Detect chains within trades for a single underlying
+    
+    Chain detection logic:
+    1. Look for roll indicators (includes_roll = True)
+    2. Group consecutive trades that appear to be related
+    3. Create chain with opening strategy + subsequent rolls
+    """
+    chains = []
+    used_trades = set()
+    
+    for i, trade in enumerate(trades):
+        if trade['trade_id'] in used_trades:
+            continue
+            
+        # Start a new chain with this trade
+        chain_trades = [trade]
+        used_trades.add(trade['trade_id'])
+        
+        # Look for subsequent trades that might be rolls of this position
+        for j in range(i + 1, len(trades)):
+            candidate = trades[j]
+            if candidate['trade_id'] in used_trades:
+                continue
+                
+            # Check if this could be a roll continuation
+            if is_roll_continuation(chain_trades[-1], candidate):
+                chain_trades.append(candidate)
+                used_trades.add(candidate['trade_id'])
+        
+        # Create chain object
+        chain = create_chain_object(chain_trades)
+        chains.append(chain)
+    
+    return chains
+
+def is_roll_continuation(prev_trade, candidate_trade):
+    """
+    Determine if candidate_trade is a roll continuation of prev_trade
+    
+    Criteria:
+    1. Same underlying (already filtered)
+    2. Candidate has includes_roll = True
+    3. Time proximity (within reasonable roll window)
+    4. Similar strategy type or complexity
+    """
+    # Must be a roll
+    if not candidate_trade.get('includes_roll'):
+        return False
+    
+    # Check time proximity (within 30 days is reasonable for rolls)
+    try:
+        from datetime import datetime, timedelta
+        prev_date = datetime.fromisoformat(prev_trade.get('entry_date', ''))
+        candidate_date = datetime.fromisoformat(candidate_trade.get('entry_date', ''))
+        
+        # Candidate should be after previous trade but within roll window
+        if candidate_date <= prev_date:
+            return False
+        
+        time_diff = candidate_date - prev_date
+        if time_diff > timedelta(days=30):
+            return False
+            
+    except (ValueError, TypeError):
+        # If date parsing fails, skip time check
+        pass
+    
+    # Similar strategy complexity (same basic type)
+    prev_strategy = prev_trade.get('strategy_type', '')
+    candidate_strategy = candidate_trade.get('strategy_type', '')
+    
+    # Allow some flexibility in strategy matching for rolls
+    strategy_families = {
+        'Covered Call': ['Covered Call'],
+        'Cash Secured Put': ['Cash Secured Put'],
+        'Iron Condor': ['Iron Condor', 'Vertical Spread'],
+        'Bull Put Spread': ['Bull Put Spread', 'Vertical Spread'],
+        'Bear Call Spread': ['Bear Call Spread', 'Vertical Spread'],
+    }
+    
+    for family, members in strategy_families.items():
+        if prev_strategy in members and candidate_strategy in members:
+            return True
+    
+    # Exact match fallback
+    return prev_strategy == candidate_strategy
+
+def create_chain_object(chain_trades):
+    """
+    Create a chain object from a list of trades
+    
+    Returns:
+    {
+        'chain_id': 'MSTR_CC_20250402',
+        'underlying': 'MSTR', 
+        'strategy_type': 'Covered Call',  # From opening trade
+        'opening_date': '2025-04-02',
+        'closing_date': '2025-04-24' or None,
+        'status': 'Open'/'Closed',
+        'trade_count': 4,
+        'total_pnl': 614.50,
+        'trades': [...] # Full trade objects
+    }
+    """
+    if not chain_trades:
+        return None
+    
+    # Sort chain_trades by entry_date in descending order (most recent first)
+    # But keep track of opening (earliest) and closing (latest chronologically) for metadata
+    chronological_trades = sorted(chain_trades, key=lambda t: t.get('entry_date', ''))
+    opening_trade = chronological_trades[0]  # Earliest chronologically
+    closing_trade = chronological_trades[-1]  # Latest chronologically
+    
+    # Sort trades for display (most recent first)
+    display_trades = sorted(chain_trades, key=lambda t: t.get('entry_date', ''), reverse=True)
+    
+    # Calculate total P&L
+    total_pnl = sum(trade.get('current_pnl', 0) for trade in chain_trades)
+    
+    # Determine if chain is closed (last trade is closed and not a roll)
+    is_closed = (closing_trade.get('status') == 'Closed' and 
+                not closing_trade.get('includes_roll', False))
+    
+    # Generate chain ID
+    strategy_abbrev = get_strategy_abbreviation(opening_trade.get('strategy_type', ''))
+    chain_id = f"{opening_trade.get('underlying', 'UNK')}_{strategy_abbrev}_{opening_trade.get('entry_date', '').replace('-', '')}"
+    
+    return {
+        'chain_id': chain_id,
+        'underlying': opening_trade.get('underlying'),
+        'strategy_type': opening_trade.get('strategy_type'),  # Strategy from opening trade only
+        'opening_date': opening_trade.get('entry_date'),
+        'closing_date': closing_trade.get('exit_date') if is_closed else None,
+        'status': 'Closed' if is_closed else 'Open',
+        'trade_count': len(chain_trades),
+        'total_pnl': total_pnl,
+        'trades': display_trades  # Sorted most recent first for display
+    }
+
+def get_strategy_abbreviation(strategy_type):
+    """Get short abbreviation for strategy type"""
+    abbrevs = {
+        'Covered Call': 'CC',
+        'Cash Secured Put': 'CSP', 
+        'Iron Condor': 'IC',
+        'Bull Put Spread': 'BPS',
+        'Bear Call Spread': 'BCS',
+        'Bull Call Spread': 'BCS',
+        'Bear Put Spread': 'BPS',
+        'Vertical Spread': 'VS',
+        'Long Call': 'LC',
+        'Long Put': 'LP',
+        'Naked Call': 'NC',
+        'Naked Put': 'NP'
+    }
+    return abbrevs.get(strategy_type, 'UNKN')
+
 def fix_covered_call_detection(trades, db):
     """
     Post-process trades to detect covered calls based on historical positions at trade time.
@@ -187,6 +380,39 @@ async def get_trades(
         return {"trades": trades, "total": len(trades)}
     except Exception as e:
         logger.error(f"Error fetching trades: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chains")
+async def get_trade_chains(
+    account_number: Optional[str] = None,
+    underlying: Optional[str] = None,
+    limit: int = 100
+):
+    """Get trades grouped into chains"""
+    try:
+        # Get all trades for the given filters
+        trades = db.get_trades(
+            account_number=account_number,
+            underlying=underlying,
+            limit=limit * 3  # Get more trades since we'll be grouping them
+        )
+        
+        # Enhance trades with full details (option legs, stock legs)
+        enhanced_trades = []
+        for trade in trades:
+            trade_details = db.get_trade_details(trade['trade_id'])
+            if trade_details:
+                enhanced_trades.append(trade_details)
+            else:
+                enhanced_trades.append(trade)  # Fallback to basic trade data
+        
+        # Group trades into chains
+        chains = group_trades_into_chains(enhanced_trades)
+        
+        return {"chains": chains, "total": len(chains)}
+    except Exception as e:
+        logger.error(f"Error fetching trade chains: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
