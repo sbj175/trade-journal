@@ -188,6 +188,23 @@
         "different_strikes": true,
         "different_expirations": true
       }
+    },
+    "ZEBRA": {
+      "name": "Zebra",
+      "code": "ZEB",
+      "category": "multi_leg_complex",
+      "direction": "bullish",
+      "legs": 3,
+      "description": "2 long ITM calls + 1 short ATM call",
+      "recognition_rules": {
+        "leg_count": 3,
+        "option_type": "Call",
+        "pattern": "long/long/short",
+        "quantity_pattern": "2/2/-1",
+        "strike_pattern": "ITM/ITM/ATM",
+        "same_strike_longs": true,
+        "ascending_strikes": true
+      }
     }
   },
   "categories": {
@@ -235,6 +252,7 @@
     }
   },
   "recognition_priority": [
+    "ZEBRA",
     "IRON_BUTTERFLY",
     "IRON_CONDOR",
     "BROKEN_WING_BUTTERFLY",

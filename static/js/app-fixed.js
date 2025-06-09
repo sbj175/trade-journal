@@ -41,7 +41,8 @@ function tradeJournal() {
         editModalOpen: false,
         editingTrade: null,
         
-        // Trade details modal state
+        
+        // Trade details modal state (legacy)
         tradeDetailsModalOpen: false,
         loadingTradeDetails: false,
         tradeDetails: null,
@@ -533,7 +534,8 @@ function tradeJournal() {
             }
         },
         
-        // Close trade details modal
+        
+        // Close trade details modal (legacy)
         closeTradeDetailsModal() {
             console.log('Closing trade details modal...');
             this.tradeDetailsModalOpen = false;

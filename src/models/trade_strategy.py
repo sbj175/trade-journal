@@ -1275,6 +1275,16 @@ class StrategyRecognizer:
         elif 'BUY_TO_OPEN' in action or 'BTO' in action:
             return 'BTO'
         elif 'BUY_TO_CLOSE' in action or 'BTC' in action:
+            # Check if this is actually an expiration before returning BTC
+            if transaction:
+                description = str(transaction.get('description', '')).upper()
+                sub_type = str(transaction.get('transaction_sub_type', '')).upper()
+                
+                # If description or sub_type indicates expiration, return EXPIRED instead
+                if any(indicator in description for indicator in ['REMOVAL', 'EXPIRATION', 'EXPIRED']):
+                    return 'EXPIRED'
+                elif 'EXPIRATION' in sub_type:
+                    return 'EXPIRED'
             return 'BTC'
         elif 'SELL_TO_OPEN' in action or 'STO' in action:
             return 'STO'

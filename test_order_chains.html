@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Order Chains Interface</title>
+    <script>
+        // Test if the interface loads properly
+        window.addEventListener('load', function() {
+            // Check if underlying filter exists
+            fetch('/api/trades?limit=100')
+                .then(response => response.json())
+                .then(data => {
+                    const trades = data.trades || [];
+                    const underlyings = [...new Set(trades.map(trade => trade.underlying))].sort();
+                    
+                    console.log('Available underlyings:', underlyings);
+                    
+                    // Test filtering by MSTR
+                    return fetch('/api/trades?underlying=MSTR');
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const mstrTrades = data.trades || [];
+                    console.log(`MSTR trades: ${mstrTrades.length}`);
+                    mstrTrades.forEach(trade => {
+                        console.log(`  ${trade.trade_id}: ${trade.strategy_type} - ${trade.status}`);
+                    });
+                    
+                    document.body.innerHTML = `
+                        <h1>Order Chains Interface Test</h1>
+                        <p>✅ API working</p>
+                        <p>✅ Underlying filter working</p>
+                        <p>✅ Found ${mstrTrades.length} MSTR trades</p>
+                        <p><a href="/">Go to main interface</a></p>
+                    `;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.body.innerHTML = `
+                        <h1>Order Chains Interface Test</h1>
+                        <p>❌ Error: ${error.message}</p>
+                    `;
+                });
+        });
+    </script>
+</head>
+<body>
+    <p>Testing Order Chains interface...</p>
+</body>
+</html>

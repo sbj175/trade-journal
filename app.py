@@ -24,6 +24,7 @@ from src.database.db_manager import DatabaseManager
 from src.api.tastytrade_client import TastytradeClient
 from src.models.trade_manager import TradeManager
 from src.models.trade_strategy import StrategyType
+from src.models.order_models import OrderManager
 
 def group_trades_into_chains(trades):
     """
@@ -67,6 +68,7 @@ def detect_chains_for_underlying(trades):
     1. Look for roll indicators (includes_roll = True)
     2. Group consecutive trades that appear to be related
     3. Create chain with opening strategy + subsequent rolls
+    4. Non-roll trades (includes_roll = False) get their own separate chains
     """
     chains = []
     used_trades = set()
@@ -79,16 +81,19 @@ def detect_chains_for_underlying(trades):
         chain_trades = [trade]
         used_trades.add(trade['trade_id'])
         
-        # Look for subsequent trades that might be rolls of this position
-        for j in range(i + 1, len(trades)):
-            candidate = trades[j]
-            if candidate['trade_id'] in used_trades:
-                continue
-                
-            # Check if this could be a roll continuation
-            if is_roll_continuation(chain_trades[-1], candidate):
-                chain_trades.append(candidate)
-                used_trades.add(candidate['trade_id'])
+        # Only look for roll continuations if this trade could have rolls
+        # Non-roll trades (includes_roll = False) should be standalone
+        if trade.get('includes_roll'):
+            # Look for subsequent trades that might be rolls of this position
+            for j in range(i + 1, len(trades)):
+                candidate = trades[j]
+                if candidate['trade_id'] in used_trades:
+                    continue
+                    
+                # Check if this could be a roll continuation
+                if is_roll_continuation(chain_trades[-1], candidate):
+                    chain_trades.append(candidate)
+                    used_trades.add(candidate['trade_id'])
         
         # Create chain object
         chain = create_chain_object(chain_trades)
@@ -310,6 +315,7 @@ app.add_middleware(
 
 # Initialize database
 db = DatabaseManager()
+order_manager = OrderManager(db)
 
 # Create static directory if it doesn't exist
 static_dir = Path("static")
@@ -384,41 +390,139 @@ async def get_trades(
 
 
 @app.get("/api/chains")
-async def get_trade_chains(
+async def get_order_chains(
     account_number: Optional[str] = None,
     underlying: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
+    offset: int = 0
 ):
-    """Get trades grouped into chains"""
+    """Get order chains with enhanced display information"""
     try:
-        # Get all trades for the given filters
-        trades = db.get_trades(
-            account_number=account_number,
-            underlying=underlying,
-            limit=limit * 3  # Get more trades since we'll be grouping them
+        # Get order chains from the new model
+        chains = order_manager.get_order_chains(
+            account_number=account_number, 
+            limit=limit, 
+            offset=offset
         )
         
-        # Enhance trades with full details (option legs, stock legs)
-        enhanced_trades = []
-        for trade in trades:
-            trade_details = db.get_trade_details(trade['trade_id'])
-            if trade_details:
-                enhanced_trades.append(trade_details)
-            else:
-                enhanced_trades.append(trade)  # Fallback to basic trade data
+        # Filter by underlying if specified
+        if underlying:
+            chains = [chain for chain in chains if chain['underlying'] == underlying]
         
-        # Group trades into chains
-        chains = group_trades_into_chains(enhanced_trades)
+        # Transform to match frontend expectations
+        formatted_chains = []
+        for chain in chains:
+            # Get first and last orders for chain metadata
+            orders = chain.get('orders', [])
+            if not orders:
+                continue
+            
+            # Filter out chains that only contain stock positions (no options)
+            has_options = False
+            for order in orders:
+                for position in order.get('positions', []):
+                    if 'OPTION' in str(position.get('instrument_type', '')):
+                        has_options = True
+                        break
+                if has_options:
+                    break
+            
+            # Skip chains with no option positions
+            if not has_options:
+                continue
+                
+            opening_order = orders[0]  # First in sequence
+            closing_order = orders[-1] if orders else None
+            
+            # Calculate chain summary
+            formatted_chain = {
+                'chain_id': chain['chain_id'],
+                'underlying': chain['underlying'],
+                'strategy_type': chain['strategy_type'],
+                'opening_date': opening_order.get('order_date') if opening_order else None,
+                'closing_date': None,
+                'status': chain['chain_status'],
+                'order_count': len(orders),
+                'total_pnl': chain['total_pnl'],
+                'orders': []
+            }
+            
+            # Process each order in the chain
+            for order in orders:
+                order_info = {
+                    'order_id': order['order_id'],
+                    'order_type': order['order_type'],
+                    'order_date': order['order_date'],
+                    'strategy_type': order.get('strategy_type'),
+                    'status': order['status'],
+                    'total_pnl': order['total_pnl'],
+                    'positions': order.get('positions', []),
+                    'emblems': []
+                }
+                
+                # Add emblems based on order characteristics
+                if order.get('has_assignment'):
+                    order_info['emblems'].append('A')
+                if order.get('has_expiration'):
+                    order_info['emblems'].append('E')
+                if order.get('has_exercise'):
+                    order_info['emblems'].append('X')
+                
+                formatted_chain['orders'].append(order_info)
+            
+            # Set closing date if last order is closed
+            if closing_order and closing_order['status'] == 'CLOSED':
+                formatted_chain['closing_date'] = closing_order.get('order_date')
+            
+            formatted_chains.append(formatted_chain)
         
-        return {"chains": chains, "total": len(chains)}
+        return {"chains": formatted_chains, "total": len(formatted_chains)}
     except Exception as e:
-        logger.error(f"Error fetching trade chains: {str(e)}")
+        logger.error(f"Error fetching order chains: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/orders/{order_id}")
+async def get_order(order_id: str):
+    """Get a specific order with all positions"""
+    try:
+        order = order_manager.get_order_by_id(order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return order
+    except Exception as e:
+        logger.error(f"Error fetching order {order_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/positions")
+async def get_positions_by_account(
+    account_number: Optional[str] = None,
+    status: Optional[str] = None
+):
+    """Get positions for an account"""
+    try:
+        if not account_number:
+            # Get all accounts and aggregate positions
+            accounts = db.get_accounts()
+            all_positions = []
+            for account in accounts:
+                positions = order_manager.get_positions_by_account(
+                    account['account_number'], status
+                )
+                all_positions.extend(positions)
+            return {"positions": all_positions}
+        else:
+            positions = order_manager.get_positions_by_account(account_number, status)
+            return {"positions": positions}
+    except Exception as e:
+        logger.error(f"Error fetching positions: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/trades/{trade_id}")
 async def get_trade(trade_id: str):
-    """Get a specific trade with all legs"""
+    """Get a specific trade with all legs (legacy support)"""
     try:
         trade = db.get_trade_details(trade_id)
         if not trade:
@@ -473,12 +577,12 @@ async def get_positions(account_number: Optional[str] = None):
 async def get_dashboard_data(account_number: Optional[str] = None):
     """Get dashboard summary data"""
     try:
-        # Get various statistics
+        # Get legacy trade statistics for backward compatibility
         total_trades = db.get_trade_count(account_number=account_number)
         open_trades = db.get_trade_count(account_number=account_number, status="Open")
         closed_trades = db.get_trade_count(account_number=account_number, status="Closed")
         
-        # Get P&L data
+        # Get P&L data from legacy trades
         total_pnl = db.get_total_pnl(account_number=account_number)
         today_pnl = db.get_pnl_by_date(date.today(), account_number=account_number)
         week_pnl = db.get_pnl_by_date_range(
@@ -487,11 +591,18 @@ async def get_dashboard_data(account_number: Optional[str] = None):
             account_number=account_number
         )
         
-        # Get win rate
+        # Get win rate from legacy trades
         win_rate = db.get_win_rate(account_number=account_number)
         
-        # Get strategy breakdown
+        # Get strategy breakdown from legacy trades
         strategy_stats = db.get_strategy_statistics()
+        
+        # Get new Order/Position statistics
+        try:
+            order_stats = order_manager.get_order_statistics(account_number=account_number)
+        except Exception as e:
+            logger.warning(f"Could not get order statistics: {e}")
+            order_stats = {}
         
         # Get recent trades
         recent_trades = db.get_trades(limit=5)
@@ -506,6 +617,7 @@ async def get_dashboard_data(account_number: Optional[str] = None):
                 "week_pnl": week_pnl,
                 "win_rate": win_rate
             },
+            "order_summary": order_stats,
             "strategy_breakdown": strategy_stats,
             "recent_trades": recent_trades
         }

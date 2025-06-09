@@ -16,7 +16,25 @@
       "Bash(git push:*)",
       "Bash(sqlite3:*)",
       "Bash(find:*)",
-      "Bash(echo)"
+      "Bash(echo)",
+      "Bash(curl:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(rg:*)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_analyze_roll|roll.*metadata|includes_roll\" src/models/ -A 5 -B 2)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"def _analyze_roll_metadata\" src/models/ -A 30)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_link_roll_chains|roll.*chain\" src/models/ -A 10)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_process_roll_chains_for_underlying\" src/models/ -A 50)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_get_opened_positions_from_strategy|_get_closed_positions_from_strategy\" src/models/ -A 15)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_get_opened_positions_from_strategy\" src/models/ -A 15)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_extract_position_from_transaction|_positions_match\" src/models/ -A 10)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"def _extract_position_from_transaction\" src/models/ -A 20)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"group.*order_id|order_id.*group\" src/models/ -A 5 -B 2)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_group_transactions_by_position|_link_closing_transactions\" src/models/ -A 10)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"closing.*transaction|_match.*closing\" src/models/ -A 5)",
+      "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"def _match_closing_transactions\" src/models/ -A 50)",
+      "Bash(sed:*)",
+      "Bash(pkill:*)",
+      "Bash(true)"
     ],
     "deny": []
   }

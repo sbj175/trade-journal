@@ -1147,7 +1147,8 @@ class TransactionMatcher:
         Match orphaned closing transactions to their opening trades across different order IDs
         
         This handles cases where closing transactions have different order IDs than opening transactions
-        but represent the closing of the same position (e.g., AFRM Bull Put Spread case)
+        but represent the closing of the same position. However, we now preserve order boundaries
+        to prevent incorrect merging of transactions from different orders.
         """
         if not potential_strategies:
             return potential_strategies
@@ -1181,24 +1182,29 @@ class TransactionMatcher:
             else:
                 combined_closing = contract_closings[0]
             
-            # Find the best matching open strategy
+            # Find the best matching open strategy with enhanced order-aware matching
             best_match = None
             best_score = 0.0
             
             for open_strategy in open_strategies:
-                score = self._calculate_closing_match_score(open_strategy, combined_closing)
-                if score > best_score and score >= 0.5:  # 50% confidence threshold (allows partial closings)
+                score = self._calculate_closing_match_score_with_order_awareness(open_strategy, combined_closing)
+                if score > best_score and score >= 0.7:  # Increased threshold to 70% to be more conservative
                     best_score = score
                     best_match = open_strategy
             
             if best_match:
-                # Merge the combined closing strategy into the opening strategy
-                merged_strategy = self._merge_closing_strategy(best_match, combined_closing)
-                matched_strategies.append(merged_strategy)
-                
-                # Remove the matched opening strategy from future matching
-                if best_match in open_strategies:
-                    open_strategies.remove(best_match)
+                # Only merge if this is a genuine closing of the same logical position
+                # Check if the closing transaction is actually closing this position
+                if self._is_genuine_position_closure(best_match, combined_closing):
+                    merged_strategy = self._merge_closing_strategy(best_match, combined_closing)
+                    matched_strategies.append(merged_strategy)
+                    
+                    # Remove the matched opening strategy from future matching
+                    if best_match in open_strategies:
+                        open_strategies.remove(best_match)
+                else:
+                    # Don't merge - keep both as separate strategies
+                    unmatched_closings.extend(contract_closings)
             else:
                 # Keep orphaned closings as-is
                 if len(contract_closings) > 1:
@@ -1225,6 +1231,100 @@ class TransactionMatcher:
         # If all transactions are closing actions, this is an orphaned closing strategy
         # that should be matched with an existing open position
         return all_closing
+    
+    def _calculate_closing_match_score_with_order_awareness(self, open_strategy: StrategyMatch, closing_strategy: StrategyMatch) -> float:
+        """
+        Calculate how well a closing strategy matches an opening strategy with order awareness
+        """
+        # Start with the basic match score
+        base_score = self._calculate_closing_match_score(open_strategy, closing_strategy)
+        
+        if base_score == 0.0:
+            return 0.0
+        
+        # Get order IDs from both strategies
+        open_order_ids = self._get_strategy_order_ids(open_strategy)
+        closing_order_ids = self._get_strategy_order_ids(closing_strategy)
+        
+        # If there's any overlap in order IDs, this should NOT be matched
+        # (they're from the same order, not a roll)
+        if open_order_ids & closing_order_ids:
+            return 0.0
+        
+        # Check temporal relationship - closing should be after opening
+        open_times = [tx.get('executed_at', '') for tx in open_strategy.transactions]
+        closing_times = [tx.get('executed_at', '') for tx in closing_strategy.transactions]
+        
+        try:
+            from datetime import datetime, timedelta
+            open_latest = max([datetime.fromisoformat(t.replace('Z', '+00:00')) for t in open_times if t])
+            closing_earliest = min([datetime.fromisoformat(t.replace('Z', '+00:00')) for t in closing_times if t])
+            
+            # Closing should be after opening
+            if closing_earliest <= open_latest:
+                return 0.0
+            
+            # Apply time-based penalty for matches that are too far apart
+            time_diff = closing_earliest - open_latest
+            if time_diff > timedelta(days=7):  # More than a week apart - probably not related
+                base_score *= 0.5
+            elif time_diff > timedelta(days=3):  # More than 3 days apart - less likely
+                base_score *= 0.8
+                
+        except (ValueError, TypeError):
+            # If we can't parse times, apply a penalty
+            base_score *= 0.7
+        
+        return base_score
+    
+    def _is_genuine_position_closure(self, open_strategy: StrategyMatch, closing_strategy: StrategyMatch) -> bool:
+        """
+        Determine if the closing strategy is genuinely closing the position opened by open_strategy
+        
+        This is more conservative than just matching contracts - it looks for evidence that
+        this is actually the same logical position being closed.
+        """
+        # Get account information
+        open_accounts = {tx.get('account', '') for tx in open_strategy.transactions}
+        closing_accounts = {tx.get('account', '') for tx in closing_strategy.transactions}
+        
+        # Must be same account
+        if not (open_accounts & closing_accounts):
+            return False
+        
+        # Get position details
+        open_positions = self._extract_option_positions(open_strategy)
+        closing_positions = self._extract_option_positions(closing_strategy)
+        
+        # Must have same number of positions
+        if len(open_positions) != len(closing_positions):
+            return False
+        
+        # Check if quantities make sense (closing should have opposite sign)
+        for open_pos, closing_pos in zip(open_positions, closing_positions):
+            open_qty = int(open_pos.get('quantity', 0))
+            closing_qty = int(closing_pos.get('quantity', 0))
+            
+            # For a genuine closure, quantities should be opposite in sign and similar in magnitude
+            if open_qty > 0 and closing_qty >= 0:  # Opening was long, closing should be short
+                return False
+            if open_qty < 0 and closing_qty <= 0:  # Opening was short, closing should be long
+                return False
+            
+            # Allow for partial closures but require at least 50% closure
+            if abs(closing_qty) < abs(open_qty) * 0.5:
+                return False
+        
+        return True
+    
+    def _get_strategy_order_ids(self, strategy: StrategyMatch) -> set:
+        """Get all order IDs from a strategy"""
+        order_ids = set()
+        for tx in strategy.transactions:
+            order_id = tx.get('order_id')
+            if order_id:
+                order_ids.add(str(order_id))
+        return order_ids
     
     def _calculate_closing_match_score(self, open_strategy: StrategyMatch, closing_strategy: StrategyMatch) -> float:
         """
