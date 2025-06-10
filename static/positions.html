@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Positions - Trade Journal</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom styles -->
+    <style>
+        /* Custom dark theme colors */
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+        }
+        
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        
+        /* Loading animation */
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Custom table styles */
+        .table-row-hover:hover {
+            background-color: rgba(71, 85, 105, 0.3);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-slate-900 text-slate-100">
+    <div x-data="positionsApp()" x-init="init()">
+        <!-- Navigation Header -->
+        <nav class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center space-x-8">
+                        <div class="flex-shrink-0">
+                            <h1 class="text-xl font-bold text-blue-400">
+                                <i class="fas fa-chart-line mr-2"></i>
+                                Trade Journal
+                            </h1>
+                        </div>
+                        
+                        <div class="hidden sm:flex space-x-4">
+                            <a href="/static/index-fixed.html" 
+                               class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                <i class="fas fa-link mr-1"></i>
+                                Order Chains
+                            </a>
+                            <a href="/static/positions.html" 
+                               class="bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-layer-group mr-1"></i>
+                                Open Positions
+                            </a>
+                            <a href="/static/strategy-config.html" 
+                               class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                <i class="fas fa-cog mr-1"></i>
+                                Strategy Config
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <button @click="fetchPositions()" 
+                                :disabled="isLoading"
+                                class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
+                            <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': isLoading}"></i>
+                            <span x-text="isLoading ? 'Syncing...' : 'Sync Positions'"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Header Section -->
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-slate-100 mb-2">Open Positions</h2>
+                <p class="text-slate-400">Current positions from your Tastytrade accounts</p>
+            </div>
+
+            <!-- Filters and Summary -->
+            <div class="bg-slate-800 rounded-lg p-6 mb-6">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <!-- Account Filter -->
+                        <div class="flex items-center space-x-2">
+                            <label class="text-sm font-medium text-slate-300">Account:</label>
+                            <select x-model="selectedAccount" @change="filterPositions()"
+                                    class="bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
+                                <option value="">All Accounts</option>
+                                <template x-for="account in accounts" :key="account.account_number">
+                                    <option :value="account.account_number" x-text="account.account_name || account.account_number"></option>
+                                </template>
+                            </select>
+                        </div>
+
+                        <!-- Instrument Type Filter -->
+                        <div class="flex items-center space-x-2">
+                            <label class="text-sm font-medium text-slate-300">Type:</label>
+                            <select x-model="selectedInstrumentType" @change="filterPositions()"
+                                    class="bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
+                                <option value="">All Types</option>
+                                <option value="EQUITY">Stocks</option>
+                                <option value="EQUITY_OPTION">Options</option>
+                            </select>
+                        </div>
+
+                        <!-- Underlying Filter -->
+                        <div class="flex items-center space-x-2">
+                            <label class="text-sm font-medium text-slate-300">Underlying:</label>
+                            <select x-model="selectedUnderlying" @change="filterPositions()"
+                                    class="bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
+                                <option value="">All Underlyings</option>
+                                <template x-for="underlying in underlyings" :key="underlying">
+                                    <option :value="underlying" x-text="underlying"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Summary Stats -->
+                    <div class="flex items-center space-x-6 text-sm">
+                        <div class="text-center">
+                            <div class="text-slate-400">Positions</div>
+                            <div class="font-semibold" x-text="filteredPositions.length"></div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-slate-400">Total P&L</div>
+                            <div class="font-semibold" 
+                                 :class="totalUnrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'"
+                                 x-text="'$' + totalUnrealizedPnL.toFixed(2)"></div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-slate-400">Market Value</div>
+                            <div class="font-semibold" x-text="'$' + totalMarketValue.toFixed(2)"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div x-show="isLoading" class="text-center py-12">
+                <i class="fas fa-spinner fa-spin text-4xl text-blue-400 mb-4"></i>
+                <p class="text-slate-400">Loading positions...</p>
+            </div>
+
+            <!-- Error State -->
+            <div x-show="error && !isLoading" class="bg-red-900/20 border border-red-700 rounded-lg p-4 mb-6">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle text-red-400 mr-3"></i>
+                    <span class="text-red-200" x-text="error"></span>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="!isLoading && !error && filteredPositions.length === 0" class="text-center py-12">
+                <i class="fas fa-layer-group text-4xl text-slate-600 mb-4"></i>
+                <p class="text-slate-400 mb-4">No open positions found</p>
+                <button @click="fetchPositions()" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    <i class="fas fa-sync-alt mr-2"></i>
+                    Refresh Positions
+                </button>
+            </div>
+
+            <!-- Grouped Positions -->
+            <div x-show="!isLoading && !error && filteredPositions.length > 0" class="space-y-6">
+                <template x-for="[underlying, positions] in groupedPositions" :key="underlying">
+                    <div class="bg-slate-800 rounded-lg overflow-hidden" x-data="{ expanded: false }">
+                        <!-- Group Header (Clickable) -->
+                        <div class="bg-slate-700 px-6 py-4 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
+                             @click="expanded = !expanded">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="flex items-center space-x-2">
+                                        <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
+                                           :class="{ 'rotate-90': expanded }"></i>
+                                        <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
+                                    </div>
+                                    <span class="text-sm text-slate-400" x-text="positions.length + ' position' + (positions.length !== 1 ? 's' : '')"></span>
+                                </div>
+                                <div class="flex items-center space-x-6 text-sm">
+                                    <div class="text-center">
+                                        <div class="text-slate-400">Total P&L</div>
+                                        <div class="font-semibold" 
+                                             :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                             x-text="'$' + getGroupPnL(positions).toFixed(2)"></div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-slate-400">Market Value</div>
+                                        <div class="font-semibold text-slate-100" x-text="'$' + getGroupMarketValue(positions).toFixed(2)"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Positions Table (Collapsible) -->
+                        <div x-show="expanded" x-transition:enter="transition ease-out duration-300" 
+                             x-transition:enter-start="opacity-0 transform -translate-y-2" 
+                             x-transition:enter-end="opacity-100 transform translate-y-0"
+                             x-transition:leave="transition ease-in duration-200" 
+                             x-transition:leave-start="opacity-100 transform translate-y-0" 
+                             x-transition:leave-end="opacity-0 transform -translate-y-2"
+                             class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead class="bg-slate-700/50">
+                                    <tr>
+                                        <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">Type</th>
+                                        <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">Qty</th>
+                                        <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">Exp</th>
+                                        <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">DTE</th>
+                                        <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">Strike</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Mark Price</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Market Value</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Unrealized P&L</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">P&L %</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-slate-800 divide-y divide-slate-700/50">
+                                    <template x-for="position in positions" :key="position.symbol + position.account_number">
+                                        <tr class="table-row-hover">
+                                            <!-- Option Type (C/P) - moved to first -->
+                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                                <span class="text-sm font-bold" 
+                                                      :class="getOptionType(position) === 'C' ? 'text-green-400' : getOptionType(position) === 'P' ? 'text-red-400' : 'text-slate-400'"
+                                                      x-text="getOptionType(position)"></span>
+                                            </td>
+                                            
+                                            <!-- Quantity (negative for short positions) -->
+                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                                <span class="text-sm font-medium" 
+                                                      :class="getSignedQuantity(position) > 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="getSignedQuantity(position).toFixed(0)"></span>
+                                            </td>
+                                            
+                                            <!-- Expiration Date -->
+                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                                <span class="text-xs text-slate-300" 
+                                                      x-text="getExpirationDate(position)"></span>
+                                            </td>
+                                            
+                                            <!-- DTE (Days to Expiration) -->
+                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                                <span class="text-xs font-medium" 
+                                                      :class="getDTE(position) <= 7 ? 'text-red-400' : getDTE(position) <= 30 ? 'text-yellow-400' : 'text-slate-300'"
+                                                      x-text="getDTE(position)"></span>
+                                            </td>
+                                            
+                                            <!-- Strike Price (options only) -->
+                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                                <span class="text-xs text-slate-300" 
+                                                      x-text="getStrikePrice(position)"></span>
+                                            </td>
+                                            
+                                            <!-- Mark Price -->
+                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                                <span class="text-sm text-slate-300" x-text="'$' + position.mark_price.toFixed(2)"></span>
+                                            </td>
+                                            
+                                            <!-- Market Value -->
+                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                                <span class="text-sm font-medium text-slate-100" x-text="'$' + position.market_value.toFixed(2)"></span>
+                                            </td>
+                                            
+                                            <!-- Unrealized P&L -->
+                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                                <span class="text-sm font-medium" 
+                                                      :class="position.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="'$' + position.unrealized_pnl.toFixed(2)"></span>
+                                            </td>
+                                            
+                                            <!-- P&L % -->
+                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                                <span class="text-sm font-medium" 
+                                                      :class="position.pnl_percent >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="position.pnl_percent.toFixed(1) + '%'"></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function positionsApp() {
+            return {
+                // Data
+                allPositions: [],
+                filteredPositions: [],
+                accounts: [],
+                underlyings: [],
+                
+                // Filters
+                selectedAccount: '',
+                selectedInstrumentType: '',
+                selectedUnderlying: '',
+                
+                // State
+                isLoading: false,
+                error: null,
+                
+                // Computed properties
+                get totalUnrealizedPnL() {
+                    return this.filteredPositions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+                },
+                
+                get totalMarketValue() {
+                    return this.filteredPositions.reduce((sum, pos) => sum + Math.abs(pos.market_value || 0), 0);
+                },
+                
+                get groupedPositions() {
+                    // Group filtered positions by underlying symbol
+                    const groups = new Map();
+                    
+                    this.filteredPositions.forEach(position => {
+                        const underlying = position.underlying_symbol || position.symbol;
+                        if (!groups.has(underlying)) {
+                            groups.set(underlying, []);
+                        }
+                        groups.get(underlying).push(position);
+                    });
+                    
+                    // Sort groups by underlying name and sort positions within each group
+                    const sortedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                    
+                    // Sort positions within each group: stocks first, then options by expiration and strike
+                    sortedGroups.forEach(([underlying, positions]) => {
+                        positions.sort((a, b) => {
+                            // Stocks before options
+                            if (a.instrument_type === 'EQUITY' && b.instrument_type !== 'EQUITY') return -1;
+                            if (a.instrument_type !== 'EQUITY' && b.instrument_type === 'EQUITY') return 1;
+                            
+                            // For options, sort by expiration then strike
+                            if (a.instrument_type !== 'EQUITY' && b.instrument_type !== 'EQUITY') {
+                                if (a.expires_at && b.expires_at && a.expires_at !== b.expires_at) {
+                                    return new Date(a.expires_at) - new Date(b.expires_at);
+                                }
+                                // Then by symbol (which includes strike info)
+                                return a.symbol.localeCompare(b.symbol);
+                            }
+                            
+                            // Default to symbol comparison
+                            return a.symbol.localeCompare(b.symbol);
+                        });
+                    });
+                    
+                    return sortedGroups;
+                },
+                
+                // Methods
+                async init() {
+                    await this.loadAccounts();
+                    await this.fetchPositions();
+                },
+                
+                async loadAccounts() {
+                    try {
+                        console.log('Loading accounts...');
+                        const response = await fetch('/api/accounts');
+                        const data = await response.json();
+                        this.accounts = data.accounts || [];
+                        console.log(`Loaded ${this.accounts.length} accounts`);
+                    } catch (error) {
+                        console.error('Error loading accounts:', error);
+                    }
+                },
+                
+                async fetchPositions() {
+                    this.isLoading = true;
+                    this.error = null;
+                    
+                    try {
+                        const response = await fetch('/api/positions');
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch positions: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        // Flatten positions from all accounts
+                        this.allPositions = [];
+                        for (const [accountNumber, positions] of Object.entries(data)) {
+                            for (const position of positions) {
+                                this.allPositions.push({
+                                    ...position,
+                                    account_number: accountNumber
+                                });
+                            }
+                        }
+                        
+                        // Extract unique values for filters (accounts are loaded separately)
+                        this.underlyings = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))].sort();
+                        
+                        this.filterPositions();
+                        
+                    } catch (err) {
+                        console.error('Error fetching positions:', err);
+                        this.error = err.message;
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                
+                filterPositions() {
+                    this.filteredPositions = this.allPositions.filter(position => {
+                        if (this.selectedAccount && position.account_number !== this.selectedAccount) {
+                            return false;
+                        }
+                        
+                        if (this.selectedInstrumentType) {
+                            if (this.selectedInstrumentType === 'EQUITY') {
+                                // For EQUITY filter, only show stocks (not options)
+                                if (!position.instrument_type || !position.instrument_type.includes('EQUITY') || position.instrument_type.includes('OPTION')) {
+                                    return false;
+                                }
+                            } else if (this.selectedInstrumentType === 'EQUITY_OPTION') {
+                                // For EQUITY_OPTION filter, only show options
+                                if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
+                                    return false;
+                                }
+                            }
+                        }
+                        
+                        if (this.selectedUnderlying) {
+                            const underlying = position.underlying_symbol || position.symbol;
+                            if (underlying !== this.selectedUnderlying) {
+                                return false;
+                            }
+                        }
+                        
+                        return true;
+                    });
+                    
+                    // Note: Sorting is now handled in the groupedPositions computed property
+                },
+                
+                getGroupPnL(positions) {
+                    return positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+                },
+                
+                getGroupMarketValue(positions) {
+                    return positions.reduce((sum, pos) => sum + Math.abs(pos.market_value || 0), 0);
+                },
+                
+                // Option parsing and display methods
+                getSignedQuantity(position) {
+                    // The API provides signed quantities where negative = short
+                    // But let's also check quantity_direction field as backup
+                    let quantity = position.quantity || 0;
+                    
+                    // If quantity is positive but quantity_direction indicates short, make it negative
+                    if (quantity > 0 && position.quantity_direction === 'Short') {
+                        quantity = -quantity;
+                    }
+                    
+                    return quantity;
+                },
+                
+                parseOptionSymbol(symbol) {
+                    // Parse option symbol like "IBIT  250404C00050000"
+                    if (!symbol || typeof symbol !== 'string') return null;
+                    
+                    const parts = symbol.trim().split(/\s+/);
+                    if (parts.length < 2) return null;
+                    
+                    const optionCode = parts[1];
+                    if (optionCode.length < 15) return null;
+                    
+                    try {
+                        // Extract components: YYMMDD + C/P + 8-digit strike
+                        const expiration = optionCode.substring(0, 6);  // YYMMDD
+                        const optionType = optionCode.substring(6, 7);  // C or P
+                        const strikeStr = optionCode.substring(7);      // 8-digit strike
+                        
+                        // Parse expiration date
+                        const year = 2000 + parseInt(expiration.substring(0, 2));
+                        const month = parseInt(expiration.substring(2, 4));
+                        const day = parseInt(expiration.substring(4, 6));
+                        const expirationDate = new Date(year, month - 1, day);
+                        
+                        // Parse strike price (divide by 1000 to get actual price)
+                        const strike = parseInt(strikeStr) / 1000;
+                        
+                        return {
+                            expiration: expirationDate,
+                            optionType: optionType,
+                            strike: strike
+                        };
+                    } catch (e) {
+                        console.warn('Failed to parse option symbol:', symbol, e);
+                        return null;
+                    }
+                },
+                
+                getStrikePrice(position) {
+                    if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
+                        return '';
+                    }
+                    
+                    let strike = null;
+                    
+                    // First try the API field
+                    if (position.strike_price !== null && position.strike_price !== undefined) {
+                        strike = parseFloat(position.strike_price);
+                    } else {
+                        // Fallback to symbol parsing
+                        const parsed = this.parseOptionSymbol(position.symbol);
+                        if (parsed && parsed.strike) {
+                            strike = parsed.strike;
+                        }
+                    }
+                    
+                    if (strike !== null) {
+                        // Format to remove unnecessary decimal places
+                        // $400.00 -> 400, $317.50 -> 317.5
+                        const formatted = strike % 1 === 0 ? strike.toString() : strike.toFixed(2).replace(/\.?0+$/, '');
+                        return formatted;
+                    }
+                    
+                    return '';
+                },
+                
+                getOptionType(position) {
+                    if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
+                        return '';
+                    }
+                    
+                    // First try the API field
+                    if (position.option_type) {
+                        return position.option_type;
+                    }
+                    
+                    // Fallback to symbol parsing
+                    const parsed = this.parseOptionSymbol(position.symbol);
+                    if (parsed && parsed.optionType) {
+                        return parsed.optionType;
+                    }
+                    
+                    return '';
+                },
+                
+                getExpirationDate(position) {
+                    if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
+                        return '';
+                    }
+                    
+                    // First try the expires_at field from the API
+                    if (position.expires_at) {
+                        const date = new Date(position.expires_at);
+                        return date.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric'
+                        });
+                    }
+                    
+                    // Fallback to parsing from symbol
+                    const parsed = this.parseOptionSymbol(position.symbol);
+                    if (parsed && parsed.expiration) {
+                        return parsed.expiration.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric'
+                        });
+                    }
+                    
+                    return '';
+                },
+                
+                getDTE(position) {
+                    if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
+                        return '';
+                    }
+                    
+                    let expirationDate = null;
+                    
+                    // First try the expires_at field from the API
+                    if (position.expires_at) {
+                        expirationDate = new Date(position.expires_at);
+                    } else {
+                        // Fallback to parsing from symbol
+                        const parsed = this.parseOptionSymbol(position.symbol);
+                        if (parsed && parsed.expiration) {
+                            expirationDate = parsed.expiration;
+                        }
+                    }
+                    
+                    if (expirationDate) {
+                        const today = new Date();
+                        const timeDiff = expirationDate.getTime() - today.getTime();
+                        const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                        
+                        if (daysDiff < 0) {
+                            return 'Expired';
+                        } else if (daysDiff === 0) {
+                            return 'Today';
+                        } else {
+                            return daysDiff.toString();
+                        }
+                    }
+                    
+                    return '';
+                },
+                
+                // Debug method to log position data 
+                debugPositionData() {
+                    console.log('=== POSITION DEBUG INFO ===');
+                    console.log('Total positions found:', this.allPositions.length);
+                    
+                    if (this.allPositions.length > 0) {
+                        console.log('All instrument types:', [...new Set(this.allPositions.map(p => p.instrument_type))]);
+                        
+                        // Show first few positions regardless of type
+                        console.log('First 3 positions:', this.allPositions.slice(0, 3));
+                        
+                        // Look for options with different possible instrument type values
+                        const optionPosition = this.allPositions.find(p => 
+                            p.instrument_type && 
+                            (p.instrument_type.includes('OPTION') || 
+                             p.instrument_type.includes('option') ||
+                             p.symbol.includes(' ') || // Options often have spaces in symbol
+                             p.expires_at)  // Options have expiration dates
+                        );
+                        
+                        if (optionPosition) {
+                            console.log('Found option-like position:', optionPosition);
+                            console.log('Option position fields:', Object.keys(optionPosition));
+                        } else {
+                            console.log('No option-like positions found');
+                        }
+                    } else {
+                        console.log('No positions at all - check API connection');
+                    }
+                    console.log('=== END DEBUG INFO ===');
+                }
+            };
+        }
+    </script>
+</body>
+</html>

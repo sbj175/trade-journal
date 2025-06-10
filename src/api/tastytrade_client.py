@@ -219,6 +219,25 @@ class TastytradeClient:
                     # Calculate P&L percentage
                     pnl_percent = (unrealized_pnl / abs(cost_basis) * 100) if cost_basis != 0 else 0
                     
+                    # Extract option-specific fields if available
+                    strike_price = None
+                    option_type = None
+                    
+                    if pos.instrument_type and 'option' in str(pos.instrument_type).lower():
+                        # Try to get strike price from various possible fields
+                        if hasattr(pos, 'strike_price'):
+                            strike_price = float(pos.strike_price)
+                        elif hasattr(pos, 'strike'):
+                            strike_price = float(pos.strike)
+                        
+                        # Try to get option type from various possible fields
+                        if hasattr(pos, 'option_type'):
+                            option_type = str(pos.option_type)
+                        elif hasattr(pos, 'right'):
+                            option_type = 'C' if str(pos.right).upper() in ['CALL', 'C'] else 'P'
+                        elif hasattr(pos, 'call_or_put'):
+                            option_type = 'C' if str(pos.call_or_put).upper() in ['CALL', 'C'] else 'P'
+                    
                     position_list.append({
                         'symbol': pos.symbol,
                         'instrument_type': str(pos.instrument_type) if pos.instrument_type else None,
@@ -236,6 +255,8 @@ class TastytradeClient:
                         'pnl_percent': pnl_percent,
                         'multiplier': multiplier,
                         'expires_at': pos.expires_at.isoformat() if pos.expires_at else None,
+                        'strike_price': strike_price,
+                        'option_type': option_type,
                     })
                 
                 all_positions[account.account_number] = position_list

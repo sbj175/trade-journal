@@ -496,28 +496,29 @@ async def get_order(order_id: str):
 
 
 @app.get("/api/positions")
-async def get_positions_by_account(
-    account_number: Optional[str] = None,
-    status: Optional[str] = None
-):
-    """Get positions for an account"""
+async def get_current_positions(account_number: Optional[str] = None):
+    """Get current positions from Tastytrade API"""
     try:
-        if not account_number:
-            # Get all accounts and aggregate positions
-            accounts = db.get_accounts()
-            all_positions = []
-            for account in accounts:
-                positions = order_manager.get_positions_by_account(
-                    account['account_number'], status
-                )
-                all_positions.extend(positions)
-            return {"positions": all_positions}
-        else:
-            positions = order_manager.get_positions_by_account(account_number, status)
-            return {"positions": positions}
+        # Initialize Tastytrade client
+        client = TastytradeClient()
+        
+        # Authenticate with Tastytrade
+        if not client.authenticate():
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
+        
+        # Get positions from Tastytrade API
+        positions = client.get_positions(account_number=account_number)
+        
+        if not positions:
+            logger.warning("No positions returned from Tastytrade API")
+            return {}
+        
+        logger.info(f"Successfully fetched positions from Tastytrade: {sum(len(pos_list) for pos_list in positions.values())} total positions")
+        return positions
+        
     except Exception as e:
-        logger.error(f"Error fetching positions: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error fetching positions from Tastytrade: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch positions: {str(e)}")
 
 
 @app.get("/api/trades/{trade_id}")
