@@ -786,7 +786,6 @@ def detect_order_chains_fixed(conn):
                     for candidate in orders:
                         if (candidate['order_id'] not in processed_orders and
                             candidate['order_type'] in ['ROLLING', 'CLOSING'] and
-                            not (candidate['has_expiration'] or candidate['has_assignment'] or candidate['has_exercise']) and
                             is_position_based_roll_continuation(current_order, candidate, conn)):
                             
                             chain_members.append(candidate)

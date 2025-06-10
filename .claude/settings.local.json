@@ -34,7 +34,8 @@
       "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"def _match_closing_transactions\" src/models/ -A 50)",
       "Bash(sed:*)",
       "Bash(pkill:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(./venv/bin/python:*)"
     ],
     "deny": []
   }

@@ -158,7 +158,6 @@ def rebuild_order_chains():
                         for candidate in orders:
                             if (candidate['order_id'] not in processed_orders and
                                 candidate['order_type'] in ['ROLLING', 'CLOSING'] and
-                                not (candidate['has_expiration'] or candidate['has_assignment'] or candidate['has_exercise']) and
                                 is_position_based_roll_continuation(current_order, candidate, conn)):
                                 
                                 chain_members.append(candidate)
@@ -234,14 +233,14 @@ def rebuild_order_chains():
         conn.commit()
         print("\n✅ Order chains rebuilt successfully!")
         
-        # Test our specific orders
+        # Test our specific orders  
         print("\n=== TESTING SPECIFIC ORDERS ===")
         cursor.execute('''
             SELECT oc.chain_id, oc.strategy_type, oc.chain_status,
                    ocm.order_id, ocm.sequence_number 
             FROM order_chains oc
             JOIN order_chain_members ocm ON oc.chain_id = ocm.chain_id
-            WHERE ocm.order_id IN ("374805462", "375108991")
+            WHERE ocm.order_id IN ("380086981", "380871211")
             ORDER BY oc.chain_id, ocm.sequence_number
         ''')
         
@@ -257,7 +256,7 @@ def rebuild_order_chains():
             # Check if they're in the same chain
             chain_ids = set(result[0] for result in test_results)
             if len(chain_ids) == 1:
-                print(f"\n🎉 SUCCESS: Orders 374805462 and 375108991 are now in the same chain!")
+                print(f"\n🎉 SUCCESS: Orders 380086981 and 380871211 are now in the same chain!")
             else:
                 print(f"\n❌ Orders are still in separate chains: {chain_ids}")
         else:
