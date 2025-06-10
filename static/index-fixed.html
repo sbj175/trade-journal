@@ -266,13 +266,13 @@
             <!-- Order Chains -->
             <div class="space-y-4">
                 <!-- Loading State -->
-                <div x-show="loading" class="text-center py-8">
+                <div x-show="chainsLoading" class="text-center py-8">
                     <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
                     <p class="mt-4 text-slate-400">Loading chains...</p>
                 </div>
                 
                 <!-- No Results -->
-                <div x-show="!loading && chains.length === 0" class="text-center py-8 text-slate-400">
+                <div x-show="!chainsLoading && chains.length === 0" class="text-center py-8 text-slate-400">
                     <i class="fas fa-link text-6xl text-slate-600 mb-4"></i>
                     <p class="text-xl">No order chains found</p>
                     <p class="text-sm">Try adjusting your filters or sync more trades</p>
@@ -298,8 +298,8 @@
                                             <span x-show="chain.closing_date">→ <span x-text="chain.closing_date"></span></span>
                                             <span class="bg-slate-700 px-2 py-1 rounded text-xs" 
                                                   x-text="chain.order_count + ' order' + (chain.order_count > 1 ? 's' : '')"></span>
-                                            <span class="px-2 py-1 rounded text-xs"
-                                                  :class="chain.status === 'Open' ? 'bg-green-600' : 'bg-slate-600'"
+                                            <span class="px-2 py-1 rounded text-xs font-medium"
+                                                  :class="chain.status === 'OPEN' ? 'bg-green-500 text-white' : 'bg-slate-600 text-slate-300'"
                                                   x-text="chain.status"></span>
                                         </div>
                                     </div>
@@ -321,29 +321,25 @@
                             <div class="p-4 bg-slate-800/30">
                                 <h4 class="text-sm font-medium text-slate-300 mb-3">Order Details</h4>
                                 <div class="space-y-2">
-                                    <template x-for="(order, index) in chain.orders" :key="order.order_id">
+                                    <template x-for="(order, index) in (chain.orders || []).sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0))" :key="order.order_id">
                                         <div class="p-3 bg-slate-700/50 rounded-lg">
                                             <!-- Order Header -->
                                             <div class="flex items-center justify-between mb-2">
                                                 <div class="flex items-center space-x-3">
                                                     <div class="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center text-xs font-medium">
-                                                        <span x-text="index + 1"></span>
+                                                        <span x-text="chain.orders.length - index"></span>
                                                     </div>
                                                     <div>
                                                         <div class="text-sm font-medium text-white">
                                                             <span x-text="order.order_date"></span>
                                                             <!-- Order Type Badge -->
-                                                            <span class="ml-2 text-xs px-2 py-1 rounded-full"
+                                                            <span class="ml-2 text-xs font-medium"
                                                                   :class="{
-                                                                      'bg-blue-600 text-white': order.order_type === 'OPENING',
-                                                                      'bg-red-600 text-white': order.order_type === 'CLOSING',
-                                                                      'bg-yellow-600 text-white': order.order_type === 'ROLLING'
+                                                                      'text-blue-600': order.order_type === 'OPENING',
+                                                                      'text-red-600': order.order_type === 'CLOSING',
+                                                                      'text-amber-600': order.order_type === 'ROLLING'
                                                                   }"
                                                                   x-text="order.order_type"></span>
-                                                            <!-- Emblems -->
-                                                            <template x-for="emblem in order.emblems" :key="emblem">
-                                                                <span class="ml-1 bg-gray-600 text-white text-xs px-2 py-1 rounded-full" x-text="emblem"></span>
-                                                            </template>
                                                         </div>
                                                         <div class="text-xs text-slate-400">
                                                             <button @click="order.expanded = !order.expanded" 
@@ -375,10 +371,17 @@
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            <template x-for="position in order.positions" :key="position.position_id">
+                                                            <template x-for="position in (order.positions || []).sort((a, b) => (a.strike || 0) - (b.strike || 0))" :key="position.position_id">
                                                                 <tr class="border-b border-slate-800/50">
                                                                     <td class="py-1 px-2">
-                                                                        <div class="text-white text-xs" x-text="position.symbol"></div>
+                                                                        <div class="text-white text-xs">
+                                                                            <span x-text="position.symbol"></span>
+                                                                            <!-- System Transaction Emblems next to symbol -->
+                                                                            <span x-show="position.closing_action && position.closing_action.includes('EXPIRED')" class="ml-1 text-gray-400" title="Expired">⏰</span>
+                                                                            <span x-show="position.closing_action && position.closing_action.includes('EXERCISED')" class="ml-1 text-yellow-400" title="Exercised">⚡</span>
+                                                                            <span x-show="position.closing_action && position.closing_action.includes('ASSIGNED')" class="ml-1 text-orange-400" title="Assigned">📋</span>
+                                                                            <span x-show="position.closing_action && position.closing_action.includes('CASH_SETTLED')" class="ml-1 text-green-400" title="Cash Settled">💰</span>
+                                                                        </div>
                                                                         <div x-show="position.option_type" class="text-slate-400 text-xs">
                                                                             <span x-text="position.expiration"></span>
                                                                             <span x-text="position.option_type"></span>
@@ -400,11 +403,6 @@
                                                                         <div x-show="position.closing_action" class="text-white">
                                                                             <span class="bg-orange-900/30 text-orange-300 px-1 py-0.5 rounded text-xs"
                                                                                   x-text="position.closing_action"></span>
-                                                                            <!-- System Transaction Emblems -->
-                                                                            <span x-show="position.closing_action && position.closing_action.includes('EXERCISED')" class="ml-1 text-yellow-400" title="Exercised">⚡</span>
-                                                                            <span x-show="position.closing_action && position.closing_action.includes('EXPIRED')" class="ml-1 text-gray-400" title="Expired">⏰</span>
-                                                                            <span x-show="position.closing_action && position.closing_action.includes('CASH_SETTLED')" class="ml-1 text-green-400" title="Cash Settled">💰</span>
-                                                                            <span x-show="position.closing_action && position.closing_action.includes('ASSIGNED')" class="ml-1 text-orange-400" title="Assigned">📋</span>
                                                                         </div>
                                                                         <div x-show="position.closing_price !== null" class="text-slate-400" x-text="'$' + formatNumber(position.closing_price)"></div>
                                                                         <div x-show="position.closing_price === null" class="text-slate-500">-</div>
@@ -431,7 +429,12 @@
                                                         </div>
                                                         <div>
                                                             <span class="text-slate-400">Order Type:</span>
-                                                            <span class="block" x-text="order.order_type"></span>
+                                                            <span class="block font-medium"
+                                                                  :class="{
+                                                                      'text-blue-400': order.order_type === 'OPENING',
+                                                                      'text-red-400': order.order_type === 'CLOSING',
+                                                                      'text-amber-400': order.order_type === 'ROLLING'
+                                                                  }" x-text="order.order_type"></span>
                                                         </div>
                                                         <div>
                                                             <span class="text-slate-400">Strategy:</span>
@@ -442,23 +445,8 @@
                                                             <span class="block" x-text="order.order_date"></span>
                                                         </div>
                                                         <div>
-                                                            <span class="text-slate-400">P&L:</span>
-                                                            <span class="block font-semibold" 
-                                                                  :class="order.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                                  x-text="'$' + formatNumber(order.total_pnl)"></span>
-                                                        </div>
-                                                        <div>
                                                             <span class="text-slate-400">Positions:</span>
                                                             <span class="block" x-text="order.positions?.length || 0"></span>
-                                                        </div>
-                                                        <div>
-                                                            <span class="text-slate-400">Emblems:</span>
-                                                            <span class="block">
-                                                                <template x-for="emblem in order.emblems" :key="emblem">
-                                                                    <span class="mr-1 bg-gray-600 text-white text-xs px-1 py-0.5 rounded" x-text="emblem"></span>
-                                                                </template>
-                                                                <span x-show="!order.emblems || order.emblems.length === 0" class="text-slate-500">None</span>
-                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>

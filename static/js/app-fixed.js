@@ -23,6 +23,7 @@ function tradeJournal() {
         
         // UI State
         loading: false,
+        chainsLoading: false,
         syncing: false,
         initialSyncing: false,
         
@@ -153,7 +154,7 @@ function tradeJournal() {
         
         // Load trade chains
         async loadChains() {
-            this.loading = true;
+            this.chainsLoading = true;
             try {
                 console.log('Loading chains...');
                 const params = new URLSearchParams();
@@ -168,7 +169,7 @@ function tradeJournal() {
             } catch (error) {
                 console.error('Error loading chains:', error);
             } finally {
-                this.loading = false;
+                this.chainsLoading = false;
             }
         },
         
