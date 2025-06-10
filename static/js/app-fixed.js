@@ -130,7 +130,13 @@ function tradeJournal() {
         // Handle account change
         async onAccountChange() {
             console.log('Account changed to:', this.selectedAccount);
-            this.saveState(); // Save state when account changes
+            
+            // Reset underlying filter when account changes
+            this.filterUnderlying = '';
+            console.log('Reset underlying filter to All');
+            
+            this.saveState(); // Save state after resetting underlying
+            
             await this.loadDashboard();
             await this.loadAvailableUnderlyings();
             await this.loadTrades();

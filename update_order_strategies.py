@@ -112,8 +112,80 @@ def determine_strategy_from_positions(positions):
     
     return 'Complex Strategy'
 
+def determine_strategy_from_positions_enhanced(positions, order_id, conn):
+    """Enhanced strategy detection that considers historical stock positions for covered calls"""
+    # First try the standard logic
+    standard_strategy = determine_strategy_from_positions(positions)
+    
+    # If it's a single short call, check if it could be a covered call
+    if (standard_strategy == 'Naked Call' and len(positions) == 1 and 
+        'OPTION' in str(positions[0][5]) and positions[0][6] == 'Call' and positions[0][9] < 0):
+        
+        cursor = conn.cursor()
+        
+        # Get order details
+        cursor.execute("SELECT account_number, order_date, underlying FROM orders WHERE order_id = ?", (order_id,))
+        order_info = cursor.fetchone()
+        if not order_info:
+            return standard_strategy
+            
+        account_number, order_date, underlying = order_info
+        
+        # Look for existing long stock positions at or before order time
+        # Include both regular order positions AND transfer transactions (ACAT, etc.)
+        cursor.execute("""
+            SELECT COALESCE(SUM(p.quantity), 0) as total_shares
+            FROM orders o
+            JOIN positions_new p ON o.order_id = p.order_id
+            WHERE o.account_number = ?
+            AND p.symbol = ?
+            AND p.instrument_type LIKE '%EQUITY%'
+            AND p.instrument_type NOT LIKE '%OPTION%'
+            AND o.order_date <= ?
+            AND p.quantity > 0
+            AND p.status = 'OPEN'
+        """, (account_number, underlying, order_date))
+        
+        order_shares = cursor.fetchone()[0] or 0
+        
+        # ALSO check for transfer transactions (ACAT, etc.) with NULL order_id
+        cursor.execute("""
+            SELECT COALESCE(SUM(rt.quantity), 0) as transfer_shares
+            FROM raw_transactions rt
+            WHERE rt.account_number = ?
+            AND rt.symbol = ?
+            AND rt.order_id IS NULL
+            AND rt.quantity > 0
+            AND rt.transaction_type = 'Receive Deliver'
+            AND rt.transaction_sub_type = 'ACAT'
+            AND DATE(rt.executed_at) <= ?
+        """, (account_number, underlying, order_date))
+        
+        transfer_shares = cursor.fetchone()[0] or 0
+        total_shares = order_shares + transfer_shares
+        
+        # If we have long stock positions at or before call sale, consider it a covered call
+        call_contracts = abs(positions[0][9])  # Number of short call contracts
+        shares_needed = call_contracts * 100   # Each contract covers 100 shares
+        
+        if total_shares > 0:
+            coverage_ratio = (total_shares / shares_needed) * 100
+            coverage_source = ""
+            if order_shares > 0 and transfer_shares > 0:
+                coverage_source = f" (orders: {order_shares}, transfers: {transfer_shares})"
+            elif order_shares > 0:
+                coverage_source = f" (from orders)"
+            elif transfer_shares > 0:
+                coverage_source = f" (from transfers/ACAT)"
+                
+            logger.info(f"Order {order_id}: Converting 'Naked Call' to 'Covered Call' "
+                       f"({call_contracts} calls, {total_shares} shares of {underlying}, {coverage_ratio:.1f}% coverage{coverage_source})")
+            return 'Covered Call'
+    
+    return standard_strategy
+
 def recognize_order_strategies(conn):
-    """Recognize and update strategy types for all orders"""
+    """Recognize and update strategy types for all orders using ENHANCED logic"""
     cursor = conn.cursor()
     
     # Get all orders
@@ -144,7 +216,8 @@ def recognize_order_strategies(conn):
         if old_result:
             old_strategy = old_result[0]
         
-        new_strategy = determine_strategy_from_positions(positions)
+        # Use the ENHANCED strategy detection that includes covered call logic
+        new_strategy = determine_strategy_from_positions_enhanced(positions, order_id, conn)
         
         if old_strategy != new_strategy:
             # Update order with new strategy type
