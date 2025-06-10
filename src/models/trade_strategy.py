@@ -224,6 +224,7 @@ class StrategyRecognizer:
     def get_stock_positions(cls, transactions: List[Dict]) -> Dict[str, int]:
         """
         Calculate cumulative stock positions from transactions
+        Includes both regular stock trades AND ACAT transfers
         
         Returns:
             Dict of symbol -> share count
@@ -235,15 +236,30 @@ class StrategyRecognizer:
         
         for tx in sorted_txs:
             instrument_type = str(tx.get('instrument_type', ''))
+            symbol = tx.get('symbol', '')
+            
             # Check for stock transactions (EQUITY but not EQUITY_OPTION)
             if 'EQUITY' in instrument_type and 'OPTION' not in instrument_type:
-                symbol = tx.get('symbol', '')
                 quantity = tx.get('quantity', 0) or 0
                 
                 # Handle sell transactions (make them negative)
                 action = str(tx.get('action', ''))
                 if 'SELL' in action:
                     quantity = -quantity
+                
+                if symbol not in positions:
+                    positions[symbol] = 0
+                positions[symbol] += quantity
+                
+            # ALSO check for ACAT transfer transactions (NULL order_id, Receive Deliver, ACAT)
+            elif (symbol and 
+                  tx.get('order_id') is None and
+                  tx.get('quantity', 0) > 0 and
+                  tx.get('transaction_type') == 'Receive Deliver' and
+                  tx.get('transaction_sub_type') == 'ACAT'):
+                
+                # ACAT transfers are incoming shares (always positive)
+                quantity = tx.get('quantity', 0) or 0
                 
                 if symbol not in positions:
                     positions[symbol] = 0
@@ -281,9 +297,10 @@ class StrategyRecognizer:
                 continue
                 
             instrument_type = str(tx.get('instrument_type', ''))
+            symbol = tx.get('symbol', '')
+            
             # Check for stock transactions (EQUITY but not EQUITY_OPTION)
-            if ('EQUITY' in instrument_type and 'OPTION' not in instrument_type and 
-                tx.get('symbol', '') == underlying):
+            if ('EQUITY' in instrument_type and 'OPTION' not in instrument_type and symbol == underlying):
                 
                 quantity = tx.get('quantity', 0) or 0
                 
@@ -292,6 +309,17 @@ class StrategyRecognizer:
                 if 'SELL' in action:
                     quantity = -quantity
                 
+                position += quantity
+                
+            # ALSO check for ACAT transfer transactions (NULL order_id, Receive Deliver, ACAT)
+            elif (symbol == underlying and 
+                  tx.get('order_id') is None and
+                  tx.get('quantity', 0) > 0 and
+                  tx.get('transaction_type') == 'Receive Deliver' and
+                  tx.get('transaction_sub_type') == 'ACAT'):
+                
+                # ACAT transfers are incoming shares (always positive)
+                quantity = tx.get('quantity', 0) or 0
                 position += quantity
         
         return position
