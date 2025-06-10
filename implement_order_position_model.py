@@ -781,32 +781,40 @@ def detect_order_chains_fixed(conn):
                 
                 # Continue building chain by finding rolling orders that close current positions
                 while True:
-                    found_continuation = False
+                    # FIXED: Find ALL continuations from current order, not just the first one
+                    continuations_found = []
                     
                     for candidate in orders:
                         if (candidate['order_id'] not in processed_orders and
                             candidate['order_type'] in ['ROLLING', 'CLOSING'] and
                             is_position_based_roll_continuation(current_order, candidate, conn)):
                             
-                            chain_members.append(candidate)
-                            processed_orders.add(candidate['order_id'])
-                            
-                            # Update linked_order_id
-                            cursor.execute("""
-                                UPDATE orders SET linked_order_id = ?
-                                WHERE order_id = ?
-                            """, (current_order['order_id'], candidate['order_id']))
-                            
-                            # If this is a CLOSING order, stop building the chain
-                            if candidate['order_type'] == 'CLOSING':
-                                found_continuation = False  # Don't continue after closing
-                            else:
-                                current_order = candidate
-                                found_continuation = True
-                            break
+                            continuations_found.append(candidate)
                     
-                    if not found_continuation:
+                    if not continuations_found:
                         break
+                    
+                    # Sort continuations by date to maintain chronological order
+                    continuations_found.sort(key=lambda x: x['order_date'])
+                    
+                    # Add all continuations to the chain
+                    for continuation in continuations_found:
+                        chain_members.append(continuation)
+                        processed_orders.add(continuation['order_id'])
+                        
+                        # Update linked_order_id
+                        cursor.execute("""
+                            UPDATE orders SET linked_order_id = ?
+                            WHERE order_id = ?
+                        """, (current_order['order_id'], continuation['order_id']))
+                    
+                    # If any continuations are CLOSING orders, stop building the chain
+                    has_closing = any(c['order_type'] == 'CLOSING' for c in continuations_found)
+                    if has_closing:
+                        break
+                    
+                    # Continue from the last (most recent) continuation for further chain building
+                    current_order = continuations_found[-1]
             
             # Create chain record
             if chain_members:
