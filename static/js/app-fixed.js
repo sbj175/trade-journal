@@ -223,7 +223,22 @@ function tradeJournal() {
                 const data = await response.json();
                 this.chains = data.chains || [];
                 
-                console.log(`Loaded ${this.chains.length} chains`);
+                // Sort chains by opening date descending (most recent first)
+                this.chains.sort((a, b) => {
+                    // If filtering by specific underlying, only sort by date
+                    if (!this.filterUnderlying) {
+                        // First sort by underlying for grouping when showing all
+                        if (a.underlying !== b.underlying) {
+                            return a.underlying.localeCompare(b.underlying);
+                        }
+                    }
+                    // Then by opening date descending within each underlying
+                    const dateA = new Date(a.opening_date || '1900-01-01');
+                    const dateB = new Date(b.opening_date || '1900-01-01');
+                    return dateB - dateA; // Descending order (most recent first)
+                });
+                
+                console.log(`Loaded and sorted ${this.chains.length} chains`);
                 this.saveState(); // Save state when filters change
             } catch (error) {
                 console.error('Error loading chains:', error);
