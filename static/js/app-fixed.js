@@ -51,6 +51,10 @@ function tradeJournal() {
         // Initialize
         async init() {
             console.log('Initializing Trade Journal...');
+            
+            // Restore state from localStorage
+            this.restoreState();
+            
             await this.loadAccounts();
             await this.loadDashboard();
             await this.loadAvailableUnderlyings();
@@ -79,6 +83,7 @@ function tradeJournal() {
         // Handle account change
         async onAccountChange() {
             console.log('Account changed to:', this.selectedAccount);
+            this.saveState(); // Save state when account changes
             await this.loadDashboard();
             await this.loadAvailableUnderlyings();
             await this.loadTrades();
@@ -166,6 +171,7 @@ function tradeJournal() {
                 this.chains = data.chains || [];
                 
                 console.log(`Loaded ${this.chains.length} chains`);
+                this.saveState(); // Save state when filters change
             } catch (error) {
                 console.error('Error loading chains:', error);
             } finally {
@@ -543,6 +549,43 @@ function tradeJournal() {
             this.tradeDetails = null;
             this.loadingTradeDetails = false;
             document.getElementById('tradeDetailsModal').classList.add('hidden');
+        },
+        
+        // Save UI state to localStorage
+        saveState() {
+            const state = {
+                selectedAccount: this.selectedAccount,
+                filterUnderlying: this.filterUnderlying,
+                filterStrategy: this.filterStrategy,
+                filterStatus: this.filterStatus,
+                syncDays: this.syncDays,
+                sortColumn: this.sortColumn,
+                sortDirection: this.sortDirection
+            };
+            localStorage.setItem('tradeJournalState', JSON.stringify(state));
+        },
+        
+        // Restore UI state from localStorage
+        restoreState() {
+            try {
+                const savedState = localStorage.getItem('tradeJournalState');
+                if (savedState) {
+                    const state = JSON.parse(savedState);
+                    
+                    // Restore filters and settings
+                    this.selectedAccount = state.selectedAccount || '';
+                    this.filterUnderlying = state.filterUnderlying || '';
+                    this.filterStrategy = state.filterStrategy || '';
+                    this.filterStatus = state.filterStatus || '';
+                    this.syncDays = state.syncDays || 30;
+                    this.sortColumn = state.sortColumn || 'underlying';
+                    this.sortDirection = state.sortDirection || 'asc';
+                    
+                    console.log('Restored state:', state);
+                }
+            } catch (error) {
+                console.error('Error restoring state:', error);
+            }
         }
     };
 }

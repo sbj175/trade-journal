@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test UI Changes</title>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white p-4">
+    <div x-data="{
+        chainsLoading: false,
+        chains: [
+            {
+                chain_id: 'test_chain_1',
+                orders: [
+                    {
+                        order_id: '123',
+                        positions: [
+                            {
+                                symbol: 'IBIT  250404C00050000',
+                                closing_action: 'EXPIRED'
+                            },
+                            {
+                                symbol: 'SPY  250404P00400000', 
+                                closing_action: 'EXERCISED'
+                            },
+                            {
+                                symbol: 'QQQ  250404C00300000',
+                                closing_action: 'ASSIGNED'
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }">
+        <h1 class="text-xl mb-4">Testing UI Changes</h1>
+        
+        <!-- Test 1: Chain Loading State -->
+        <div class="mb-8">
+            <h2 class="text-lg mb-2">Test 1: Chain Loading State</h2>
+            <button @click="chainsLoading = !chainsLoading" class="bg-blue-600 px-4 py-2 rounded mb-4">
+                Toggle Loading State
+            </button>
+            
+            <!-- Loading State -->
+            <div x-show="chainsLoading" class="text-center py-8 border border-slate-600 rounded">
+                <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
+                <p class="mt-4 text-slate-400">Loading chains...</p>
+            </div>
+            
+            <!-- No Results -->
+            <div x-show="!chainsLoading && chains.length === 0" class="text-center py-8 text-slate-400 border border-slate-600 rounded">
+                <p class="text-xl">No order chains found</p>
+                <p class="text-sm">Try adjusting your filters or sync more trades</p>
+            </div>
+            
+            <!-- Chains Display -->
+            <div x-show="!chainsLoading && chains.length > 0" class="border border-slate-600 rounded p-4">
+                <p class="text-green-400">✓ Chains loaded successfully</p>
+                <p class="text-slate-400">Found <span x-text="chains.length"></span> chains</p>
+            </div>
+        </div>
+        
+        <!-- Test 2: System Transaction Emblems -->
+        <div class="mb-8">
+            <h2 class="text-lg mb-2">Test 2: System Transaction Emblems next to Symbol</h2>
+            <div class="border border-slate-600 rounded p-4">
+                <template x-for="chain in chains">
+                    <template x-for="order in chain.orders">
+                        <template x-for="position in order.positions">
+                            <div class="mb-2 p-2 bg-slate-800 rounded">
+                                <div class="text-white text-xs">
+                                    <span x-text="position.symbol"></span>
+                                    <!-- System Transaction Emblems next to symbol -->
+                                    <span x-show="position.closing_action && position.closing_action.includes('EXPIRED')" class="ml-1 text-gray-400" title="Expired">⏰</span>
+                                    <span x-show="position.closing_action && position.closing_action.includes('EXERCISED')" class="ml-1 text-yellow-400" title="Exercised">⚡</span>
+                                    <span x-show="position.closing_action && position.closing_action.includes('ASSIGNED')" class="ml-1 text-orange-400" title="Assigned">📋</span>
+                                    <span x-show="position.closing_action && position.closing_action.includes('CASH_SETTLED')" class="ml-1 text-green-400" title="Cash Settled">💰</span>
+                                </div>
+                                <div class="text-slate-400 text-xs" x-text="'Closing Action: ' + position.closing_action"></div>
+                            </div>
+                        </template>
+                    </template>
+                </template>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -300,8 +300,10 @@ def create_positions_from_order_fixed(order_info, conn):
         closing_txs = position_data['closing_transactions']
         
         if not opening_txs:
-            # If no explicit opening, use first transaction
-            opening_txs = [position_data['transactions'][0]]
+            # For pure closing orders, we need to handle this differently
+            # Don't artificially create opening transactions from closing transactions
+            # Instead, we'll create a position that represents the closing of an external position
+            pass
         
         # FIXED: Consolidate quantities and calculate weighted average prices
         total_opening_quantity = 0
@@ -321,19 +323,43 @@ def create_positions_from_order_fixed(order_info, conn):
             total_closing_quantity += qty
             total_closing_value += qty * price
         
-        # Determine net quantity (negative for short positions)
-        action = str(opening_txs[0].get('action', '')).upper()
-        if 'SELL' in action or 'STO' in action:
-            net_quantity = -abs(total_opening_quantity)
+        # Determine net quantity 
+        if opening_txs:
+            # Normal case: has opening transactions
+            action = str(opening_txs[0].get('action', '')).upper()
+            if 'SELL' in action or 'STO' in action:
+                net_quantity = -abs(total_opening_quantity)
+            else:
+                net_quantity = abs(total_opening_quantity)
         else:
-            net_quantity = abs(total_opening_quantity)
+            # Pure closing order: net quantity should be the closing quantity
+            # For BTC (closing long), quantity should be positive
+            # For STC (closing short), quantity should be negative
+            if closing_txs:
+                action = str(closing_txs[0].get('action', '')).upper()
+                if 'BTC' in action:
+                    # Closing a long position - quantity should be positive (buying back)
+                    net_quantity = abs(total_closing_quantity)
+                elif 'STC' in action:
+                    # Closing a short position - quantity should be negative (selling to close)
+                    net_quantity = -abs(total_closing_quantity)
+                else:
+                    # Default to positive for other closing actions
+                    net_quantity = abs(total_closing_quantity)
+            else:
+                net_quantity = 0
         
         # Calculate weighted average prices
         avg_opening_price = total_opening_value / total_opening_quantity if total_opening_quantity != 0 else 0
         avg_closing_price = total_closing_value / total_closing_quantity if total_closing_quantity != 0 else None
         
         # Extract position details
-        underlying = opening_txs[0].get('underlying_symbol') or opening_txs[0].get('symbol', '')
+        if opening_txs:
+            underlying = opening_txs[0].get('underlying_symbol') or opening_txs[0].get('symbol', '')
+        elif closing_txs:
+            underlying = closing_txs[0].get('underlying_symbol') or closing_txs[0].get('symbol', '')
+        else:
+            underlying = 'UNKNOWN'
         
         # Parse option details if applicable
         option_type = None
@@ -359,7 +385,7 @@ def create_positions_from_order_fixed(order_info, conn):
                     logger.warning(f"Could not parse option details for {symbol}: {e}")
         
         # Normalize actions
-        opening_action = normalize_action(opening_txs[0].get('action', ''))
+        opening_action = normalize_action(opening_txs[0].get('action', '')) if opening_txs else None
         closing_action = normalize_action(closing_txs[0].get('action', '')) if closing_txs else None
         
         # Calculate P&L if closed
@@ -391,7 +417,9 @@ def create_positions_from_order_fixed(order_info, conn):
         """, (
             order_id, order[1], symbol, underlying, instrument_type,
             option_type, strike, expiration, net_quantity, avg_opening_price,
-            avg_closing_price, opening_txs[0].get('id'), closing_txs[0].get('id') if closing_txs else None,
+            avg_closing_price, 
+            opening_txs[0].get('id') if opening_txs else None, 
+            closing_txs[0].get('id') if closing_txs else None,
             opening_action, closing_action, status, pnl
         ))
         
@@ -630,8 +658,30 @@ def determine_strategy_from_positions(positions):
             # Same expiration
             if opt1[8] == opt2[8]:  # same expiration
                 if opt1[6] == opt2[6]:  # same option type
-                    # Vertical spread
-                    if opt1[9] > 0 and opt2[9] < 0:  # long/short
+                    # Check quantities for ratio spreads
+                    qty1, qty2 = abs(opt1[9]), abs(opt2[9])
+                    
+                    # Check for Zebra pattern (2:1 ratio with long at lower strike)
+                    if opt1[6] == 'Call' and opt1[9] > 0 and opt2[9] < 0:
+                        # Long calls at lower strike, short calls at higher strike
+                        # Check for 2:1 ratio (allowing for multiples like 8:4, 6:3, etc.)
+                        ratio = qty1 / qty2 if qty2 > 0 else 0
+                        if abs(ratio - 2.0) < 0.1:  # 2:1 ratio (with small tolerance)
+                            return 'Zebra'
+                        elif qty1 != qty2:  # Other ratio
+                            return f'Call Ratio Spread ({qty1}:{qty2})'
+                        else:  # 1:1 ratio
+                            return 'Bull Call Spread'
+                    
+                    # Check for Put ratio spreads
+                    elif opt1[6] == 'Put' and opt1[9] > 0 and opt2[9] < 0:
+                        if qty1 != qty2:
+                            return f'Put Ratio Spread ({qty1}:{qty2})'
+                        else:
+                            return 'Bull Put Spread'
+                    
+                    # Standard vertical spreads
+                    elif opt1[9] > 0 and opt2[9] < 0:  # long/short
                         return 'Bull Call Spread' if opt1[6] == 'Call' else 'Bull Put Spread'
                     elif opt1[9] < 0 and opt2[9] > 0:  # short/long
                         return 'Bear Call Spread' if opt1[6] == 'Call' else 'Bear Put Spread'
@@ -724,18 +774,18 @@ def detect_order_chains_fixed(conn):
             chain_members = [order]
             processed_orders.add(order['order_id'])
             
-            # FIXED: Only look for rolling orders if this order is not system-closed
+            # FIXED: Build chains by finding continuation orders (ROLLING or CLOSING)
             # Use position-based matching for proper linking
             if not is_system_closed and order['order_type'] != 'CLOSING':
                 current_order = order
                 
                 # Continue building chain by finding rolling orders that close current positions
                 while True:
-                    found_roll = False
+                    found_continuation = False
                     
                     for candidate in orders:
                         if (candidate['order_id'] not in processed_orders and
-                            candidate['order_type'] == 'ROLLING' and
+                            candidate['order_type'] in ['ROLLING', 'CLOSING'] and
                             not (candidate['has_expiration'] or candidate['has_assignment'] or candidate['has_exercise']) and
                             is_position_based_roll_continuation(current_order, candidate, conn)):
                             
@@ -748,11 +798,15 @@ def detect_order_chains_fixed(conn):
                                 WHERE order_id = ?
                             """, (current_order['order_id'], candidate['order_id']))
                             
-                            current_order = candidate
-                            found_roll = True
+                            # If this is a CLOSING order, stop building the chain
+                            if candidate['order_type'] == 'CLOSING':
+                                found_continuation = False  # Don't continue after closing
+                            else:
+                                current_order = candidate
+                                found_continuation = True
                             break
                     
-                    if not found_roll:
+                    if not found_continuation:
                         break
             
             # Create chain record

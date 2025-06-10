@@ -557,8 +557,28 @@ def determine_strategy_from_positions(positions):
             # Same expiration
             if opt1[8] == opt2[8]:  # same expiration
                 if opt1[6] == opt2[6]:  # same option type
-                    # Vertical spread
-                    if opt1[9] > 0 and opt2[9] < 0:  # long/short
+                    # Check quantities for ratio spreads
+                    qty1, qty2 = abs(opt1[9]), abs(opt2[9])
+                    
+                    # Check for Zebra pattern (2:1 ratio with long at lower strike)
+                    if opt1[6] == 'Call' and opt1[9] > 0 and opt2[9] < 0:
+                        # Long calls at lower strike, short calls at higher strike
+                        if qty1 == 2 * qty2:  # 2:1 ratio
+                            return 'Zebra'
+                        elif qty1 != qty2:  # Other ratio
+                            return f'Call Ratio Spread ({qty1}:{qty2})'
+                        else:  # 1:1 ratio
+                            return 'Bull Call Spread'
+                    
+                    # Check for Put ratio spreads
+                    elif opt1[6] == 'Put' and opt1[9] > 0 and opt2[9] < 0:
+                        if qty1 != qty2:
+                            return f'Put Ratio Spread ({qty1}:{qty2})'
+                        else:
+                            return 'Bull Put Spread'
+                    
+                    # Standard vertical spreads
+                    elif opt1[9] > 0 and opt2[9] < 0:  # long/short
                         return 'Bull Call Spread' if opt1[6] == 'Call' else 'Bull Put Spread'
                     elif opt1[9] < 0 and opt2[9] > 0:  # short/long
                         return 'Bear Call Spread' if opt1[6] == 'Call' else 'Bear Put Spread'

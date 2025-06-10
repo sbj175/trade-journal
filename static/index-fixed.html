@@ -218,7 +218,7 @@
             <div class="glass rounded-xl p-6 mb-6">
                 <div class="flex flex-wrap gap-4">
                     <div class="min-w-[200px]">
-                        <select x-model="filterUnderlying" @change="loadChains()" class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                        <select x-model="filterUnderlying" @change="loadChains(); saveState()" class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
                             <option value="">All Underlyings</option>
                             <template x-for="underlying in availableUnderlyings" :key="underlying">
                                 <option :value="underlying" x-text="underlying"></option>
@@ -226,7 +226,7 @@
                         </select>
                     </div>
                     
-                    <select x-model="filterStrategy" @change="loadChains()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                    <select x-model="filterStrategy" @change="loadChains(); saveState()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
                         <option value="">All Strategies</option>
                         <optgroup label="Multi-leg Complex">
                             <option value="Iron Condor">Iron Condor</option>

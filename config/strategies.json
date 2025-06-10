@@ -200,7 +200,7 @@
         "leg_count": 3,
         "option_type": "Call",
         "pattern": "long/long/short",
-        "quantity_pattern": "2/2/-1",
+        "quantity_pattern": "2/-1",
         "strike_pattern": "ITM/ITM/ATM",
         "same_strike_longs": true,
         "ascending_strikes": true
