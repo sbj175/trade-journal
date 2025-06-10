@@ -136,7 +136,7 @@
                         </button>
                         
                         <!-- Date Range Selector -->
-                        <select x-model="syncDays" class="bg-slate-800 text-white rounded-lg px-3 py-2 border border-slate-700 focus:border-blue-500 focus:outline-none">
+                        <select x-model="syncDays" @change="saveState()" class="bg-slate-800 text-white rounded-lg px-3 py-2 border border-slate-700 focus:border-blue-500 focus:outline-none">
                             <option value="7">Last 7 days</option>
                             <option value="30">Last 30 days</option>
                             <option value="90">Last 90 days</option>

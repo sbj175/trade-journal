@@ -52,14 +52,61 @@ function tradeJournal() {
         async init() {
             console.log('Initializing Trade Journal...');
             
-            // Restore state from localStorage
-            this.restoreState();
+            // Get saved state before loading data
+            const savedState = this.getSavedState();
             
+            // Load accounts and set the saved one if it exists
             await this.loadAccounts();
+            
+            // Apply saved account after accounts are loaded
+            if (savedState && savedState.selectedAccount) {
+                const accountExists = this.accounts.some(a => a.account_number === savedState.selectedAccount);
+                if (accountExists) {
+                    this.selectedAccount = savedState.selectedAccount;
+                    console.log('Restored account:', savedState.selectedAccount);
+                } else {
+                    console.log('Saved account not found:', savedState.selectedAccount);
+                }
+            }
+            
+            // Load dashboard with selected account
             await this.loadDashboard();
+            
+            // Load available underlyings
             await this.loadAvailableUnderlyings();
+            
+            // Apply saved underlying after underlyings are loaded
+            if (savedState && savedState.filterUnderlying) {
+                if (this.availableUnderlyings.includes(savedState.filterUnderlying)) {
+                    this.filterUnderlying = savedState.filterUnderlying;
+                    console.log('Restored underlying:', savedState.filterUnderlying);
+                } else {
+                    console.log('Saved underlying not found:', savedState.filterUnderlying);
+                }
+            }
+            
+            // Apply other saved filters
+            if (savedState) {
+                this.filterStrategy = savedState.filterStrategy || '';
+                this.filterStatus = savedState.filterStatus || '';
+                this.syncDays = savedState.syncDays || 30;
+                this.sortColumn = savedState.sortColumn || 'underlying';
+                this.sortDirection = savedState.sortDirection || 'asc';
+                console.log('Restored other filters:', {
+                    strategy: this.filterStrategy,
+                    status: this.filterStatus,
+                    syncDays: this.syncDays
+                });
+            }
+            
+            // Load trades and chains with restored filters
             await this.loadTrades();
             await this.loadChains();
+            
+            // Double-check dropdowns after everything is loaded
+            this.$nextTick(() => {
+                this.verifyDropdownValues();
+            });
         },
         
         // Load accounts
@@ -70,7 +117,7 @@ function tradeJournal() {
                 const data = await response.json();
                 this.accounts = data.accounts || [];
                 
-                // Set default account (first one)
+                // Set default account (first one) only if no account is selected
                 if (this.accounts.length > 0 && !this.selectedAccount) {
                     this.selectedAccount = this.accounts[0].account_number;
                 }
@@ -565,26 +612,51 @@ function tradeJournal() {
             localStorage.setItem('tradeJournalState', JSON.stringify(state));
         },
         
-        // Restore UI state from localStorage
-        restoreState() {
+        // Get saved state from localStorage
+        getSavedState() {
             try {
                 const savedState = localStorage.getItem('tradeJournalState');
-                if (savedState) {
-                    const state = JSON.parse(savedState);
-                    
-                    // Restore filters and settings
-                    this.selectedAccount = state.selectedAccount || '';
-                    this.filterUnderlying = state.filterUnderlying || '';
-                    this.filterStrategy = state.filterStrategy || '';
-                    this.filterStatus = state.filterStatus || '';
-                    this.syncDays = state.syncDays || 30;
-                    this.sortColumn = state.sortColumn || 'underlying';
-                    this.sortDirection = state.sortDirection || 'asc';
-                    
-                    console.log('Restored state:', state);
-                }
+                return savedState ? JSON.parse(savedState) : null;
             } catch (error) {
-                console.error('Error restoring state:', error);
+                console.error('Error getting saved state:', error);
+                return null;
+            }
+        },
+        
+        // Verify dropdown values are correctly set
+        verifyDropdownValues() {
+            // Check account dropdown
+            const accountSelect = document.getElementById('account-select');
+            if (accountSelect && this.selectedAccount) {
+                accountSelect.value = this.selectedAccount;
+                console.log('Account dropdown verified:', accountSelect.value);
+            }
+            
+            // Check underlying dropdown  
+            const underlyingSelects = document.querySelectorAll('[x-model="filterUnderlying"]');
+            underlyingSelects.forEach(select => {
+                if (this.filterUnderlying) {
+                    select.value = this.filterUnderlying;
+                    console.log('Underlying dropdown verified:', select.value);
+                }
+            });
+            
+            // Check sync days dropdown
+            const syncDaysSelects = document.querySelectorAll('[x-model="syncDays"]');
+            syncDaysSelects.forEach(select => {
+                if (this.syncDays) {
+                    select.value = this.syncDays;
+                    console.log('Sync days dropdown verified:', select.value);
+                }
+            });
+        },
+        
+        // Restore UI state from localStorage (legacy - still used by some code)
+        restoreState() {
+            const state = this.getSavedState();
+            if (state) {
+                // This is now handled in init(), but keep for compatibility
+                console.log('restoreState called (legacy)');
             }
         }
     };

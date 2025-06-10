@@ -190,7 +190,7 @@
       }
     },
     "ZEBRA": {
-      "name": "Zebra",
+      "name": "ZEBRA",
       "code": "ZEB",
       "category": "multi_leg_complex",
       "direction": "bullish",

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Trade Journal Cache</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white p-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold mb-4">Clear Trade Journal Cache</h1>
+        
+        <div class="bg-slate-800 rounded-lg p-6 mb-4">
+            <p class="mb-4">This page will help clear any cached data that might be preventing you from seeing the updated Zebra strategy.</p>
+            
+            <button onclick="clearAllCache()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-white font-medium">
+                Clear All Cache
+            </button>
+        </div>
+        
+        <div id="status" class="bg-slate-800 rounded-lg p-6"></div>
+    </div>
+    
+    <script>
+        function clearAllCache() {
+            const status = document.getElementById('status');
+            let messages = [];
+            
+            // Clear localStorage
+            try {
+                localStorage.clear();
+                messages.push('✓ localStorage cleared');
+            } catch (e) {
+                messages.push('✗ Failed to clear localStorage: ' + e.message);
+            }
+            
+            // Clear sessionStorage
+            try {
+                sessionStorage.clear();
+                messages.push('✓ sessionStorage cleared');
+            } catch (e) {
+                messages.push('✗ Failed to clear sessionStorage: ' + e.message);
+            }
+            
+            // Clear specific Trade Journal state
+            try {
+                localStorage.removeItem('tradeJournalState');
+                messages.push('✓ Trade Journal state cleared');
+            } catch (e) {
+                messages.push('✗ Failed to clear Trade Journal state: ' + e.message);
+            }
+            
+            // Display results
+            status.innerHTML = messages.map(msg => `<p class="mb-2">${msg}</p>`).join('');
+            
+            // Redirect after 2 seconds
+            setTimeout(() => {
+                status.innerHTML += '<p class="mt-4 text-green-400">Redirecting to Trade Journal...</p>';
+                window.location.href = 'http://localhost:8000';
+            }, 2000);
+        }
+        
+        // Auto-run on page load
+        window.onload = function() {
+            document.getElementById('status').innerHTML = '<p class="text-yellow-400">Ready to clear cache. Click the button above.</p>';
+        };
+    </script>
+</body>
+</html>
