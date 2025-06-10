@@ -199,7 +199,12 @@ def rebuild_chains_with_partial_roll_support(conn):
                 
                 # Determine chain status
                 has_closing = any(m['order_type'] == 'CLOSING' for m in chain_members)
-                chain_status = 'CLOSED' if has_closing else 'OPEN'
+                has_expiration = any(m['has_expiration'] for m in chain_members)
+                has_assignment = any(m['has_assignment'] for m in chain_members)
+                has_exercise = any(m['has_exercise'] for m in chain_members)
+                
+                # Chain is closed if it has explicit closing orders OR system closures (expiration/assignment/exercise)
+                chain_status = 'CLOSED' if (has_closing or has_expiration or has_assignment or has_exercise) else 'OPEN'
                 
                 # Insert chain
                 cursor.execute("""

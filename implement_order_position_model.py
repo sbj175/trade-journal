@@ -830,11 +830,13 @@ def detect_order_chains_fixed(conn):
                 total_pnl = cursor.fetchone()[0] or 0
                 
                 # FIXED: Determine chain status more accurately
-                if is_system_closed:
-                    chain_status = 'CLOSED'
-                else:
-                    last_order = chain_members[-1]
-                    chain_status = 'CLOSED' if last_order['order_type'] == 'CLOSING' else 'OPEN'
+                has_closing = any(m['order_type'] == 'CLOSING' for m in chain_members)
+                has_expiration = any(m['has_expiration'] for m in chain_members)
+                has_assignment = any(m['has_assignment'] for m in chain_members)
+                has_exercise = any(m['has_exercise'] for m in chain_members)
+                
+                # Chain is closed if it has explicit closing orders OR system closures (expiration/assignment/exercise)
+                chain_status = 'CLOSED' if (has_closing or has_expiration or has_assignment or has_exercise) else 'OPEN'
                 
                 # Use strategy_type from opening order, default to 'UNKNOWN' if null
                 strategy_type = opening_order.get('strategy_type') or 'UNKNOWN'
