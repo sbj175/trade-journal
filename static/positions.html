@@ -231,7 +231,7 @@
                                             <template x-if="getUnderlyingQuote(underlying)">
                                                 <div class="flex items-center space-x-2">
                                                     <!-- Price with colored background -->
-                                                    <div class="px-3 py-1 rounded-lg font-medium transition-all duration-200"
+                                                    <div class="px-3 py-1 rounded-lg font-medium"
                                                          :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-800 hover:bg-red-900'">
                                                         <span class="text-lg font-semibold text-white" 
                                                               x-text="getUnderlyingQuote(underlying).price.toFixed(2)"></span>
@@ -253,7 +253,17 @@
                                             </template>
                                         </div>
                                     </div>
-                                    <span class="text-sm text-slate-400" x-text="positions.length + ' position' + (positions.length !== 1 ? 's' : '')"></span>
+                                    <div class="flex items-center space-x-3">
+                                        <span class="text-sm text-slate-400" x-text="positions.length + ' position' + (positions.length !== 1 ? 's' : '')"></span>
+                                        <!-- Order Chains Link -->
+                                        <a :href="'/static/index-fixed.html?underlying=' + encodeURIComponent(underlying) + (selectedAccount ? '&account=' + encodeURIComponent(selectedAccount) : '')" 
+                                           @click.stop
+                                           class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/30 hover:bg-blue-900/50 rounded border border-blue-700/50 hover:border-blue-600 transition-colors" 
+                                           title="View order chains for this symbol">
+                                            <i class="fas fa-link mr-1"></i>
+                                            Orders
+                                        </a>
+                                    </div>
                                 </div>
                                 <div class="flex items-center space-x-6 text-sm">
                                     <div class="text-center">
@@ -271,12 +281,7 @@
                         </div>
                         
                         <!-- Positions Table (Collapsible) -->
-                        <div x-show="expanded" x-transition:enter="transition ease-out duration-300" 
-                             x-transition:enter-start="opacity-0 transform -translate-y-2" 
-                             x-transition:enter-end="opacity-100 transform translate-y-0"
-                             x-transition:leave="transition ease-in duration-200" 
-                             x-transition:leave-start="opacity-100 transform translate-y-0" 
-                             x-transition:leave-end="opacity-0 transform -translate-y-2"
+                        <div x-show="expanded"
                              class="overflow-x-auto">
                             <table class="min-w-full">
                                 <thead class="bg-slate-700/50">
@@ -372,7 +377,12 @@
                 underlyings: [],
                 underlyingQuotes: {},
                 
-                // Filters
+                // WebSocket for live quotes
+                ws: null,
+                wsReconnectTimer: null,
+                wsReconnectDelay: 5000,
+                
+                // Filters (with localStorage persistence)
                 selectedAccount: '',
                 selectedInstrumentType: '',
                 selectedUnderlying: '',
@@ -380,6 +390,8 @@
                 // State
                 isLoading: false,
                 error: null,
+                liveQuotesActive: false,
+                lastQuoteUpdate: null,
                 
                 // Computed properties
                 get totalUnrealizedPnL() {
@@ -406,18 +418,29 @@
                     const sortedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
                     
                     // Sort positions within each group: stocks first, then options by expiration and strike
+                    const self = this; // Capture reference to the Alpine component
                     sortedGroups.forEach(([underlying, positions]) => {
                         positions.sort((a, b) => {
                             // Stocks before options
                             if (a.instrument_type === 'EQUITY' && b.instrument_type !== 'EQUITY') return -1;
                             if (a.instrument_type !== 'EQUITY' && b.instrument_type === 'EQUITY') return 1;
                             
-                            // For options, sort by expiration then strike
+                            // For options, sort by expiration then strike price (ascending)
                             if (a.instrument_type !== 'EQUITY' && b.instrument_type !== 'EQUITY') {
+                                // First sort by expiration date
                                 if (a.expires_at && b.expires_at && a.expires_at !== b.expires_at) {
                                     return new Date(a.expires_at) - new Date(b.expires_at);
                                 }
-                                // Then by symbol (which includes strike info)
+                                
+                                // Then sort by strike price (ascending)
+                                const strikeA = self.getNumericStrikePrice(a);
+                                const strikeB = self.getNumericStrikePrice(b);
+                                
+                                if (strikeA !== null && strikeB !== null && strikeA !== strikeB) {
+                                    return strikeA - strikeB; // Ascending order
+                                }
+                                
+                                // Fallback to symbol comparison if strikes are equal or unavailable
                                 return a.symbol.localeCompare(b.symbol);
                             }
                             
@@ -432,7 +455,63 @@
                 // Methods
                 async init() {
                     await this.loadAccounts();
+                    
+                    // Load saved filter preferences after accounts are loaded
+                    this.loadFilterPreferences();
+                    
                     await this.fetchPositions();
+                    
+                    // Clean up WebSocket on page unload
+                    window.addEventListener('beforeunload', () => {
+                        if (this.ws) {
+                            this.ws.close();
+                        }
+                    });
+                },
+                
+                loadFilterPreferences() {
+                    try {
+                        const savedAccount = localStorage.getItem('positions_selectedAccount');
+                        const savedInstrumentType = localStorage.getItem('positions_selectedInstrumentType');
+                        const savedUnderlying = localStorage.getItem('positions_selectedUnderlying');
+                        
+                        // Validate saved account exists in current accounts list
+                        if (savedAccount && this.accounts.some(acc => acc.account_number === savedAccount)) {
+                            this.selectedAccount = savedAccount;
+                        } else if (savedAccount) {
+                            console.warn(`Saved account ${savedAccount} not found in current accounts list`);
+                            // Clear invalid saved account
+                            localStorage.removeItem('positions_selectedAccount');
+                        }
+                        
+                        if (savedInstrumentType) this.selectedInstrumentType = savedInstrumentType;
+                        if (savedUnderlying) this.selectedUnderlying = savedUnderlying;
+                        
+                        console.log('Loaded filter preferences:', {
+                            account: this.selectedAccount,
+                            instrumentType: this.selectedInstrumentType,
+                            underlying: this.selectedUnderlying,
+                            availableAccounts: this.accounts.map(a => a.account_number)
+                        });
+                    } catch (error) {
+                        console.warn('Error loading filter preferences:', error);
+                    }
+                },
+                
+                saveFilterPreferences() {
+                    try {
+                        localStorage.setItem('positions_selectedAccount', this.selectedAccount);
+                        localStorage.setItem('positions_selectedInstrumentType', this.selectedInstrumentType);
+                        localStorage.setItem('positions_selectedUnderlying', this.selectedUnderlying);
+                        
+                        console.log('Saved filter preferences:', {
+                            account: this.selectedAccount,
+                            instrumentType: this.selectedInstrumentType,
+                            underlying: this.selectedUnderlying
+                        });
+                    } catch (error) {
+                        console.warn('Error saving filter preferences:', error);
+                    }
                 },
                 
                 async loadAccounts() {
@@ -495,31 +574,84 @@
                             return;
                         }
                         
-                        console.log(`Attempting to fetch live quotes for ${underlyingSymbols.length} symbols: ${underlyingSymbols.join(', ')}`);
+                        console.log(`Starting live quote streaming for ${underlyingSymbols.length} symbols: ${underlyingSymbols.join(', ')}`);
                         
-                        // Fetch quotes for all underlying symbols
-                        const response = await fetch(`/api/quotes?symbols=${underlyingSymbols.join(',')}`);
-                        if (response.ok) {
-                            this.underlyingQuotes = await response.json();
-                            const quotesReceived = Object.keys(this.underlyingQuotes).length;
-                            const quotesMissing = underlyingSymbols.length - quotesReceived;
-                            
-                            if (quotesReceived > 0) {
-                                console.log(`✅ Received ${quotesReceived} live quotes for: ${Object.keys(this.underlyingQuotes).join(', ')}`);
-                                if (quotesMissing > 0) {
-                                    const missing = underlyingSymbols.filter(s => !this.underlyingQuotes[s]);
-                                    console.warn(`⚠️ No quotes available for: ${missing.join(', ')}`);
-                                }
-                            } else {
-                                console.warn('⚠️ No live quotes available - Tastytrade streaming may not provide quotes for these symbols during current market conditions');
-                                console.warn('   This is normal behavior - live quotes depend on market activity and data feed availability');
-                            }
-                        } else {
-                            console.warn('Failed to fetch underlying quotes:', response.statusText);
-                        }
+                        // Connect to WebSocket for live streaming quotes
+                        this.connectWebSocket(underlyingSymbols);
+                        
                     } catch (err) {
-                        console.warn('Error fetching underlying quotes:', err);
+                        console.warn('Error setting up quote streaming:', err);
                     }
+                },
+                
+                connectWebSocket(symbols) {
+                    // Close existing connection if any
+                    if (this.ws) {
+                        this.ws.close();
+                    }
+                    
+                    // Clear any existing reconnect timer
+                    if (this.wsReconnectTimer) {
+                        clearTimeout(this.wsReconnectTimer);
+                    }
+                    
+                    const wsUrl = `ws://${window.location.host}/ws/quotes`;
+                    console.log(`Connecting to WebSocket at ${wsUrl}`);
+                    
+                    this.ws = new WebSocket(wsUrl);
+                    
+                    this.ws.onopen = () => {
+                        console.log('✅ WebSocket connected for live quotes');
+                        this.liveQuotesActive = true;
+                        
+                        // Subscribe to symbols
+                        this.ws.send(JSON.stringify({
+                            subscribe: symbols
+                        }));
+                    };
+                    
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            
+                            if (message.type === 'quotes' && message.data) {
+                                // Update quotes
+                                this.underlyingQuotes = message.data;
+                                this.lastQuoteUpdate = new Date();
+                                const quotesReceived = Object.keys(this.underlyingQuotes).length;
+                                
+                                if (quotesReceived > 0) {
+                                    console.log(`📊 Live update: ${quotesReceived} quotes at ${this.lastQuoteUpdate.toLocaleTimeString()}`);
+                                }
+                            } else if (message.error) {
+                                console.error('WebSocket error:', message.error);
+                            }
+                        } catch (err) {
+                            console.error('Error processing WebSocket message:', err);
+                        }
+                    };
+                    
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                    
+                    this.ws.onclose = () => {
+                        console.log('WebSocket disconnected');
+                        this.liveQuotesActive = false;
+                        
+                        // Attempt to reconnect after delay
+                        this.wsReconnectTimer = setTimeout(() => {
+                            console.log('Attempting to reconnect WebSocket...');
+                            this.connectWebSocket(symbols);
+                        }, this.wsReconnectDelay);
+                    };
+                    
+                    // Send periodic pings to keep connection alive
+                    setInterval(() => {
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            this.ws.send(JSON.stringify({ ping: true }));
+                        }
+                    }, 30000); // Ping every 30 seconds
                 },
                 
                 filterPositions() {
@@ -551,6 +683,9 @@
                         
                         return true;
                     });
+                    
+                    // Save filter preferences to localStorage
+                    this.saveFilterPreferences();
                     
                     // Note: Sorting is now handled in the groupedPositions computed property
                 },
@@ -657,6 +792,28 @@
                     }
                     
                     return '';
+                },
+                
+                getNumericStrikePrice(position) {
+                    // Get numeric strike price for sorting purposes
+                    if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
+                        return null;
+                    }
+                    
+                    let strike = null;
+                    
+                    // First try the API field
+                    if (position.strike_price !== null && position.strike_price !== undefined) {
+                        strike = parseFloat(position.strike_price);
+                    } else {
+                        // Fallback to symbol parsing
+                        const parsed = this.parseOptionSymbol(position.symbol);
+                        if (parsed && parsed.strike) {
+                            strike = parsed.strike;
+                        }
+                    }
+                    
+                    return strike; // Return raw numeric value for sorting
                 },
                 
                 getOptionType(position) {

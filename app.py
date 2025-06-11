@@ -5,10 +5,11 @@ A beautiful, local web app for tracking and analyzing trades
 """
 
 import os
+import asyncio
 from datetime import datetime, date, timedelta
 from pathlib import Path
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -1114,6 +1115,115 @@ async def search_trades(q: str, account_number: Optional[str] = None):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
+@app.websocket("/ws/quotes")
+async def websocket_quotes(websocket: WebSocket):
+    """WebSocket endpoint for streaming live quotes"""
+    await websocket.accept()
+    
+    client = None
+    subscribed_symbols = []
+    
+    try:
+        # Initialize Tastytrade client
+        client = TastytradeClient()
+        
+        # Authenticate with Tastytrade
+        if not client.authenticate():
+            await websocket.send_json({"error": "Failed to authenticate with Tastytrade"})
+            await websocket.close()
+            return
+        
+        logger.info("WebSocket client connected for quote streaming")
+        
+        # Create tasks for receiving messages and sending updates
+        async def receive_messages():
+            nonlocal subscribed_symbols
+            try:
+                while True:
+                    data = await websocket.receive_json()
+                    
+                    if "subscribe" in data:
+                        symbols = data["subscribe"]
+                        if isinstance(symbols, list):
+                            subscribed_symbols = symbols
+                            logger.info(f"WebSocket subscribing to quotes for: {symbols}")
+                            
+                            # Send initial quotes
+                            if subscribed_symbols:
+                                quotes = client.get_quotes(subscribed_symbols)
+                                await websocket.send_json({
+                                    "type": "quotes",
+                                    "data": quotes
+                                })
+                    
+                    elif "unsubscribe" in data:
+                        subscribed_symbols = []
+                        logger.info("WebSocket unsubscribed from all quotes")
+                    
+                    elif "ping" in data:
+                        # Keep-alive ping
+                        await websocket.send_json({"pong": True})
+                        
+            except WebSocketDisconnect:
+                logger.info("WebSocket client disconnected")
+                raise
+                
+        async def send_updates():
+            try:
+                while True:
+                    # Wait before sending next update
+                    await asyncio.sleep(5)  # Update every 5 seconds
+                    
+                    # Check if WebSocket is still open before sending
+                    if websocket.client_state.value != 1:  # 1 = OPEN
+                        logger.info("WebSocket closed, stopping quote updates")
+                        break
+                    
+                    if subscribed_symbols:
+                        # Clear cache to get fresh quotes
+                        client.clear_quote_cache()
+                        quotes = client.get_quotes(subscribed_symbols)
+                        
+                        try:
+                            await websocket.send_json({
+                                "type": "quotes",
+                                "data": quotes,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            logger.debug(f"Sent quote update for {len(quotes)} symbols")
+                        except Exception as send_error:
+                            logger.info(f"WebSocket send failed (connection likely closed): {send_error}")
+                            break
+                        
+            except asyncio.CancelledError:
+                logger.info("Quote update task cancelled")
+                raise
+            except Exception as e:
+                logger.error(f"Error in send_updates: {str(e)}")
+                raise
+        
+        # Run both tasks concurrently
+        try:
+            await asyncio.gather(
+                receive_messages(),
+                send_updates(),
+                return_exceptions=True  # Don't fail if one task has an exception
+            )
+        except Exception as e:
+            logger.info(f"WebSocket tasks completed with: {e}")
+        
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+    finally:
+        logger.info("WebSocket connection closed")
 
 
 @app.get("/strategy-config", response_class=HTMLResponse)

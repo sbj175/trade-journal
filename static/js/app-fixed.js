@@ -75,8 +75,36 @@ function tradeJournal() {
             // Load available underlyings
             await this.loadAvailableUnderlyings();
             
-            // Apply saved underlying after underlyings are loaded
-            if (savedState && savedState.filterUnderlying) {
+            // Check for URL parameters first (e.g., from positions page links)
+            const urlParams = new URLSearchParams(window.location.search);
+            const underlyingParam = urlParams.get('underlying');
+            const accountParam = urlParams.get('account');
+            
+            // Apply URL parameter account filter if provided and account exists
+            if (accountParam) {
+                const accountExists = this.accounts.some(a => a.account_number === accountParam);
+                if (accountExists) {
+                    this.selectedAccount = accountParam;
+                    console.log('Applied URL parameter account filter:', accountParam);
+                    // Reload data with new account
+                    await this.loadDashboard();
+                    await this.loadAvailableUnderlyings();
+                }
+            }
+            
+            // Apply URL parameter underlying filter if provided (don't require it to be in available list yet)
+            if (underlyingParam) {
+                this.filterUnderlying = underlyingParam;
+                console.log('Applied URL parameter underlying filter:', underlyingParam);
+            }
+            
+            // Clear URL parameters after applying them
+            if (underlyingParam || accountParam) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            
+            // Apply saved underlying if no URL parameter was provided
+            if (!underlyingParam && savedState && savedState.filterUnderlying) {
                 if (this.availableUnderlyings.includes(savedState.filterUnderlying)) {
                     this.filterUnderlying = savedState.filterUnderlying;
                     console.log('Restored underlying:', savedState.filterUnderlying);
@@ -106,6 +134,14 @@ function tradeJournal() {
             // Double-check dropdowns after everything is loaded
             this.$nextTick(() => {
                 this.verifyDropdownValues();
+                
+                // Log final state for debugging
+                console.log('Final state after initialization:', {
+                    selectedAccount: this.selectedAccount,
+                    filterUnderlying: this.filterUnderlying,
+                    availableUnderlyings: this.availableUnderlyings.length,
+                    chainsLoaded: this.chains.length
+                });
             });
         },
         
