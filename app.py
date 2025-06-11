@@ -521,6 +521,48 @@ async def get_current_positions(account_number: Optional[str] = None):
         raise HTTPException(status_code=500, detail=f"Failed to fetch positions: {str(e)}")
 
 
+@app.get("/api/quotes")
+async def get_market_quotes(symbols: str, refresh: bool = False):
+    """Get current market quotes for symbols"""
+    try:
+        # Parse comma-separated symbols
+        symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
+        
+        if not symbol_list:
+            raise HTTPException(status_code=400, detail="No symbols provided")
+        
+        # Initialize Tastytrade client
+        client = TastytradeClient()
+        
+        # Authenticate with Tastytrade
+        if not client.authenticate():
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
+        
+        # Clear cache if refresh requested
+        if refresh:
+            client.clear_quote_cache()
+            logger.info("Cache cleared due to refresh parameter")
+        
+        # Get quotes from Tastytrade API
+        quotes = client.get_quotes(symbol_list)
+        
+        logger.info(f"API endpoint returning quotes for {len(quotes)} symbols")
+        
+        # Check if we got all requested quotes
+        if len(quotes) < len(symbol_list):
+            missing = [s for s in symbol_list if s not in quotes]
+            logger.warning(f"Could not retrieve quotes for: {missing}")
+        
+        if not quotes:
+            logger.warning("No quotes available - streaming data unavailable")
+        
+        return quotes
+        
+    except Exception as e:
+        logger.error(f"Error fetching quotes from Tastytrade: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch quotes: {str(e)}")
+
+
 @app.get("/api/trades/{trade_id}")
 async def get_trade(trade_id: str):
     """Get a specific trade with all legs (legacy support)"""

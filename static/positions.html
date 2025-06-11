@@ -225,6 +225,33 @@
                                         <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
                                            :class="{ 'rotate-90': expanded }"></i>
                                         <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
+                                        
+                                        <!-- Live underlying price -->
+                                        <div class="flex items-center space-x-2">
+                                            <template x-if="getUnderlyingQuote(underlying)">
+                                                <div class="flex items-center space-x-2">
+                                                    <!-- Price with colored background -->
+                                                    <div class="px-3 py-1 rounded-lg font-medium transition-all duration-200"
+                                                         :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-800 hover:bg-red-900'">
+                                                        <span class="text-lg font-semibold text-white" 
+                                                              x-text="getUnderlyingQuote(underlying).price.toFixed(2)"></span>
+                                                    </div>
+                                                    <!-- Change data with black background -->
+                                                    <div class="px-3 py-1 rounded-lg bg-black">
+                                                        <span class="text-sm font-medium" 
+                                                              :class="getUnderlyingQuote(underlying).change >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                              x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + getUnderlyingQuote(underlying).change.toFixed(2) + ' (' + (getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%)'">
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <template x-if="!getUnderlyingQuote(underlying)">
+                                                <span class="text-sm text-orange-400" title="Live price data not available">
+                                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                    Price N/A
+                                                </span>
+                                            </template>
+                                        </div>
                                     </div>
                                     <span class="text-sm text-slate-400" x-text="positions.length + ' position' + (positions.length !== 1 ? 's' : '')"></span>
                                 </div>
@@ -343,6 +370,7 @@
                 filteredPositions: [],
                 accounts: [],
                 underlyings: [],
+                underlyingQuotes: {},
                 
                 // Filters
                 selectedAccount: '',
@@ -447,11 +475,50 @@
                         
                         this.filterPositions();
                         
+                        // Fetch underlying quotes after positions are loaded
+                        await this.fetchUnderlyingQuotes();
+                        
                     } catch (err) {
                         console.error('Error fetching positions:', err);
                         this.error = err.message;
                     } finally {
                         this.isLoading = false;
+                    }
+                },
+                
+                async fetchUnderlyingQuotes() {
+                    try {
+                        // Get unique underlying symbols from positions
+                        const underlyingSymbols = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))];
+                        
+                        if (underlyingSymbols.length === 0) {
+                            return;
+                        }
+                        
+                        console.log(`Attempting to fetch live quotes for ${underlyingSymbols.length} symbols: ${underlyingSymbols.join(', ')}`);
+                        
+                        // Fetch quotes for all underlying symbols
+                        const response = await fetch(`/api/quotes?symbols=${underlyingSymbols.join(',')}`);
+                        if (response.ok) {
+                            this.underlyingQuotes = await response.json();
+                            const quotesReceived = Object.keys(this.underlyingQuotes).length;
+                            const quotesMissing = underlyingSymbols.length - quotesReceived;
+                            
+                            if (quotesReceived > 0) {
+                                console.log(`✅ Received ${quotesReceived} live quotes for: ${Object.keys(this.underlyingQuotes).join(', ')}`);
+                                if (quotesMissing > 0) {
+                                    const missing = underlyingSymbols.filter(s => !this.underlyingQuotes[s]);
+                                    console.warn(`⚠️ No quotes available for: ${missing.join(', ')}`);
+                                }
+                            } else {
+                                console.warn('⚠️ No live quotes available - Tastytrade streaming may not provide quotes for these symbols during current market conditions');
+                                console.warn('   This is normal behavior - live quotes depend on market activity and data feed availability');
+                            }
+                        } else {
+                            console.warn('Failed to fetch underlying quotes:', response.statusText);
+                        }
+                    } catch (err) {
+                        console.warn('Error fetching underlying quotes:', err);
                     }
                 },
                 
@@ -494,6 +561,24 @@
                 
                 getGroupMarketValue(positions) {
                     return positions.reduce((sum, pos) => sum + Math.abs(pos.market_value || 0), 0);
+                },
+                
+                getUnderlyingQuote(underlying) {
+                    const quote = this.underlyingQuotes[underlying];
+                    
+                    if (!quote) {
+                        return null;
+                    }
+                    
+                    if (!quote.mark && quote.mark !== 0) {
+                        return null;
+                    }
+                    
+                    return {
+                        price: quote.mark,
+                        change: quote.change || 0,
+                        changePercent: quote.change_percent || 0
+                    };
                 },
                 
                 // Option parsing and display methods

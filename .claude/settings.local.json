@@ -35,7 +35,8 @@
       "Bash(sed:*)",
       "Bash(pkill:*)",
       "Bash(true)",
-      "Bash(./venv/bin/python:*)"
+      "Bash(./venv/bin/python:*)",
+      "WebFetch(domain:tastyworks-api.readthedocs.io)"
     ],
     "deny": []
   }
