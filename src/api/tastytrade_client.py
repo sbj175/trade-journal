@@ -200,32 +200,48 @@ class TastytradeClient:
                     # But Tastytrade API might already include the multiplier in the price
                     multiplier = float(pos.multiplier) if pos.multiplier else 100 if pos.instrument_type and 'option' in str(pos.instrument_type).lower() else 1
                     
-                    # Get mark price (current price)
-                    mark_price = float(pos.mark) if hasattr(pos, 'mark') and pos.mark else close_price
+                    # Get mark value - pos.mark is the total position value, pos.mark_price is per-share
+                    mark_value = float(pos.mark) if hasattr(pos, 'mark') and pos.mark else 0
+                    mark_price_per_share = float(pos.mark_price) if hasattr(pos, 'mark_price') and pos.mark_price else 0
                     
                     # Get average open price (cost basis per unit)
                     average_open_price = float(pos.average_open_price) if pos.average_open_price else 0
                     
-                    # For options, prices are typically quoted per share, so we need to multiply by 100
-                    # For stocks, the price is already per share
+                    # Tastytrade API returns prices in cents for options, so no additional multiplier needed
+                    # Check if this is a short position
+                    is_short = (quantity < 0) or (pos.quantity_direction == 'Short')
+                    
                     if pos.instrument_type and 'option' in str(pos.instrument_type).lower():
-                        # Option market value = quantity * mark_price * 100
-                        market_value = quantity * mark_price * 100
-                        # Option cost basis = quantity * average_open_price * 100
+                        # Option cost basis = abs(quantity) * average_open_price * 100 (always positive)
                         cost_basis = abs(quantity) * average_open_price * 100
+                        
+                        if is_short:
+                            # For short positions: use negative of the total mark value
+                            market_value = -abs(mark_value)
+                        else:
+                            # For long positions: use the total mark value directly
+                            market_value = mark_value
                     else:
-                        # Stock market value = quantity * mark_price
-                        market_value = quantity * mark_price
-                        # Stock cost basis = quantity * average_open_price
+                        # Stock cost basis = abs(quantity) * average_open_price (always positive)
                         cost_basis = abs(quantity) * average_open_price
+                        
+                        if is_short:
+                            # For short positions: market value is negative
+                            market_value = -abs(mark_value)
+                        else:
+                            # For long positions: market value is positive
+                            market_value = mark_value
                     
                     # Calculate unrealized P&L
-                    # For long positions (positive quantity), P&L = market_value - cost_basis
-                    # For short positions (negative quantity), P&L = cost_basis - market_value
-                    if quantity > 0:
-                        unrealized_pnl = market_value - cost_basis
+                    if is_short:
+                        # For short positions: P&L = cost_basis + market_value
+                        # (cost_basis is what you received, market_value is negative for shorts)
+                        # Example: Sold for +2424, now worth -1096, P&L = 2424 + (-1096) = +1328
+                        unrealized_pnl = cost_basis + market_value
                     else:
-                        unrealized_pnl = cost_basis - abs(market_value)
+                        # For long positions: P&L = market_value - cost_basis
+                        # (profit when market value increases)
+                        unrealized_pnl = market_value - cost_basis
                     
                     # Calculate P&L percentage
                     pnl_percent = (unrealized_pnl / abs(cost_basis) * 100) if cost_basis != 0 else 0
@@ -256,7 +272,8 @@ class TastytradeClient:
                         'quantity': quantity,
                         'quantity_direction': pos.quantity_direction,
                         'close_price': close_price,
-                        'mark_price': mark_price,
+                        'mark_price': mark_price_per_share * 100,  # Convert to cents for consistency
+                        'mark_value_total': mark_value,  # Total position mark value
                         'average_open_price': average_open_price,
                         'market_value': market_value,
                         'cost_basis': cost_basis,
@@ -354,6 +371,29 @@ class TastytradeClient:
             logger.error(f"Failed to get orders: {str(e)}")
             return []
     
+    def _classify_symbols(self, symbols: List[str]) -> Dict[str, List[str]]:
+        """Classify symbols into equities and options based on format"""
+        equities = []
+        options = []
+        
+        for symbol in symbols:
+            # Option symbols have double spaces and end with C/P followed by strike
+            # Format: "MSTR  250613C00400000" (underlying + double space + YYMMDDC/P + strike)
+            if len(symbol) > 10 and '  ' in symbol:
+                # Check if it looks like an option symbol
+                parts = symbol.split('  ')
+                if len(parts) == 2 and len(parts[1]) >= 9:
+                    # Check for C or P in the expected position (7th character after space)
+                    option_part = parts[1]
+                    if len(option_part) >= 7 and option_part[6] in ['C', 'P']:
+                        options.append(symbol)
+                        continue
+            
+            # Default to equity
+            equities.append(symbol)
+        
+        return {'equities': equities, 'options': options}
+
     def get_quotes(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """Get current market quotes using Tastytrade market data API - NO MOCK DATA"""
         if not self.session:
@@ -390,12 +430,33 @@ class TastytradeClient:
                 # Use Tastytrade's market data API
                 logger.info(f"Getting market data from Tastytrade API for: {missing_symbols}")
                 
+                # Classify symbols by type
+                symbol_types = self._classify_symbols(missing_symbols)
+                logger.info(f"Symbol classification: {len(symbol_types['equities'])} equities, {len(symbol_types['options'])} options")
+                
                 # Use get_market_data_by_type which accepts lists of symbols
                 from tastytrade.market_data import get_market_data_by_type
-                market_data_list = get_market_data_by_type(
-                    self.session, 
-                    equities=missing_symbols  # Assume equities for now
-                )
+                market_data_list = []
+                
+                # Fetch equity quotes
+                if symbol_types['equities']:
+                    logger.info(f"Fetching equity quotes for: {symbol_types['equities']}")
+                    equity_data = get_market_data_by_type(
+                        self.session, 
+                        equities=symbol_types['equities']
+                    )
+                    if equity_data:
+                        market_data_list.extend(equity_data)
+                
+                # Fetch option quotes
+                if symbol_types['options']:
+                    logger.info(f"Fetching option quotes for: {symbol_types['options']}")
+                    option_data = get_market_data_by_type(
+                        self.session,
+                        options=symbol_types['options']
+                    )
+                    if option_data:
+                        market_data_list.extend(option_data)
                 
                 # Process market data into quotes format
                 for market_data in market_data_list:

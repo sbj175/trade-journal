@@ -177,11 +177,7 @@
                             <div class="text-slate-400">Total P&L</div>
                             <div class="font-semibold" 
                                  :class="totalUnrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'"
-                                 x-text="'$' + totalUnrealizedPnL.toFixed(2)"></div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-slate-400">Market Value</div>
-                            <div class="font-semibold" x-text="'$' + totalMarketValue.toFixed(2)"></div>
+                                 x-text="formatNumber(totalUnrealizedPnL)"></div>
                         </div>
                     </div>
                 </div>
@@ -234,13 +230,13 @@
                                                     <div class="px-3 py-1 rounded-lg font-medium"
                                                          :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-800 hover:bg-red-900'">
                                                         <span class="text-lg font-semibold text-white" 
-                                                              x-text="getUnderlyingQuote(underlying).price.toFixed(2)"></span>
+                                                              x-text="formatNumber(getUnderlyingQuote(underlying).price)"></span>
                                                     </div>
                                                     <!-- Change data with black background -->
                                                     <div class="px-3 py-1 rounded-lg bg-black">
                                                         <span class="text-sm font-medium" 
                                                               :class="getUnderlyingQuote(underlying).change >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                              x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + getUnderlyingQuote(underlying).change.toFixed(2) + ' (' + (getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%)'">
+                                                              x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + formatNumber(getUnderlyingQuote(underlying).change) + ' (' + (getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%)'">
                                                         </span>
                                                     </div>
                                                 </div>
@@ -261,7 +257,7 @@
                                            class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/30 hover:bg-blue-900/50 rounded border border-blue-700/50 hover:border-blue-600 transition-colors" 
                                            title="View order chains for this symbol">
                                             <i class="fas fa-link mr-1"></i>
-                                            Orders
+                                            Order Chains
                                         </a>
                                     </div>
                                 </div>
@@ -270,11 +266,7 @@
                                         <div class="text-slate-400">Total P&L</div>
                                         <div class="font-semibold" 
                                              :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                             x-text="'$' + getGroupPnL(positions).toFixed(2)"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-slate-400">Market Value</div>
-                                        <div class="font-semibold text-slate-100" x-text="'$' + getGroupMarketValue(positions).toFixed(2)"></div>
+                                             x-text="formatNumber(getGroupPnL(positions))"></div>
                                     </div>
                                 </div>
                             </div>
@@ -291,8 +283,8 @@
                                         <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">Exp</th>
                                         <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">DTE</th>
                                         <th class="px-2 py-2 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">Strike</th>
-                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Mark Price</th>
-                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Market Value</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Cost Basis</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">NetLiq</th>
                                         <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Unrealized P&L</th>
                                         <th class="px-3 py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">P&L %</th>
                                     </tr>
@@ -333,28 +325,30 @@
                                                       x-text="getStrikePrice(position)"></span>
                                             </td>
                                             
-                                            <!-- Mark Price -->
+                                            <!-- Cost Basis -->
                                             <td class="px-3 py-3 whitespace-nowrap text-right">
-                                                <span class="text-sm text-slate-300" x-text="'$' + position.mark_price.toFixed(2)"></span>
+                                                <span class="text-sm font-medium" 
+                                                      :class="getCostBasisDisplay(position) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="formatNumber(getCostBasisDisplay(position))"></span>
                                             </td>
                                             
-                                            <!-- Market Value -->
+                                            <!-- NetLiq (mark price, negative for short positions) -->
                                             <td class="px-3 py-3 whitespace-nowrap text-right">
-                                                <span class="text-sm font-medium text-slate-100" x-text="'$' + position.market_value.toFixed(2)"></span>
+                                                <span class="text-sm text-slate-300" x-text="formatNumber(getNetLiq(position))"></span>
                                             </td>
                                             
                                             <!-- Unrealized P&L -->
                                             <td class="px-3 py-3 whitespace-nowrap text-right">
                                                 <span class="text-sm font-medium" 
-                                                      :class="position.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                      x-text="'$' + position.unrealized_pnl.toFixed(2)"></span>
+                                                      :class="getLiveUnrealizedPnL(position) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="formatNumber(getLiveUnrealizedPnL(position))"></span>
                                             </td>
                                             
                                             <!-- P&L % -->
                                             <td class="px-3 py-3 whitespace-nowrap text-right">
                                                 <span class="text-sm font-medium" 
-                                                      :class="position.pnl_percent >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                      x-text="position.pnl_percent.toFixed(1) + '%'"></span>
+                                                      :class="getLivePnLPercent(position) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="getLivePnLPercent(position).toFixed(1) + '%'"></span>
                                             </td>
                                         </tr>
                                     </template>
@@ -395,11 +389,7 @@
                 
                 // Computed properties
                 get totalUnrealizedPnL() {
-                    return this.filteredPositions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
-                },
-                
-                get totalMarketValue() {
-                    return this.filteredPositions.reduce((sum, pos) => sum + Math.abs(pos.market_value || 0), 0);
+                    return this.filteredPositions.reduce((sum, pos) => sum + this.getLiveUnrealizedPnL(pos), 0);
                 },
                 
                 get groupedPositions() {
@@ -570,14 +560,25 @@
                         // Get unique underlying symbols from positions
                         const underlyingSymbols = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))];
                         
-                        if (underlyingSymbols.length === 0) {
+                        // Also get individual option contract symbols for live NetLiq updates
+                        const optionSymbols = [...new Set(this.allPositions
+                            .filter(p => p.instrument_type && p.instrument_type.includes('OPTION'))
+                            .map(p => p.symbol)
+                        )];
+                        
+                        // Combine both underlying and option symbols
+                        const allSymbols = [...underlyingSymbols, ...optionSymbols];
+                        
+                        if (allSymbols.length === 0) {
                             return;
                         }
                         
-                        console.log(`Starting live quote streaming for ${underlyingSymbols.length} symbols: ${underlyingSymbols.join(', ')}`);
+                        console.log(`Starting live quote streaming for ${allSymbols.length} symbols:`);
+                        console.log(`  Underlyings (${underlyingSymbols.length}): ${underlyingSymbols.join(', ')}`);
+                        console.log(`  Options (${optionSymbols.length}): ${optionSymbols.slice(0, 3).join(', ')}${optionSymbols.length > 3 ? '...' : ''}`);
                         
                         // Connect to WebSocket for live streaming quotes
-                        this.connectWebSocket(underlyingSymbols);
+                        this.connectWebSocket(allSymbols);
                         
                     } catch (err) {
                         console.warn('Error setting up quote streaming:', err);
@@ -691,11 +692,7 @@
                 },
                 
                 getGroupPnL(positions) {
-                    return positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
-                },
-                
-                getGroupMarketValue(positions) {
-                    return positions.reduce((sum, pos) => sum + Math.abs(pos.market_value || 0), 0);
+                    return positions.reduce((sum, pos) => sum + this.getLiveUnrealizedPnL(pos), 0);
                 },
                 
                 getUnderlyingQuote(underlying) {
@@ -728,6 +725,85 @@
                     }
                     
                     return quantity;
+                },
+                
+                getNetLiq(position) {
+                    // For option positions, use live quote data if available
+                    if (position.instrument_type && position.instrument_type.includes('OPTION')) {
+                        const quote = this.underlyingQuotes[position.symbol];
+                        if (quote && quote.mark) {
+                            // Calculate live NetLiq: quantity * mark_price * 100 (for options)
+                            const quantity = this.getSignedQuantity(position);
+                            const liveNetLiq = quantity * quote.mark * 100;
+                            return liveNetLiq;
+                        }
+                    }
+                    
+                    // Fallback to static market_value for stocks or when no live data
+                    return position.market_value || 0;
+                },
+                
+                getLiveUnrealizedPnL(position) {
+                    // For option positions, calculate live P&L using current quotes
+                    if (position.instrument_type && position.instrument_type.includes('OPTION')) {
+                        const quote = this.underlyingQuotes[position.symbol];
+                        if (quote && quote.mark) {
+                            const liveNetLiq = this.getNetLiq(position);
+                            const costBasis = position.cost_basis || 0;
+                            const quantity = this.getSignedQuantity(position);
+                            
+                            if (quantity < 0) {
+                                // Short position: P&L = cost_basis + market_value
+                                // (cost_basis is what you received, market_value is negative for shorts)
+                                return costBasis + liveNetLiq;
+                            } else {
+                                // Long position: P&L = market_value - cost_basis
+                                return liveNetLiq - costBasis;
+                            }
+                        }
+                    }
+                    
+                    // Fallback to static unrealized_pnl for stocks or when no live data
+                    return position.unrealized_pnl || 0;
+                },
+                
+                getLivePnLPercent(position) {
+                    // Calculate live P&L percentage
+                    if (position.instrument_type && position.instrument_type.includes('OPTION')) {
+                        const quote = this.underlyingQuotes[position.symbol];
+                        if (quote && quote.mark) {
+                            const liveUnrealizedPnL = this.getLiveUnrealizedPnL(position);
+                            const costBasis = Math.abs(position.cost_basis || 0);
+                            
+                            if (costBasis > 0) {
+                                return (liveUnrealizedPnL / costBasis) * 100;
+                            }
+                            return 0;
+                        }
+                    }
+                    
+                    // Fallback to static pnl_percent for stocks or when no live data
+                    return position.pnl_percent || 0;
+                },
+                
+                formatNumber(num) {
+                    // Format numbers with commas and 2 decimal places
+                    if (num === null || num === undefined || isNaN(num)) return '0.00';
+                    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                },
+                
+                getCostBasisDisplay(position) {
+                    // Display cost basis with proper sign based on position direction
+                    const costBasis = position.cost_basis || 0;
+                    const quantity = this.getSignedQuantity(position);
+                    
+                    if (quantity < 0) {
+                        // Short position: cost basis is money received (positive/credit)
+                        return costBasis;
+                    } else {
+                        // Long position: cost basis is money paid (negative/debit)
+                        return -costBasis;
+                    }
                 },
                 
                 parseOptionSymbol(symbol) {
