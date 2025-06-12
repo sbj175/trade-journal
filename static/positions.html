@@ -94,11 +94,6 @@
                                 <i class="fas fa-link mr-1"></i>
                                 Order Chains
                             </a>
-                            <a href="/static/positions.html" 
-                               class="bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-layer-group mr-1"></i>
-                                Open Positions
-                            </a>
                             <a href="/static/strategy-config.html" 
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-cog mr-1"></i>
@@ -114,6 +109,25 @@
                             <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': isLoading}"></i>
                             <span x-text="isLoading ? 'Syncing...' : 'Sync Positions'"></span>
                         </button>
+                        
+                        <!-- Account Selector -->
+                        <div class="flex items-center space-x-2">
+                            <label for="account-select" class="text-sm font-medium text-slate-300">Account:</label>
+                            <select 
+                                id="account-select"
+                                x-model="selectedAccount" 
+                                @change="filterPositions(); saveFilterPreferences()"
+                                class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2"
+                            >
+                                <option value="">All Accounts</option>
+                                <template x-for="account in accounts" :key="account.account_number">
+                                    <option 
+                                        :value="account.account_number" 
+                                        x-text="account.account_name || account.account_number"
+                                    ></option>
+                                </template>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -131,18 +145,6 @@
             <div class="bg-slate-800 rounded-lg p-6 mb-6">
                 <div class="flex flex-wrap items-center justify-between gap-4">
                     <div class="flex flex-wrap items-center gap-4">
-                        <!-- Account Filter -->
-                        <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-slate-300">Account:</label>
-                            <select x-model="selectedAccount" @change="filterPositions()"
-                                    class="bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
-                                <option value="">All Accounts</option>
-                                <template x-for="account in accounts" :key="account.account_number">
-                                    <option :value="account.account_number" x-text="account.account_name || account.account_number"></option>
-                                </template>
-                            </select>
-                        </div>
-
                         <!-- Instrument Type Filter -->
                         <div class="flex items-center space-x-2">
                             <label class="text-sm font-medium text-slate-300">Type:</label>
