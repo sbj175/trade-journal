@@ -228,7 +228,7 @@
                                                 <div class="flex items-center space-x-2">
                                                     <!-- Price with colored background -->
                                                     <div class="px-3 py-1 rounded-lg font-medium"
-                                                         :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-800 hover:bg-red-900'">
+                                                         :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-700 hover:bg-red-800'">
                                                         <span class="text-lg font-semibold text-white" 
                                                               x-text="formatNumber(getUnderlyingQuote(underlying).price)"></span>
                                                     </div>
@@ -263,7 +263,18 @@
                                 </div>
                                 <div class="flex items-center space-x-6 text-sm">
                                     <div class="text-center">
-                                        <div class="text-slate-400">Total P&L</div>
+                                        <div class="text-slate-400">Cost Basis</div>
+                                        <div class="font-semibold" 
+                                             :class="getGroupCostBasis(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                             x-text="formatNumber(getGroupCostBasis(positions))"></div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-slate-400">NetLiq</div>
+                                        <div class="font-semibold text-slate-100" 
+                                             x-text="formatNumber(getGroupNetLiq(positions))"></div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-slate-400">P&L</div>
                                         <div class="font-semibold" 
                                              :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
                                              x-text="formatNumber(getGroupPnL(positions))"></div>
@@ -693,6 +704,14 @@
                 
                 getGroupPnL(positions) {
                     return positions.reduce((sum, pos) => sum + this.getLiveUnrealizedPnL(pos), 0);
+                },
+                
+                getGroupCostBasis(positions) {
+                    return positions.reduce((sum, pos) => sum + this.getCostBasisDisplay(pos), 0);
+                },
+                
+                getGroupNetLiq(positions) {
+                    return positions.reduce((sum, pos) => sum + this.getNetLiq(pos), 0);
                 },
                 
                 getUnderlyingQuote(underlying) {
