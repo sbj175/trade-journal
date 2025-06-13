@@ -291,18 +291,75 @@ class OrderManager:
             cursor.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
     
+    def calculate_realized_position_pnl(self, position: Dict[str, Any]) -> float:
+        """Calculate realized P&L for a position based on actual cash flows"""
+        quantity = position.get('quantity', 0)
+        opening_price = position.get('opening_price', 0.0)
+        closing_price = position.get('closing_price')
+        opening_action = position.get('opening_action', '')
+        closing_action = position.get('closing_action')
+        status = position.get('status', '')
+        instrument_type = position.get('instrument_type', '')
+        
+        total_realized = 0.0
+        
+        # Calculate opening cash flow
+        if opening_action:
+            if 'STO' in opening_action or ('SELL' in opening_action and 'CLOSE' not in opening_action):
+                # Selling = credit received
+                if 'OPTION' in instrument_type:
+                    total_realized += abs(quantity) * opening_price * 100
+                else:
+                    total_realized += abs(quantity) * opening_price
+            elif 'BTO' in opening_action or ('BUY' in opening_action and 'CLOSE' not in opening_action):
+                # Buying = debit paid
+                if 'OPTION' in instrument_type:
+                    total_realized -= abs(quantity) * opening_price * 100
+                else:
+                    total_realized -= abs(quantity) * opening_price
+        
+        # Calculate closing cash flow (only if position is closed)
+        if status == 'CLOSED' and closing_price is not None and closing_action:
+            if 'STC' in closing_action or ('SELL' in closing_action and 'CLOSE' in closing_action):
+                # Selling to close = credit received
+                if 'OPTION' in instrument_type:
+                    total_realized += abs(quantity) * closing_price * 100
+                else:
+                    total_realized += abs(quantity) * closing_price
+            elif 'BTC' in closing_action or ('BUY' in closing_action and 'CLOSE' in closing_action):
+                # Buying to close = debit paid
+                if 'OPTION' in instrument_type:
+                    total_realized -= abs(quantity) * closing_price * 100
+                else:
+                    total_realized -= abs(quantity) * closing_price
+        
+        return total_realized
+
     def update_order_pnl(self, order_id: str) -> float:
-        """Recalculate and update P&L for an order"""
+        """Recalculate and update P&L for an order using realized P&L"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Calculate total P&L from positions
+            # Get all positions for this order
             cursor.execute("""
-                SELECT COALESCE(SUM(pnl), 0) FROM positions_new 
-                WHERE order_id = ?
+                SELECT * FROM positions_new WHERE order_id = ?
             """, (order_id,))
             
-            total_pnl = cursor.fetchone()[0]
+            positions = cursor.fetchall()
+            total_pnl = 0.0
+            
+            # Calculate realized P&L for each position
+            for pos_row in positions:
+                position = dict(pos_row)
+                realized_pnl = self.calculate_realized_position_pnl(position)
+                total_pnl += realized_pnl
+                
+                # Update position P&L if different
+                if abs(realized_pnl - (position.get('pnl') or 0.0)) > 0.01:
+                    cursor.execute("""
+                        UPDATE positions_new SET pnl = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE position_id = ?
+                    """, (realized_pnl, position['position_id']))
             
             # Update order
             cursor.execute("""
