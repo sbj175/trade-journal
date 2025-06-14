@@ -145,7 +145,7 @@
         /* Aligned header grid */
         .header-stats-grid {
             display: grid;
-            grid-template-columns: 60px 160px 120px 80px 80px 80px 140px;
+            grid-template-columns: 60px 160px 120px 80px 80px 60px 80px 180px 250px;
             gap: 0.5rem;
             align-items: center;
         }
@@ -373,6 +373,14 @@
                                          x-text="formatNumber(getGroupPnL(positions))"></div>
                                 </div>
                                 
+                                <!-- DTE Column -->
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs text-center">DTE</div>
+                                    <div class="text-sm text-center" 
+                                         :class="getMinDTE(positions) <= 21 ? 'font-bold text-yellow-400' : 'font-semibold text-slate-300'"
+                                         x-text="getMinDTE(positions) || ''"></div>
+                                </div>
+                                
                                 <!-- Strategy and Price Position Indicator (always present for consistent alignment) -->
                                 <div class="header-stat-column">
                                     <template x-if="shouldShowPriceIndicator(positions)">
@@ -387,6 +395,17 @@
                                             <div class="text-xs text-slate-500">—</div>
                                         </div>
                                     </template>
+                                </div>
+                                
+                                <!-- Comments Column -->
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs text-left">Comments</div>
+                                    <input type="text" 
+                                           :value="getPositionComment(underlying)"
+                                           @input="updatePositionComment(underlying, $event.target.value)"
+                                           @click.stop
+                                           class="w-full bg-transparent text-slate-100 text-sm border-none outline-none focus:bg-slate-700/30 rounded px-2 py-1"
+                                           placeholder="">
                                 </div>
                             </div>
                         </div>
@@ -489,6 +508,7 @@
                 accounts: [],
                 underlyings: [],
                 underlyingQuotes: {},
+                positionComments: {}, // Store comments by underlying symbol + account
                 
                 // WebSocket for live quotes
                 ws: null,
@@ -568,6 +588,9 @@
                     // Load saved filter preferences after accounts are loaded
                     this.loadFilterPreferences();
                     
+                    // Load saved position comments
+                    this.loadPositionComments();
+                    
                     await this.fetchPositions();
                     
                     // Clean up WebSocket on page unload
@@ -635,6 +658,47 @@
                     } catch (error) {
                         console.warn('Error saving filter preferences:', error);
                     }
+                },
+                
+                // Comment management functions
+                loadPositionComments() {
+                    try {
+                        const savedComments = localStorage.getItem('positions_comments');
+                        if (savedComments) {
+                            this.positionComments = JSON.parse(savedComments);
+                        }
+                    } catch (error) {
+                        console.warn('Error loading position comments:', error);
+                        this.positionComments = {};
+                    }
+                },
+                
+                savePositionComments() {
+                    try {
+                        localStorage.setItem('positions_comments', JSON.stringify(this.positionComments));
+                    } catch (error) {
+                        console.warn('Error saving position comments:', error);
+                    }
+                },
+                
+                getCommentKey(underlying) {
+                    // Create a unique key combining underlying symbol and account
+                    return `${underlying}_${this.selectedAccount || 'all'}`;
+                },
+                
+                getPositionComment(underlying) {
+                    const key = this.getCommentKey(underlying);
+                    return this.positionComments[key] || '';
+                },
+                
+                updatePositionComment(underlying, comment) {
+                    const key = this.getCommentKey(underlying);
+                    if (comment.trim()) {
+                        this.positionComments[key] = comment;
+                    } else {
+                        delete this.positionComments[key];
+                    }
+                    this.savePositionComments();
                 },
                 
                 async loadAccounts() {
@@ -851,6 +915,34 @@
                 
                 getGroupNetLiq(positions) {
                     return positions.reduce((sum, pos) => sum + this.getNetLiq(pos), 0);
+                },
+                
+                getMinDTE(positions) {
+                    // Get the minimum DTE from all option positions in the group
+                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
+                    
+                    if (optionPositions.length === 0) {
+                        return null; // No options in this group
+                    }
+                    
+                    const dtes = optionPositions.map(pos => {
+                        const dte = this.getDTE(pos);
+                        // Convert DTE to number, handling special cases
+                        if (dte === 'Expired') return -1;
+                        if (dte === 'Today') return 0;
+                        return parseInt(dte) || 0;
+                    }).filter(dte => !isNaN(dte));
+                    
+                    if (dtes.length === 0) {
+                        return null;
+                    }
+                    
+                    const minDte = Math.min(...dtes);
+                    
+                    // Format back to string for display
+                    if (minDte < 0) return 'Expired';
+                    if (minDte === 0) return 'Today';
+                    return minDte.toString();
                 },
                 
                 shouldShowPriceIndicator(positions) {
