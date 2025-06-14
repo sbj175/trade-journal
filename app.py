@@ -318,6 +318,8 @@ app.add_middleware(
 db = DatabaseManager()
 order_manager = OrderManager(db)
 
+
+
 # Create static directory if it doesn't exist
 static_dir = Path("static")
 static_dir.mkdir(exist_ok=True)
@@ -498,7 +500,7 @@ async def get_order(order_id: str):
 
 @app.get("/api/positions")
 async def get_current_positions(account_number: Optional[str] = None):
-    """Get current positions from Tastytrade API"""
+    """Get current positions from Tastytrade API with health scores"""
     try:
         # Initialize Tastytrade client
         client = TastytradeClient()
@@ -513,6 +515,27 @@ async def get_current_positions(account_number: Optional[str] = None):
         if not positions:
             logger.warning("No positions returned from Tastytrade API")
             return {}
+        
+        # Get current quotes for health calculations
+        all_symbols = []
+        for account_positions in positions.values():
+            for position in account_positions:
+                underlying = position.get('underlying_symbol', position.get('symbol'))
+                if underlying and underlying not in all_symbols:
+                    all_symbols.append(underlying)
+        
+        quotes = {}
+        if all_symbols:
+            try:
+                quotes = client.get_quotes(all_symbols)
+            except Exception as e:
+                logger.warning(f"Failed to get quotes for health calculations: {e}")
+        
+        # Store quotes for frontend strategy health calculations
+        for account_positions in positions.values():
+            for position in account_positions:
+                underlying = position.get('underlying_symbol', position.get('symbol'))
+                position['underlying_quote'] = quotes.get(underlying, {}) if underlying else {}
         
         logger.info(f"Successfully fetched positions from Tastytrade: {sum(len(pos_list) for pos_list in positions.values())} total positions")
         return positions

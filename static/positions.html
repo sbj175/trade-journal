@@ -71,6 +71,70 @@
         .table-row-hover:hover {
             background-color: rgba(71, 85, 105, 0.3);
         }
+        
+        /* Health indicator styles */
+        .health-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .health-bar {
+            width: 80px;
+            height: 16px;
+            background: #374151;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .health-bar-fill {
+            height: 100%;
+            transition: width 0.3s ease, background-color 0.3s ease;
+        }
+        
+        .health-bar-fill.healthy {
+            background: #2E86AB; /* Blue for healthy */
+        }
+        
+        .health-bar-fill.monitor {
+            background: #F77F00; /* Orange for monitor */
+        }
+        
+        .health-bar-fill.risk {
+            background: #6C757D; /* Gray for risk */
+        }
+        
+        /* Strategy badge styles */
+        .strategy-badge-complex {
+            background: #7C3AED;
+            border-color: #8B5CF6;
+            color: #DDD6FE;
+        }
+        
+        .strategy-badge-spread {
+            background: #0891B2;
+            border-color: #0EA5E9;
+            color: #BFDBFE;
+        }
+        
+        .strategy-badge-covered {
+            background: #059669;
+            border-color: #10B981;
+            color: #A7F3D0;
+        }
+        
+        .strategy-badge-single {
+            background: #DC2626;
+            border-color: #EF4444;
+            color: #FECACA;
+        }
+        
+        .strategy-badge-stock {
+            background: #374151;
+            border-color: #6B7280;
+            color: #D1D5DB;
+        }
     </style>
 </head>
 
@@ -224,6 +288,14 @@
                                            :class="{ 'rotate-90': expanded }"></i>
                                         <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
                                         
+                                        <!-- Strategy Label -->
+                                        <template x-if="getStrategyLabel(positions) !== 'Mixed Positions'">
+                                            <div class="px-2 py-1 text-xs font-medium rounded-md border"
+                                                 :class="getStrategyBadgeClass(getStrategyLabel(positions))">
+                                                <span x-text="getStrategyLabel(positions)"></span>
+                                            </div>
+                                        </template>
+                                        
                                         <!-- Live underlying price -->
                                         <div class="flex items-center space-x-2">
                                             <template x-if="getUnderlyingQuote(underlying)">
@@ -280,6 +352,17 @@
                                         <div class="font-semibold" 
                                              :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
                                              x-text="formatNumber(getGroupPnL(positions))"></div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-slate-400">Health</div>
+                                        <div class="health-indicator">
+                                            <div class="health-bar">
+                                                <div class="health-bar-fill" 
+                                                     :class="getHealthClass(getGroupHealth(positions, underlying))"
+                                                     :style="'width: ' + getGroupHealth(positions, underlying) + '%'"></div>
+                                            </div>
+                                            <span class="text-xs text-slate-400" x-text="getGroupHealth(positions, underlying)"></span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -716,6 +799,141 @@
                     return positions.reduce((sum, pos) => sum + this.getNetLiq(pos), 0);
                 },
                 
+                getGroupHealth(positions, underlying) {
+                    // Calculate health score for a position group (strategy)
+                    if (!positions || positions.length === 0) {
+                        return 50;
+                    }
+                    
+                    const underlyingQuote = this.getUnderlyingQuote(underlying);
+                    const currentPrice = underlyingQuote ? underlyingQuote.price : null;
+                    
+                    if (!currentPrice) {
+                        return 50; // Default if no price available
+                    }
+                    
+                    // Group analysis - determine strategy type
+                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
+                    const stockPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('EQUITY') && !p.instrument_type.includes('OPTION'));
+                    
+                    if (optionPositions.length === 0 && stockPositions.length > 0) {
+                        // Pure stock position
+                        const position = stockPositions[0];
+                        const costBasis = position.average_price || 0;
+                        if (costBasis > 0) {
+                            const profitPercent = ((currentPrice - costBasis) / costBasis) * 100;
+                            return Math.max(0, Math.min(100, Math.round(50 + (profitPercent * 5))));
+                        }
+                        return 50;
+                    }
+                    
+                    if (optionPositions.length === 1) {
+                        // Single option position
+                        const option = optionPositions[0];
+                        const strike = this.getNumericStrikePrice(option);
+                        const optionType = this.getOptionType(option);
+                        const quantity = this.getSignedQuantity(option);
+                        const dte = this.getDTE(option);
+                        const dteNum = dte === 'Expired' ? 0 : (dte === 'Today' ? 0 : parseInt(dte) || 0);
+                        
+                        if (!strike) return 50;
+                        
+                        if (optionType === 'P' && quantity < 0) {
+                            // Cash Secured Put
+                            const cushionPercent = ((currentPrice - strike) / strike) * 100;
+                            const distanceScore = Math.max(0, Math.min(100, cushionPercent * 10));
+                            const timeScore = Math.min(100, (dteNum / 21) * 100);
+                            return Math.round(distanceScore * 0.8 + timeScore * 0.2);
+                        } else if (optionType === 'C' && quantity < 0) {
+                            // Covered Call
+                            const cushionPercent = ((strike - currentPrice) / currentPrice) * 100;
+                            const distanceScore = Math.max(0, Math.min(100, cushionPercent * 10));
+                            const timeScore = Math.min(100, (dteNum / 21) * 100);
+                            return Math.round(distanceScore * 0.8 + timeScore * 0.2);
+                        }
+                    }
+                    
+                    if (optionPositions.length === 2) {
+                        // Two-leg strategy (vertical spread)
+                        const strikes = optionPositions.map(p => this.getNumericStrikePrice(p)).filter(s => s).sort((a, b) => a - b);
+                        const quantities = optionPositions.map(p => this.getSignedQuantity(p));
+                        const optionTypes = optionPositions.map(p => this.getOptionType(p));
+                        
+                        if (strikes.length === 2 && optionTypes.every(t => t === optionTypes[0])) {
+                            const [lowerStrike, upperStrike] = strikes;
+                            const spreadWidth = upperStrike - lowerStrike;
+                            
+                            if (optionTypes[0] === 'P' && quantities.some(q => q > 0) && quantities.some(q => q < 0)) {
+                                // Put Spread - determine if bull or bear
+                                const shortPutIndex = quantities.findIndex(q => q < 0);
+                                const shortStrike = this.getNumericStrikePrice(optionPositions[shortPutIndex]);
+                                const longStrike = strikes.find(s => s !== shortStrike);
+                                
+                                if (shortStrike > longStrike) {
+                                    // Bull Put Spread - good when price above short strike
+                                    const cushionPercent = Math.max(0, ((currentPrice - shortStrike) / shortStrike) * 100);
+                                    return Math.max(20, Math.min(100, Math.round(50 + cushionPercent * 5)));
+                                } else {
+                                    // Bear Put Spread - good when price below long strike
+                                    const cushionPercent = Math.max(0, ((longStrike - currentPrice) / longStrike) * 100);
+                                    return Math.max(20, Math.min(100, Math.round(50 + cushionPercent * 5)));
+                                }
+                            } else if (optionTypes[0] === 'C' && quantities.some(q => q > 0) && quantities.some(q => q < 0)) {
+                                // Call Spread - determine if bull or bear
+                                const shortCallIndex = quantities.findIndex(q => q < 0);
+                                const shortStrike = this.getNumericStrikePrice(optionPositions[shortCallIndex]);
+                                const longStrike = strikes.find(s => s !== shortStrike);
+                                
+                                if (longStrike < shortStrike) {
+                                    // Bull Call Spread - good when price above long strike but below short strike
+                                    if (currentPrice > longStrike && currentPrice < shortStrike) {
+                                        return Math.max(70, Math.min(100, 85));
+                                    } else if (currentPrice <= longStrike) {
+                                        const distancePercent = ((longStrike - currentPrice) / longStrike) * 100;
+                                        return Math.max(20, Math.min(70, Math.round(70 - distancePercent * 3)));
+                                    } else {
+                                        const distancePercent = ((currentPrice - shortStrike) / shortStrike) * 100;
+                                        return Math.max(20, Math.min(70, Math.round(70 - distancePercent * 2)));
+                                    }
+                                } else {
+                                    // Bear Call Spread - good when price below short strike
+                                    const cushionPercent = Math.max(0, ((shortStrike - currentPrice) / shortStrike) * 100);
+                                    return Math.max(20, Math.min(100, Math.round(50 + cushionPercent * 5)));
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (optionPositions.length === 4) {
+                        // Four-leg strategy (Iron Condor)
+                        const putStrikes = optionPositions.filter(p => this.getOptionType(p) === 'P').map(p => this.getNumericStrikePrice(p)).filter(s => s).sort((a, b) => a - b);
+                        const callStrikes = optionPositions.filter(p => this.getOptionType(p) === 'C').map(p => this.getNumericStrikePrice(p)).filter(s => s).sort((a, b) => a - b);
+                        
+                        if (putStrikes.length === 2 && callStrikes.length === 2) {
+                            // Iron Condor health - best when price is between short strikes
+                            const shortPutStrike = putStrikes[1]; // Higher put strike (short)
+                            const shortCallStrike = callStrikes[0]; // Lower call strike (short)
+                            
+                            if (currentPrice >= shortPutStrike && currentPrice <= shortCallStrike) {
+                                // Price in profit zone
+                                const profitZoneWidth = shortCallStrike - shortPutStrike;
+                                const distanceFromCenter = Math.abs(currentPrice - (shortPutStrike + shortCallStrike) / 2);
+                                const centerPercent = (1 - (distanceFromCenter / (profitZoneWidth / 2))) * 100;
+                                return Math.max(70, Math.min(100, Math.round(centerPercent)));
+                            } else {
+                                // Price outside profit zone
+                                const distanceToZone = currentPrice < shortPutStrike ? 
+                                    (shortPutStrike - currentPrice) / shortPutStrike * 100 :
+                                    (currentPrice - shortCallStrike) / shortCallStrike * 100;
+                                return Math.max(10, Math.min(70, Math.round(70 - distanceToZone * 5)));
+                            }
+                        }
+                    }
+                    
+                    // Default for unrecognized strategies
+                    return 50;
+                },
+                
                 getUnderlyingQuote(underlying) {
                     const quote = this.underlyingQuotes[underlying];
                     
@@ -1023,6 +1241,153 @@
                         console.log('No positions at all - check API connection');
                     }
                     console.log('=== END DEBUG INFO ===');
+                },
+                
+                getHealthClass(healthScore) {
+                    // Determine CSS class based on health score
+                    const score = healthScore || 50;
+                    
+                    if (score >= 70) {
+                        return 'healthy';  // Blue - good position
+                    } else if (score >= 40) {
+                        return 'monitor';  // Orange - needs monitoring
+                    } else {
+                        return 'risk';     // Gray - high risk
+                    }
+                },
+                
+                getStrategyLabel(positions) {
+                    // Recognize strategy from position group
+                    if (!positions || positions.length === 0) {
+                        return 'No Positions';
+                    }
+                    
+                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
+                    const stockPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('EQUITY') && !p.instrument_type.includes('OPTION'));
+                    
+                    // Pure stock positions
+                    if (optionPositions.length === 0 && stockPositions.length > 0) {
+                        return stockPositions.some(p => this.getSignedQuantity(p) < 0) ? 'Short Stock' : 'Long Stock';
+                    }
+                    
+                    // Mixed stock and options
+                    if (stockPositions.length > 0 && optionPositions.length === 1) {
+                        const option = optionPositions[0];
+                        const optionType = this.getOptionType(option);
+                        const quantity = this.getSignedQuantity(option);
+                        
+                        if (optionType === 'C' && quantity < 0) {
+                            return 'Covered Call';
+                        }
+                        // Could add more covered positions logic here
+                    }
+                    
+                    // Pure option strategies
+                    if (optionPositions.length === 1) {
+                        const option = optionPositions[0];
+                        const optionType = this.getOptionType(option);
+                        const quantity = this.getSignedQuantity(option);
+                        
+                        if (quantity < 0) {
+                            return optionType === 'P' ? 'Cash Secured Put' : 'Naked Call';
+                        } else {
+                            return optionType === 'P' ? 'Long Put' : 'Long Call';
+                        }
+                    }
+                    
+                    if (optionPositions.length === 2) {
+                        const strikes = optionPositions.map(p => this.getNumericStrikePrice(p)).filter(s => s).sort((a, b) => a - b);
+                        const quantities = optionPositions.map(p => this.getSignedQuantity(p));
+                        const optionTypes = optionPositions.map(p => this.getOptionType(p));
+                        const expirations = optionPositions.map(p => this.getExpirationDate(p));
+                        
+                        // Check if all options have same expiration and type
+                        const sameExpiration = expirations.every(exp => exp === expirations[0]);
+                        const sameType = optionTypes.every(type => type === optionTypes[0]);
+                        const sameStrike = strikes.length === 2 && strikes[0] === strikes[1];
+                        
+                        if (sameStrike && sameExpiration && !sameType) {
+                            // Same strike, different types = Straddle
+                            return 'Straddle';
+                        }
+                        
+                        if (!sameStrike && sameExpiration && !sameType) {
+                            // Different strikes, different types = Strangle
+                            return 'Strangle';
+                        }
+                        
+                        if (!sameStrike && sameExpiration && sameType) {
+                            // Different strikes, same type = Vertical Spread
+                            const hasLong = quantities.some(q => q > 0);
+                            const hasShort = quantities.some(q => q < 0);
+                            
+                            if (hasLong && hasShort) {
+                                if (optionTypes[0] === 'P') {
+                                    // Put spreads: Bull = sell higher strike, buy lower strike
+                                    const shortPutIndex = quantities.findIndex(q => q < 0);
+                                    const longPutIndex = quantities.findIndex(q => q > 0);
+                                    const shortStrike = this.getNumericStrikePrice(optionPositions[shortPutIndex]);
+                                    const longStrike = this.getNumericStrikePrice(optionPositions[longPutIndex]);
+                                    return shortStrike > longStrike ? 'Bull Put Spread' : 'Bear Put Spread';
+                                } else {
+                                    // Call spreads: Bull = buy lower strike, sell higher strike  
+                                    const shortCallIndex = quantities.findIndex(q => q < 0);
+                                    const longCallIndex = quantities.findIndex(q => q > 0);
+                                    const shortStrike = this.getNumericStrikePrice(optionPositions[shortCallIndex]);
+                                    const longStrike = this.getNumericStrikePrice(optionPositions[longCallIndex]);
+                                    return longStrike < shortStrike ? 'Bull Call Spread' : 'Bear Call Spread';
+                                }
+                            }
+                        }
+                        
+                        return 'Two-Leg Strategy';
+                    }
+                    
+                    if (optionPositions.length === 3) {
+                        return 'Butterfly';
+                    }
+                    
+                    if (optionPositions.length === 4) {
+                        const putOptions = optionPositions.filter(p => this.getOptionType(p) === 'P');
+                        const callOptions = optionPositions.filter(p => this.getOptionType(p) === 'C');
+                        
+                        if (putOptions.length === 2 && callOptions.length === 2) {
+                            return 'Iron Condor';
+                        } else if (putOptions.length === 4 || callOptions.length === 4) {
+                            return 'Iron Butterfly';
+                        }
+                        
+                        return 'Four-Leg Strategy';
+                    }
+                    
+                    if (optionPositions.length > 4) {
+                        return 'Complex Strategy';
+                    }
+                    
+                    return 'Mixed Positions';
+                },
+                
+                getStrategyBadgeClass(strategyLabel) {
+                    // Return CSS class based on strategy type
+                    const complexStrategies = ['Iron Condor', 'Iron Butterfly', 'Butterfly', 'Complex Strategy'];
+                    const spreadStrategies = ['Bull Put Spread', 'Bear Call Spread', 'Bull Call Spread', 'Bear Put Spread', 'Two-Leg Strategy', 'Four-Leg Strategy', 'Straddle', 'Strangle'];
+                    const coveredStrategies = ['Covered Call', 'Cash Secured Put'];
+                    const singleStrategies = ['Long Call', 'Long Put', 'Naked Call', 'Naked Put'];
+                    const stockStrategies = ['Long Stock', 'Short Stock'];
+                    
+                    if (complexStrategies.includes(strategyLabel)) {
+                        return 'strategy-badge-complex';
+                    } else if (spreadStrategies.includes(strategyLabel)) {
+                        return 'strategy-badge-spread';
+                    } else if (coveredStrategies.includes(strategyLabel)) {
+                        return 'strategy-badge-covered';
+                    } else if (singleStrategies.includes(strategyLabel)) {
+                        return 'strategy-badge-single';
+                    } else if (stockStrategies.includes(strategyLabel)) {
+                        return 'strategy-badge-stock';
+                    } else {
+                        return 'strategy-badge-stock'; // Default
+                    }
                 }
             };
         }
