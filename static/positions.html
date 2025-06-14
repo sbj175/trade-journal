@@ -145,17 +145,9 @@
         /* Aligned header grid */
         .header-stats-grid {
             display: grid;
-            grid-template-columns: 400px 80px 80px 80px 140px;
+            grid-template-columns: 60px 160px 120px 80px 80px 80px 140px;
             gap: 0.5rem;
             align-items: center;
-        }
-        
-        .header-left-content {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            min-width: 0; /* Allow content to shrink */
-            max-width: fit-content;
         }
         
         .header-stat-column {
@@ -304,104 +296,95 @@
             </div>
 
             <!-- Grouped Positions -->
-            <div x-show="!isLoading && !error && filteredPositions.length > 0" class="space-y-6">
+            <div x-show="!isLoading && !error && filteredPositions.length > 0" class="space-y-3">
                 <template x-for="[underlying, positions] in groupedPositions" :key="underlying">
                     <div class="bg-slate-800 rounded-lg overflow-hidden" x-data="{ expanded: false }">
                         <!-- Group Header (Clickable) -->
-                        <div class="bg-slate-700 px-6 py-4 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
+                        <div class="bg-slate-700 px-6 py-2 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
                              @click="expanded = !expanded">
                             <div class="header-stats-grid">
-                                <!-- Left content: Symbol, strategy, price, position count, links -->
-                                <div class="header-left-content">
-                                    <div class="flex items-center space-x-2">
-                                        <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
-                                           :class="{ 'rotate-90': expanded }"></i>
-                                        <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
-                                        
-                                        <!-- Strategy Label -->
-                                        <template x-if="getStrategyLabel(positions) !== 'Mixed Positions'">
-                                            <div class="px-2 py-1 text-xs font-medium rounded-md border"
-                                                 :class="getStrategyBadgeClass(getStrategyLabel(positions))">
-                                                <span x-text="getStrategyLabel(positions)"></span>
+                                <!-- Symbol Column -->
+                                <div class="flex items-center space-x-2">
+                                    <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
+                                       :class="{ 'rotate-90': expanded }"></i>
+                                    <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
+                                </div>
+                                
+                                <!-- Price Column -->
+                                <div class="flex items-center space-x-2">
+                                    <template x-if="getUnderlyingQuote(underlying)">
+                                        <div class="flex items-center space-x-2">
+                                            <!-- Price with colored background -->
+                                            <div class="px-3 py-1 rounded-lg font-medium"
+                                                 :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-700 hover:bg-red-800'">
+                                                <span class="text-lg font-semibold text-white" 
+                                                      x-text="formatNumber(getUnderlyingQuote(underlying).price)"></span>
                                             </div>
-                                        </template>
-                                    </div>
-                                    
-                                    <!-- Live underlying price -->
-                                    <div class="flex items-center space-x-2">
-                                        <template x-if="getUnderlyingQuote(underlying)">
-                                            <div class="flex items-center space-x-2">
-                                                <!-- Price with colored background -->
-                                                <div class="px-3 py-1 rounded-lg font-medium"
-                                                     :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-700 hover:bg-red-800'">
-                                                    <span class="text-lg font-semibold text-white" 
-                                                          x-text="formatNumber(getUnderlyingQuote(underlying).price)"></span>
+                                            <!-- Change data with black background - 2 lines -->
+                                            <div class="px-3 py-1 rounded-lg bg-black">
+                                                <div class="text-xs font-medium leading-tight" 
+                                                     :class="getUnderlyingQuote(underlying).change >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                     x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + formatNumber(getUnderlyingQuote(underlying).change)">
                                                 </div>
-                                                <!-- Change data with black background - 2 lines -->
-                                                <div class="px-3 py-1 rounded-lg bg-black">
-                                                    <div class="text-xs font-medium leading-tight" 
-                                                         :class="getUnderlyingQuote(underlying).change >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                         x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + formatNumber(getUnderlyingQuote(underlying).change)">
-                                                    </div>
-                                                    <div class="text-xs font-medium leading-tight" 
-                                                         :class="getUnderlyingQuote(underlying).changePercent >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                         x-text="(getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%'">
-                                                    </div>
+                                                <div class="text-xs font-medium leading-tight" 
+                                                     :class="getUnderlyingQuote(underlying).changePercent >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                     x-text="(getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%'">
                                                 </div>
                                             </div>
-                                        </template>
-                                        <template x-if="!getUnderlyingQuote(underlying)">
-                                            <span class="text-sm text-orange-400" title="Live price data not available">
-                                                <i class="fas fa-exclamation-triangle mr-1"></i>
-                                                Price N/A
-                                            </span>
-                                        </template>
-                                    </div>
-                                    
-                                    <div class="flex items-center">
-                                        <!-- Order Chains Link -->
-                                        <a :href="'/static/index-fixed.html?underlying=' + encodeURIComponent(underlying) + (selectedAccount ? '&account=' + encodeURIComponent(selectedAccount) : '')" 
-                                           @click.stop
-                                           class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/30 hover:bg-blue-900/50 rounded border border-blue-700/50 hover:border-blue-600 transition-colors" 
-                                           title="View order chains for this symbol">
-                                            <i class="fas fa-link mr-1"></i>
-                                            Order Chains
-                                        </a>
-                                    </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!getUnderlyingQuote(underlying)">
+                                        <span class="text-sm text-orange-400" title="Live price data not available">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                                            Price N/A
+                                        </span>
+                                    </template>
+                                </div>
+                                
+                                <!-- Order Chains Link Column -->
+                                <div class="flex items-center">
+                                    <a :href="'/static/index-fixed.html?underlying=' + encodeURIComponent(underlying) + (selectedAccount ? '&account=' + encodeURIComponent(selectedAccount) : '')" 
+                                       @click.stop
+                                       class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/30 hover:bg-blue-900/50 rounded border border-blue-700/50 hover:border-blue-600 transition-colors" 
+                                       title="View order chains for this symbol">
+                                        <i class="fas fa-link mr-1"></i>
+                                        Order Chains
+                                    </a>
                                 </div>
                                 
                                 <!-- Aligned stat columns -->
                                 <div class="header-stat-column">
-                                    <div class="text-slate-400 text-xs">Cost Basis</div>
-                                    <div class="font-semibold text-sm" 
+                                    <div class="text-slate-400 text-xs text-right">Cost Basis</div>
+                                    <div class="font-semibold text-sm text-right" 
                                          :class="getGroupCostBasis(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
                                          x-text="formatNumber(getGroupCostBasis(positions))"></div>
                                 </div>
                                 
                                 <div class="header-stat-column">
-                                    <div class="text-slate-400 text-xs">NetLiq</div>
-                                    <div class="font-semibold text-sm text-slate-100" 
+                                    <div class="text-slate-400 text-xs text-right">NetLiq</div>
+                                    <div class="font-semibold text-sm text-slate-100 text-right" 
                                          x-text="formatNumber(getGroupNetLiq(positions))"></div>
                                 </div>
                                 
                                 <div class="header-stat-column">
-                                    <div class="text-slate-400 text-xs">P&L</div>
-                                    <div class="font-semibold text-sm" 
+                                    <div class="text-slate-400 text-xs text-right">P&L</div>
+                                    <div class="font-semibold text-sm text-right" 
                                          :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
                                          x-text="formatNumber(getGroupPnL(positions))"></div>
                                 </div>
                                 
-                                <!-- Price Position Indicator (always present for consistent alignment) -->
+                                <!-- Strategy and Price Position Indicator (always present for consistent alignment) -->
                                 <div class="header-stat-column">
                                     <template x-if="shouldShowPriceIndicator(positions)">
                                         <div>
-                                            <div class="text-slate-400 text-xs">Price Position</div>
+                                            <div class="text-slate-400 text-xs" x-text="getStrategyLabel(positions)"></div>
                                             <div class="price-position-indicator" x-html="getPricePositionIndicator(positions, underlying)"></div>
                                         </div>
                                     </template>
                                     <template x-if="!shouldShowPriceIndicator(positions)">
                                         <div>
-                                            <!-- Empty content but maintain column structure -->
+                                            <div class="text-slate-400 text-xs" x-text="getStrategyLabel(positions)"></div>
+                                            <div class="text-xs text-slate-500">—</div>
                                         </div>
                                     </template>
                                 </div>
@@ -429,59 +412,59 @@
                                     <template x-for="position in positions" :key="position.symbol + position.account_number">
                                         <tr class="table-row-hover">
                                             <!-- Option Type (C/P) - moved to first -->
-                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                            <td class="px-2 py-2 whitespace-nowrap text-center">
                                                 <span class="text-sm font-bold" 
                                                       :class="getOptionType(position) === 'C' ? 'text-green-400' : getOptionType(position) === 'P' ? 'text-red-400' : 'text-slate-400'"
                                                       x-text="getOptionType(position)"></span>
                                             </td>
                                             
                                             <!-- Quantity (negative for short positions) -->
-                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                            <td class="px-2 py-2 whitespace-nowrap text-center">
                                                 <span class="text-sm font-medium" 
                                                       :class="getSignedQuantity(position) > 0 ? 'text-green-400' : 'text-red-400'"
                                                       x-text="getSignedQuantity(position).toFixed(0)"></span>
                                             </td>
                                             
                                             <!-- Expiration Date -->
-                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                            <td class="px-2 py-2 whitespace-nowrap text-center">
                                                 <span class="text-xs text-slate-300" 
                                                       x-text="getExpirationDate(position)"></span>
                                             </td>
                                             
                                             <!-- DTE (Days to Expiration) -->
-                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                            <td class="px-2 py-2 whitespace-nowrap text-center">
                                                 <span class="text-xs font-medium" 
                                                       :class="getDTE(position) <= 7 ? 'text-red-400' : getDTE(position) <= 30 ? 'text-yellow-400' : 'text-slate-300'"
                                                       x-text="getDTE(position)"></span>
                                             </td>
                                             
                                             <!-- Strike Price (options only) -->
-                                            <td class="px-2 py-3 whitespace-nowrap text-center">
+                                            <td class="px-2 py-2 whitespace-nowrap text-center">
                                                 <span class="text-xs text-slate-300" 
                                                       x-text="getStrikePrice(position)"></span>
                                             </td>
                                             
                                             <!-- Cost Basis -->
-                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                            <td class="px-3 py-2 whitespace-nowrap text-right">
                                                 <span class="text-sm font-medium" 
                                                       :class="getCostBasisDisplay(position) >= 0 ? 'text-green-400' : 'text-red-400'"
                                                       x-text="formatNumber(getCostBasisDisplay(position))"></span>
                                             </td>
                                             
                                             <!-- NetLiq (mark price, negative for short positions) -->
-                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                            <td class="px-3 py-2 whitespace-nowrap text-right">
                                                 <span class="text-sm text-slate-300" x-text="formatNumber(getNetLiq(position))"></span>
                                             </td>
                                             
                                             <!-- Unrealized P&L -->
-                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                            <td class="px-3 py-2 whitespace-nowrap text-right">
                                                 <span class="text-sm font-medium" 
                                                       :class="getLiveUnrealizedPnL(position) >= 0 ? 'text-green-400' : 'text-red-400'"
                                                       x-text="formatNumber(getLiveUnrealizedPnL(position))"></span>
                                             </td>
                                             
                                             <!-- P&L % -->
-                                            <td class="px-3 py-3 whitespace-nowrap text-right">
+                                            <td class="px-3 py-2 whitespace-nowrap text-right">
                                                 <span class="text-sm font-medium" 
                                                       :class="getLivePnLPercent(position) >= 0 ? 'text-green-400' : 'text-red-400'"
                                                       x-text="getLivePnLPercent(position).toFixed(1) + '%'"></span>
