@@ -141,6 +141,29 @@
             border-color: #6B7280;
             color: #D1D5DB;
         }
+        
+        /* Aligned header grid */
+        .header-stats-grid {
+            display: grid;
+            grid-template-columns: 400px 80px 80px 80px 140px;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .header-left-content {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 0; /* Allow content to shrink */
+            max-width: fit-content;
+        }
+        
+        .header-stat-column {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
     </style>
 </head>
 
@@ -287,8 +310,9 @@
                         <!-- Group Header (Clickable) -->
                         <div class="bg-slate-700 px-6 py-4 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
                              @click="expanded = !expanded">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center space-x-4">
+                            <div class="header-stats-grid">
+                                <!-- Left content: Symbol, strategy, price, position count, links -->
+                                <div class="header-left-content">
                                     <div class="flex items-center space-x-2">
                                         <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
                                            :class="{ 'rotate-90': expanded }"></i>
@@ -301,36 +325,40 @@
                                                 <span x-text="getStrategyLabel(positions)"></span>
                                             </div>
                                         </template>
-                                        
-                                        <!-- Live underlying price -->
-                                        <div class="flex items-center space-x-2">
-                                            <template x-if="getUnderlyingQuote(underlying)">
-                                                <div class="flex items-center space-x-2">
-                                                    <!-- Price with colored background -->
-                                                    <div class="px-3 py-1 rounded-lg font-medium"
-                                                         :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-700 hover:bg-red-800'">
-                                                        <span class="text-lg font-semibold text-white" 
-                                                              x-text="formatNumber(getUnderlyingQuote(underlying).price)"></span>
+                                    </div>
+                                    
+                                    <!-- Live underlying price -->
+                                    <div class="flex items-center space-x-2">
+                                        <template x-if="getUnderlyingQuote(underlying)">
+                                            <div class="flex items-center space-x-2">
+                                                <!-- Price with colored background -->
+                                                <div class="px-3 py-1 rounded-lg font-medium"
+                                                     :class="getUnderlyingQuote(underlying).change >= 0 ? 'bg-green-800 hover:bg-green-900' : 'bg-red-700 hover:bg-red-800'">
+                                                    <span class="text-lg font-semibold text-white" 
+                                                          x-text="formatNumber(getUnderlyingQuote(underlying).price)"></span>
+                                                </div>
+                                                <!-- Change data with black background - 2 lines -->
+                                                <div class="px-3 py-1 rounded-lg bg-black">
+                                                    <div class="text-xs font-medium leading-tight" 
+                                                         :class="getUnderlyingQuote(underlying).change >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                         x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + formatNumber(getUnderlyingQuote(underlying).change)">
                                                     </div>
-                                                    <!-- Change data with black background -->
-                                                    <div class="px-3 py-1 rounded-lg bg-black">
-                                                        <span class="text-sm font-medium" 
-                                                              :class="getUnderlyingQuote(underlying).change >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                              x-text="(getUnderlyingQuote(underlying).change >= 0 ? '+' : '') + formatNumber(getUnderlyingQuote(underlying).change) + ' (' + (getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%)'">
-                                                        </span>
+                                                    <div class="text-xs font-medium leading-tight" 
+                                                         :class="getUnderlyingQuote(underlying).changePercent >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                         x-text="(getUnderlyingQuote(underlying).changePercent >= 0 ? '+' : '') + getUnderlyingQuote(underlying).changePercent.toFixed(2) + '%'">
                                                     </div>
                                                 </div>
-                                            </template>
-                                            <template x-if="!getUnderlyingQuote(underlying)">
-                                                <span class="text-sm text-orange-400" title="Live price data not available">
-                                                    <i class="fas fa-exclamation-triangle mr-1"></i>
-                                                    Price N/A
-                                                </span>
-                                            </template>
-                                        </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="!getUnderlyingQuote(underlying)">
+                                            <span class="text-sm text-orange-400" title="Live price data not available">
+                                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                Price N/A
+                                            </span>
+                                        </template>
                                     </div>
-                                    <div class="flex items-center space-x-3">
-                                        <span class="text-sm text-slate-400" x-text="positions.length + ' position' + (positions.length !== 1 ? 's' : '')"></span>
+                                    
+                                    <div class="flex items-center">
                                         <!-- Order Chains Link -->
                                         <a :href="'/static/index-fixed.html?underlying=' + encodeURIComponent(underlying) + (selectedAccount ? '&account=' + encodeURIComponent(selectedAccount) : '')" 
                                            @click.stop
@@ -341,29 +369,39 @@
                                         </a>
                                     </div>
                                 </div>
-                                <div class="flex items-center space-x-6 text-sm">
-                                    <div class="text-center">
-                                        <div class="text-slate-400">Cost Basis</div>
-                                        <div class="font-semibold" 
-                                             :class="getGroupCostBasis(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                             x-text="formatNumber(getGroupCostBasis(positions))"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-slate-400">NetLiq</div>
-                                        <div class="font-semibold text-slate-100" 
-                                             x-text="formatNumber(getGroupNetLiq(positions))"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-slate-400">P&L</div>
-                                        <div class="font-semibold" 
-                                             :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                             x-text="formatNumber(getGroupPnL(positions))"></div>
-                                    </div>
-                                    <!-- Price Position Indicator (only for spreads/condors) -->
+                                
+                                <!-- Aligned stat columns -->
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs">Cost Basis</div>
+                                    <div class="font-semibold text-sm" 
+                                         :class="getGroupCostBasis(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                         x-text="formatNumber(getGroupCostBasis(positions))"></div>
+                                </div>
+                                
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs">NetLiq</div>
+                                    <div class="font-semibold text-sm text-slate-100" 
+                                         x-text="formatNumber(getGroupNetLiq(positions))"></div>
+                                </div>
+                                
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs">P&L</div>
+                                    <div class="font-semibold text-sm" 
+                                         :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                         x-text="formatNumber(getGroupPnL(positions))"></div>
+                                </div>
+                                
+                                <!-- Price Position Indicator (always present for consistent alignment) -->
+                                <div class="header-stat-column">
                                     <template x-if="shouldShowPriceIndicator(positions)">
-                                        <div class="text-center">
-                                            <div class="text-slate-400">Price Position</div>
+                                        <div>
+                                            <div class="text-slate-400 text-xs">Price Position</div>
                                             <div class="price-position-indicator" x-html="getPricePositionIndicator(positions, underlying)"></div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!shouldShowPriceIndicator(positions)">
+                                        <div>
+                                            <!-- Empty content but maintain column structure -->
                                         </div>
                                     </template>
                                 </div>
@@ -559,7 +597,10 @@
                 
                 loadFilterPreferences() {
                     try {
-                        const savedAccount = localStorage.getItem('positions_selectedAccount');
+                        // Use shared account selection key to sync between pages
+                        const savedState = localStorage.getItem('tradeJournalState');
+                        const sharedAccount = savedState ? JSON.parse(savedState).selectedAccount : null;
+                        const savedAccount = sharedAccount || localStorage.getItem('positions_selectedAccount');
                         const savedInstrumentType = localStorage.getItem('positions_selectedInstrumentType');
                         const savedUnderlying = localStorage.getItem('positions_selectedUnderlying');
                         
@@ -588,9 +629,20 @@
                 
                 saveFilterPreferences() {
                     try {
+                        // Save to positions-specific keys
                         localStorage.setItem('positions_selectedAccount', this.selectedAccount);
                         localStorage.setItem('positions_selectedInstrumentType', this.selectedInstrumentType);
                         localStorage.setItem('positions_selectedUnderlying', this.selectedUnderlying);
+                        
+                        // Also save account to shared key for cross-page sync
+                        try {
+                            const existingState = localStorage.getItem('tradeJournalState');
+                            const state = existingState ? JSON.parse(existingState) : {};
+                            state.selectedAccount = this.selectedAccount;
+                            localStorage.setItem('tradeJournalState', JSON.stringify(state));
+                        } catch (sharedError) {
+                            console.warn('Error updating shared state:', sharedError);
+                        }
                         
                         console.log('Saved filter preferences:', {
                             account: this.selectedAccount,
@@ -608,6 +660,23 @@
                         const response = await fetch('/api/accounts');
                         const data = await response.json();
                         this.accounts = data.accounts || [];
+                        
+                        // Sort accounts in desired order: Roth, Individual, Traditional
+                        this.accounts.sort((a, b) => {
+                            const getAccountTypeOrder = (name) => {
+                                const nameUpper = (name || '').toUpperCase();
+                                if (nameUpper.includes('ROTH')) return 1;
+                                if (nameUpper.includes('INDIVIDUAL')) return 2;
+                                if (nameUpper.includes('TRADITIONAL')) return 3;
+                                return 4; // Other account types go last
+                            };
+                            
+                            const orderA = getAccountTypeOrder(a.account_name);
+                            const orderB = getAccountTypeOrder(b.account_name);
+                            
+                            return orderA - orderB;
+                        });
+                        
                         console.log(`Loaded ${this.accounts.length} accounts`);
                     } catch (error) {
                         console.error('Error loading accounts:', error);

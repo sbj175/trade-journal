@@ -153,6 +153,22 @@ function tradeJournal() {
                 const data = await response.json();
                 this.accounts = data.accounts || [];
                 
+                // Sort accounts in desired order: Roth, Individual, Traditional
+                this.accounts.sort((a, b) => {
+                    const getAccountTypeOrder = (name) => {
+                        const nameUpper = (name || '').toUpperCase();
+                        if (nameUpper.includes('ROTH')) return 1;
+                        if (nameUpper.includes('INDIVIDUAL')) return 2;
+                        if (nameUpper.includes('TRADITIONAL')) return 3;
+                        return 4; // Other account types go last
+                    };
+                    
+                    const orderA = getAccountTypeOrder(a.account_name);
+                    const orderB = getAccountTypeOrder(b.account_name);
+                    
+                    return orderA - orderB;
+                });
+                
                 // Set default account (first one) only if no account is selected
                 if (this.accounts.length > 0 && !this.selectedAccount) {
                     this.selectedAccount = this.accounts[0].account_number;
