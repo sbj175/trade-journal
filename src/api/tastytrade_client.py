@@ -21,11 +21,6 @@ class TastytradeClient:
         credential_manager = CredentialManager()
         self.username, self.password = credential_manager.get_tastytrade_credentials()
         
-        # If no encrypted credentials, fall back to environment variables
-        if not self.username or not self.password:
-            self.username = os.getenv('TASTYTRADE_USERNAME')
-            self.password = os.getenv('TASTYTRADE_PASSWORD')
-            
         self.session = None
         self.accounts = []
         self.current_account = None
@@ -481,6 +476,46 @@ class TastytradeClient:
                     day_high = float(market_data.day_high) if market_data.day_high else 0.0
                     day_low = float(market_data.day_low) if market_data.day_low else 0.0
                     
+                    # Look for IVR and IV data in market data
+                    ivr = None
+                    iv = None
+                    iv_percentile = None
+                    
+                    # Check for various IVR field names
+                    ivr_fields = ['implied_volatility_index_rank', 'iv_rank', 'ivr', 'implied_volatility_rank', 'volatility_rank', 'iv_rank_30']
+                    for field in ivr_fields:
+                        if hasattr(market_data, field):
+                            value = getattr(market_data, field)
+                            if value is not None:
+                                ivr = float(value)
+                                logger.info(f"Found IVR for {symbol} in field '{field}': {ivr}")
+                                break
+                    
+                    # Check for IV fields
+                    iv_fields = ['implied_volatility', 'iv', 'volatility', 'iv_30']
+                    for field in iv_fields:
+                        if hasattr(market_data, field):
+                            value = getattr(market_data, field)
+                            if value is not None:
+                                iv = float(value) * 100  # Convert to percentage
+                                logger.info(f"Found IV for {symbol} in field '{field}': {iv}")
+                                break
+                    
+                    # Check for IV percentile
+                    percentile_fields = ['iv_percentile', 'implied_volatility_percentile', 'volatility_percentile']
+                    for field in percentile_fields:
+                        if hasattr(market_data, field):
+                            value = getattr(market_data, field)
+                            if value is not None:
+                                iv_percentile = float(value)
+                                logger.info(f"Found IV percentile for {symbol} in field '{field}': {iv_percentile}")
+                                break
+                    
+                    # Debug: Log all available fields for the first symbol
+                    if symbol == market_data_list[0].symbol:
+                        all_fields = [attr for attr in dir(market_data) if not attr.startswith('_')]
+                        logger.info(f"Available fields for {symbol}: {all_fields}")
+                    
                     quote_data = {
                         'symbol': symbol,
                         'mark': current_price,
@@ -495,12 +530,33 @@ class TastytradeClient:
                         'day_low': day_low,
                     }
                     
+                    # Add IVR/IV data if found
+                    if ivr is not None:
+                        quote_data['ivr'] = ivr
+                    if iv is not None:
+                        quote_data['iv'] = iv
+                    if iv_percentile is not None:
+                        quote_data['iv_percentile'] = iv_percentile
+                    
                     # Update cache
                     self._quote_cache[symbol] = quote_data
                     self._quote_cache_time[symbol] = current_time
                     quotes[symbol] = quote_data
                     
-                    logger.info(f"Market data for {symbol}: price=${current_price:.2f}, change={change:+.2f} ({change_percent:+.2f}%)")
+                    logger.info(f"Market data for {symbol}: price=${current_price:.2f}, change={change:+.2f} ({change_percent:+.2f}%), IVR={ivr}, IV={iv}")
+                
+                # Try to get market metrics (IV/IVR) for equity symbols
+                if symbol_types['equities']:
+                    try:
+                        logger.info(f"Attempting to fetch market metrics for {len(symbol_types['equities'])} equity symbols")
+                        metrics = self.get_market_metrics(symbol_types['equities'])
+                        
+                        for symbol, metric_data in metrics.items():
+                            if symbol in quotes:
+                                quotes[symbol].update(metric_data)
+                                logger.info(f"Added IV data to {symbol}: {metric_data}")
+                    except Exception as metrics_error:
+                        logger.warning(f"Failed to get market metrics: {metrics_error}")
                 
             except Exception as e:
                 logger.error(f"Failed to get market data: {str(e)}")
@@ -574,11 +630,12 @@ class TastytradeClient:
     async def _async_fetch_quotes(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """Async method to fetch quotes using streaming API with enhanced change data"""
         from tastytrade import DXLinkStreamer
-        from tastytrade.dxfeed import Quote, Trade
+        from tastytrade.dxfeed import Quote, Trade, Greeks
         import asyncio
         import time
         
         quotes = {}
+        greeks_data = {}
         
         # Try to get quotes via streaming
         try:
@@ -599,6 +656,15 @@ class TastytradeClient:
                     logger.warning(f"Could not subscribe to Trade events: {trade_error}")
                     has_trade_subscription = False
                 
+                # Subscribe to Greeks events for IV data
+                try:
+                    await streamer.subscribe(Greeks, symbols)
+                    logger.info("Successfully subscribed to Greeks events")
+                    has_greeks_subscription = True
+                except Exception as greeks_error:
+                    logger.warning(f"Could not subscribe to Greeks events: {greeks_error}")
+                    has_greeks_subscription = False
+                
                 logger.info(f"Successfully subscribed to Quote events for {len(symbols)} symbols")
                 
                 # Collect quotes for a reasonable time period
@@ -612,60 +678,132 @@ class TastytradeClient:
                 
                 # Process Quote events (primary source)
                 try:
-                    async for event in streamer.listen(Quote):
-                        events_received += 1
-                        
-                        # Get symbol from event
-                        symbol = getattr(event, 'event_symbol', None)
-                        if not symbol or symbol not in symbols:
-                            continue
-                        
-                        if isinstance(event, Quote):
-                            quotes_received += 1
-                            logger.info(f"Processing Quote event for {symbol}")
+                    # Listen for multiple event types concurrently
+                    import asyncio
+                    
+                    async def process_quotes():
+                        nonlocal quotes_received
+                        async for event in streamer.listen(Quote):
+                            events_received += 1
                             
-                            # Get bid/ask prices and other available data
-                            bid_price = getattr(event, 'bid_price', None)
-                            ask_price = getattr(event, 'ask_price', None)
+                            # Get symbol from event
+                            symbol = getattr(event, 'event_symbol', None)
+                            if not symbol or symbol not in symbols:
+                                continue
                             
-                            # Calculate mark price
-                            mark_price = 0.0
-                            if bid_price and ask_price:
-                                mark_price = (float(bid_price) + float(ask_price)) / 2
-                            elif bid_price:
-                                mark_price = float(bid_price)
-                            elif ask_price:
-                                mark_price = float(ask_price)
+                            if isinstance(event, Quote):
+                                quotes_received += 1
+                                logger.info(f"Processing Quote event for {symbol}")
+                                
+                                # Get bid/ask prices and other available data
+                                bid_price = getattr(event, 'bid_price', None)
+                                ask_price = getattr(event, 'ask_price', None)
+                                
+                                # Calculate mark price
+                                mark_price = 0.0
+                                if bid_price and ask_price:
+                                    mark_price = (float(bid_price) + float(ask_price)) / 2
+                                elif bid_price:
+                                    mark_price = float(bid_price)
+                                elif ask_price:
+                                    mark_price = float(ask_price)
+                                
+                                # Try to get additional fields that might be available
+                                last_price = getattr(event, 'last_price', None) or getattr(event, 'price', None)
+                                change = getattr(event, 'change', None) or getattr(event, 'daily_change', None)
+                                change_percent = getattr(event, 'change_percent', None) or getattr(event, 'daily_change_percent', None)
+                                volume = getattr(event, 'volume', None) or getattr(event, 'day_volume', None)
+                                
+                                quotes[symbol] = {
+                                    'symbol': symbol,
+                                    'mark': mark_price,
+                                    'bid': float(bid_price) if bid_price else 0.0,
+                                    'ask': float(ask_price) if ask_price else 0.0,
+                                    'last': float(last_price) if last_price else mark_price,
+                                    'change': float(change) if change else 0.0,
+                                    'change_percent': float(change_percent) if change_percent else 0.0,
+                                    'volume': int(volume) if volume else 0,
+                                }
+                                
+                                logger.info(f"Quote for {symbol}: mark={mark_price:.2f}, bid={bid_price}, ask={ask_price}, change={change}, change%={change_percent}")
+                    
+                    async def process_greeks():
+                        nonlocal greeks_data
+                        if not has_greeks_subscription:
+                            return
                             
-                            # Try to get additional fields that might be available
-                            last_price = getattr(event, 'last_price', None) or getattr(event, 'price', None)
-                            change = getattr(event, 'change', None) or getattr(event, 'daily_change', None)
-                            change_percent = getattr(event, 'change_percent', None) or getattr(event, 'daily_change_percent', None)
-                            volume = getattr(event, 'volume', None) or getattr(event, 'day_volume', None)
+                        async for event in streamer.listen(Greeks):
+                            symbol = getattr(event, 'event_symbol', None)
+                            if not symbol:
+                                continue
+                                
+                            # Check if this symbol or its underlying is in our list
+                            relevant_symbol = None
+                            if symbol in symbols:
+                                relevant_symbol = symbol
+                            else:
+                                # For options, the Greeks event might come with the full option symbol
+                                # Check if this is an option for one of our underlying symbols
+                                for s in symbols:
+                                    if symbol.startswith(s + '  '):  # Option format: "AAPL  240112C00230000"
+                                        relevant_symbol = s  # Store under underlying symbol
+                                        break
                             
-                            quotes[symbol] = {
-                                'symbol': symbol,
-                                'mark': mark_price,
-                                'bid': float(bid_price) if bid_price else 0.0,
-                                'ask': float(ask_price) if ask_price else 0.0,
-                                'last': float(last_price) if last_price else mark_price,
-                                'change': float(change) if change else 0.0,
-                                'change_percent': float(change_percent) if change_percent else 0.0,
-                                'volume': int(volume) if volume else 0,
-                            }
-                            
-                            logger.info(f"Quote for {symbol}: mark={mark_price:.2f}, bid={bid_price}, ask={ask_price}, change={change}, change%={change_percent}")
-                            
-                            # If we have quotes for all symbols, we can exit early
-                            if len(quotes) >= len(symbols):
-                                logger.info("Got quotes for all requested symbols, exiting early")
-                                break
-                        
-                        # Check timeout
-                        if time.time() - start_time > timeout:
-                            logger.info(f"Timeout reached after {timeout} seconds")
-                            break
+                            if not relevant_symbol:
+                                continue
+                                
+                            if isinstance(event, Greeks):
+                                logger.info(f"Processing Greeks event for {symbol} (storing as {relevant_symbol})")
+                                
+                                # Debug: Log all available fields on first Greeks event
+                                if not hasattr(process_greeks, '_fields_logged'):
+                                    all_fields = [attr for attr in dir(event) if not attr.startswith('_')]
+                                    logger.info(f"Greeks event fields: {all_fields}")
+                                    process_greeks._fields_logged = True
+                                
+                                # Get IV (volatility) and other Greeks
+                                iv = getattr(event, 'volatility', None)
+                                delta = getattr(event, 'delta', None)
+                                gamma = getattr(event, 'gamma', None)
+                                theta = getattr(event, 'theta', None)
+                                vega = getattr(event, 'vega', None)
+                                rho = getattr(event, 'rho', None)
+                                
+                                # Look for IVR in Greeks event
+                                ivr = None
+                                ivr_fields = ['implied_volatility_index_rank', 'iv_rank', 'implied_volatility_rank', 'volatility_rank', 'ivr']
+                                for field in ivr_fields:
+                                    if hasattr(event, field):
+                                        value = getattr(event, field)
+                                        if value is not None:
+                                            ivr = float(value)
+                                            logger.info(f"Found IVR in Greeks event for {relevant_symbol}.{field}: {ivr}")
+                                            break
+                                
+                                greeks_data[relevant_symbol] = {
+                                    'iv': float(iv) * 100 if iv else None,  # Convert to percentage
+                                    'ivr': ivr,
+                                    'delta': float(delta) if delta else None,
+                                    'gamma': float(gamma) if gamma else None,
+                                    'theta': float(theta) if theta else None,
+                                    'vega': float(vega) if vega else None,
+                                    'rho': float(rho) if rho else None,
+                                }
+                                
+                                logger.info(f"Greeks for {relevant_symbol}: IV={iv}, IVR={ivr}, delta={delta}")
+                    
+                    # Run both listeners concurrently with timeout
+                    tasks = [process_quotes()]
+                    if has_greeks_subscription:
+                        tasks.append(process_greeks())
+                    
+                    await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True),
+                        timeout=timeout
+                    )
                 
+                except asyncio.TimeoutError:
+                    logger.info(f"Streaming timeout reached after {timeout} seconds")
                 except Exception as listen_error:
                     logger.warning(f"Error in streamer.listen(): {listen_error}")
                 
@@ -675,7 +813,15 @@ class TastytradeClient:
             # Post-process: If we don't have change data, try to fetch it using current vs previous day logic
             await self._enhance_quotes_with_change_data(quotes)
             
-            logger.info(f"Collected {len(quotes)} streaming quotes with enhanced change data")
+            # Merge Greeks data into quotes
+            for symbol, greeks in greeks_data.items():
+                if symbol in quotes:
+                    quotes[symbol].update(greeks)
+                else:
+                    # Create minimal quote entry with Greeks data
+                    quotes[symbol] = greeks
+            
+            logger.info(f"Collected {len(quotes)} streaming quotes with enhanced change data and {len(greeks_data)} Greeks")
             
         except Exception as streaming_error:
             logger.error(f"Async streaming quotes failed: {streaming_error}", exc_info=True)
@@ -831,6 +977,141 @@ class TastytradeClient:
                         quotes[symbol]['change_percent'] = change_pct
     
 
+    def get_market_metrics(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Get market metrics including IV/IVR for symbols.
+        Try multiple Tastytrade API endpoints to find volatility data.
+        """
+        if not self.session:
+            logger.error("Not authenticated")
+            return {}
+        
+        metrics = {}
+        
+        # Try multiple approaches to get IVR/IV data
+        try:
+            # Approach 1: Try market metrics API
+            try:
+                from tastytrade.metrics import get_market_metrics
+                logger.info(f"Trying market metrics API for {len(symbols)} symbols")
+                
+                for symbol in symbols:
+                    try:
+                        metric_data = get_market_metrics(self.session, [symbol])
+                        if metric_data and len(metric_data) > 0:
+                            data = metric_data[0]
+                            
+                            # Debug: Log all available fields
+                            all_fields = [attr for attr in dir(data) if not attr.startswith('_')]
+                            logger.info(f"Market metrics fields for {symbol}: {all_fields}")
+                            
+                            # Extract IV-related fields with comprehensive search
+                            iv = None
+                            ivr = None
+                            
+                            # Look for IV
+                            iv_fields = ['implied_volatility_index', 'iv_index', 'volatility', 'implied_volatility', 'iv']
+                            for field in iv_fields:
+                                if hasattr(data, field):
+                                    value = getattr(data, field)
+                                    if value is not None:
+                                        iv = float(value) * 100
+                                        logger.info(f"Found IV in market metrics for {symbol}.{field}: {iv}")
+                                        break
+                            
+                            # Look for IVR
+                            ivr_fields = ['implied_volatility_index_rank', 'implied_volatility_rank', 'iv_rank', 'volatility_rank', 'ivr', 'iv_rank_30']
+                            for field in ivr_fields:
+                                if hasattr(data, field):
+                                    value = getattr(data, field)
+                                    if value is not None:
+                                        ivr = float(value)
+                                        logger.info(f"Found IVR in market metrics for {symbol}.{field}: {ivr}")
+                                        break
+                            
+                            if iv is not None or ivr is not None:
+                                metrics[symbol] = {
+                                    'iv': iv,
+                                    'ivr': ivr,
+                                    'iv_percentile': getattr(data, 'iv_percentile', None),
+                                    'historical_volatility': getattr(data, 'historical_volatility', None),
+                                }
+                                logger.info(f"✅ Metrics for {symbol}: IV={iv}, IVR={ivr}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get market metrics for {symbol}: {e}")
+                        
+            except ImportError:
+                logger.info("Market metrics API not available")
+            except Exception as e:
+                logger.warning(f"Market metrics API failed: {e}")
+            
+            # Approach 2: Try instruments API for detailed data
+            try:
+                from tastytrade.instruments import get_equity_instruments
+                logger.info("Trying instruments API for detailed equity data")
+                
+                for symbol in symbols:
+                    if symbol not in metrics:  # Only if we don't have data yet
+                        try:
+                            instruments = get_equity_instruments(self.session, [symbol])
+                            if instruments:
+                                instrument = instruments[0]
+                                
+                                # Debug: Log available fields
+                                all_fields = [attr for attr in dir(instrument) if not attr.startswith('_')]
+                                logger.info(f"Instrument fields for {symbol}: {all_fields}")
+                                
+                                # Look for volatility data in instrument
+                                iv = None
+                                ivr = None
+                                
+                                iv_fields = ['implied_volatility', 'iv', 'volatility']
+                                ivr_fields = ['implied_volatility_index_rank', 'iv_rank', 'implied_volatility_rank', 'volatility_rank']
+                                
+                                for field in iv_fields:
+                                    if hasattr(instrument, field):
+                                        value = getattr(instrument, field)
+                                        if value is not None:
+                                            iv = float(value) * 100
+                                            break
+                                
+                                for field in ivr_fields:
+                                    if hasattr(instrument, field):
+                                        value = getattr(instrument, field)
+                                        if value is not None:
+                                            ivr = float(value)
+                                            break
+                                
+                                if iv is not None or ivr is not None:
+                                    metrics[symbol] = {'iv': iv, 'ivr': ivr}
+                                    logger.info(f"✅ Instrument data for {symbol}: IV={iv}, IVR={ivr}")
+                                    
+                        except Exception as e:
+                            logger.warning(f"Failed to get instrument data for {symbol}: {e}")
+                            
+            except ImportError:
+                logger.info("Instruments API not available")
+            except Exception as e:
+                logger.warning(f"Instruments API failed: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error in get_market_metrics: {e}")
+            
+        return metrics
+    
+    def calculate_ivr(self, current_iv: float, symbol: str) -> Optional[float]:
+        """
+        Calculate IVR (Implied Volatility Rank) if historical data is available.
+        For now, returns None as we need historical IV data.
+        In the future, this could:
+        1. Query a database of historical IV values
+        2. Use an external API that provides IVR
+        3. Calculate based on stored historical data
+        """
+        # TODO: Implement actual IVR calculation with historical data
+        # IVR = 100 * (current_iv - yearly_low) / (yearly_high - yearly_low)
+        return None
+    
     def get_account_balances(self) -> Dict[str, Any]:
         """Get account balances and buying power"""
         if not self.current_account:

@@ -307,7 +307,13 @@
                                 <div class="flex items-center space-x-2">
                                     <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
                                        :class="{ 'rotate-90': expanded }"></i>
-                                    <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
+                                    <h3 class="text-lg font-semibold text-slate-100">
+                                        <span x-text="underlying"></span>
+                                        <span x-show="getUnderlyingIV(underlying)" 
+                                              class="text-sm"
+                                              :class="getUnderlyingIV(underlying) >= 30 ? 'font-bold text-yellow-400' : (getUnderlyingIV(underlying) >= 20 ? 'font-normal text-white' : 'font-normal text-slate-400')"
+                                              x-text="getUnderlyingIV(underlying)"></span>
+                                    </h3>
                                 </div>
                                 
                                 <!-- Price Column -->
@@ -665,7 +671,29 @@
                     try {
                         const savedComments = localStorage.getItem('positions_comments');
                         if (savedComments) {
-                            this.positionComments = JSON.parse(savedComments);
+                            const comments = JSON.parse(savedComments);
+                            
+                            // Clean up old comments (older than 90 days)
+                            const now = Date.now();
+                            const ninetyDaysAgo = now - (90 * 24 * 60 * 60 * 1000);
+                            
+                            this.positionComments = {};
+                            for (const [key, value] of Object.entries(comments)) {
+                                // Handle both old format (string) and new format (object with text and timestamp)
+                                if (typeof value === 'string') {
+                                    // Old format - keep it but convert to new format
+                                    this.positionComments[key] = {
+                                        text: value,
+                                        timestamp: now
+                                    };
+                                } else if (value && value.timestamp && value.timestamp > ninetyDaysAgo) {
+                                    // New format - only keep if not too old
+                                    this.positionComments[key] = value;
+                                }
+                            }
+                            
+                            // Save cleaned up comments
+                            this.savePositionComments();
                         }
                     } catch (error) {
                         console.warn('Error loading position comments:', error);
@@ -688,17 +716,68 @@
                 
                 getPositionComment(underlying) {
                     const key = this.getCommentKey(underlying);
-                    return this.positionComments[key] || '';
+                    const commentData = this.positionComments[key];
+                    
+                    if (!commentData) {
+                        return '';
+                    }
+                    
+                    // Handle both old format (string) and new format (object)
+                    if (typeof commentData === 'string') {
+                        return commentData;
+                    }
+                    
+                    return commentData.text || '';
                 },
                 
                 updatePositionComment(underlying, comment) {
                     const key = this.getCommentKey(underlying);
                     if (comment.trim()) {
-                        this.positionComments[key] = comment;
+                        this.positionComments[key] = {
+                            text: comment,
+                            timestamp: Date.now()
+                        };
                     } else {
                         delete this.positionComments[key];
                     }
                     this.savePositionComments();
+                },
+                
+                cleanupOrphanedComments() {
+                    // Get all current position keys
+                    const currentPositionKeys = new Set();
+                    const underlyings = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))];
+                    
+                    // Add keys for all accounts and "all" option
+                    for (const underlying of underlyings) {
+                        // Add key for "all accounts"
+                        currentPositionKeys.add(`${underlying}_all`);
+                        
+                        // Add keys for each specific account
+                        for (const account of this.accounts) {
+                            currentPositionKeys.add(`${underlying}_${account.account_number}`);
+                        }
+                    }
+                    
+                    // Remove comments for positions that no longer exist
+                    let hasChanges = false;
+                    for (const key of Object.keys(this.positionComments)) {
+                        if (!currentPositionKeys.has(key)) {
+                            const commentData = this.positionComments[key];
+                            const timestamp = typeof commentData === 'object' ? commentData.timestamp : null;
+                            
+                            // Only delete if comment is older than 7 days to handle rolled positions
+                            const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+                            if (!timestamp || timestamp < sevenDaysAgo) {
+                                delete this.positionComments[key];
+                                hasChanges = true;
+                            }
+                        }
+                    }
+                    
+                    if (hasChanges) {
+                        this.savePositionComments();
+                    }
                 },
                 
                 async loadAccounts() {
@@ -757,6 +836,9 @@
                         this.underlyings = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))].sort();
                         
                         this.filterPositions();
+                        
+                        // Clean up comments for positions that no longer exist
+                        this.cleanupOrphanedComments();
                         
                         // Fetch underlying quotes after positions are loaded
                         await this.fetchUnderlyingQuotes();
@@ -1039,6 +1121,27 @@
                     };
                 },
                 
+                getUnderlyingIV(underlying) {
+                    const quote = this.underlyingQuotes[underlying];
+                    
+                    if (!quote) {
+                        return null;
+                    }
+                    
+                    // Check for IVR first (preferred), then fall back to IV
+                    if (quote.ivr !== undefined && quote.ivr !== null) {
+                        // Convert IVR from decimal to percentage with 1 decimal place
+                        return (quote.ivr * 100).toFixed(1);
+                    }
+                    
+                    if (quote.iv !== undefined && quote.iv !== null) {
+                        // Format IV as percentage with 0 decimal places
+                        return Math.round(quote.iv);
+                    }
+                    
+                    return null;
+                },
+                
                 // Option parsing and display methods
                 getSignedQuantity(position) {
                     // The API provides signed quantities where negative = short
@@ -1282,9 +1385,15 @@
                     }
                     
                     if (expirationDate) {
+                        // Normalize both dates to midnight for accurate day counting
                         const today = new Date();
-                        const timeDiff = expirationDate.getTime() - today.getTime();
-                        const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                        today.setHours(0, 0, 0, 0);
+                        
+                        const expiry = new Date(expirationDate);
+                        expiry.setHours(0, 0, 0, 0);
+                        
+                        const timeDiff = expiry.getTime() - today.getTime();
+                        const daysDiff = Math.round(timeDiff / (1000 * 3600 * 24));
                         
                         if (daysDiff < 0) {
                             return 'Expired';
