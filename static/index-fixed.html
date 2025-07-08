@@ -121,7 +121,7 @@
                         <!-- Sync Button -->
                         <button 
                             @click="syncTrades()"
-                            :disabled="syncing || initialSyncing"
+                            :disabled="syncing || initialSyncing || reprocessing"
                             class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                         >
                             <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': syncing}"></i>
@@ -131,11 +131,21 @@
                         <!-- Initial Sync Button -->
                         <button 
                             @click="initialSync()"
-                            :disabled="syncing || initialSyncing"
+                            :disabled="syncing || initialSyncing || reprocessing"
                             class="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                         >
                             <i class="fas fa-database mr-2" :class="{'loading-spinner': initialSyncing}"></i>
                             <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial Sync'"></span>
+                        </button>
+                        
+                        <!-- Re-process Chains Button -->
+                        <button 
+                            @click="reprocessChains()"
+                            :disabled="syncing || initialSyncing || reprocessing"
+                            class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                        >
+                            <i class="fas fa-link mr-2" :class="{'loading-spinner': reprocessing}"></i>
+                            <span x-text="reprocessing ? 'Re-processing...' : 'Re-process Chains'"></span>
                         </button>
                         
                         <!-- Date Range Selector -->
@@ -177,7 +187,7 @@
             </div>
             
             <!-- Dashboard Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <!-- Total P&L Card -->
                 <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
                     <div class="flex items-center justify-between">
@@ -209,21 +219,6 @@
                     </div>
                 </div>
                 
-                <!-- Open Trades Card -->
-                <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-slate-400 text-sm font-medium">Open Trades</p>
-                            <p class="text-3xl font-bold mt-2 text-orange-400">
-                                <span x-text="dashboard.summary.open_trades || 0"></span>
-                            </p>
-                        </div>
-                        <div class="text-4xl text-orange-400">
-                            <i class="fas fa-hourglass-half"></i>
-                        </div>
-                    </div>
-                </div>
-                
                 <!-- Today's P&L Card -->
                 <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
                     <div class="flex items-center justify-between">
@@ -244,7 +239,7 @@
             
             <!-- Filters -->
             <div class="glass rounded-xl p-6 mb-6">
-                <div class="flex flex-wrap gap-4">
+                <div class="flex flex-wrap gap-4 items-center">
                     <div class="min-w-[200px]">
                         <select x-model="filterUnderlying" @change="loadChains(); saveState()" class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
                             <option value="">All Underlyings</option>
@@ -277,6 +272,21 @@
                             <option value="Cash Secured Put">Cash Secured Put</option>
                         </optgroup>
                     </select>
+                    
+                    <!-- Status Checkboxes -->
+                    <div class="flex items-center space-x-4 ml-4">
+                        <span class="text-slate-300 text-sm font-medium">Show:</span>
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" x-model="showOpen" @change="applyStatusFilter(); saveState()" 
+                                   class="w-4 h-4 text-green-600 bg-slate-800 border-slate-600 rounded focus:ring-green-500 focus:ring-2">
+                            <span class="text-green-400 text-sm font-medium">OPEN</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" x-model="showClosed" @change="applyStatusFilter(); saveState()" 
+                                   class="w-4 h-4 text-blue-600 bg-slate-800 border-slate-600 rounded focus:ring-blue-500 focus:ring-2">
+                            <span class="text-blue-400 text-sm font-medium">CLOSED</span>
+                        </label>
+                    </div>
                 </div>
             </div>
             
@@ -287,7 +297,7 @@
                     <span x-show="filterUnderlying" x-text="filterUnderlying + ' Order Chains'"></span>
                 </h2>
                 <div class="text-sm text-slate-400">
-                    <span x-text="chains.length"></span> chains found
+                    <span x-text="filteredChains.length"></span> chains found
                 </div>
             </div>
             
@@ -300,14 +310,14 @@
                 </div>
                 
                 <!-- No Results -->
-                <div x-show="!chainsLoading && chains.length === 0" class="text-center py-8 text-slate-400">
+                <div x-show="!chainsLoading && filteredChains.length === 0" class="text-center py-8 text-slate-400">
                     <i class="fas fa-link text-6xl text-slate-600 mb-4"></i>
                     <p class="text-xl">No order chains found</p>
                     <p class="text-sm">Try adjusting your filters or sync more trades</p>
                 </div>
                 
                 <!-- Chain Cards -->
-                <template x-for="chain in chains" :key="chain.chain_id">
+                <template x-for="chain in filteredChains" :key="chain.chain_id">
                     <div class="glass rounded-xl overflow-hidden">
                         <!-- Chain Summary (Always Visible) -->
                         <div class="p-6 cursor-pointer hover:bg-slate-800/50 transition-colors" 
@@ -394,7 +404,6 @@
                                                                 <th class="text-left py-1 px-2 font-medium">Symbol</th>
                                                                 <th class="text-left py-1 px-2 font-medium">Qty</th>
                                                                 <th class="text-left py-1 px-2 font-medium">Open</th>
-                                                                <th class="text-left py-1 px-2 font-medium">Close</th>
                                                                 <th class="text-left py-1 px-2 font-medium">P&L</th>
                                                             </tr>
                                                         </thead>
@@ -404,8 +413,8 @@
                                                                     <td class="py-1 px-2">
                                                                         <div class="text-white text-xs">
                                                                             <span x-text="position.symbol"></span>
-                                                                            <!-- System Transaction Emblems next to symbol -->
-                                                                            <span x-show="position.closing_action && position.closing_action.includes('EXPIRED')" class="ml-1 text-gray-400" title="Expired">⏰</span>
+                                                                            <!-- System Transaction Status -->
+                                                                            <span x-show="position.closing_action && position.closing_action.includes('EXPIRED')" class="ml-2 text-amber-400 text-xs font-medium">EXPIRED</span>
                                                                             <span x-show="position.closing_action && position.closing_action.includes('EXERCISED')" class="ml-1 text-yellow-400" title="Exercised">⚡</span>
                                                                             <span x-show="position.closing_action && position.closing_action.includes('ASSIGNED')" class="ml-1 text-orange-400" title="Assigned">📋</span>
                                                                             <span x-show="position.closing_action && position.closing_action.includes('CASH_SETTLED')" class="ml-1 text-green-400" title="Cash Settled">💰</span>
@@ -426,14 +435,6 @@
                                                                                   x-text="position.opening_action"></span>
                                                                         </div>
                                                                         <div class="text-slate-400" x-text="'$' + formatNumber(position.opening_price)"></div>
-                                                                    </td>
-                                                                    <td class="py-1 px-2">
-                                                                        <div x-show="position.closing_action" class="text-white">
-                                                                            <span class="bg-orange-900/30 text-orange-300 px-1 py-0.5 rounded text-xs"
-                                                                                  x-text="position.closing_action"></span>
-                                                                        </div>
-                                                                        <div x-show="position.closing_price !== null" class="text-slate-400" x-text="'$' + formatNumber(position.closing_price)"></div>
-                                                                        <div x-show="position.closing_price === null" class="text-slate-500">-</div>
                                                                     </td>
                                                                     <td class="py-1 px-2">
                                                                         <span :class="position.pnl >= 0 ? 'text-green-400' : 'text-red-400'"
