@@ -186,19 +186,29 @@
             </div>
             
             <!-- Dashboard Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <!-- Total P&L Card -->
                 <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-slate-400 text-sm font-medium">Total P&L</p>
+                            <div class="flex items-center gap-2">
+                                <p class="text-slate-400 text-sm font-medium">
+                                    <span x-show="!hasActiveFilters()">Total P&L</span>
+                                    <span x-show="hasActiveFilters()">
+                                        <span x-show="filterUnderlying" x-text="filterUnderlying"></span>
+                                        <span x-show="!filterUnderlying">Filtered</span>
+                                        P&L
+                                    </span>
+                                </p>
+                                <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
+                            </div>
                             <p class="text-3xl font-bold mt-2" 
-                               :class="dashboard.summary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                $<span x-text="formatNumber(dashboard.summary.total_pnl)"></span>
+                               :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                $<span x-text="formatNumber(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl)"></span>
                             </p>
                         </div>
-                        <div class="text-4xl" :class="dashboard.summary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                            <i :class="dashboard.summary.total_pnl >= 0 ? 'fas fa-chart-line' : 'fas fa-chart-line fa-rotate-180'"></i>
+                        <div class="text-4xl" :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
+                            <i :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'fas fa-chart-line' : 'fas fa-chart-line fa-rotate-180'"></i>
                         </div>
                     </div>
                 </div>
@@ -207,9 +217,19 @@
                 <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-slate-400 text-sm font-medium">Win Rate</p>
+                            <div class="flex items-center gap-2">
+                                <p class="text-slate-400 text-sm font-medium">
+                                    <span x-show="!hasActiveFilters()">Win Rate</span>
+                                    <span x-show="hasActiveFilters()">
+                                        <span x-show="filterUnderlying" x-text="filterUnderlying"></span>
+                                        <span x-show="!filterUnderlying">Filtered</span>
+                                        Win Rate
+                                    </span>
+                                </p>
+                                <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
+                            </div>
                             <p class="text-3xl font-bold mt-2 text-blue-400">
-                                <span x-text="dashboard.summary.win_rate?.toFixed(1) || '0.0'"></span>%
+                                <span x-text="(hasActiveFilters() ? dashboard.filteredSummary.win_rate : dashboard.summary.win_rate)?.toFixed(1) || '0.0'"></span>%
                             </p>
                         </div>
                         <div class="text-4xl text-blue-400">
@@ -222,14 +242,55 @@
                 <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-slate-400 text-sm font-medium">Today's P&L</p>
+                            <div class="flex items-center gap-2">
+                                <p class="text-slate-400 text-sm font-medium">
+                                    <span x-show="!hasActiveFilters()">Today's P&L</span>
+                                    <span x-show="hasActiveFilters()">
+                                        <span x-show="filterUnderlying" x-text="filterUnderlying"></span>
+                                        <span x-show="!filterUnderlying">Filtered</span>
+                                        Today's P&L
+                                    </span>
+                                </p>
+                                <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
+                            </div>
                             <p class="text-3xl font-bold mt-2"
-                               :class="dashboard.summary.today_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                $<span x-text="formatNumber(dashboard.summary.today_pnl)"></span>
+                               :class="(hasActiveFilters() ? dashboard.filteredSummary.today_pnl : dashboard.summary.today_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                $<span x-text="formatNumber(hasActiveFilters() ? dashboard.filteredSummary.today_pnl : dashboard.summary.today_pnl)"></span>
                             </p>
                         </div>
-                        <div class="text-4xl" :class="dashboard.summary.today_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                        <div class="text-4xl" :class="(hasActiveFilters() ? dashboard.filteredSummary.today_pnl : dashboard.summary.today_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
                             <i class="fas fa-calendar-day"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chain Count Card -->
+                <div class="glass rounded-xl p-6 hover:shadow-2xl transition-shadow duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <p class="text-slate-400 text-sm font-medium">
+                                    <span x-show="!hasActiveFilters()">Total Chains</span>
+                                    <span x-show="hasActiveFilters()">
+                                        <span x-show="filterUnderlying" x-text="filterUnderlying"></span>
+                                        <span x-show="!filterUnderlying">Filtered</span>
+                                        Chains
+                                    </span>
+                                </p>
+                                <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
+                            </div>
+                            <p class="text-3xl font-bold mt-2 text-purple-400">
+                                <span x-text="hasActiveFilters() ? dashboard.filteredSummary.total_chains : dashboard.summary.total_trades"></span>
+                            </p>
+                            <div class="text-xs text-slate-500 mt-1">
+                                <span class="text-green-400" x-text="hasActiveFilters() ? dashboard.filteredSummary.open_chains : dashboard.summary.open_trades"></span>
+                                open • 
+                                <span class="text-blue-400" x-text="hasActiveFilters() ? dashboard.filteredSummary.closed_chains : dashboard.summary.closed_trades"></span>
+                                closed
+                            </div>
+                        </div>
+                        <div class="text-4xl text-purple-400">
+                            <i class="fas fa-link"></i>
                         </div>
                     </div>
                 </div>
@@ -248,7 +309,7 @@
                         </select>
                     </div>
                     
-                    <select x-model="filterStrategy" @change="loadChains(); saveState()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                    <select x-model="filterStrategy" @change="applyStatusFilter(); saveState()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
                         <option value="">All Strategies</option>
                         <optgroup label="Multi-leg Complex">
                             <option value="Iron Condor">Iron Condor</option>

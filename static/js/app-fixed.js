@@ -17,6 +17,16 @@ function tradeJournal() {
                 closed_trades: 0,
                 total_trades: 0
             },
+            filteredSummary: {
+                total_pnl: 0,
+                realized_pnl: 0,
+                unrealized_pnl: 0,
+                today_pnl: 0,
+                win_rate: 0,
+                open_chains: 0,
+                closed_chains: 0,
+                total_chains: 0
+            },
             strategy_breakdown: [],
             recent_trades: []
         },
@@ -135,6 +145,9 @@ function tradeJournal() {
             
             // Load trades and chains with restored filters
             await this.loadChains();
+            
+            // Initialize filtered dashboard with empty state in case chains are empty
+            this.calculateFilteredDashboard();
             
             // Load last sync timestamp
             await this.loadLastSyncTimestamp();
@@ -307,19 +320,75 @@ function tradeJournal() {
         
         // Apply status filtering to chains
         applyStatusFilter() {
+            let chains = this.chains;
+            
+            // Apply status filtering
             if (!this.showOpen && !this.showClosed) {
                 // If both are unchecked, show nothing
-                this.filteredChains = [];
+                chains = [];
             } else if (this.showOpen && this.showClosed) {
                 // If both are checked, show all
-                this.filteredChains = this.chains;
+                chains = this.chains;
             } else if (this.showOpen) {
                 // Show only open chains
-                this.filteredChains = this.chains.filter(chain => chain.status === 'OPEN');
+                chains = this.chains.filter(chain => chain.status === 'OPEN');
             } else if (this.showClosed) {
                 // Show only closed chains
-                this.filteredChains = this.chains.filter(chain => chain.status === 'CLOSED');
+                chains = this.chains.filter(chain => chain.status === 'CLOSED');
             }
+            
+            // Apply strategy filtering if set
+            if (this.filterStrategy) {
+                chains = chains.filter(chain => chain.strategy_type === this.filterStrategy);
+            }
+            
+            this.filteredChains = chains;
+            
+            // Calculate filtered dashboard statistics
+            this.calculateFilteredDashboard();
+        },
+        
+        // Calculate dashboard statistics from filtered chains
+        calculateFilteredDashboard() {
+            const chains = this.filteredChains || [];
+            
+            // Calculate basic counts
+            const openChains = chains.filter(chain => chain.status === 'OPEN');
+            const closedChains = chains.filter(chain => chain.status === 'CLOSED');
+            
+            // Calculate P&L totals
+            const totalPnl = chains.reduce((sum, chain) => sum + (chain.total_pnl || 0), 0);
+            const realizedPnl = chains.reduce((sum, chain) => sum + (chain.realized_pnl || 0), 0);
+            const unrealizedPnl = chains.reduce((sum, chain) => sum + (chain.unrealized_pnl || 0), 0);
+            
+            // Calculate today's P&L (chains with orders today)
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const todaysPnl = chains
+                .filter(chain => chain.opening_date === today || chain.closing_date === today)
+                .reduce((sum, chain) => sum + (chain.total_pnl || 0), 0);
+            
+            // Calculate win rate from closed chains
+            const profitableClosedChains = closedChains.filter(chain => chain.total_pnl > 0);
+            const winRate = closedChains.length > 0 ? (profitableClosedChains.length / closedChains.length) * 100 : 0;
+            
+            // Update filtered summary
+            this.dashboard.filteredSummary = {
+                total_pnl: totalPnl,
+                realized_pnl: realizedPnl,
+                unrealized_pnl: unrealizedPnl,
+                today_pnl: todaysPnl,
+                win_rate: winRate,
+                open_chains: openChains.length,
+                closed_chains: closedChains.length,
+                total_chains: chains.length
+            };
+        },
+        
+        // Check if any filters are active
+        hasActiveFilters() {
+            return this.filterUnderlying !== '' || 
+                   this.filterStrategy !== '' || 
+                   !(this.showOpen && this.showClosed);
         },
         
         // Load all available underlyings for the filter

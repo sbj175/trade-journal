@@ -507,51 +507,97 @@ async def get_positions(account_number: Optional[str] = None):
 
 @app.get("/api/dashboard")
 async def get_dashboard_data(account_number: Optional[str] = None):
-    """Get dashboard summary data"""
+    """Get dashboard summary data using the new order-based system"""
     try:
-        # Get legacy trade statistics for backward compatibility
-        total_trades = db.get_trade_count(account_number=account_number)
-        open_trades = db.get_trade_count(account_number=account_number, status="Open")
-        closed_trades = db.get_trade_count(account_number=account_number, status="Closed")
+        # Use the same logic as the chains endpoint
+        chains = order_manager.get_order_chains(account_number=account_number)
         
-        # Get P&L data from legacy trades
-        total_pnl = db.get_total_pnl(account_number=account_number)
-        today_pnl = db.get_pnl_by_date(date.today(), account_number=account_number)
-        week_pnl = db.get_pnl_by_date_range(
-            date.today() - timedelta(days=7),
-            date.today(),
-            account_number=account_number
-        )
+        # Process chains with the same logic as the chains endpoint
+        processed_chains = []
+        for chain in chains:
+            # Get orders for this chain
+            orders = []
+            try:
+                # Get orders from the chain
+                chain_orders = chain.get('orders', [])
+                
+                # Filter out stock-only chains (same logic as chains endpoint)
+                has_options = False
+                for order in chain_orders:
+                    positions = order.get('positions', [])
+                    if any(pos['instrument_type'] == 'InstrumentType.EQUITY_OPTION' for pos in positions):
+                        has_options = True
+                        break
+                
+                if has_options:
+                    processed_chains.append(chain)
+                    
+            except Exception as e:
+                logger.warning(f"Error processing chain {chain.get('chain_id', 'unknown')}: {e}")
+                continue
         
-        # Get win rate from legacy trades
-        win_rate = db.get_win_rate(account_number=account_number)
+        # Calculate statistics from chains data
+        open_chains = [c for c in processed_chains if c['chain_status'] == 'OPEN']
+        closed_chains = [c for c in processed_chains if c['chain_status'] == 'CLOSED']
         
-        # Get strategy breakdown from legacy trades
-        strategy_stats = db.get_strategy_statistics()
+        total_pnl = sum(c['total_pnl'] for c in processed_chains)
+        realized_pnl = sum(c['realized_pnl'] for c in processed_chains)
         
-        # Get new Order/Position statistics
+        # Calculate win rate from closed chains
+        profitable_closed = [c for c in closed_chains if c['total_pnl'] > 0]
+        win_rate = len(profitable_closed) / len(closed_chains) * 100 if closed_chains else 0
+        
+        # Get order statistics
         try:
             order_stats = order_manager.get_order_statistics(account_number=account_number)
         except Exception as e:
             logger.warning(f"Could not get order statistics: {e}")
             order_stats = {}
         
-        # Get recent trades
-        recent_trades = db.get_trades(limit=5)
+        # Get strategy breakdown from chains
+        strategy_breakdown = {}
+        for chain in processed_chains:
+            strategy = chain.get('strategy_type', 'Unknown')
+            if strategy not in strategy_breakdown:
+                strategy_breakdown[strategy] = {
+                    'count': 0,
+                    'total_pnl': 0,
+                    'closed_count': 0,
+                    'wins': 0
+                }
+            
+            strategy_breakdown[strategy]['count'] += 1
+            strategy_breakdown[strategy]['total_pnl'] += chain['total_pnl']
+            
+            if chain['chain_status'] == 'CLOSED':
+                strategy_breakdown[strategy]['closed_count'] += 1
+                if chain['total_pnl'] > 0:
+                    strategy_breakdown[strategy]['wins'] += 1
+        
+        # Format strategy breakdown for frontend
+        strategy_stats = []
+        for strategy, stats in strategy_breakdown.items():
+            strategy_stats.append({
+                'strategy_type': strategy,
+                'count': stats['count'],
+                'total_pnl': stats['total_pnl'],
+                'avg_pnl': stats['total_pnl'] / stats['count'] if stats['count'] > 0 else 0,
+                'wins': stats['wins'],
+                'closed_count': stats['closed_count'],
+                'win_rate': stats['wins'] / stats['closed_count'] * 100 if stats['closed_count'] > 0 else 0
+            })
         
         return {
             "summary": {
-                "total_trades": total_trades,
-                "open_trades": open_trades,
-                "closed_trades": closed_trades,
+                "total_trades": len(processed_chains),
+                "open_trades": len(open_chains),
+                "closed_trades": len(closed_chains),
                 "total_pnl": total_pnl,
-                "today_pnl": today_pnl,
-                "week_pnl": week_pnl,
                 "win_rate": win_rate
             },
             "order_summary": order_stats,
             "strategy_breakdown": strategy_stats,
-            "recent_trades": recent_trades
+            "recent_trades": []  # Could implement this later if needed
         }
     except Exception as e:
         logger.error(f"Error fetching dashboard data: {str(e)}")
