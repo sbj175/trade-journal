@@ -149,12 +149,135 @@ class DatabaseManager:
                 )
             """)
             
+            # Order-based system tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    order_id TEXT PRIMARY KEY,
+                    account_number TEXT,
+                    underlying TEXT,
+                    order_type TEXT,
+                    strategy_type TEXT,
+                    order_date DATE,
+                    status TEXT,
+                    total_quantity INTEGER,
+                    total_pnl REAL,
+                    has_assignment BOOLEAN DEFAULT 0,
+                    has_expiration BOOLEAN DEFAULT 0,
+                    has_exercise BOOLEAN DEFAULT 0,
+                    linked_order_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS positions_new (
+                    position_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT,
+                    account_number TEXT,
+                    symbol TEXT,
+                    underlying TEXT,
+                    instrument_type TEXT,
+                    option_type TEXT,
+                    strike REAL,
+                    expiration DATE,
+                    quantity INTEGER,
+                    opening_price REAL,
+                    closing_price REAL,
+                    opening_transaction_id TEXT,
+                    closing_transaction_id TEXT,
+                    opening_action TEXT,
+                    closing_action TEXT,
+                    status TEXT,
+                    pnl REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (order_id) REFERENCES orders (order_id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS order_chains (
+                    chain_id TEXT PRIMARY KEY,
+                    underlying TEXT,
+                    account_number TEXT,
+                    opening_order_id TEXT,
+                    strategy_type TEXT,
+                    opening_date DATE,
+                    closing_date DATE,
+                    chain_status TEXT,
+                    order_count INTEGER,
+                    total_pnl REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS order_chain_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chain_id TEXT,
+                    order_id TEXT,
+                    sequence_number INTEGER,
+                    FOREIGN KEY (chain_id) REFERENCES order_chains (chain_id),
+                    FOREIGN KEY (order_id) REFERENCES orders (order_id),
+                    UNIQUE(chain_id, order_id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS raw_transactions (
+                    id TEXT PRIMARY KEY,
+                    account_number TEXT NOT NULL,
+                    order_id TEXT,
+                    transaction_type TEXT,
+                    transaction_sub_type TEXT,
+                    description TEXT,
+                    executed_at TEXT,
+                    transaction_date TEXT,
+                    action TEXT,
+                    symbol TEXT,
+                    instrument_type TEXT,
+                    underlying_symbol TEXT,
+                    quantity REAL,
+                    price REAL,
+                    value REAL,
+                    regulatory_fees REAL,
+                    clearing_fees REAL,
+                    commission REAL,
+                    net_value REAL,
+                    is_estimated_fee BOOLEAN,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Sync metadata table for tracking sync state
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sync_metadata (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades(underlying)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_number)")
+            
+            # Order system indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_account ON orders(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_underlying ON orders(underlying)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_new_order ON positions_new(order_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_new_account ON positions_new(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_underlying ON order_chains(underlying)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_chain ON order_chain_members(chain_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_order ON raw_transactions(order_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_account ON raw_transactions(account_number)")
             
             # Add transaction action and timestamp columns if they don't exist
             self._add_transaction_columns()
@@ -199,6 +322,38 @@ class DatabaseManager:
                 if 'includes_roll' not in trade_columns:
                     cursor.execute("ALTER TABLE trades ADD COLUMN includes_roll BOOLEAN DEFAULT 0")
                     logger.info("Added includes_roll column to trades")
+                
+                # Check order_chains table for realized_pnl column
+                cursor.execute("PRAGMA table_info(order_chains)")
+                chain_columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'realized_pnl' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN realized_pnl REAL DEFAULT 0.0")
+                    logger.info("Added realized_pnl column to order_chains")
+                
+                if 'unrealized_pnl' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN unrealized_pnl REAL DEFAULT 0.0")
+                    logger.info("Added unrealized_pnl column to order_chains")
+                
+                # Check positions_new table for new enhanced fields
+                cursor.execute("PRAGMA table_info(positions_new)")
+                position_columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'opening_order_id' not in position_columns:
+                    cursor.execute("ALTER TABLE positions_new ADD COLUMN opening_order_id TEXT")
+                    logger.info("Added opening_order_id column to positions_new")
+                
+                if 'closing_order_id' not in position_columns:
+                    cursor.execute("ALTER TABLE positions_new ADD COLUMN closing_order_id TEXT")
+                    logger.info("Added closing_order_id column to positions_new")
+                
+                if 'opening_amount' not in position_columns:
+                    cursor.execute("ALTER TABLE positions_new ADD COLUMN opening_amount REAL")
+                    logger.info("Added opening_amount column to positions_new")
+                
+                if 'closing_amount' not in position_columns:
+                    cursor.execute("ALTER TABLE positions_new ADD COLUMN closing_amount REAL")
+                    logger.info("Added closing_amount column to positions_new")
                     
             except Exception as e:
                 logger.error(f"Error adding transaction columns: {e}")
@@ -462,7 +617,7 @@ class DatabaseManager:
                     if cursor.fetchone():
                         continue  # Skip duplicates
                     
-                    # Insert raw transaction
+                    # Insert raw transaction (match schema from migration)
                     cursor.execute("""
                         INSERT INTO raw_transactions (
                             id, account_number, order_id, transaction_type,
@@ -853,4 +1008,63 @@ class DatabaseManager:
                 return True
         except Exception as e:
             logger.error(f"Error saving account balance: {str(e)}")
+            return False
+    
+    def get_sync_metadata(self, key: str) -> Optional[str]:
+        """Get a sync metadata value by key"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT value FROM sync_metadata WHERE key = ?
+            """, (key,))
+            result = cursor.fetchone()
+            return result['value'] if result else None
+    
+    def set_sync_metadata(self, key: str, value: str) -> bool:
+        """Set a sync metadata value"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (key, value))
+                return True
+        except Exception as e:
+            logger.error(f"Error setting sync metadata: {str(e)}")
+            return False
+    
+    def get_last_sync_timestamp(self) -> Optional[datetime]:
+        """Get the last sync timestamp"""
+        timestamp_str = self.get_sync_metadata('last_sync_timestamp')
+        if timestamp_str:
+            try:
+                return datetime.fromisoformat(timestamp_str)
+            except ValueError:
+                logger.warning(f"Invalid timestamp format: {timestamp_str}")
+        return None
+    
+    def update_last_sync_timestamp(self, timestamp: datetime = None) -> bool:
+        """Update the last sync timestamp"""
+        if timestamp is None:
+            timestamp = datetime.now()
+        return self.set_sync_metadata('last_sync_timestamp', timestamp.isoformat())
+    
+    def is_initial_sync_completed(self) -> bool:
+        """Check if initial sync has been completed"""
+        return self.get_sync_metadata('initial_sync_completed') == 'true'
+    
+    def mark_initial_sync_completed(self) -> bool:
+        """Mark initial sync as completed"""
+        return self.set_sync_metadata('initial_sync_completed', 'true')
+    
+    def reset_sync_metadata(self) -> bool:
+        """Reset sync metadata (for initial sync)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM sync_metadata")
+                return True
+        except Exception as e:
+            logger.error(f"Error resetting sync metadata: {str(e)}")
             return False

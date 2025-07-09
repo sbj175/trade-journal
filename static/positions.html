@@ -195,6 +195,12 @@
                             <span x-text="isLoading ? 'Syncing...' : 'Sync Positions'"></span>
                         </button>
                         
+                        <!-- Last Synced Timestamp -->
+                        <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
+                            <i class="fas fa-clock mr-1"></i>
+                            Last synced: <span x-text="lastSyncTimestamp"></span>
+                        </div>
+                        
                         <!-- Account Selector -->
                         <div class="flex items-center space-x-2">
                             <label for="account-select" class="text-sm font-medium text-slate-300">Account:</label>
@@ -531,6 +537,7 @@
                 error: null,
                 liveQuotesActive: false,
                 lastQuoteUpdate: null,
+                lastSyncTimestamp: '',
                 
                 // Computed properties
                 get totalUnrealizedPnL() {
@@ -598,6 +605,9 @@
                     this.loadPositionComments();
                     
                     await this.fetchPositions();
+                    
+                    // Load last sync timestamp
+                    await this.loadLastSyncTimestamp();
                     
                     // Clean up WebSocket on page unload
                     window.addEventListener('beforeunload', () => {
@@ -814,6 +824,24 @@
                     this.error = null;
                     
                     try {
+                        // First, sync data from Tastytrade (includes both positions and order chains)
+                        console.log('Starting unified sync...');
+                        const syncResponse = await fetch('/api/sync', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({})
+                        });
+                        
+                        if (!syncResponse.ok) {
+                            throw new Error(`Sync failed: ${syncResponse.statusText}`);
+                        }
+                        
+                        const syncResult = await syncResponse.json();
+                        console.log('Sync completed:', syncResult);
+                        
+                        // Now fetch updated positions
                         const response = await fetch('/api/positions');
                         if (!response.ok) {
                             throw new Error(`Failed to fetch positions: ${response.statusText}`);
@@ -842,6 +870,9 @@
                         
                         // Fetch underlying quotes after positions are loaded
                         await this.fetchUnderlyingQuotes();
+                        
+                        // Update last sync timestamp after successful sync
+                        await this.loadLastSyncTimestamp();
                         
                     } catch (err) {
                         console.error('Error fetching positions:', err);
@@ -1571,6 +1602,29 @@
                         return 'strategy-badge-stock';
                     } else {
                         return 'strategy-badge-stock'; // Default
+                    }
+                },
+                
+                // Load last sync timestamp
+                async loadLastSyncTimestamp() {
+                    try {
+                        const response = await fetch('/api/sync/status');
+                        const data = await response.json();
+                        if (data.last_sync) {
+                            // Format timestamp for display
+                            const date = new Date(data.last_sync);
+                            this.lastSyncTimestamp = date.toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                        } else {
+                            this.lastSyncTimestamp = '';
+                        }
+                    } catch (error) {
+                        console.error('Error loading last sync timestamp:', error);
+                        this.lastSyncTimestamp = '';
                     }
                 }
             };

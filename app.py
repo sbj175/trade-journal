@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Trade Journal Web Application
 A beautiful, local web app for tracking and analyzing trades
@@ -23,272 +24,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.database.db_manager import DatabaseManager
 from src.api.tastytrade_client import TastytradeClient
-from src.models.trade_manager import TradeManager
-from src.models.trade_strategy import StrategyType
 from src.models.order_models import OrderManager
-
-def group_trades_into_chains(trades):
-    """
-    Group trades into chains based on underlying and roll relationships
-    
-    A chain represents a complete position lifecycle:
-    - Opening trade (determines strategy)
-    - Zero or more rolls (continuations)
-    - Closing trade (optional if still open)
-    
-    Returns list of chain objects with trade lists and aggregate data
-    """
-    if not trades:
-        return []
-    
-    # Group by underlying first
-    by_underlying = {}
-    for trade in trades:
-        underlying = trade.get('underlying', 'UNKNOWN')
-        if underlying not in by_underlying:
-            by_underlying[underlying] = []
-        by_underlying[underlying].append(trade)
-    
-    all_chains = []
-    
-    for underlying, underlying_trades in by_underlying.items():
-        # Sort by entry date to process chronologically
-        underlying_trades.sort(key=lambda t: t.get('entry_date', ''))
-        
-        # Detect chains within this underlying
-        chains = detect_chains_for_underlying(underlying_trades)
-        all_chains.extend(chains)
-    
-    return all_chains
-
-def detect_chains_for_underlying(trades):
-    """
-    Detect chains within trades for a single underlying
-    
-    Chain detection logic:
-    1. Look for roll indicators (includes_roll = True)
-    2. Group consecutive trades that appear to be related
-    3. Create chain with opening strategy + subsequent rolls
-    4. Non-roll trades (includes_roll = False) get their own separate chains
-    """
-    chains = []
-    used_trades = set()
-    
-    for i, trade in enumerate(trades):
-        if trade['trade_id'] in used_trades:
-            continue
-            
-        # Start a new chain with this trade
-        chain_trades = [trade]
-        used_trades.add(trade['trade_id'])
-        
-        # Only look for roll continuations if this trade could have rolls
-        # Non-roll trades (includes_roll = False) should be standalone
-        if trade.get('includes_roll'):
-            # Look for subsequent trades that might be rolls of this position
-            for j in range(i + 1, len(trades)):
-                candidate = trades[j]
-                if candidate['trade_id'] in used_trades:
-                    continue
-                    
-                # Check if this could be a roll continuation
-                if is_roll_continuation(chain_trades[-1], candidate):
-                    chain_trades.append(candidate)
-                    used_trades.add(candidate['trade_id'])
-        
-        # Create chain object
-        chain = create_chain_object(chain_trades)
-        chains.append(chain)
-    
-    return chains
-
-def is_roll_continuation(prev_trade, candidate_trade):
-    """
-    Determine if candidate_trade is a roll continuation of prev_trade
-    
-    Criteria:
-    1. Same underlying (already filtered)
-    2. Candidate has includes_roll = True
-    3. Time proximity (within reasonable roll window)
-    4. Similar strategy type or complexity
-    """
-    # Must be a roll
-    if not candidate_trade.get('includes_roll'):
-        return False
-    
-    # Check time proximity (within 30 days is reasonable for rolls)
-    try:
-        from datetime import datetime, timedelta
-        prev_date = datetime.fromisoformat(prev_trade.get('entry_date', ''))
-        candidate_date = datetime.fromisoformat(candidate_trade.get('entry_date', ''))
-        
-        # Candidate should be after previous trade but within roll window
-        if candidate_date <= prev_date:
-            return False
-        
-        time_diff = candidate_date - prev_date
-        if time_diff > timedelta(days=30):
-            return False
-            
-    except (ValueError, TypeError):
-        # If date parsing fails, skip time check
-        pass
-    
-    # Similar strategy complexity (same basic type)
-    prev_strategy = prev_trade.get('strategy_type', '')
-    candidate_strategy = candidate_trade.get('strategy_type', '')
-    
-    # Allow some flexibility in strategy matching for rolls
-    strategy_families = {
-        'Covered Call': ['Covered Call'],
-        'Cash Secured Put': ['Cash Secured Put'],
-        'Iron Condor': ['Iron Condor', 'Vertical Spread'],
-        'Bull Put Spread': ['Bull Put Spread', 'Vertical Spread'],
-        'Bear Call Spread': ['Bear Call Spread', 'Vertical Spread'],
-    }
-    
-    for family, members in strategy_families.items():
-        if prev_strategy in members and candidate_strategy in members:
-            return True
-    
-    # Exact match fallback
-    return prev_strategy == candidate_strategy
-
-def create_chain_object(chain_trades):
-    """
-    Create a chain object from a list of trades
-    
-    Returns:
-    {
-        'chain_id': 'MSTR_CC_20250402',
-        'underlying': 'MSTR', 
-        'strategy_type': 'Covered Call',  # From opening trade
-        'opening_date': '2025-04-02',
-        'closing_date': '2025-04-24' or None,
-        'status': 'Open'/'Closed',
-        'trade_count': 4,
-        'total_pnl': 614.50,
-        'trades': [...] # Full trade objects
-    }
-    """
-    if not chain_trades:
-        return None
-    
-    # Sort chain_trades by entry_date in descending order (most recent first)
-    # But keep track of opening (earliest) and closing (latest chronologically) for metadata
-    chronological_trades = sorted(chain_trades, key=lambda t: t.get('entry_date', ''))
-    opening_trade = chronological_trades[0]  # Earliest chronologically
-    closing_trade = chronological_trades[-1]  # Latest chronologically
-    
-    # Sort trades for display (most recent first)
-    display_trades = sorted(chain_trades, key=lambda t: t.get('entry_date', ''), reverse=True)
-    
-    # Calculate total P&L
-    total_pnl = sum(trade.get('current_pnl', 0) for trade in chain_trades)
-    
-    # Determine if chain is closed (last trade is closed and not a roll)
-    is_closed = (closing_trade.get('status') == 'Closed' and 
-                not closing_trade.get('includes_roll', False))
-    
-    # Generate chain ID
-    strategy_abbrev = get_strategy_abbreviation(opening_trade.get('strategy_type', ''))
-    chain_id = f"{opening_trade.get('underlying', 'UNK')}_{strategy_abbrev}_{opening_trade.get('entry_date', '').replace('-', '')}"
-    
-    return {
-        'chain_id': chain_id,
-        'underlying': opening_trade.get('underlying'),
-        'strategy_type': opening_trade.get('strategy_type'),  # Strategy from opening trade only
-        'opening_date': opening_trade.get('entry_date'),
-        'closing_date': closing_trade.get('exit_date') if is_closed else None,
-        'status': 'Closed' if is_closed else 'Open',
-        'trade_count': len(chain_trades),
-        'total_pnl': total_pnl,
-        'trades': display_trades  # Sorted most recent first for display
-    }
-
-def get_strategy_abbreviation(strategy_type):
-    """Get short abbreviation for strategy type"""
-    abbrevs = {
-        'Covered Call': 'CC',
-        'Cash Secured Put': 'CSP', 
-        'Iron Condor': 'IC',
-        'Bull Put Spread': 'BPS',
-        'Bear Call Spread': 'BCS',
-        'Bull Call Spread': 'BCS',
-        'Bear Put Spread': 'BPS',
-        'Vertical Spread': 'VS',
-        'Long Call': 'LC',
-        'Long Put': 'LP',
-        'Naked Call': 'NC',
-        'Naked Put': 'NP'
-    }
-    return abbrevs.get(strategy_type, 'UNKN')
-
-def fix_covered_call_detection(trades, db):
-    """
-    Post-process trades to detect covered calls based on historical positions at trade time.
-    
-    This fixes cases where short calls were not grouped with their covering stock
-    due to timing or grouping algorithm limitations.
-    """
-    from src.models.trade_strategy import StrategyRecognizer
-    
-    fixed_trades = []
-    
-    for trade in trades:
-        # Only check naked call trades with single option legs
-        if (trade.strategy_type == StrategyType.NAKED_CALL and 
-            len(trade.option_legs) == 1 and 
-            len(trade.stock_legs) == 0):
-            
-            option_leg = trade.option_legs[0]
-            
-            # Check if this is a short call
-            if option_leg.is_short and option_leg.option_type == 'Call':
-                try:
-                    # Get all transactions for this account to check historical positions
-                    with db.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute('''
-                            SELECT * FROM raw_transactions 
-                            WHERE account_number = ?
-                            ORDER BY executed_at
-                        ''', (trade.account_number,))
-                        
-                        columns = [description[0] for description in cursor.description]
-                        rows = cursor.fetchall()
-                        account_transactions = [dict(zip(columns, row)) for row in rows]
-                    
-                    # Check if we have transaction timestamps for the option leg
-                    if option_leg.transaction_timestamps:
-                        # Get the timestamp of the first option transaction (when the call was sold)
-                        option_time = option_leg.transaction_timestamps[0]
-                        
-                        # Calculate stock position at that time for the same account
-                        existing_shares = StrategyRecognizer.get_stock_positions_at_time(
-                            account_transactions, option_time, trade.underlying, trade.account_number
-                        )
-                        
-                        contracts = abs(option_leg.quantity)
-                        shares_needed = contracts * 100
-                        
-                        # If we had enough shares to cover the calls at the time of sale
-                        if existing_shares >= shares_needed:
-                            logger.info(f"Converting {trade.trade_id} from Naked Call to Covered Call "
-                                      f"(had {existing_shares} shares at time of sale, needed {shares_needed})")
-                            trade.strategy_type = StrategyType.COVERED_CALL
-                        else:
-                            logger.info(f"Keeping {trade.trade_id} as Naked Call "
-                                      f"(had {existing_shares} shares at time of sale, needed {shares_needed})")
-                    else:
-                        logger.warning(f"No transaction timestamps found for option leg in trade {trade.trade_id}")
-                        
-                except Exception as e:
-                    logger.error(f"Error checking historical positions for trade {trade.trade_id}: {e}")
-        
-        fixed_trades.append(trade)
-    
-    return fixed_trades
+from src.models.trade_manager import TradeManager
 
 # Configure logging
 logger.add(
@@ -332,13 +69,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # Pydantic models for API
-class TradeUpdate(BaseModel):
-    trade_id: str
-    status: Optional[str] = None
-    current_notes: Optional[str] = None
-    tags: Optional[List[str]] = None
-
-
 class SyncRequest(BaseModel):
     days_back: int = 30
 
@@ -357,39 +87,118 @@ async def startup_event():
     """Initialize database on startup"""
     logger.info("Starting Trade Journal Web App")
     db.initialize_database()
+    
+    # Check if we need to automatically sync on startup
+    try:
+        last_sync = db.get_last_sync_timestamp()
+        if last_sync:
+            # Calculate time since last sync
+            time_since_sync = datetime.now() - last_sync
+            hours_since_sync = time_since_sync.total_seconds() / 3600
+            
+            # Auto-sync if it's been more than 6 hours since last sync and it's market hours
+            if hours_since_sync > 6:
+                logger.info(f"Auto-sync triggered: {hours_since_sync:.1f} hours since last sync")
+                # Note: Auto-sync runs in background, don't await to avoid blocking startup
+                asyncio.create_task(background_auto_sync())
+            else:
+                logger.info(f"No auto-sync needed: {hours_since_sync:.1f} hours since last sync")
+        else:
+            logger.info("No previous sync found - auto-sync will be triggered on first manual sync")
+    except Exception as e:
+        logger.warning(f"Error checking auto-sync: {e}")
+
+
+async def background_auto_sync():
+    """Background task for automatic sync"""
+    try:
+        logger.info("Starting background auto-sync...")
+        # Use the sync_unified function without request context
+        await sync_unified_internal()
+        logger.info("Background auto-sync completed successfully")
+    except Exception as e:
+        logger.error(f"Background auto-sync failed: {e}")
+
+
+async def sync_unified_internal():
+    """Internal sync function that can be called without HTTP context"""
+    from datetime import datetime, timedelta
+    
+    # Check last sync timestamp to determine date range
+    last_sync = db.get_last_sync_timestamp()
+    
+    if last_sync:
+        # Calculate days back from last sync + 1 day buffer
+        days_back = (datetime.now() - last_sync).days + 1
+        days_back = max(days_back, 1)  # Minimum 1 day
+        days_back = min(days_back, 90)  # Maximum 90 days for safety
+        logger.info(f"Auto-sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
+    else:
+        # No previous sync, fetch last 30 days for auto-sync (conservative)
+        days_back = 30
+        logger.info(f"Auto-sync: first sync detected, fetching {days_back} days")
+    
+    # Initialize clients
+    tastytrade = TastytradeClient()
+    trade_manager = TradeManager()
+    
+    # Authenticate
+    if not tastytrade.authenticate():
+        logger.error("Auto-sync: Failed to authenticate with Tastytrade")
+        return
+    
+    # Save all accounts to database
+    logger.info("Auto-sync: Saving account information...")
+    accounts = tastytrade.get_all_accounts()
+    for account in accounts:
+        db.save_account(
+            account['account_number'], 
+            account['account_name'], 
+            account['account_type']
+        )
+    logger.info(f"Auto-sync: Saved {len(accounts)} accounts")
+    
+    # Fetch and save current positions for all accounts
+    logger.info("Auto-sync: Fetching current positions from all accounts...")
+    all_positions = tastytrade.get_positions()
+    total_positions = 0
+    
+    for account_number, positions in all_positions.items():
+        if positions:
+            success = db.save_positions(positions, account_number)
+            if success:
+                logger.info(f"Auto-sync: Successfully saved {len(positions)} positions for account {account_number}")
+                total_positions += len(positions)
+            else:
+                logger.error(f"Auto-sync: Failed to save positions for account {account_number}")
+    
+    # Update last sync timestamp
+    db.update_last_sync_timestamp()
+    logger.info(f"Auto-sync completed: {total_positions} positions updated")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the main application"""
     # Use the fixed version to avoid infinite rendering issues
-    with open("static/index-fixed.html", "r") as f:
+    with open("static/index-fixed.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
-@app.get("/api/trades")
-async def get_trades(
-    account_number: Optional[str] = None,
-    status: Optional[str] = None,
-    strategy: Optional[str] = None,
-    underlying: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0
-):
-    """Get trades with optional filters"""
+@app.get("/test_websocket.html", response_class=HTMLResponse)
+async def test_websocket():
+    """Serve the WebSocket test page"""
     try:
-        trades = db.get_trades(
-            account_number=account_number,
-            status=status,
-            strategy=strategy,
-            underlying=underlying,
-            limit=limit,
-            offset=offset
-        )
-        return {"trades": trades, "total": len(trades)}
-    except Exception as e:
-        logger.error(f"Error fetching trades: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        with open("test_websocket.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>test_websocket.html not found</h1>", status_code=404)
+
+
+@app.get("/api/health")
+async def health_check():
+    """Simple health check endpoint"""
+    return {"status": "ok", "service": "Trade Journal"}
 
 
 @app.get("/api/chains")
@@ -447,11 +256,96 @@ async def get_order_chains(
                 'status': chain['chain_status'],
                 'order_count': len(orders),
                 'total_pnl': chain['total_pnl'],
+                'realized_pnl': chain['realized_pnl'],
+                'unrealized_pnl': chain['unrealized_pnl'],
                 'orders': []
             }
             
             # Process each order in the chain
             for order in orders:
+                # Create Order object to use consolidation method
+                from src.models.order_models import Order, Position, OrderType, OrderStatus, PositionStatus
+                
+                # Convert order dictionary to Order object
+                order_type = OrderType(order['order_type'])
+                order_status = OrderStatus(order['status'])
+                
+                order_obj = Order(
+                    order_id=order['order_id'],
+                    account_number=order['account_number'],
+                    underlying=order['underlying'],
+                    order_type=order_type,
+                    strategy_type=order.get('strategy_type'),
+                    order_date=order['order_date'],
+                    status=order_status,
+                    total_quantity=order['total_quantity'],
+                    total_pnl=order['total_pnl'],
+                    has_assignment=order.get('has_assignment', False),
+                    has_expiration=order.get('has_expiration', False),
+                    has_exercise=order.get('has_exercise', False),
+                    linked_order_id=order.get('linked_order_id'),
+                    positions=[]
+                )
+                
+                # Convert positions to Position objects
+                for pos_dict in order.get('positions', []):
+                    position_status = PositionStatus(pos_dict['status'])
+                    position = Position(
+                        position_id=pos_dict['position_id'],
+                        order_id=pos_dict['order_id'],
+                        account_number=pos_dict['account_number'],
+                        symbol=pos_dict['symbol'],
+                        underlying=pos_dict['underlying'],
+                        instrument_type=pos_dict['instrument_type'],
+                        option_type=pos_dict.get('option_type'),
+                        strike=pos_dict.get('strike'),
+                        expiration=pos_dict.get('expiration'),
+                        quantity=pos_dict['quantity'],
+                        opening_price=pos_dict['opening_price'],
+                        closing_price=pos_dict.get('closing_price'),
+                        opening_transaction_id=pos_dict['opening_transaction_id'],
+                        closing_transaction_id=pos_dict.get('closing_transaction_id'),
+                        opening_action=pos_dict['opening_action'],
+                        closing_action=pos_dict.get('closing_action'),
+                        status=position_status,
+                        pnl=pos_dict['pnl'],
+                        fill_count=pos_dict.get('fill_count', 1),
+                        created_at=pos_dict.get('created_at'),
+                        updated_at=pos_dict.get('updated_at')
+                    )
+                    order_obj.positions.append(position)
+                
+                # Apply consolidation
+                consolidated_positions = order_obj.consolidate_positions()
+                
+                # Convert back to dictionaries for JSON response
+                consolidated_pos_dicts = []
+                for pos in consolidated_positions:
+                    pos_dict = {
+                        'position_id': pos.position_id,
+                        'order_id': pos.order_id,
+                        'account_number': pos.account_number,
+                        'symbol': pos.symbol,
+                        'underlying': pos.underlying,
+                        'instrument_type': pos.instrument_type,
+                        'option_type': pos.option_type,
+                        'strike': pos.strike,
+                        'expiration': pos.expiration,
+                        'quantity': pos.quantity,
+                        'opening_price': pos.opening_price,
+                        'closing_price': pos.closing_price,
+                        'opening_transaction_id': pos.opening_transaction_id,
+                        'closing_transaction_id': pos.closing_transaction_id,
+                        'opening_action': pos.opening_action,
+                        'closing_action': pos.closing_action,
+                        'status': pos.status.value,
+                        'pnl': pos.pnl,
+                        'fill_count': pos.fill_count,
+                        'created_at': pos.created_at,
+                        'updated_at': pos.updated_at
+                    }
+                    consolidated_pos_dicts.append(pos_dict)
+                
                 order_info = {
                     'order_id': order['order_id'],
                     'order_type': order['order_type'],
@@ -459,7 +353,7 @@ async def get_order_chains(
                     'strategy_type': order.get('strategy_type'),
                     'status': order['status'],
                     'total_pnl': order['total_pnl'],
-                    'positions': order.get('positions', []),
+                    'positions': consolidated_pos_dicts,
                     'emblems': []
                 }
                 
@@ -587,35 +481,6 @@ async def get_market_quotes(symbols: str, refresh: bool = False):
         raise HTTPException(status_code=500, detail=f"Failed to fetch quotes: {str(e)}")
 
 
-@app.get("/api/trades/{trade_id}")
-async def get_trade(trade_id: str):
-    """Get a specific trade with all legs (legacy support)"""
-    try:
-        trade = db.get_trade_details(trade_id)
-        if not trade:
-            raise HTTPException(status_code=404, detail="Trade not found")
-        return trade
-    except Exception as e:
-        logger.error(f"Error fetching trade {trade_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.put("/api/trades/{trade_id}")
-async def update_trade(trade_id: str, trade_update: TradeUpdate):
-    """Update trade status, notes, or tags"""
-    try:
-        success = db.update_trade(
-            trade_id=trade_id,
-            status=trade_update.status,
-            current_notes=trade_update.current_notes,
-            tags=trade_update.tags
-        )
-        if not success:
-            raise HTTPException(status_code=404, detail="Trade not found")
-        return {"message": "Trade updated successfully"}
-    except Exception as e:
-        logger.error(f"Error updating trade {trade_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/accounts")
@@ -694,10 +559,24 @@ async def get_dashboard_data(account_number: Optional[str] = None):
 
 
 @app.post("/api/sync")
-async def sync_trades(sync_request: SyncRequest):
-    """Sync trades from Tastytrade"""
+async def sync_unified():
+    """Unified sync endpoint with smart date range calculation"""
     try:
-        logger.info(f"Starting sync for last {sync_request.days_back} days")
+        from datetime import datetime, timedelta
+        
+        # Check last sync timestamp to determine date range
+        last_sync = db.get_last_sync_timestamp()
+        
+        if last_sync:
+            # Calculate days back from last sync + 1 day buffer
+            days_back = (datetime.now() - last_sync).days + 1
+            days_back = max(days_back, 1)  # Minimum 1 day
+            days_back = min(days_back, 90)  # Maximum 90 days for safety
+            logger.info(f"Incremental sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
+        else:
+            # No previous sync, fetch last 90 days
+            days_back = 90
+            logger.info(f"First sync detected, fetching {days_back} days")
         
         # Initialize clients
         tastytrade = TastytradeClient()
@@ -721,7 +600,7 @@ async def sync_trades(sync_request: SyncRequest):
         
         # Fetch transactions from all accounts
         logger.info("Fetching transactions from all accounts...")
-        transactions = tastytrade.get_transactions(days_back=sync_request.days_back)
+        transactions = tastytrade.get_transactions(days_back=days_back)
         logger.info(f"Fetched {len(transactions)} transactions")
         
         # Save raw transactions first (for order ID support)
@@ -863,6 +742,10 @@ async def sync_trades(sync_request: SyncRequest):
         
         logger.info(f"Sync completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {total_positions} positions updated")
         
+        # Update last sync timestamp
+        db.update_last_sync_timestamp()
+        logger.info("Updated last sync timestamp")
+        
         return {
             "message": f"Sync completed: {saved_count} new, {updated_count} updated, {skipped_count} unchanged",
             "trades_processed": len(trades),
@@ -870,10 +753,77 @@ async def sync_trades(sync_request: SyncRequest):
             "trades_updated": updated_count,
             "trades_skipped": skipped_count,
             "trades_failed": failed_count,
-            "positions_updated": total_positions
+            "positions_updated": total_positions,
+            "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
         }
     except Exception as e:
         logger.error(f"Sync error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sync/status")
+async def get_sync_status():
+    """Get sync status including last sync timestamp"""
+    try:
+        last_sync = db.get_last_sync_timestamp()
+        return {
+            "last_sync": last_sync.isoformat() if last_sync else None,
+            "has_synced": db.is_initial_sync_completed()
+        }
+    except Exception as e:
+        logger.error(f"Error getting sync status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/migrate-realized-pnl")
+async def migrate_realized_pnl():
+    """One-time migration to populate realized_pnl for existing chains"""
+    try:
+        logger.info("Starting realized P&L migration...")
+        
+        # Get all chains for complete recalculation
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT chain_id FROM order_chains")
+            chain_ids = [row[0] for row in cursor.fetchall()]
+        
+        updated_count = 0
+        for chain_id in chain_ids:
+            try:
+                order_manager.update_chain_pnl(chain_id)
+                updated_count += 1
+            except Exception as e:
+                logger.error(f"Error updating chain {chain_id}: {e}")
+        
+        logger.info(f"Realized P&L migration completed: {updated_count} chains updated")
+        
+        return {
+            "message": f"Migration completed successfully",
+            "chains_updated": updated_count,
+            "total_chains": len(chain_ids)
+        }
+    except Exception as e:
+        logger.error(f"Error during realized P&L migration: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/debug/chains")
+async def debug_chains():
+    """Debug endpoint to check realized_pnl values"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT chain_id, underlying, chain_status, total_pnl, realized_pnl, unrealized_pnl 
+                FROM order_chains 
+                ORDER BY created_at DESC 
+                LIMIT 10
+            """)
+            chains = [dict(row) for row in cursor.fetchall()]
+        
+        return {"chains": chains}
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -883,37 +833,37 @@ async def initial_sync():
     try:
         logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
         
-        # Preserve user data before clearing database
-        logger.info("Preserving user comments and tags...")
-        user_data = {}
+        # Reset sync metadata
+        logger.info("Resetting sync metadata...")
+        db.reset_sync_metadata()
+        
+        # Note: User data preservation removed since we're moving away from trades model
+        logger.info("Skipping user data preservation (moving to order-based system)")
+        
+        # Clear and recreate database tables with latest schema
+        logger.info("Clearing existing database and recreating tables...")
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            # Save user comments and tags for existing trades
-            cursor.execute("SELECT trade_id, current_notes, tags FROM trades WHERE current_notes IS NOT NULL OR tags IS NOT NULL")
-            for row in cursor.fetchall():
-                trade_id, notes, tags = row
-                if notes or tags:
-                    user_data[trade_id] = {
-                        'current_notes': notes,
-                        'tags': tags
-                    }
-        
-        logger.info(f"Preserved user data for {len(user_data)} trades")
-        
-        # Clear the database
-        logger.info("Clearing existing database...")
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM option_legs")
-            cursor.execute("DELETE FROM stock_legs") 
-            cursor.execute("DELETE FROM trades")
-            cursor.execute("DELETE FROM positions")
+            
+            # Drop order-related tables to ensure clean schema
+            cursor.execute("DROP TABLE IF EXISTS order_chain_members")
+            cursor.execute("DROP TABLE IF EXISTS order_chains") 
+            cursor.execute("DROP TABLE IF EXISTS positions_new")
+            cursor.execute("DROP TABLE IF EXISTS orders")
+            
+            # Clear data tables but keep structure
+            cursor.execute("DELETE FROM positions")  # Keep for current positions
             cursor.execute("DELETE FROM account_balances")
+            cursor.execute("DELETE FROM raw_transactions")  # Clear raw transactions too
+            
             logger.info("Database cleared successfully")
+        
+        # Reinitialize database to create tables with latest schema
+        logger.info("Recreating database tables with latest schema...")
+        db.initialize_database()
         
         # Initialize clients
         tastytrade = TastytradeClient()
-        trade_manager = TradeManager()
         
         # Authenticate
         if not tastytrade.authenticate():
@@ -941,132 +891,21 @@ async def initial_sync():
         raw_saved = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
         
-        # Process into trades using new TransactionMatcher
-        logger.info("Processing transactions into trades with order-based grouping...")
-        from src.models.transaction_matcher import TransactionMatcher
-        from src.models.trade_strategy import StrategyRecognizer
+        # Process transactions into orders and chains using OrderManager
+        logger.info("Processing transactions into orders and chains...")
         
-        # Process each account separately to prevent cross-account grouping
-        all_trades = []
-        matcher = TransactionMatcher()
+        # Filter out non-trading transactions 
+        trading_transactions = [
+            tx for tx in transactions 
+            if tx.get('instrument_type') is not None and tx.get('symbol') is not None
+        ]
         
-        for account in accounts:
-            account_number = account['account_number']
-            account_transactions = [tx for tx in transactions if tx.get('account_number') == account_number]
-            
-            # Filter out non-trading transactions (Money Movement, etc.)
-            trading_transactions = [
-                tx for tx in account_transactions 
-                if tx.get('instrument_type') is not None and tx.get('symbol') is not None
-            ]
-            
-            if not trading_transactions:
-                logger.info(f"No trading transactions found for account {account_number}")
-                continue
-                
-            logger.info(f"Processing {len(trading_transactions)} trading transactions for account {account_number} (filtered from {len(account_transactions)} total)")
-            
-            # Calculate stock positions for this account only
-            stock_positions = StrategyRecognizer.get_stock_positions(trading_transactions)
-            existing_positions = {}
-            for symbol, quantity in stock_positions.items():
-                existing_positions[symbol] = {'stock': quantity, 'options': {}}
-            
-            # Use TransactionMatcher for this account only
-            try:
-                strategy_matches = matcher.match_transactions_to_strategies(trading_transactions, existing_positions, account_transactions)
-            except Exception as e:
-                logger.error(f"Error in TransactionMatcher for account {account_number}: {str(e)}", exc_info=True)
-                raise
-            
-            # Convert StrategyMatch objects to Trade objects
-            for match in strategy_matches:
-                # Create Trade object from StrategyMatch
-                trade = StrategyRecognizer._create_trade_from_strategy_match(match)
-                if trade:
-                    all_trades.append(trade)
+        logger.info(f"Processing {len(trading_transactions)} trading transactions (filtered from {len(transactions)} total)")
         
-        trades = all_trades
+        # Use OrderManager to process transactions
+        result = order_manager.process_transactions_to_orders_and_chains(trading_transactions)
         
-        logger.info(f"Processed {len(trades)} trades using order-based grouping")
-        
-        # Save all trades to database (avoid duplicates)
-        saved_count = 0
-        updated_count = 0
-        skipped_count = 0
-        failed_count = 0
-        
-        # Get existing trades to avoid duplicates
-        existing_trades = {}
-        for underlying in set(trade.underlying for trade in trades):
-            existing = db.get_trades(underlying=underlying, limit=1000)
-            for existing_trade in existing:
-                existing_trades[existing_trade['trade_id']] = existing_trade
-        
-        # Group trades by account for processing
-        trades_by_account = {}
-        for trade in trades:
-            # Get account number from trade object (set during trade creation)
-            account_number = getattr(trade, 'account_number', 'UNKNOWN')
-            
-            if not account_number or account_number == 'UNKNOWN':
-                logger.warning(f"Could not determine account for trade {trade.trade_id}")
-                account_number = "UNKNOWN"
-            
-            if account_number not in trades_by_account:
-                trades_by_account[account_number] = []
-            trades_by_account[account_number].append((trade, account_number))
-
-        for account_number, account_trades in trades_by_account.items():
-            logger.info(f"Processing {len(account_trades)} trades for account {account_number}")
-            
-            for trade, trade_account in account_trades:
-                try:
-                    if trade.trade_id in existing_trades:
-                        # Check if this trade needs updating (e.g., status changed)
-                        existing = existing_trades[trade.trade_id]
-                        if (existing['status'] != trade.status.value or 
-                            existing['exit_date'] != (trade.exit_date.isoformat() if trade.exit_date else None)):
-                            if db.save_trade(trade, trade_account):
-                                updated_count += 1
-                                logger.info(f"Updated existing trade {trade.trade_id} for account {trade_account}")
-                            else:
-                                failed_count += 1
-                        else:
-                            skipped_count += 1
-                            logger.debug(f"Skipped unchanged trade {trade.trade_id}")
-                    else:
-                        # New trade
-                        if db.save_trade(trade, trade_account):
-                            saved_count += 1
-                            logger.info(f"Saved new trade {trade.trade_id} for account {trade_account}")
-                        else:
-                            failed_count += 1
-                            logger.warning(f"Failed to save trade {trade.trade_id}")
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
-        
-        logger.info(f"Initial sync complete: {saved_count} new, {updated_count} updated, {skipped_count} skipped, {failed_count} failed")
-        
-        # Restore user comments and tags
-        logger.info("Restoring user comments and tags...")
-        restored_count = 0
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            for trade_id, data in user_data.items():
-                try:
-                    cursor.execute("""
-                        UPDATE trades 
-                        SET current_notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE trade_id = ?
-                    """, (data['current_notes'], data['tags'], trade_id))
-                    if cursor.rowcount > 0:
-                        restored_count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to restore user data for trade {trade_id}: {str(e)}")
-        
-        logger.info(f"Restored user data for {restored_count} trades")
+        logger.info(f"Processed {result['orders_processed']} orders, saved {result['orders_saved']}, created {result['chains_created']} chains, saved {result['chains_saved']}")
         
         # Fetch and save current positions for all accounts
         logger.info("Fetching current positions from all accounts...")
@@ -1092,20 +931,53 @@ async def initial_sync():
             else:
                 logger.error("Failed to save account balance")
         
-        logger.info(f"INITIAL SYNC completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {total_positions} positions updated")
+        logger.info(f"INITIAL SYNC completed: {result['orders_saved']} orders saved, {result['chains_saved']} chains created, {total_positions} positions updated")
+        
+        # Update last sync timestamp and mark initial sync completed
+        db.update_last_sync_timestamp()
+        db.mark_initial_sync_completed()
+        logger.info("Updated last sync timestamp and marked initial sync completed")
         
         return {
             "message": f"Initial sync completed successfully",
-            "trades_processed": len(trades),
-            "trades_new": saved_count,
-            "trades_updated": updated_count,
-            "trades_skipped": skipped_count,
-            "trades_failed": failed_count,
+            "orders_processed": result['orders_processed'],
+            "orders_saved": result['orders_saved'],
+            "chains_created": result['chains_created'],
+            "chains_saved": result['chains_saved'],
             "positions_updated": total_positions,
-            "transactions_processed": len(transactions)
+            "transactions_processed": len(transactions),
+            "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
         }
     except Exception as e:
         logger.error(f"Initial sync error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/reprocess-chains")
+async def reprocess_chains():
+    """Reprocess orders and chains from existing raw transactions"""
+    try:
+        logger.info("Starting chain reprocessing from database")
+        
+        # Use OrderManager to reprocess from database
+        result = order_manager.reprocess_orders_and_chains_from_database()
+        
+        if 'error' in result:
+            logger.error(f"Reprocessing error: {result['error']}")
+            raise HTTPException(status_code=500, detail=result['error'])
+        
+        logger.info(f"Reprocessing completed: {result['orders_saved']} orders, {result['chains_saved']} chains")
+        
+        return {
+            "message": f"Reprocessing completed successfully",
+            "orders_processed": result['orders_processed'],
+            "orders_saved": result['orders_saved'],
+            "chains_created": result['chains_created'],
+            "chains_saved": result['chains_saved']
+        }
+        
+    except Exception as e:
+        logger.error(f"Reprocessing error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1120,17 +992,6 @@ async def get_monthly_performance(year: int = None):
         return {"year": year, "months": monthly_data}
     except Exception as e:
         logger.error(f"Error fetching monthly performance: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/search")
-async def search_trades(q: str, account_number: Optional[str] = None):
-    """Search trades by various criteria"""
-    try:
-        results = db.search_trades(q, account_number=account_number)
-        return {"results": results, "count": len(results)}
-    except Exception as e:
-        logger.error(f"Error searching trades: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1253,7 +1114,7 @@ async def websocket_quotes(websocket: WebSocket):
 async def strategy_config_page():
     """Serve the strategy configuration page"""
     try:
-        with open("static/strategy-config.html", "r") as f:
+        with open("static/strategy-config.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except Exception as e:
         logger.error(f"Error serving strategy config page: {str(e)}")

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import List, Dict, Optional, Any
 from enum import Enum
+from loguru import logger
 
 
 class OrderType(Enum):
@@ -52,6 +53,12 @@ class Position:
     closing_action: Optional[str] = None  # 'BTC', 'STC', 'EXPIRED', 'ASSIGNED', etc.
     status: PositionStatus = PositionStatus.OPEN
     pnl: float = 0.0
+    fill_count: int = 1  # Number of fills consolidated into this position
+    # Enhanced tracking fields
+    opening_order_id: Optional[str] = None  # Order ID that opened this position
+    closing_order_id: Optional[str] = None  # Order ID that closed this position
+    opening_amount: Optional[float] = None  # Total amount paid/received when opening
+    closing_amount: Optional[float] = None  # Total amount paid/received when closing
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -121,6 +128,100 @@ class Order:
         if self.is_rolling:
             emblems.append('R')  # Roll
         return emblems
+    
+    def consolidate_positions(self) -> List[Position]:
+        """Consolidate multiple fills of the same position into single entries"""
+        if not self.positions:
+            return []
+        
+        from collections import defaultdict
+        
+        # Group positions by consolidation key - must include strike/expiration for options
+        grouped_positions = defaultdict(list)
+        
+        for position in self.positions:
+            # Create key for grouping - include strike and expiration for options
+            # This ensures different option contracts (different strikes) remain separate
+            # Only consolidate fills of the SAME option contract with different prices
+            if position.is_option:
+                key = (
+                    position.symbol,
+                    position.opening_action,
+                    position.closing_action or '',
+                    position.strike,  # Include strike for options
+                    position.expiration  # Include expiration for options
+                )
+            else:
+                # For stocks, use simpler grouping
+                key = (
+                    position.symbol,
+                    position.opening_action,
+                    position.closing_action or ''
+                )
+            grouped_positions[key].append(position)
+        
+        consolidated_positions = []
+        
+        for key, positions in grouped_positions.items():
+            if len(positions) == 1:
+                # Single position, just return as-is
+                consolidated_positions.append(positions[0])
+            else:
+                # Multiple positions to consolidate
+                first_position = positions[0]
+                
+                # Sum quantities and P&L
+                total_quantity = sum(pos.quantity for pos in positions)
+                total_pnl = sum(pos.pnl for pos in positions)
+                
+                # Calculate weighted average price
+                total_value = 0.0
+                for pos in positions:
+                    total_value += (pos.opening_price or 0.0) * abs(pos.quantity)
+                
+                avg_opening_price = total_value / abs(total_quantity) if total_quantity != 0 else 0.0
+                
+                # Combine transaction IDs
+                opening_tx_ids = [pos.opening_transaction_id for pos in positions if pos.opening_transaction_id]
+                closing_tx_ids = [pos.closing_transaction_id for pos in positions if pos.closing_transaction_id]
+                
+                # Sum opening and closing amounts
+                total_opening_amount = sum(pos.opening_amount or 0.0 for pos in positions)
+                total_closing_amount = sum(pos.closing_amount or 0.0 for pos in positions)
+                
+                # Create consolidated position
+                consolidated = Position(
+                    position_id=first_position.position_id,  # Use first position's ID
+                    order_id=first_position.order_id,
+                    account_number=first_position.account_number,
+                    symbol=first_position.symbol,
+                    underlying=first_position.underlying,
+                    instrument_type=first_position.instrument_type,
+                    option_type=first_position.option_type,
+                    strike=first_position.strike,
+                    expiration=first_position.expiration,
+                    quantity=total_quantity,
+                    opening_price=avg_opening_price,
+                    closing_price=first_position.closing_price,
+                    opening_transaction_id=','.join(opening_tx_ids),
+                    closing_transaction_id=','.join(closing_tx_ids) if closing_tx_ids else None,
+                    opening_action=first_position.opening_action,
+                    closing_action=first_position.closing_action,
+                    status=first_position.status,
+                    pnl=total_pnl,
+                    fill_count=len(positions),
+                    # New enhanced fields
+                    opening_order_id=first_position.opening_order_id,
+                    closing_order_id=first_position.closing_order_id,
+                    opening_amount=total_opening_amount if total_opening_amount != 0 else None,
+                    closing_amount=total_closing_amount if total_closing_amount != 0 else None,
+                    created_at=first_position.created_at,
+                    updated_at=first_position.updated_at
+                )
+                
+                consolidated_positions.append(consolidated)
+        
+        return consolidated_positions
 
 
 @dataclass
@@ -197,6 +298,8 @@ class OrderManager:
                     oc.strategy_type,
                     oc.chain_status,
                     oc.total_pnl,
+                    oc.realized_pnl,
+                    oc.unrealized_pnl,
                     oc.created_at,
                     oc.updated_at
                 FROM order_chains oc
@@ -370,10 +473,144 @@ class OrderManager:
             conn.commit()
             return total_pnl
     
-    def update_chain_pnl(self, chain_id: str) -> float:
-        """Recalculate and update P&L for an order chain"""
+    def calculate_chain_realized_pnl(self, chain_id: str, chain_status: str) -> float:
+        """Calculate truly realized P&L based on completed round trips
+        
+        Logic:
+        - Closed chains: All P&L is realized
+        - Open chains: Sum net P&L from completed round trips (STO + matching BTC)
+        """
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
+            
+            if chain_status == 'CLOSED':
+                # All P&L is realized for closed chains - sum all positions
+                cursor.execute("""
+                    SELECT COALESCE(SUM(p.pnl), 0)
+                    FROM positions_new p
+                    JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                    WHERE ocm.chain_id = ?
+                """, (chain_id,))
+                return cursor.fetchone()[0] or 0.0
+            
+            # For open chains, calculate net P&L from completed round trips
+            # Get all positions for this chain
+            cursor.execute("""
+                SELECT p.symbol, p.opening_action, p.status, p.pnl, p.strike, p.expiration
+                FROM positions_new p
+                JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                WHERE ocm.chain_id = ?
+                ORDER BY p.strike, p.expiration
+            """, (chain_id,))
+            
+            positions = cursor.fetchall()
+            
+            # Group positions by strike and expiration to find completed round trips
+            from collections import defaultdict
+            position_groups = defaultdict(list)
+            
+            for pos in positions:
+                symbol, action, status, pnl, strike, expiration = pos
+                key = (symbol, strike, expiration)
+                position_groups[key].append({
+                    'action': action,
+                    'status': status,
+                    'pnl': pnl
+                })
+            
+            realized_pnl = 0.0
+            
+            # For each strike/expiration group, find completed round trips
+            for key, group_positions in position_groups.items():
+                opening_pnl = 0.0
+                closing_pnl = 0.0
+                has_opening = False
+                has_closing = False
+                
+                for pos in group_positions:
+                    if 'TO_OPEN' in pos['action']:
+                        opening_pnl += pos['pnl']
+                        has_opening = True
+                    elif 'TO_CLOSE' in pos['action']:
+                        closing_pnl += pos['pnl']
+                        has_closing = True
+                
+                # If we have both opening and closing for this strike, it's a completed round trip
+                if has_opening and has_closing:
+                    realized_pnl += opening_pnl + closing_pnl
+            
+            return realized_pnl
+
+    def calculate_chain_unrealized_pnl(self, chain_id: str, chain_status: str) -> float:
+        """Calculate unrealized P&L from truly open positions (not part of completed round trips)
+        
+        Logic:
+        - Closed chains: No unrealized P&L
+        - Open chains: Sum only OPEN positions that don't have matching closing positions
+        """
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if chain_status == 'CLOSED':
+                # No unrealized P&L for closed chains
+                return 0.0
+            
+            # Get all positions for this chain
+            cursor.execute("""
+                SELECT p.symbol, p.opening_action, p.status, p.pnl, p.strike, p.expiration
+                FROM positions_new p
+                JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                WHERE ocm.chain_id = ?
+                ORDER BY p.strike, p.expiration
+            """, (chain_id,))
+            
+            positions = cursor.fetchall()
+            
+            # Group positions by strike and expiration
+            from collections import defaultdict
+            position_groups = defaultdict(list)
+            
+            for pos in positions:
+                symbol, action, status, pnl, strike, expiration = pos
+                key = (symbol, strike, expiration)
+                position_groups[key].append({
+                    'action': action,
+                    'status': status,
+                    'pnl': pnl
+                })
+            
+            unrealized_pnl = 0.0
+            
+            # For each strike/expiration group, only count open positions without matching closes
+            for key, group_positions in position_groups.items():
+                has_opening = False
+                has_closing = False
+                opening_pnl = 0.0
+                
+                for pos in group_positions:
+                    if 'TO_OPEN' in pos['action']:
+                        opening_pnl += pos['pnl']
+                        has_opening = True
+                    elif 'TO_CLOSE' in pos['action']:
+                        has_closing = True
+                
+                # Only count opening P&L if there's no matching closing (truly unrealized)
+                if has_opening and not has_closing:
+                    unrealized_pnl += opening_pnl
+            
+            return unrealized_pnl
+
+    def update_chain_pnl(self, chain_id: str) -> float:
+        """Recalculate and update total, realized, and unrealized P&L for an order chain"""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get chain status first
+            cursor.execute("SELECT chain_status FROM order_chains WHERE chain_id = ?", (chain_id,))
+            result = cursor.fetchone()
+            if not result:
+                return 0.0
+            chain_status = result[0]
             
             # Calculate total P&L from all orders in the chain
             cursor.execute("""
@@ -385,11 +622,16 @@ class OrderManager:
             
             total_pnl = cursor.fetchone()[0]
             
-            # Update chain
+            # Calculate realized and unrealized P&L
+            realized_pnl = self.calculate_chain_realized_pnl(chain_id, chain_status)
+            unrealized_pnl = self.calculate_chain_unrealized_pnl(chain_id, chain_status)
+            
+            # Update chain with all three values
             cursor.execute("""
-                UPDATE order_chains SET total_pnl = ?, updated_at = CURRENT_TIMESTAMP
+                UPDATE order_chains 
+                SET total_pnl = ?, realized_pnl = ?, unrealized_pnl = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE chain_id = ?
-            """, (total_pnl, chain_id))
+            """, (total_pnl, realized_pnl, unrealized_pnl, chain_id))
             
             conn.commit()
             return total_pnl
@@ -484,8 +726,8 @@ class OrderManager:
     
     def is_system_event(self, transaction: Dict) -> bool:
         """Check if transaction is a system event (expiration, assignment, exercise)"""
-        description = str(transaction.get('description', '')).upper()
-        action = str(transaction.get('action', '')).upper()
+        description = str(transaction.get('description') or '').upper()
+        action = str(transaction.get('action') or '').upper()
         
         # Check for expiration
         if 'DUE TO EXPIRATION' in description:
@@ -513,8 +755,8 @@ class OrderManager:
     
     def get_system_event_type(self, transaction: Dict) -> str:
         """Get the type of system event"""
-        description = str(transaction.get('description', '')).upper()
-        action = str(transaction.get('action', '')).upper()
+        description = str(transaction.get('description') or '').upper()
+        action = str(transaction.get('action') or '').upper()
         
         # Check for expiration
         if 'DUE TO EXPIRATION' in description or 'EXPIRED' in action:
@@ -612,17 +854,23 @@ class OrderManager:
             position = self.create_position_from_transaction(tx, str(order_id))
             if position:
                 positions.append(position)
+                print(f"Created position for {order_id}: {position.symbol}, {position.opening_action}, {position.closing_action}")
+            else:
+                print(f"Failed to create position for {order_id} from transaction: {tx.get('symbol', 'unknown')}, {tx.get('action', 'unknown')}")
         
-        order.positions = positions
+        # Consolidate multiple fills of the same action into single positions
+        # This keeps different actions (BTC vs STO) separate but combines fills
+        order.positions = positions  # Set positions first so consolidate_positions can access them
+        order.positions = order.consolidate_positions()
         
         # Calculate order totals
-        order.total_quantity = sum(abs(p.quantity) for p in positions)
-        order.total_pnl = sum(p.pnl for p in positions)
+        order.total_quantity = sum(abs(p.quantity) for p in order.positions)
+        order.total_pnl = sum(p.pnl for p in order.positions)
         
         # Check for system events from both positions and transactions
-        order.has_assignment = any('ASSIGNED' in str(p.closing_action).upper() for p in positions if p.closing_action)
-        order.has_expiration = any('EXPIRED' in str(p.closing_action).upper() for p in positions if p.closing_action)
-        order.has_exercise = any('EXERCISED' in str(p.closing_action).upper() for p in positions if p.closing_action)
+        order.has_assignment = any('ASSIGNED' in str(p.closing_action).upper() for p in order.positions if p.closing_action)
+        order.has_expiration = any('EXPIRED' in str(p.closing_action).upper() for p in order.positions if p.closing_action)
+        order.has_exercise = any('EXERCISED' in str(p.closing_action).upper() for p in order.positions if p.closing_action)
         
         # Also check transactions directly for system events
         for tx in transactions:
@@ -697,7 +945,7 @@ class OrderManager:
             except (ValueError, TypeError):
                 value = 0.0
             
-            action = transaction.get('action', '').upper()
+            action = (transaction.get('action') or '').upper()
             
             # Get transaction ID (might be 'id' or other field)
             transaction_id = transaction.get('id', transaction.get('transaction_id', ''))
@@ -725,6 +973,12 @@ class OrderManager:
                 # For system events, the position is being closed, so it was previously opened
                 # We'll use the original action as opening_action
             
+            # Calculate opening and closing amounts
+            # For options, amount = price * quantity * 100
+            # For stocks, amount = price * quantity  
+            multiplier = 100 if 'OPTION' in instrument_type else 1
+            total_amount = price * abs(quantity) * multiplier
+            
             # Create position
             position = Position(
                 position_id=0,  # Will be set when saved to DB
@@ -743,8 +997,13 @@ class OrderManager:
                 closing_transaction_id=closing_transaction_id,
                 opening_action=action if not closing_action else None,
                 closing_action=closing_action,
-                status=PositionStatus.CLOSED,
-                pnl=value  # Use transaction value as realized P&L
+                status=PositionStatus.CLOSED if (closing_action or 'TO_CLOSE' in action) else PositionStatus.OPEN,
+                pnl=value,  # Use transaction value as realized P&L
+                # Enhanced tracking fields
+                opening_order_id=order_id if not closing_action else None,
+                closing_order_id=order_id if closing_action else None,
+                opening_amount=total_amount if not closing_action else None,
+                closing_amount=total_amount if closing_action else None
             )
             
             return position
@@ -752,6 +1011,256 @@ class OrderManager:
         except Exception as e:
             print(f"Error creating position from transaction: {e}")
             return None
+    
+    def consolidate_positions(self, positions: List[Position]) -> List[Position]:
+        """Consolidate matching opening and closing positions with support for partial closes"""
+        if not positions:
+            return positions
+        
+        consolidated = []
+        used_positions = set()
+        
+        # Separate opening and closing positions
+        opening_positions = []
+        closing_positions = []
+        
+        for i, pos in enumerate(positions):
+            if pos.opening_action and ('SELL_TO_OPEN' in pos.opening_action or 'BUY_TO_OPEN' in pos.opening_action):
+                opening_positions.append((i, pos))
+            elif pos.opening_action and ('BUY_TO_CLOSE' in pos.opening_action or 'SELL_TO_CLOSE' in pos.opening_action):
+                closing_positions.append((i, pos))
+            else:
+                # Neither opening nor closing - keep as-is
+                consolidated.append(pos)
+                used_positions.add(i)
+        
+        # Match opening positions with closing positions
+        for open_idx, opening_pos in opening_positions:
+            if open_idx in used_positions:
+                continue
+            
+            remaining_qty = abs(opening_pos.quantity)
+            remaining_pnl = opening_pos.pnl
+            matched_closes = []
+            
+            # Find all matching closing positions for this opening position
+            for close_idx, closing_pos in closing_positions:
+                if close_idx in used_positions:
+                    continue
+                
+                # Check if this closing position matches the opening position
+                if self.positions_match_contract(opening_pos, closing_pos):
+                    # Check if actions are compatible (STO with BTC, BTO with STC)
+                    if self.actions_are_compatible(opening_pos.opening_action, closing_pos.opening_action):
+                        closing_qty = abs(closing_pos.quantity)
+                        if closing_qty <= remaining_qty:
+                            # This closing position can be fully matched
+                            matched_closes.append((close_idx, closing_pos, closing_qty))
+                            remaining_qty -= closing_qty
+                            used_positions.add(close_idx)
+                            
+                            if remaining_qty == 0:
+                                break  # Fully closed
+            
+            # Create consolidated positions based on matches
+            if matched_closes:
+                # Calculate total matched quantity and P&L
+                total_matched_qty = sum(qty for _, _, qty in matched_closes)
+                total_closing_pnl = sum(close_pos.pnl for _, close_pos, _ in matched_closes)
+                
+                # Create CLOSED position for matched portion
+                matched_portion = total_matched_qty / abs(opening_pos.quantity)
+                closed_opening_pnl = opening_pos.pnl * matched_portion
+                
+                closed_position = Position(
+                    position_id=opening_pos.position_id,
+                    order_id=opening_pos.order_id,
+                    account_number=opening_pos.account_number,
+                    symbol=opening_pos.symbol,
+                    underlying=opening_pos.underlying,
+                    instrument_type=opening_pos.instrument_type,
+                    option_type=opening_pos.option_type,
+                    strike=opening_pos.strike,
+                    expiration=opening_pos.expiration,
+                    quantity=total_matched_qty if opening_pos.quantity > 0 else -total_matched_qty,
+                    opening_price=opening_pos.opening_price,
+                    closing_price=sum(close_pos.opening_price * qty for _, close_pos, qty in matched_closes) / total_matched_qty,
+                    opening_transaction_id=opening_pos.opening_transaction_id,
+                    closing_transaction_id=','.join(close_pos.opening_transaction_id for _, close_pos, _ in matched_closes),
+                    opening_action=opening_pos.opening_action,
+                    closing_action=','.join(close_pos.opening_action for _, close_pos, _ in matched_closes),
+                    status=PositionStatus.CLOSED,
+                    pnl=closed_opening_pnl + total_closing_pnl,
+                    fill_count=opening_pos.fill_count + sum(close_pos.fill_count for _, close_pos, _ in matched_closes),
+                    created_at=opening_pos.created_at,
+                    updated_at=opening_pos.updated_at
+                )
+                consolidated.append(closed_position)
+                
+                # Create OPEN position for remaining portion if any
+                if remaining_qty > 0:
+                    remaining_portion = remaining_qty / abs(opening_pos.quantity)
+                    remaining_opening_pnl = opening_pos.pnl * remaining_portion
+                    
+                    open_position = Position(
+                        position_id=opening_pos.position_id + 100000,  # Offset to avoid ID conflicts
+                        order_id=opening_pos.order_id,
+                        account_number=opening_pos.account_number,
+                        symbol=opening_pos.symbol,
+                        underlying=opening_pos.underlying,
+                        instrument_type=opening_pos.instrument_type,
+                        option_type=opening_pos.option_type,
+                        strike=opening_pos.strike,
+                        expiration=opening_pos.expiration,
+                        quantity=remaining_qty if opening_pos.quantity > 0 else -remaining_qty,
+                        opening_price=opening_pos.opening_price,
+                        closing_price=None,
+                        opening_transaction_id=opening_pos.opening_transaction_id,
+                        closing_transaction_id=None,
+                        opening_action=opening_pos.opening_action,
+                        closing_action=None,
+                        status=PositionStatus.OPEN,
+                        pnl=remaining_opening_pnl,
+                        fill_count=opening_pos.fill_count,
+                        created_at=opening_pos.created_at,
+                        updated_at=opening_pos.updated_at
+                    )
+                    consolidated.append(open_position)
+            else:
+                # No matching closes found, keep as open position
+                consolidated.append(opening_pos)
+            
+            used_positions.add(open_idx)
+        
+        # Add any unmatched closing positions (orphaned closes)
+        for close_idx, closing_pos in closing_positions:
+            if close_idx not in used_positions:
+                consolidated.append(closing_pos)
+        
+        return consolidated
+    
+    def positions_match_contract(self, pos1: Position, pos2: Position) -> bool:
+        """Check if two positions represent the same option contract"""
+        return (
+            pos1.underlying == pos2.underlying and
+            pos1.option_type == pos2.option_type and
+            pos1.strike == pos2.strike and
+            pos1.expiration == pos2.expiration and
+            pos1.account_number == pos2.account_number
+        )
+    
+    def actions_are_compatible(self, opening_action: str, closing_action: str) -> bool:
+        """Check if opening and closing actions are compatible"""
+        if not opening_action or not closing_action:
+            return False
+            
+        opening_action = opening_action.upper()
+        closing_action = closing_action.upper()
+        
+        # Remove ORDERACTION. prefix if present
+        opening_action = opening_action.replace('ORDERACTION.', '')
+        closing_action = closing_action.replace('ORDERACTION.', '')
+        
+        # STO should be closed with BTC
+        if 'SELL_TO_OPEN' in opening_action and 'BUY_TO_CLOSE' in closing_action:
+            return True
+        
+        # BTO should be closed with STC  
+        if 'BUY_TO_OPEN' in opening_action and 'SELL_TO_CLOSE' in closing_action:
+            return True
+        
+        return False
+    
+    def consolidate_chain_positions(self, chain: Dict):
+        """Consolidate positions across all orders within a chain"""
+        if not chain or 'orders' not in chain:
+            return
+        
+        logger.info(f"Consolidating chain {chain['chain_id']}")
+        
+        # Collect all positions from all orders in the chain
+        all_positions = []
+        for order in chain['orders']:
+            if hasattr(order, 'positions') and order.positions:
+                logger.info(f"  Order {order.order_id}: {len(order.positions)} positions")
+                all_positions.extend(order.positions)
+        
+        if not all_positions:
+            logger.info(f"  No positions found for chain {chain['chain_id']}")
+            return
+        
+        logger.info(f"  Total positions before consolidation: {len(all_positions)}")
+        for i, pos in enumerate(all_positions):
+            logger.info(f"    Before: {i+1}. {pos.symbol} - {pos.opening_action} - {pos.closing_action} - P&L: ${pos.pnl}")
+        
+        # Positions are already Position objects, so consolidate directly
+        consolidated_positions = self.consolidate_positions(all_positions)
+        
+        logger.info(f"  Total positions after consolidation: {len(consolidated_positions)}")
+        for i, pos in enumerate(consolidated_positions):
+            logger.info(f"    {i+1}. {pos.symbol} - {pos.status.value} - P&L: ${pos.pnl}")
+        
+        # Update the database with consolidated positions
+        self.update_chain_positions_in_database(chain['chain_id'], consolidated_positions)
+    
+    def update_chain_positions_in_database(self, chain_id: str, consolidated_positions: List[Position]):
+        """Update positions in database with consolidated versions"""
+        try:
+            logger.info(f"Updating database for chain {chain_id} with {len(consolidated_positions)} consolidated positions")
+            
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get all order IDs in this chain
+                cursor.execute("""
+                    SELECT order_id FROM order_chain_members WHERE chain_id = ?
+                """, (chain_id,))
+                order_ids = [row[0] for row in cursor.fetchall()]
+                
+                if not order_ids:
+                    logger.warning(f"No order IDs found for chain {chain_id}")
+                    return
+                
+                logger.info(f"Found order IDs for chain {chain_id}: {order_ids}")
+                
+                # Delete existing positions for these orders
+                placeholders = ','.join(['?' for _ in order_ids])
+                delete_query = f"DELETE FROM positions_new WHERE order_id IN ({placeholders})"
+                logger.info(f"Deleting existing positions: {delete_query}")
+                cursor.execute(delete_query, order_ids)
+                deleted_count = cursor.rowcount
+                logger.info(f"Deleted {deleted_count} existing positions")
+                
+                # Insert consolidated positions
+                inserted_count = 0
+                for pos in consolidated_positions:
+                    cursor.execute("""
+                        INSERT INTO positions_new (
+                            order_id, account_number, symbol, underlying, instrument_type,
+                            option_type, strike, expiration, quantity, opening_price,
+                            closing_price, opening_transaction_id, closing_transaction_id,
+                            opening_action, closing_action, status, pnl,
+                            opening_order_id, closing_order_id, opening_amount, closing_amount,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        pos.order_id, pos.account_number, pos.symbol, pos.underlying,
+                        pos.instrument_type, pos.option_type, pos.strike, pos.expiration,
+                        pos.quantity, pos.opening_price, pos.closing_price,
+                        pos.opening_transaction_id, pos.closing_transaction_id,
+                        pos.opening_action, pos.closing_action, pos.status.value,
+                        pos.pnl, pos.opening_order_id, pos.closing_order_id,
+                        pos.opening_amount, pos.closing_amount, pos.created_at, pos.updated_at
+                    ))
+                    inserted_count += 1
+                
+                logger.info(f"Inserted {inserted_count} consolidated positions")
+                conn.commit()
+                logger.info(f"Database update committed for chain {chain_id}")
+                
+        except Exception as e:
+            logger.error(f"Error updating database for chain {chain_id}: {e}")
+            raise e
     
     def create_orders_from_transactions(self, transactions: List[Dict]) -> List[Order]:
         """Process raw transactions into Order objects"""
@@ -797,8 +1306,9 @@ class OrderManager:
                             order_id, account_number, symbol, underlying, instrument_type,
                             option_type, strike, expiration, quantity, opening_price,
                             closing_price, opening_transaction_id, closing_transaction_id,
-                            opening_action, closing_action, status, pnl
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            opening_action, closing_action, status, pnl,
+                            opening_order_id, closing_order_id, opening_amount, closing_amount
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         position.order_id, position.account_number, position.symbol,
                         position.underlying, position.instrument_type, position.option_type,
@@ -806,7 +1316,9 @@ class OrderManager:
                         position.opening_price, position.closing_price,
                         position.opening_transaction_id, position.closing_transaction_id,
                         position.opening_action, position.closing_action,
-                        position.status.value, position.pnl
+                        position.status.value, position.pnl,
+                        position.opening_order_id, position.closing_order_id,
+                        position.opening_amount, position.closing_amount
                     ))
                 
                 return True
@@ -912,8 +1424,47 @@ class OrderManager:
                         chains.append(chain)
                     used_orders.add(order.order_id)
                 else:
-                    # Log warning for orphaned rolling/closing orders
-                    print(f"WARNING: Orphaned {order.order_type.value} order {order.order_id} on {order.order_date} - no matching chain found")
+                    # Check if this is a stock-only order (not part of option chains)
+                    is_stock_only = True
+                    stock_actions = []
+                    
+                    for position in order.positions:
+                        if hasattr(position, 'instrument_type'):
+                            instrument_type = position.instrument_type
+                            symbol = getattr(position, 'symbol', '')
+                            action = getattr(position, 'opening_action', '')
+                            quantity = getattr(position, 'quantity', 0)
+                        else:
+                            instrument_type = position.get('instrument_type', '')
+                            symbol = position.get('symbol', '')
+                            action = position.get('opening_action', '')
+                            quantity = position.get('quantity', 0)
+                        
+                        if 'OPTION' in str(instrument_type):
+                            is_stock_only = False
+                            break
+                        elif 'EQUITY' in str(instrument_type):
+                            # Extract action abbreviation (STC, BTC, etc.)
+                            action_abbrev = action.replace('ORDERACTION.', '').replace('OrderAction.', '')
+                            if action_abbrev.startswith('SELL_TO_CLOSE'):
+                                action_abbrev = 'STC'
+                            elif action_abbrev.startswith('BUY_TO_CLOSE'):
+                                action_abbrev = 'BTC'
+                            elif action_abbrev.startswith('SELL_TO_OPEN'):
+                                action_abbrev = 'STO'
+                            elif action_abbrev.startswith('BUY_TO_OPEN'):
+                                action_abbrev = 'BTO'
+                            
+                            stock_actions.append(f"{action_abbrev} {quantity} {symbol}")
+                    
+                    if is_stock_only:
+                        # Log as stock transaction, not orphaned order
+                        actions_str = ', '.join(stock_actions)
+                        print(f"INFO: {order.order_type.value} stock transaction {order.order_id} on {order.order_date}: {actions_str}")
+                    else:
+                        # Log warning for orphaned rolling/closing orders with options
+                        print(f"WARNING: Orphaned {order.order_type.value} order {order.order_id} on {order.order_date} - no matching chain found")
+                    
                     used_orders.add(order.order_id)  # Mark as used to prevent duplicates
         
         return chains
@@ -1294,6 +1845,7 @@ class OrderManager:
             chains = self.create_order_chains_from_orders(orders)
             print(f"Created {len(chains)} chains")
             
+            # Save chains to database first
             saved_chains = 0
             for i, chain in enumerate(chains):
                 try:
@@ -1303,6 +1855,18 @@ class OrderManager:
                     print(f"Error saving chain {i}: {e}")
             
             print(f"Saved {saved_chains} chains")
+            
+            # Skip chain-level consolidation to preserve order-level transaction display
+            # Each order should show its own transactions (BTC, STO, etc.)
+            # for chain in chains:
+            #     self.consolidate_chain_positions(chain)
+            #     # Recalculate chain P&L after consolidation
+            #     self.update_chain_pnl(chain['chain_id'])
+            # print(f"Consolidated positions across chain orders")
+            
+            # Just update chain P&L without consolidation
+            for chain in chains:
+                self.update_chain_pnl(chain['chain_id'])
             
             return {
                 'orders_processed': len(orders),

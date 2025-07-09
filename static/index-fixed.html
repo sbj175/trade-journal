@@ -125,7 +125,7 @@
                             class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                         >
                             <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': syncing}"></i>
-                            <span x-text="syncing ? 'Syncing...' : 'Sync Trades'"></span>
+                            <span x-text="syncing ? 'Syncing...' : 'Sync Orders'"></span>
                         </button>
                         
                         <!-- Initial Sync Button -->
@@ -148,12 +148,11 @@
                             <span x-text="reprocessing ? 'Re-processing...' : 'Re-process Chains'"></span>
                         </button>
                         
-                        <!-- Date Range Selector -->
-                        <select x-model="syncDays" @change="saveState()" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
-                            <option value="7">Last 7 days</option>
-                            <option value="30">Last 30 days</option>
-                            <option value="90">Last 90 days</option>
-                        </select>
+                        <!-- Last Synced Timestamp -->
+                        <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
+                            <i class="fas fa-clock mr-1"></i>
+                            Last synced: <span x-text="lastSyncTimestamp"></span>
+                        </div>
                         
                         <!-- Account Selector -->
                         <div class="flex items-center space-x-2">
@@ -349,7 +348,13 @@
                                          :class="chain.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
                                         $<span x-text="formatNumber(chain.total_pnl)"></span>
                                     </div>
-                                    <div class="text-xs text-slate-400">Total P&L</div>
+                                    <div class="text-xs text-slate-400">
+                                        <span x-show="chain.status === 'CLOSED'">Realized P&L</span>
+                                        <span x-show="chain.status === 'OPEN'">
+                                            Realized: $<span x-text="formatNumber(chain.realized_pnl)"></span> | 
+                                            Total: $<span x-text="formatNumber(chain.total_pnl)"></span>
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -428,11 +433,14 @@
                                                                     <td class="py-1 px-2">
                                                                         <span :class="position.quantity > 0 ? 'text-green-400' : 'text-red-400'"
                                                                               x-text="position.quantity"></span>
+                                                                        <span x-show="position.fill_count > 1" class="ml-1 text-xs text-slate-500">
+                                                                            (<span x-text="position.fill_count"></span> fills)
+                                                                        </span>
                                                                     </td>
                                                                     <td class="py-1 px-2">
                                                                         <div class="text-white">
                                                                             <span class="bg-blue-900/30 text-blue-300 px-1 py-0.5 rounded text-xs"
-                                                                                  x-text="position.opening_action"></span>
+                                                                                  x-text="formatAction(position.opening_action)"></span>
                                                                         </div>
                                                                         <div class="text-slate-400" x-text="'$' + formatNumber(position.opening_price)"></div>
                                                                     </td>
