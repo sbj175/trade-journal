@@ -188,7 +188,7 @@
                     </div>
                     
                     <div class="flex items-center space-x-4">
-                        <button @click="fetchPositions()" 
+                        <button @click="fetchPositions(true)" 
                                 :disabled="isLoading"
                                 class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
                             <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': isLoading}"></i>
@@ -199,6 +199,23 @@
                         <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
                             <i class="fas fa-clock mr-1"></i>
                             Last synced: <span x-text="lastSyncTimestamp"></span>
+                        </div>
+                        
+                        <!-- Cache Freshness Indicator -->
+                        <div class="text-xs" x-show="cacheInfo && cacheInfo.cached">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-database" 
+                                   :class="cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')"></i>
+                                <span :class="cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')">
+                                    <span x-show="cacheInfo.is_fresh">Fresh data</span>
+                                    <span x-show="!cacheInfo.is_fresh && cacheInfo.data_age_minutes < 360">
+                                        <span x-text="Math.round(cacheInfo.data_age_minutes)"></span>m old
+                                    </span>
+                                    <span x-show="!cacheInfo.is_fresh && cacheInfo.data_age_minutes >= 360">
+                                        <span x-text="Math.round(cacheInfo.data_age_minutes / 60)"></span>h old
+                                    </span>
+                                </span>
+                            </div>
                         </div>
                         
                         <!-- Account Selector -->
@@ -538,6 +555,7 @@
                 liveQuotesActive: false,
                 lastQuoteUpdate: null,
                 lastSyncTimestamp: '',
+                cacheInfo: null, // Cache freshness information
                 
                 // Computed properties
                 get totalUnrealizedPnL() {
@@ -549,7 +567,7 @@
                     const groups = new Map();
                     
                     this.filteredPositions.forEach(position => {
-                        const underlying = position.underlying_symbol || position.symbol;
+                        const underlying = position.underlying || position.symbol;
                         if (!groups.has(underlying)) {
                             groups.set(underlying, []);
                         }
@@ -604,10 +622,11 @@
                     // Load saved position comments
                     this.loadPositionComments();
                     
-                    await this.fetchPositions();
+                    // Load cached positions immediately for fast initial display
+                    await this.loadCachedPositions();
                     
-                    // Load last sync timestamp
-                    await this.loadLastSyncTimestamp();
+                    // Then fetch fresh positions in the background (smart sync)
+                    this.fetchPositions(false);
                     
                     // Clean up WebSocket on page unload
                     window.addEventListener('beforeunload', () => {
@@ -673,6 +692,57 @@
                         });
                     } catch (error) {
                         console.warn('Error saving filter preferences:', error);
+                    }
+                },
+                
+                // Load cached positions immediately for fast initial display
+                async loadCachedPositions() {
+                    try {
+                        console.log('Loading cached positions...');
+                        const response = await fetch('/api/positions/cached');
+                        if (!response.ok) {
+                            console.warn('Failed to load cached positions:', response.statusText);
+                            return;
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Cached positions loaded:', data);
+                        
+                        // Set positions from cache
+                        this.allPositions = [];
+                        for (const [accountNumber, positions] of Object.entries(data.positions)) {
+                            for (const position of positions) {
+                                this.allPositions.push({
+                                    ...position,
+                                    account_number: accountNumber
+                                });
+                            }
+                        }
+                        
+                        // Extract unique values for filters
+                        this.underlyings = [...new Set(this.allPositions.map(p => p.underlying || p.symbol))].sort();
+                        
+                        // Set cached quotes if available
+                        if (data.quotes) {
+                            this.underlyingQuotes = data.quotes;
+                            console.log(`Loaded ${Object.keys(data.quotes).length} cached quotes`);
+                        }
+                        
+                        // Apply filters to show cached data
+                        this.filterPositions();
+                        
+                        // Clean up comments for positions that no longer exist
+                        this.cleanupOrphanedComments();
+                        
+                        // Set cache info for UI indicators
+                        this.cacheInfo = data.cache_info;
+                        
+                        // Load last sync timestamp in background (don't await)
+                        this.loadLastSyncTimestamp();
+                        
+                        console.log('Cached positions ready for display');
+                    } catch (error) {
+                        console.warn('Error loading cached positions:', error);
                     }
                 },
                 
@@ -756,7 +826,7 @@
                 cleanupOrphanedComments() {
                     // Get all current position keys
                     const currentPositionKeys = new Set();
-                    const underlyings = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))];
+                    const underlyings = [...new Set(this.allPositions.map(p => p.underlying || p.symbol))];
                     
                     // Add keys for all accounts and "all" option
                     for (const underlying of underlyings) {
@@ -819,60 +889,105 @@
                     }
                 },
                 
-                async fetchPositions() {
-                    this.isLoading = true;
+                // Smart sync logic - check if sync is needed
+                shouldSyncData() {
+                    if (!this.cacheInfo) {
+                        return true; // No cache info, sync needed
+                    }
+                    
+                    // If data is fresh (less than 1 hour old), no sync needed
+                    if (this.cacheInfo.is_fresh) {
+                        return false;
+                    }
+                    
+                    // If data is less than 2 hours old, still consider it fresh enough
+                    if (this.cacheInfo.data_age_minutes < 120) {
+                        return false;
+                    }
+                    
+                    // If data is older than 2 hours, sync needed
+                    return this.cacheInfo.data_age_minutes > 120;
+                },
+                
+                async fetchPositions(forceSync = false) {
+                    // Don't show loading initially since we have cached data
+                    // Only show loading if we don't have cached data
+                    if (!this.allPositions || this.allPositions.length === 0) {
+                        this.isLoading = true;
+                    }
                     this.error = null;
                     
                     try {
-                        // First, sync data from Tastytrade (includes both positions and order chains)
-                        console.log('Starting unified sync...');
-                        const syncResponse = await fetch('/api/sync', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({})
-                        });
+                        // Check if sync is needed based on cache freshness
+                        const shouldSync = forceSync || this.shouldSyncData();
                         
-                        if (!syncResponse.ok) {
-                            throw new Error(`Sync failed: ${syncResponse.statusText}`);
-                        }
-                        
-                        const syncResult = await syncResponse.json();
-                        console.log('Sync completed:', syncResult);
-                        
-                        // Now fetch updated positions
-                        const response = await fetch('/api/positions');
-                        if (!response.ok) {
-                            throw new Error(`Failed to fetch positions: ${response.statusText}`);
-                        }
-                        
-                        const data = await response.json();
-                        
-                        // Flatten positions from all accounts
-                        this.allPositions = [];
-                        for (const [accountNumber, positions] of Object.entries(data)) {
-                            for (const position of positions) {
-                                this.allPositions.push({
-                                    ...position,
-                                    account_number: accountNumber
-                                });
+                        if (shouldSync) {
+                            // First, sync data from Tastytrade (includes both positions and order chains)
+                            console.log('Starting unified sync...');
+                            const syncResponse = await fetch('/api/sync', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({})
+                            });
+                            
+                            if (!syncResponse.ok) {
+                                throw new Error(`Sync failed: ${syncResponse.statusText}`);
+                            }
+                            
+                            const syncResult = await syncResponse.json();
+                            console.log('Sync completed:', syncResult);
+                            
+                            // Now fetch updated positions after sync
+                            const response = await fetch('/api/positions');
+                            if (!response.ok) {
+                                throw new Error(`Failed to fetch positions: ${response.statusText}`);
+                            }
+                            
+                            const data = await response.json();
+                            
+                            // Flatten positions from all accounts
+                            this.allPositions = [];
+                            for (const [accountNumber, positions] of Object.entries(data)) {
+                                for (const position of positions) {
+                                    this.allPositions.push({
+                                        ...position,
+                                        account_number: accountNumber
+                                    });
+                                }
+                            }
+                            
+                            // Extract unique values for filters (accounts are loaded separately)
+                            this.underlyings = [...new Set(this.allPositions.map(p => p.underlying || p.symbol))].sort();
+                            
+                            this.filterPositions();
+                            
+                            // Clean up comments for positions that no longer exist
+                            this.cleanupOrphanedComments();
+                            
+                            // Fetch underlying quotes after positions are loaded
+                            await this.fetchUnderlyingQuotes();
+                            
+                            // Update last sync timestamp after successful sync
+                            await this.loadLastSyncTimestamp();
+                            
+                            // Update cache info to show fresh data
+                            this.cacheInfo = {
+                                cached: false,
+                                is_fresh: true,
+                                data_age_minutes: 0,
+                                last_sync: new Date().toISOString()
+                            };
+                            
+                            console.log('Fresh positions loaded and cache updated');
+                        } else {
+                            console.log('Skipping sync - data is fresh enough');
+                            // Still connect to WebSocket for live quotes if not already connected
+                            if (!this.liveQuotesActive) {
+                                await this.fetchUnderlyingQuotes();
                             }
                         }
-                        
-                        // Extract unique values for filters (accounts are loaded separately)
-                        this.underlyings = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))].sort();
-                        
-                        this.filterPositions();
-                        
-                        // Clean up comments for positions that no longer exist
-                        this.cleanupOrphanedComments();
-                        
-                        // Fetch underlying quotes after positions are loaded
-                        await this.fetchUnderlyingQuotes();
-                        
-                        // Update last sync timestamp after successful sync
-                        await this.loadLastSyncTimestamp();
                         
                     } catch (err) {
                         console.error('Error fetching positions:', err);
@@ -885,7 +1000,7 @@
                 async fetchUnderlyingQuotes() {
                     try {
                         // Get unique underlying symbols from positions
-                        const underlyingSymbols = [...new Set(this.allPositions.map(p => p.underlying_symbol || p.symbol))];
+                        const underlyingSymbols = [...new Set(this.allPositions.map(p => p.underlying || p.symbol))];
                         
                         // Also get individual option contract symbols for live NetLiq updates
                         const optionSymbols = [...new Set(this.allPositions
@@ -1003,7 +1118,7 @@
                         }
                         
                         if (this.selectedUnderlying) {
-                            const underlying = position.underlying_symbol || position.symbol;
+                            const underlying = position.underlying || position.symbol;
                             if (underlying !== this.selectedUnderlying) {
                                 return false;
                             }

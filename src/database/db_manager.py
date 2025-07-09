@@ -261,6 +261,27 @@ class DatabaseManager:
                 )
             """)
             
+            # Quote cache table for persisting WebSocket quotes
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS quote_cache (
+                    symbol TEXT PRIMARY KEY,
+                    mark REAL,
+                    bid REAL,
+                    ask REAL,
+                    last REAL,
+                    change REAL,
+                    change_percent REAL,
+                    volume INTEGER,
+                    prev_close REAL,
+                    day_high REAL,
+                    day_low REAL,
+                    iv REAL,
+                    ivr REAL,
+                    iv_percentile REAL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades(underlying)")
@@ -278,6 +299,8 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_chain ON order_chain_members(chain_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_order ON raw_transactions(order_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_account ON raw_transactions(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_quote_cache_symbol ON quote_cache(symbol)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_quote_cache_updated ON quote_cache(updated_at)")
             
             # Add transaction action and timestamp columns if they don't exist
             self._add_transaction_columns()
@@ -1067,4 +1090,75 @@ class DatabaseManager:
                 return True
         except Exception as e:
             logger.error(f"Error resetting sync metadata: {str(e)}")
+            return False
+    
+    def cache_quote(self, symbol: str, quote_data: Dict[str, Any]) -> bool:
+        """Cache a quote in the database"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO quote_cache (
+                        symbol, mark, bid, ask, last, change, change_percent,
+                        volume, prev_close, day_high, day_low, iv, ivr, iv_percentile,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    symbol,
+                    quote_data.get('mark'),
+                    quote_data.get('bid'),
+                    quote_data.get('ask'),
+                    quote_data.get('last'),
+                    quote_data.get('change'),
+                    quote_data.get('change_percent'),
+                    quote_data.get('volume'),
+                    quote_data.get('prev_close'),
+                    quote_data.get('day_high'),
+                    quote_data.get('day_low'),
+                    quote_data.get('iv'),
+                    quote_data.get('ivr'),
+                    quote_data.get('iv_percentile')
+                ))
+                
+                return True
+        except Exception as e:
+            logger.error(f"Error caching quote for {symbol}: {str(e)}")
+            return False
+    
+    def get_cached_quotes(self, symbols: List[str] = None) -> Dict[str, Dict[str, Any]]:
+        """Get cached quotes from database"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                if symbols:
+                    placeholders = ','.join(['?' for _ in symbols])
+                    cursor.execute(f"SELECT * FROM quote_cache WHERE symbol IN ({placeholders})", symbols)
+                else:
+                    cursor.execute("SELECT * FROM quote_cache")
+                
+                quotes = {}
+                for row in cursor.fetchall():
+                    row_dict = dict(row)
+                    symbol = row_dict.pop('symbol')
+                    quotes[symbol] = row_dict
+                
+                return quotes
+        except Exception as e:
+            logger.error(f"Error getting cached quotes: {str(e)}")
+            return {}
+    
+    def clear_old_quotes(self, hours_old: int = 24) -> bool:
+        """Clear quotes older than specified hours"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM quote_cache 
+                    WHERE updated_at < datetime('now', '-{} hours')
+                """.format(hours_old))
+                return True
+        except Exception as e:
+            logger.error(f"Error clearing old quotes: {str(e)}")
             return False

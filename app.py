@@ -494,12 +494,62 @@ async def get_accounts():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/positions")
-async def get_positions(account_number: Optional[str] = None):
-    """Get current open positions"""
+@app.get("/api/positions/cached")
+async def get_cached_positions(account_number: Optional[str] = None):
+    """Get cached positions immediately without sync - for fast loading"""
     try:
         positions = db.get_open_positions()
-        return {"positions": positions}
+        
+        # Get the last sync timestamp for freshness metadata
+        last_sync = db.get_last_sync_timestamp()
+        
+        # Calculate data age
+        data_age_minutes = None
+        if last_sync:
+            data_age_minutes = (datetime.now() - last_sync).total_seconds() / 60
+            
+        # Group positions by account (matching the expected frontend format)
+        positions_by_account = {}
+        for position in positions:
+            account = position.get('account_number', 'unknown')
+            if account not in positions_by_account:
+                positions_by_account[account] = []
+            positions_by_account[account].append(position)
+        
+        # Get cached quotes for immediate display
+        cached_quotes = db.get_cached_quotes()
+        
+        return {
+            "positions": positions_by_account,
+            "quotes": cached_quotes,
+            "cache_info": {
+                "last_sync": last_sync.isoformat() if last_sync else None,
+                "data_age_minutes": data_age_minutes,
+                "is_fresh": data_age_minutes < 60 if data_age_minutes else False,
+                "cached": True,
+                "quotes_count": len(cached_quotes)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching cached positions: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/positions")
+async def get_positions(account_number: Optional[str] = None):
+    """Get current open positions - this endpoint returns cached data but formatted for current frontend"""
+    try:
+        positions = db.get_open_positions()
+        
+        # Group positions by account (matching the expected frontend format)
+        positions_by_account = {}
+        for position in positions:
+            account = position.get('account_number', 'unknown')
+            if account not in positions_by_account:
+                positions_by_account[account] = []
+            positions_by_account[account].append(position)
+        
+        return positions_by_account
     except Exception as e:
         logger.error(f"Error fetching positions: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1116,13 +1166,18 @@ async def websocket_quotes(websocket: WebSocket):
                         client.clear_quote_cache()
                         quotes = client.get_quotes(subscribed_symbols)
                         
+                        # Cache quotes in database for persistence
+                        for symbol, quote_data in quotes.items():
+                            if quote_data:  # Only cache if we have valid data
+                                db.cache_quote(symbol, quote_data)
+                        
                         try:
                             await websocket.send_json({
                                 "type": "quotes",
                                 "data": quotes,
                                 "timestamp": datetime.now().isoformat()
                             })
-                            logger.debug(f"Sent quote update for {len(quotes)} symbols")
+                            logger.debug(f"Sent quote update for {len(quotes)} symbols, cached to database")
                         except Exception as send_error:
                             logger.info(f"WebSocket send failed (connection likely closed): {send_error}")
                             break
