@@ -319,7 +319,7 @@
             </div>
 
             <!-- Grouped Positions -->
-            <div x-show="!isLoading && !error && filteredPositions.length > 0" class="space-y-3">
+            <div x-show="!isLoading && !error && filteredPositions.length > 0 && allPositions.length > 0" class="space-y-3">
                 <template x-for="[underlying, positions] in groupedPositions" :key="underlying">
                     <div class="bg-slate-800 rounded-lg overflow-hidden" x-data="{ expanded: false }">
                         <!-- Group Header (Clickable) -->
@@ -563,11 +563,20 @@
                 },
                 
                 get groupedPositions() {
+                    // Don't process if we're loading or have no data
+                    if (this.isLoading || !this.allPositions || this.allPositions.length === 0) {
+                        return [];
+                    }
+                    
                     // Group filtered positions by underlying symbol
                     const groups = new Map();
                     
                     this.filteredPositions.forEach(position => {
                         const underlying = position.underlying || position.symbol;
+                        if (!underlying) {
+                            console.warn('Position without underlying or symbol:', position);
+                            return;
+                        }
                         if (!groups.has(underlying)) {
                             groups.set(underlying, []);
                         }
@@ -917,11 +926,23 @@
                     }
                     this.error = null;
                     
+                    // Add flag to prevent rendering issues during sync
+                    if (forceSync) {
+                        this.isLoading = true;
+                    }
+                    
                     try {
                         // Check if sync is needed based on cache freshness
                         const shouldSync = forceSync || this.shouldSyncData();
                         
                         if (shouldSync) {
+                            // Clear all data to prevent mixing cached and fresh data
+                            this.cacheInfo = null;
+                            this.allPositions = [];
+                            this.filteredPositions = [];
+                            this.underlyings = [];
+                            this.underlyingQuotes = {};
+                            
                             // First, sync data from Tastytrade (includes both positions and order chains)
                             console.log('Starting unified sync...');
                             const syncResponse = await fetch('/api/sync', {
@@ -939,17 +960,20 @@
                             const syncResult = await syncResponse.json();
                             console.log('Sync completed:', syncResult);
                             
-                            // Now fetch updated positions after sync
-                            const response = await fetch('/api/positions');
+                            // Add a small delay to ensure database is fully updated
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            
+                            // Now fetch updated positions after sync using the cached endpoint for consistency
+                            const response = await fetch('/api/positions/cached');
                             if (!response.ok) {
                                 throw new Error(`Failed to fetch positions: ${response.statusText}`);
                             }
                             
                             const data = await response.json();
                             
-                            // Flatten positions from all accounts
+                            // Flatten positions from all accounts (using cached endpoint format)
                             this.allPositions = [];
-                            for (const [accountNumber, positions] of Object.entries(data)) {
+                            for (const [accountNumber, positions] of Object.entries(data.positions)) {
                                 for (const position of positions) {
                                     this.allPositions.push({
                                         ...position,
@@ -958,9 +982,19 @@
                                 }
                             }
                             
+                            // Set cached quotes if available
+                            if (data.quotes) {
+                                this.underlyingQuotes = data.quotes;
+                            }
+                            
                             // Extract unique values for filters (accounts are loaded separately)
                             this.underlyings = [...new Set(this.allPositions.map(p => p.underlying || p.symbol))].sort();
                             
+                            // Add debugging to track data structure
+                            console.log('Sample position after sync:', this.allPositions[0]);
+                            console.log('Underlyings extracted:', this.underlyings.slice(0, 5));
+                            
+                            // Filter positions with fresh data
                             this.filterPositions();
                             
                             // Clean up comments for positions that no longer exist
