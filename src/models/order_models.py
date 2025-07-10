@@ -1355,9 +1355,137 @@ class OrderManager:
         
         return chains
     
+    def detect_multi_chain_closing_orders(self, group_orders: List[Order], used_orders: set) -> Dict[str, List[Order]]:
+        """
+        Detect closing orders that affect multiple chains and return the affected opening orders.
+        Returns a mapping of closing_order_id -> [affected_opening_orders]
+        """
+        multi_chain_closings = {}
+        
+        # Find all closing orders
+        closing_orders = [o for o in group_orders if o.order_type == OrderType.CLOSING and o.order_id not in used_orders]
+        opening_orders = [o for o in group_orders if o.order_type == OrderType.OPENING and o.order_id not in used_orders]
+        
+        for closing_order in closing_orders:
+            affected_opening_orders = []
+            
+            # For each position in the closing order, find which opening orders it could close
+            for close_pos in closing_order.positions:
+                close_action = self.get_position_attr(close_pos, 'opening_action')
+                close_symbol = self.get_position_attr(close_pos, 'symbol')
+                
+                # Skip if not a closing action
+                if 'CLOSE' not in close_action:
+                    continue
+                
+                # Find opening orders with matching positions
+                for opening_order in opening_orders:
+                    if opening_order in affected_opening_orders:
+                        continue  # Already found this opening order
+                        
+                    for open_pos in opening_order.positions:
+                        open_action = self.get_position_attr(open_pos, 'opening_action')
+                        open_symbol = self.get_position_attr(open_pos, 'symbol')
+                        
+                        # Check if this closing position matches this opening position
+                        if (open_symbol == close_symbol and 
+                            'OPEN' in open_action and
+                            self.positions_match_for_closing(open_pos, close_pos)):
+                            affected_opening_orders.append(opening_order)
+                            break  # Found a match in this opening order
+            
+            # If this closing order affects multiple opening orders, it's a multi-chain closer
+            if len(affected_opening_orders) > 1:
+                multi_chain_closings[closing_order.order_id] = affected_opening_orders
+                logger.info(f"Detected multi-chain closing order {closing_order.order_id} affecting {len(affected_opening_orders)} chains")
+        
+        return multi_chain_closings
+
+    def get_position_attr(self, position, attr_name: str):
+        """Safely get attribute from position (works with both objects and dicts)"""
+        value = None
+        if hasattr(position, attr_name):
+            value = getattr(position, attr_name, '')
+        elif hasattr(position, 'get'):
+            value = position.get(attr_name, '')
+        else:
+            value = ''
+        
+        # Ensure we never return None for string operations
+        return value if value is not None else ''
+
+    def positions_match_for_closing(self, open_pos, close_pos) -> bool:
+        """Check if a closing position can close an opening position"""
+        open_action = self.get_position_attr(open_pos, 'opening_action')
+        close_action = self.get_position_attr(close_pos, 'opening_action')
+        
+        # BUY_TO_OPEN can be closed by SELL_TO_CLOSE
+        if 'BUY_TO_OPEN' in open_action and 'SELL_TO_CLOSE' in close_action:
+            return True
+        # SELL_TO_OPEN can be closed by BUY_TO_CLOSE  
+        if 'SELL_TO_OPEN' in open_action and 'BUY_TO_CLOSE' in close_action:
+            return True
+        
+        return False
+
+    def merge_chains(self, opening_orders: List[Order], closing_order: Order) -> Dict:
+        """
+        Merge multiple opening orders into a single combined chain when closed together.
+        Returns a merged chain dictionary.
+        """
+        if not opening_orders:
+            return None
+        
+        # Sort opening orders by date to maintain chronological order
+        opening_orders.sort(key=lambda o: o.order_date or date.min)
+        
+        # Use the earliest opening order as the base
+        base_order = opening_orders[0]
+        
+        # Create merged chain ID using all opening order IDs
+        opening_order_ids = [o.order_id[:8] for o in opening_orders]  # Truncate for brevity
+        date_str = base_order.order_date.strftime('%Y%m%d') if base_order.order_date else 'UNKNOWN'
+        chain_id = f"{base_order.underlying}_MERGED_{date_str}_{'_'.join(opening_order_ids)}"
+        
+        # Combine all orders (openings + closing)
+        all_orders = opening_orders + [closing_order]
+        
+        # Calculate combined totals
+        total_pnl = sum(order.total_pnl for order in all_orders)
+        total_order_count = len(all_orders)
+        
+        # Determine strategy type
+        strategy_types = [o.strategy_type for o in opening_orders if o.strategy_type]
+        if len(set(strategy_types)) == 1:
+            combined_strategy = strategy_types[0]
+        else:
+            combined_strategy = "Multi-Strategy"
+        
+        # Create merged chain
+        merged_chain = {
+            'chain_id': chain_id,
+            'underlying': base_order.underlying,
+            'account_number': base_order.account_number,
+            'opening_order_id': base_order.order_id,  # Use first opening order as primary
+            'strategy_type': combined_strategy,
+            'opening_date': base_order.order_date,
+            'closing_date': closing_order.order_date,
+            'chain_status': ChainStatus.CLOSED.value,
+            'order_count': total_order_count,
+            'total_pnl': total_pnl,
+            'orders': all_orders
+        }
+        
+        logger.info(f"Merged {len(opening_orders)} chains into combined chain {chain_id} with total P&L: ${total_pnl}")
+        
+        return merged_chain
+
     def build_chains_for_symbol_group(self, group_orders: List[Order], used_orders: set) -> List[Dict]:
         """Build chains for a specific underlying/account group using position matching"""
         chains = []
+        
+        # First, detect multi-chain closing orders
+        multi_chain_closings = self.detect_multi_chain_closing_orders(group_orders, used_orders)
         
         # Create position inventory: track what's opened and what closes it
         position_inventory = {}  # position_key -> {'opens': [orders], 'closes': [orders]}
@@ -1374,24 +1502,35 @@ class OrderManager:
                     position_inventory[pos_key] = {'opens': [], 'closes': []}
                 
                 # Determine if this position opens or closes based on action
-                if hasattr(position, 'opening_action'):
-                    action = position.opening_action or ''
-                else:
-                    action = position.get('opening_action', '') or ''
+                action = self.get_position_attr(position, 'opening_action')
                     
                 if 'BUY_TO_OPEN' in action or 'SELL_TO_OPEN' in action:
                     position_inventory[pos_key]['opens'].append((order, position))
                 elif 'BUY_TO_CLOSE' in action or 'SELL_TO_CLOSE' in action:
                     position_inventory[pos_key]['closes'].append((order, position))
         
-        # Build chains by matching opens to closes
+        # Handle multi-chain closing orders first (merge chains)
+        for close_order_id, affected_opening_orders in multi_chain_closings.items():
+            closing_order = next(o for o in group_orders if o.order_id == close_order_id)
+            
+            # Create merged chain from all affected opening orders + closing order
+            merged_chain = self.merge_chains(affected_opening_orders, closing_order)
+            if merged_chain:
+                chains.append(merged_chain)
+                
+                # Mark all orders as used
+                for order in affected_opening_orders:
+                    used_orders.add(order.order_id)
+                used_orders.add(close_order_id)
+        
+        # Build remaining chains using standard logic
         opening_orders = [o for o in group_orders if o.order_type == OrderType.OPENING and o.order_id not in used_orders]
         
         for opening_order in opening_orders:
             if opening_order.order_id in used_orders:
                 continue
                 
-            # Find all orders that are related to this opening order through positions
+            # Standard chain building logic
             related_orders = self.find_related_orders(opening_order, position_inventory, group_orders, used_orders)
             
             if related_orders:

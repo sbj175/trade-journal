@@ -21,7 +21,6 @@ function tradeJournal() {
                 total_pnl: 0,
                 realized_pnl: 0,
                 unrealized_pnl: 0,
-                today_pnl: 0,
                 win_rate: 0,
                 open_chains: 0,
                 closed_chains: 0,
@@ -146,9 +145,6 @@ function tradeJournal() {
             // Load trades and chains with restored filters
             await this.loadChains();
             
-            // Initialize filtered dashboard with empty state in case chains are empty
-            this.calculateFilteredDashboard();
-            
             // Load last sync timestamp
             await this.loadLastSyncTimestamp();
             
@@ -262,6 +258,22 @@ function tradeJournal() {
             return dateStr;
         },
         
+        // Get display quantity (negative for short positions)
+        getDisplayQuantity(position) {
+            if (!position) return 0;
+            
+            const quantity = Math.abs(position.quantity || 0);
+            const openingAction = (position.opening_action || '').toUpperCase();
+            
+            // Check if this is a short position (STO)
+            if (openingAction.includes('SELL_TO_OPEN') || openingAction === 'STO') {
+                return -quantity;
+            }
+            
+            // Long position (BTO) or other
+            return quantity;
+        },
+        
         // Load dashboard data
         async loadDashboard() {
             try {
@@ -361,12 +373,6 @@ function tradeJournal() {
             const realizedPnl = chains.reduce((sum, chain) => sum + (chain.realized_pnl || 0), 0);
             const unrealizedPnl = chains.reduce((sum, chain) => sum + (chain.unrealized_pnl || 0), 0);
             
-            // Calculate today's P&L (chains with orders today)
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-            const todaysPnl = chains
-                .filter(chain => chain.opening_date === today || chain.closing_date === today)
-                .reduce((sum, chain) => sum + (chain.total_pnl || 0), 0);
-            
             // Calculate win rate from closed chains
             const profitableClosedChains = closedChains.filter(chain => chain.total_pnl > 0);
             const winRate = closedChains.length > 0 ? (profitableClosedChains.length / closedChains.length) * 100 : 0;
@@ -376,7 +382,6 @@ function tradeJournal() {
                 total_pnl: totalPnl,
                 realized_pnl: realizedPnl,
                 unrealized_pnl: unrealizedPnl,
-                today_pnl: todaysPnl,
                 win_rate: winRate,
                 open_chains: openChains.length,
                 closed_chains: closedChains.length,
@@ -714,6 +719,20 @@ function tradeJournal() {
                 // This is now handled in init(), but keep for compatibility
                 console.log('restoreState called (legacy)');
             }
+        },
+        
+        // Helper method to get display quantity (negative for short positions)
+        getDisplayQuantity(position) {
+            if (!position || typeof position.quantity === 'undefined') {
+                return 0;
+            }
+            
+            // Check if this is a short position (opened with SELL_TO_OPEN)
+            const openingAction = (position.opening_action || '').toUpperCase();
+            const isShortPosition = openingAction.includes('SELL_TO_OPEN') || openingAction.includes('STO');
+            
+            // Return negative quantity for short positions, positive for long positions
+            return isShortPosition ? -Math.abs(position.quantity) : Math.abs(position.quantity);
         }
     };
 }
