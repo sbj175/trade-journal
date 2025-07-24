@@ -145,7 +145,7 @@
         /* Aligned header grid */
         .header-stats-grid {
             display: grid;
-            grid-template-columns: 60px 160px 120px 80px 80px 60px 80px 180px 250px;
+            grid-template-columns: 60px 160px 120px 80px 80px 60px 60px 60px 180px 250px;
             gap: 0.5rem;
             align-items: center;
         }
@@ -400,6 +400,25 @@
                                     <div class="font-semibold text-sm text-right" 
                                          :class="getGroupPnL(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
                                          x-text="formatNumber(getGroupPnL(positions))"></div>
+                                </div>
+                                
+                                <!-- Efficiency Ratio Column -->
+                                <div class="header-stat-column">
+                                    <template x-if="shouldShowEfficiencyRatio(positions)">
+                                        <div>
+                                            <div class="text-slate-400 text-xs text-center">Eff</div>
+                                            <div class="font-semibold text-sm text-center" 
+                                                 :class="getEfficiencyRatioColor(getGroupEfficiencyRatio(positions))"
+                                                 :title="getEfficiencyTooltip(positions)"
+                                                 x-text="getGroupEfficiencyRatio(positions)"></div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!shouldShowEfficiencyRatio(positions)">
+                                        <div>
+                                            <div class="text-slate-400 text-xs text-center">—</div>
+                                            <div class="text-xs text-slate-500">—</div>
+                                        </div>
+                                    </template>
                                 </div>
                                 
                                 <!-- DTE Column -->
@@ -1752,6 +1771,126 @@
                     } else {
                         return 'strategy-badge-stock'; // Default
                     }
+                },
+                
+                shouldShowEfficiencyRatio(positions) {
+                    // Only show efficiency ratio for defined-risk multi-leg strategies
+                    const strategy = this.getStrategyLabel(positions);
+                    const definedRiskStrategies = [
+                        'Bull Put Spread', 'Bear Call Spread', 
+                        'Bull Call Spread', 'Bear Put Spread',
+                        'Butterfly', 'Iron Butterfly', 'Iron Condor'
+                    ];
+                    return definedRiskStrategies.includes(strategy);
+                },
+                
+                getGroupEfficiencyRatio(positions) {
+                    if (!this.shouldShowEfficiencyRatio(positions)) {
+                        return null;
+                    }
+                    
+                    const underlying = positions[0]?.underlying || positions[0]?.symbol || 'UNKNOWN';
+                    
+                    // Get earliest opened_at from positions
+                    const openingDates = positions
+                        .map(p => p.opened_at)
+                        .filter(d => d)
+                        .map(d => new Date(d));
+                    
+                    if (openingDates.length === 0) {
+                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - No opening dates found`);
+                        return "—";
+                    }
+                    
+                    const openingDate = new Date(Math.min(...openingDates));
+                    const now = new Date();
+                    const daysOpen = Math.floor((now - openingDate) / (1000 * 60 * 60 * 24));
+                    
+                    // Get minimum expiration date to calculate total days
+                    const expirationDates = positions
+                        .filter(p => p.expires_at)
+                        .map(p => new Date(p.expires_at));
+                    
+                    if (expirationDates.length === 0) {
+                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - No expiration dates found`);
+                        return "—";
+                    }
+                    
+                    const minExpiration = new Date(Math.min(...expirationDates));
+                    const totalDays = Math.floor((minExpiration - openingDate) / (1000 * 60 * 60 * 24));
+                    
+                    if (totalDays <= 0) {
+                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - Invalid total days: ${totalDays}`);
+                        return "—";
+                    }
+                    
+                    const timeElapsedPercent = (daysOpen / totalDays) * 100;
+                    
+                    // Calculate profit captured percentage
+                    const currentPnL = this.getGroupPnL(positions);
+                    const costBasis = Math.abs(this.getGroupCostBasis(positions));
+                    
+                    if (costBasis <= 0) {
+                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - Invalid cost basis: ${costBasis}`);
+                        return "—";
+                    }
+                    
+                    // For credit spreads, max profit is the premium received (cost basis)
+                    const profitCapturedPercent = (currentPnL / costBasis) * 100;
+                    
+                    // Calculate efficiency ratio
+                    const efficiency = timeElapsedPercent > 0 ? 
+                        (profitCapturedPercent / timeElapsedPercent) * 100 : 0;
+                    
+                    // Debug output with all raw values in a single message
+                    const displayValue = efficiency <= 0 ? '—' : (efficiency / 100).toFixed(1);
+                    console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} | Opened: ${openingDate.toISOString().split('T')[0]} | Expires: ${minExpiration.toISOString().split('T')[0]} | Days: ${daysOpen}/${totalDays} (${timeElapsedPercent.toFixed(1)}%) | P&L: $${currentPnL.toFixed(2)} | Basis: $${costBasis.toFixed(2)} | Profit: ${profitCapturedPercent.toFixed(1)}% | Efficiency: ${efficiency.toFixed(1)}% → ${displayValue}`);
+                    
+                    if (efficiency <= 0) {
+                        return "—";
+                    }
+                    
+                    return (efficiency / 100).toFixed(1);
+                },
+                
+                getEfficiencyRatioColor(efficiency) {
+                    if (!efficiency || efficiency === "—") {
+                        return 'text-slate-400';
+                    }
+                    
+                    const value = parseInt(efficiency);
+                    if (value > 100) {
+                        return 'text-green-400';
+                    } else if (value >= 50) {
+                        return 'text-yellow-400';
+                    } else {
+                        return 'text-red-400';
+                    }
+                },
+                
+                getEfficiencyTooltip(positions) {
+                    if (!this.shouldShowEfficiencyRatio(positions)) {
+                        return '';
+                    }
+                    
+                    const openingDates = positions
+                        .map(p => p.opened_at)
+                        .filter(d => d)
+                        .map(d => new Date(d));
+                    
+                    if (openingDates.length === 0) {
+                        return 'Opening date not available';
+                    }
+                    
+                    const openingDate = new Date(Math.min(...openingDates));
+                    const now = new Date();
+                    const daysOpen = Math.floor((now - openingDate) / (1000 * 60 * 60 * 24));
+                    
+                    const currentPnL = this.getGroupPnL(positions);
+                    const costBasis = Math.abs(this.getGroupCostBasis(positions));
+                    const profitCapturedPercent = costBasis > 0 ? (currentPnL / costBasis) * 100 : 0;
+                    
+                    return `${profitCapturedPercent.toFixed(0)}% profit captured in ${daysOpen} days`;
                 },
                 
                 // Load last sync timestamp
