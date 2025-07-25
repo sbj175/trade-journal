@@ -1,0 +1,211 @@
+/* Trade Journal Shared Styles */
+
+/* Custom dark theme colors */
+:root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --accent-green: #10b981;
+    --accent-red: #ef4444;
+    --accent-blue: #3b82f6;
+    --accent-purple: #8b5cf6;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* Loading animation */
+.loading-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Glass morphism effect */
+.glass {
+    background: rgba(30, 41, 59, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(71, 85, 105, 0.3);
+}
+
+/* Custom table styles */
+.table-row-hover:hover {
+    background-color: rgba(71, 85, 105, 0.3);
+}
+
+/* Price position indicator styles */
+.price-position-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: #1e293b;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.strike-marker {
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.price-marker {
+    color: #fbbf24;
+    font-weight: 800;
+    font-size: 14px;
+}
+
+.price-line {
+    width: 20px;
+    height: 2px;
+    background: #475569;
+    margin: 0 2px;
+}
+
+/* Utility classes */
+.text-profit {
+    color: var(--accent-green);
+}
+
+.text-loss {
+    color: var(--accent-red);
+}
+
+.bg-profit {
+    background-color: var(--accent-green);
+}
+
+.bg-loss {
+    background-color: var(--accent-red);
+}
+
+/* Form styling */
+.form-input {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Button styling */
+.btn-primary {
+    background-color: var(--accent-blue);
+    color: white;
+    border-radius: 6px;
+    padding: 8px 16px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background-color: #2563eb;
+}
+
+.btn-secondary {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background-color: var(--bg-tertiary);
+}
+
+/* Modal styling */
+.modal-backdrop {
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Card styling */
+.card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.card-hover:hover {
+    background-color: rgba(71, 85, 105, 0.3);
+}
+
+/* Status badges */
+.status-open {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+}
+
+.status-closed {
+    background-color: rgba(107, 114, 128, 0.2);
+    color: #9ca3af;
+    border: 1px solid #6b7280;
+}
+
+.status-partial {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border: 1px solid #f59e0b;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .mobile-hidden {
+        display: none;
+    }
+    
+    .mobile-full {
+        width: 100%;
+    }
+}

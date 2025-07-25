@@ -8,8 +8,16 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Load app.js before Alpine -->
-    <script src="/static/js/app-fixed.js"></script>
+    <!-- Shared CSS -->
+    <link rel="stylesheet" href="/static/css/shared.css">
+    
+    <!-- ES6 Modules -->
+    <script type="module">
+        import { tradeJournalComponent } from '/static/js/modules/components.js';
+        
+        // Make component available globally for Alpine.js
+        window.tradeJournal = tradeJournalComponent;
+    </script>
     
     <!-- Alpine.js Collapse Plugin -->
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
@@ -20,72 +28,13 @@
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Custom styles -->
+    <!-- Page-specific styles -->
     <style>
-        /* Custom dark theme colors */
-        :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --accent-green: #10b981;
-            --accent-red: #ef4444;
-            --accent-blue: #3b82f6;
-            --accent-purple: #8b5cf6;
-        }
-        
-        body {
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-        }
-        
-        /* Smooth scrolling */
-        html {
-            scroll-behavior: smooth;
-        }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: var(--bg-secondary);
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: var(--bg-tertiary);
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #475569;
-        }
-        
-        /* Glass morphism effect */
-        .glass {
-            background: rgba(30, 41, 59, 0.8);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(71, 85, 105, 0.3);
-        }
-        
         /* Gradient text */
         .gradient-text {
             background: linear-gradient(to right, #3b82f6, #8b5cf6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-        }
-        
-        /* Loading animation */
-        .loading-spinner {
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -387,7 +336,7 @@
                                         <span x-show="chain.status === 'CLOSED'">Realized P&L</span>
                                         <span x-show="chain.status === 'OPEN'">
                                             Realized: $<span x-text="formatNumber(chain.realized_pnl)"></span> | 
-                                            Total: $<span x-text="formatNumber(chain.total_pnl)"></span>
+                                            Unrealized: $<span x-text="formatNumber(chain.total_pnl - chain.realized_pnl)"></span>
                                         </span>
                                     </div>
                                 </div>
@@ -466,8 +415,8 @@
                                                                         </div>
                                                                     </td>
                                                                     <td class="py-1 px-2">
-                                                                        <span :class="position.quantity > 0 ? 'text-green-400' : 'text-red-400'"
-                                                                              x-text="position.quantity"></span>
+                                                                        <span :class="getDisplayQuantity(position) > 0 ? 'text-green-400' : 'text-red-400'"
+                                                                              x-text="getDisplayQuantity(position)"></span>
                                                                         <span x-show="position.fill_count > 1" class="ml-1 text-xs text-slate-500">
                                                                             (<span x-text="position.fill_count"></span> fills)
                                                                         </span>
