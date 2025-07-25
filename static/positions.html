@@ -1059,6 +1059,9 @@
                             // Update last sync timestamp after successful sync
                             await this.loadLastSyncTimestamp();
                             
+                            // Reload account balances after sync
+                            await this.loadAccountBalances();
+                            
                             // Update cache info to show fresh data
                             this.cacheInfo = {
                                 cached: false,

@@ -25,7 +25,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.database.db_manager import DatabaseManager
 from src.api.tastytrade_client import TastytradeClient
 from src.models.order_models import OrderManager
-from src.models.trade_manager import TradeManager
 
 # Configure logging
 logger.add(
@@ -223,7 +222,6 @@ async def sync_unified_internal():
     
     # Initialize clients
     tastytrade = TastytradeClient()
-    trade_manager = TradeManager()
     
     # Authenticate
     if not tastytrade.authenticate():
@@ -800,7 +798,6 @@ async def sync_unified():
         
         # Initialize clients
         tastytrade = TastytradeClient()
-        trade_manager = TradeManager()
         
         # Authenticate
         if not tastytrade.authenticate():
@@ -828,113 +825,12 @@ async def sync_unified():
         raw_saved = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
         
-        # Process into trades using new TransactionMatcher
-        logger.info("Processing transactions into trades with order-based grouping...")
-        from src.models.transaction_matcher import TransactionMatcher
-        from src.models.trade_strategy import StrategyRecognizer
-        
-        # Process each account separately to prevent cross-account grouping
-        all_trades = []
-        matcher = TransactionMatcher()
-        
-        for account in accounts:
-            account_number = account['account_number']
-            account_transactions = [tx for tx in transactions if tx.get('account_number') == account_number]
-            
-            # Filter out non-trading transactions (Money Movement, etc.)
-            trading_transactions = [
-                tx for tx in account_transactions 
-                if tx.get('instrument_type') is not None and tx.get('symbol') is not None
-            ]
-            
-            if not trading_transactions:
-                logger.info(f"No trading transactions found for account {account_number}")
-                continue
-                
-            logger.info(f"Processing {len(trading_transactions)} trading transactions for account {account_number} (filtered from {len(account_transactions)} total)")
-            
-            # Calculate stock positions for this account only
-            stock_positions = StrategyRecognizer.get_stock_positions(trading_transactions)
-            existing_positions = {}
-            for symbol, quantity in stock_positions.items():
-                existing_positions[symbol] = {'stock': quantity, 'options': {}}
-            
-            # Use TransactionMatcher for this account only
-            try:
-                strategy_matches = matcher.match_transactions_to_strategies(trading_transactions, existing_positions, account_transactions)
-            except Exception as e:
-                logger.error(f"Error in TransactionMatcher for account {account_number}: {str(e)}", exc_info=True)
-                raise
-            
-            # Convert StrategyMatch objects to Trade objects
-            for match in strategy_matches:
-                # Create Trade object from StrategyMatch
-                trade = StrategyRecognizer._create_trade_from_strategy_match(match)
-                if trade:
-                    all_trades.append(trade)
-        
-        trades = all_trades
-        
-        logger.info(f"Processed {len(trades)} trades using order-based grouping with historical position checking")
-        
-        # Get existing trades to avoid duplicates
-        existing_trades = {}
-        for underlying in set(trade.underlying for trade in trades):
-            existing = db.get_trades(underlying=underlying, limit=1000)
-            for existing_trade in existing:
-                existing_trades[existing_trade['trade_id']] = existing_trade
-        
-        # Save to database (avoid duplicates)
-        saved_count = 0
+        # Transaction data has been saved to raw_transactions table
+        # Skip legacy trade processing - OrderManager will handle this later
+        saved_count = len(transactions)
         updated_count = 0
         skipped_count = 0
         failed_count = 0
-        
-        # Group trades by account for processing
-        trades_by_account = {}
-        for trade in trades:
-            # Get account number from trade object (set during trade creation)
-            account_number = getattr(trade, 'account_number', 'UNKNOWN')
-            
-            if not account_number or account_number == 'UNKNOWN':
-                logger.warning(f"Could not determine account for trade {trade.trade_id}")
-                account_number = "UNKNOWN"
-            
-            if account_number not in trades_by_account:
-                trades_by_account[account_number] = []
-            trades_by_account[account_number].append((trade, account_number))
-
-        for account_number, account_trades in trades_by_account.items():
-            logger.info(f"Processing {len(account_trades)} trades for account {account_number}")
-            
-            for trade, trade_account in account_trades:
-                try:
-                    if trade.trade_id in existing_trades:
-                        # Check if this trade needs updating (e.g., status changed)
-                        existing = existing_trades[trade.trade_id]
-                        if (existing['status'] != trade.status.value or 
-                            existing['exit_date'] != (trade.exit_date.isoformat() if trade.exit_date else None)):
-                            if db.save_trade(trade, trade_account):
-                                updated_count += 1
-                                logger.info(f"Updated existing trade {trade.trade_id} for account {trade_account}")
-                            else:
-                                failed_count += 1
-                        else:
-                            skipped_count += 1
-                            logger.debug(f"Skipped unchanged trade {trade.trade_id}")
-                    else:
-                        # New trade
-                        if db.save_trade(trade, trade_account):
-                            saved_count += 1
-                            logger.info(f"Saved new trade {trade.trade_id} for account {trade_account}")
-                        else:
-                            failed_count += 1
-                            logger.warning(f"Failed to save trade {trade.trade_id}")
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"Error saving trade {trade.trade_id}: {str(e)}")
-        
-        logger.info(f"Sync complete: {saved_count} new, {updated_count} updated, {skipped_count} skipped, {failed_count} failed")
         
         # Also fetch and save current positions for all accounts
         logger.info("Fetching current positions from all accounts...")
@@ -963,7 +859,7 @@ async def sync_unified():
                 else:
                     logger.error(f"Failed to save balance for account {balance.get('account_number')}")
         
-        logger.info(f"Sync completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {total_positions} positions updated")
+        logger.info(f"Sync completed: {saved_count} transactions processed, {total_positions} positions updated")
         
         # Update last sync timestamp
         db.update_last_sync_timestamp()
@@ -981,12 +877,8 @@ async def sync_unified():
             logger.error(f"Error during auto chain reprocessing: {str(e)}")
         
         return {
-            "message": f"Sync completed: {saved_count} new, {updated_count} updated, {skipped_count} unchanged",
-            "trades_processed": len(trades),
-            "trades_new": saved_count,
-            "trades_updated": updated_count,
-            "trades_skipped": skipped_count,
-            "trades_failed": failed_count,
+            "message": f"Sync completed: {saved_count} new transactions processed",
+            "transactions_processed": saved_count,
             "positions_updated": total_positions,
             "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
         }
