@@ -56,6 +56,89 @@ db = DatabaseManager()
 order_manager = OrderManager(db)
 
 
+def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
+    """Calculate opening dates for positions based on transaction history"""
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Calculating opening dates for {len(positions)} positions in account {account_number}")
+    
+    # Get existing positions to preserve their opening dates
+    existing_positions = db.get_open_positions()
+    existing_opened_at = {}
+    
+    # Create a lookup map for existing positions by symbol
+    for pos in existing_positions:
+        if pos.get('account_number') == account_number and pos.get('opened_at'):
+            existing_opened_at[pos['symbol']] = pos['opened_at']
+    
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Found {len(existing_opened_at)} existing positions with opening dates")
+    
+    # Get raw transactions for this account
+    transactions = db.get_raw_transactions(account_number=account_number)
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Found {len(transactions)} transactions for account {account_number}")
+    
+    # Group transactions by symbol for efficient lookup
+    opening_transactions = {}
+    for txn in transactions:
+        action = txn.get('action')
+        if not action:
+            continue
+        action = action.upper()
+        symbol = txn.get('symbol')
+        
+        if symbol and ('BUY_TO_OPEN' in action or 'SELL_TO_OPEN' in action):
+            if symbol not in opening_transactions:
+                opening_transactions[symbol] = []
+            opening_transactions[symbol].append(txn)
+    
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Found opening transactions for {len(opening_transactions)} symbols")
+    if opening_transactions:
+        logger.info(f"🔍 EFFICIENCY_DEBUG: Sample opening transactions: {list(opening_transactions.keys())[:5]}")
+    
+    # Calculate opening dates for each position
+    for position in positions:
+        symbol = position.get('symbol')
+        
+        # First check if we already have an opening date for this position
+        if symbol in existing_opened_at:
+            position['opened_at'] = existing_opened_at[symbol]
+            continue
+        
+        # Look for opening transactions
+        if symbol in opening_transactions:
+            # Find the earliest opening transaction
+            earliest_date = None
+            for txn in opening_transactions[symbol]:
+                txn_date = txn.get('executed_at')
+                if txn_date:
+                    if isinstance(txn_date, str):
+                        try:
+                            txn_date = datetime.fromisoformat(txn_date.replace('Z', '+00:00'))
+                        except:
+                            continue
+                    
+                    if earliest_date is None or txn_date < earliest_date:
+                        earliest_date = txn_date
+            
+            if earliest_date:
+                position['opened_at'] = earliest_date.isoformat()
+            else:
+                position['opened_at'] = None
+        else:
+            # No opening transaction found
+            position['opened_at'] = None
+    
+    # Log summary
+    positions_with_dates = sum(1 for p in positions if p.get('opened_at'))
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Set opening dates for {positions_with_dates}/{len(positions)} positions")
+    
+    # Log some examples
+    for i, pos in enumerate(positions[:3]):
+        symbol = pos.get('symbol')
+        opened_at = pos.get('opened_at')
+        logger.info(f"🔍 EFFICIENCY_DEBUG: Position {i+1}: {symbol} -> opened_at: {opened_at}")
+    
+    return positions
+
+
 
 # Create static directory if it doesn't exist
 static_dir = Path("static")
@@ -165,7 +248,9 @@ async def sync_unified_internal():
     
     for account_number, positions in all_positions.items():
         if positions:
-            success = db.save_positions(positions, account_number)
+            # Calculate opening dates for positions
+            positions_with_dates = calculate_position_opening_dates(positions, account_number)
+            success = db.save_positions(positions_with_dates, account_number)
             if success:
                 logger.info(f"Auto-sync: Successfully saved {len(positions)} positions for account {account_number}")
                 total_positions += len(positions)
@@ -494,6 +579,45 @@ async def get_accounts():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/account-balances")
+async def get_account_balances(account_number: Optional[str] = None):
+    """Get account balances for specified account or all accounts"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if account_number:
+                query = """
+                    SELECT * FROM account_balances 
+                    WHERE account_number = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT 1
+                """
+                cursor.execute(query, (account_number,))
+            else:
+                query = """
+                    SELECT * FROM account_balances
+                    WHERE timestamp = (
+                        SELECT MAX(timestamp) 
+                        FROM account_balances ab2 
+                        WHERE ab2.account_number = account_balances.account_number
+                    )
+                    ORDER BY account_number
+                """
+                cursor.execute(query)
+            
+            columns = [desc[0] for desc in cursor.description]
+            balances = []
+            for row in cursor.fetchall():
+                balance = dict(zip(columns, row))
+                balances.append(balance)
+            
+            return {"balances": balances}
+    except Exception as e:
+        logger.error(f"Error getting account balances: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/positions/cached")
 async def get_cached_positions(account_number: Optional[str] = None):
     """Get cached positions immediately without sync - for fast loading"""
@@ -819,28 +943,42 @@ async def sync_unified():
         
         for account_number, positions in all_positions.items():
             if positions:
-                success = db.save_positions(positions, account_number)
+                # Calculate opening dates for positions
+                positions_with_dates = calculate_position_opening_dates(positions, account_number)
+                success = db.save_positions(positions_with_dates, account_number)
                 if success:
                     logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
                     total_positions += len(positions)
                 else:
                     logger.error(f"Failed to save positions for account {account_number}")
         
-        # Fetch and save account balance
-        logger.info("Fetching account balance...")
-        balance = tastytrade.get_account_balances()
-        if balance:
-            success = db.save_account_balance(balance)
-            if success:
-                logger.info("Successfully saved account balance")
-            else:
-                logger.error("Failed to save account balance")
+        # Fetch and save account balances for all accounts
+        logger.info("Fetching account balances...")
+        balances = tastytrade.get_account_balances()
+        if balances:
+            for balance in balances:
+                success = db.save_account_balance(balance)
+                if success:
+                    logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
+                else:
+                    logger.error(f"Failed to save balance for account {balance.get('account_number')}")
         
         logger.info(f"Sync completed: {saved_count} new trades, {updated_count} updated, {skipped_count} skipped, {total_positions} positions updated")
         
         # Update last sync timestamp
         db.update_last_sync_timestamp()
         logger.info("Updated last sync timestamp")
+        
+        # Automatically reprocess chains after syncing new orders
+        logger.info("Auto-reprocessing chains after sync...")
+        try:
+            chain_result = order_manager.reprocess_orders_and_chains_from_database()
+            if 'error' in chain_result:
+                logger.error(f"Chain reprocessing error: {chain_result['error']}")
+            else:
+                logger.info(f"Chain reprocessing completed: {chain_result['orders_saved']} orders, {chain_result['chains_saved']} chains")
+        except Exception as e:
+            logger.error(f"Error during auto chain reprocessing: {str(e)}")
         
         return {
             "message": f"Sync completed: {saved_count} new, {updated_count} updated, {skipped_count} unchanged",
@@ -1010,22 +1148,25 @@ async def initial_sync():
         
         for account_number, positions in all_positions.items():
             if positions:
-                success = db.save_positions(positions, account_number)
+                # Calculate opening dates for positions
+                positions_with_dates = calculate_position_opening_dates(positions, account_number)
+                success = db.save_positions(positions_with_dates, account_number)
                 if success:
                     logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
                     total_positions += len(positions)
                 else:
                     logger.error(f"Failed to save positions for account {account_number}")
         
-        # Fetch and save account balance
-        logger.info("Fetching account balance...")
-        balance = tastytrade.get_account_balances()
-        if balance:
-            success = db.save_account_balance(balance)
-            if success:
-                logger.info("Successfully saved account balance")
-            else:
-                logger.error("Failed to save account balance")
+        # Fetch and save account balances for all accounts
+        logger.info("Fetching account balances...")
+        balances = tastytrade.get_account_balances()
+        if balances:
+            for balance in balances:
+                success = db.save_account_balance(balance)
+                if success:
+                    logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
+                else:
+                    logger.error(f"Failed to save balance for account {balance.get('account_number')}")
         
         logger.info(f"INITIAL SYNC completed: {result['orders_saved']} orders saved, {result['chains_saved']} chains created, {total_positions} positions updated")
         
@@ -1033,6 +1174,17 @@ async def initial_sync():
         db.update_last_sync_timestamp()
         db.mark_initial_sync_completed()
         logger.info("Updated last sync timestamp and marked initial sync completed")
+        
+        # Automatically reprocess chains after initial sync
+        logger.info("Auto-reprocessing chains after initial sync...")
+        try:
+            chain_result = order_manager.reprocess_orders_and_chains_from_database()
+            if 'error' in chain_result:
+                logger.error(f"Chain reprocessing error: {chain_result['error']}")
+            else:
+                logger.info(f"Chain reprocessing completed: {chain_result['orders_saved']} orders, {chain_result['chains_saved']} chains")
+        except Exception as e:
+            logger.error(f"Error during auto chain reprocessing: {str(e)}")
         
         return {
             "message": f"Initial sync completed successfully",

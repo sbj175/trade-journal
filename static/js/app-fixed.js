@@ -258,20 +258,22 @@ function tradeJournal() {
             return dateStr;
         },
         
-        // Get display quantity (negative for short positions)
+        // Get display quantity (negative for sell actions, positive for buy actions)
         getDisplayQuantity(position) {
-            if (!position) return 0;
-            
-            const quantity = Math.abs(position.quantity || 0);
-            const openingAction = (position.opening_action || '').toUpperCase();
-            
-            // Check if this is a short position (STO)
-            if (openingAction.includes('SELL_TO_OPEN') || openingAction === 'STO') {
-                return -quantity;
+            if (!position || typeof position.quantity === 'undefined') {
+                return 0;
             }
             
-            // Long position (BTO) or other
-            return quantity;
+            // Determine the current action for this position
+            // If it has a closing_action, that's the current transaction being displayed
+            // Otherwise, use the opening_action
+            const currentAction = (position.closing_action || position.opening_action || '').toUpperCase();
+            
+            // SELL actions (STO, STC) should be negative, BUY actions (BTO, BTC) should be positive
+            const isSellAction = currentAction.includes('SELL') || currentAction.includes('STC') || currentAction.includes('STO');
+            
+            // Return negative quantity for sell actions, positive for buy actions
+            return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity);
         },
         
         // Load dashboard data
@@ -721,18 +723,22 @@ function tradeJournal() {
             }
         },
         
-        // Helper method to get display quantity (negative for short positions)
+        // Helper method to get display quantity (negative for sell actions, positive for buy actions)
         getDisplayQuantity(position) {
             if (!position || typeof position.quantity === 'undefined') {
                 return 0;
             }
             
-            // Check if this is a short position (opened with SELL_TO_OPEN)
-            const openingAction = (position.opening_action || '').toUpperCase();
-            const isShortPosition = openingAction.includes('SELL_TO_OPEN') || openingAction.includes('STO');
+            // Determine the current action for this position
+            // If it has a closing_action, that's the current transaction being displayed
+            // Otherwise, use the opening_action
+            const currentAction = (position.closing_action || position.opening_action || '').toUpperCase();
             
-            // Return negative quantity for short positions, positive for long positions
-            return isShortPosition ? -Math.abs(position.quantity) : Math.abs(position.quantity);
+            // SELL actions (STO, STC) should be negative, BUY actions (BTO, BTC) should be positive
+            const isSellAction = currentAction.includes('SELL') || currentAction.includes('STC') || currentAction.includes('STO');
+            
+            // Return negative quantity for sell actions, positive for buy actions
+            return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity);
         }
     };
 }

@@ -1112,31 +1112,38 @@ class TastytradeClient:
         # IVR = 100 * (current_iv - yearly_low) / (yearly_high - yearly_low)
         return None
     
-    def get_account_balances(self) -> Dict[str, Any]:
-        """Get account balances and buying power"""
-        if not self.current_account:
+    def get_account_balances(self) -> List[Dict[str, Any]]:
+        """Get account balances and buying power for all accounts"""
+        if not self.session:
             logger.error("Not authenticated")
-            return {}
+            return []
             
-        try:
-            balance = self.current_account.get_balances(self.session)
-            
-            return {
-                'account_number': self.current_account.account_number,
-                'cash_balance': float(balance.cash_balance) if balance.cash_balance else 0,
-                'net_liquidating_value': float(balance.net_liquidating_value) if balance.net_liquidating_value else 0,
-                'equity_buying_power': float(balance.equity_buying_power) if balance.equity_buying_power else 0,
-                'derivative_buying_power': float(balance.derivative_buying_power) if balance.derivative_buying_power else 0,
-                'day_trading_buying_power': float(balance.day_trading_buying_power) if balance.day_trading_buying_power else 0,
+        all_balances = []
+        for account in self.accounts:
+            try:
+                balance = account.get_balances(self.session)
+                
+                account_balance = {
+                    'account_number': account.account_number,
+                    'cash_balance': float(balance.cash_balance) if balance.cash_balance else 0,
+                    'net_liquidating_value': float(balance.net_liquidating_value) if balance.net_liquidating_value else 0,
+                    'equity_buying_power': float(balance.equity_buying_power) if balance.equity_buying_power else 0,
+                    'derivative_buying_power': float(balance.derivative_buying_power) if balance.derivative_buying_power else 0,
+                    'day_trading_buying_power': float(balance.day_trading_buying_power) if balance.day_trading_buying_power else 0,
                 'cash_available_to_withdraw': float(balance.cash_available_to_withdraw) if balance.cash_available_to_withdraw else 0,
                 'maintenance_requirement': float(balance.maintenance_requirement) if balance.maintenance_requirement else 0,
                 'pending_cash': float(balance.pending_cash) if balance.pending_cash else 0,
-                'long_equity_value': float(balance.long_equity_value) if balance.long_equity_value else 0,
-                'short_equity_value': float(balance.short_equity_value) if balance.short_equity_value else 0,
-                'margin_equity': float(balance.margin_equity) if balance.margin_equity else 0,
-                'updated_at': datetime.now().isoformat(),
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get account balances: {str(e)}")
-            return {}
+                    'long_equity_value': float(balance.long_equity_value) if balance.long_equity_value else 0,
+                    'short_equity_value': float(balance.short_equity_value) if balance.short_equity_value else 0,
+                    'margin_equity': float(balance.margin_equity) if balance.margin_equity else 0,
+                    'updated_at': datetime.now().isoformat(),
+                }
+                
+                all_balances.append(account_balance)
+                logger.info(f"Fetched balance for account {account.account_number}")
+                
+            except Exception as e:
+                logger.error(f"Failed to get balance for account {account.account_number}: {str(e)}")
+                continue
+        
+        return all_balances

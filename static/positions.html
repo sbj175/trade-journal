@@ -205,14 +205,14 @@
                         <div class="text-xs" x-show="cacheInfo && cacheInfo.cached">
                             <div class="flex items-center gap-2">
                                 <i class="fas fa-database" 
-                                   :class="cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')"></i>
-                                <span :class="cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')">
-                                    <span x-show="cacheInfo.is_fresh">Fresh data</span>
-                                    <span x-show="!cacheInfo.is_fresh && cacheInfo.data_age_minutes < 360">
-                                        <span x-text="Math.round(cacheInfo.data_age_minutes)"></span>m old
+                                   :class="cacheInfo && cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo && cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')"></i>
+                                <span :class="cacheInfo && cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo && cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')">
+                                    <span x-show="cacheInfo && cacheInfo.is_fresh">Fresh data</span>
+                                    <span x-show="cacheInfo && !cacheInfo.is_fresh && cacheInfo.data_age_minutes < 360">
+                                        <span x-text="cacheInfo ? Math.round(cacheInfo.data_age_minutes) : ''"></span>m old
                                     </span>
-                                    <span x-show="!cacheInfo.is_fresh && cacheInfo.data_age_minutes >= 360">
-                                        <span x-text="Math.round(cacheInfo.data_age_minutes / 60)"></span>h old
+                                    <span x-show="cacheInfo && !cacheInfo.is_fresh && cacheInfo.data_age_minutes >= 360">
+                                        <span x-text="cacheInfo ? Math.round(cacheInfo.data_age_minutes / 60) : ''"></span>h old
                                     </span>
                                 </span>
                             </div>
@@ -252,6 +252,27 @@
             <!-- Filters and Summary -->
             <div class="bg-slate-800 rounded-lg p-6 mb-6">
                 <div class="flex flex-wrap items-center justify-between gap-4">
+                    <!-- Account Balances (Left Side) -->
+                    <div class="flex flex-wrap items-center gap-6 text-sm">
+                        <template x-if="currentAccountBalance">
+                            <div class="flex items-center gap-6">
+                                <div>
+                                    <div class="text-slate-400 text-xs">Cash</div>
+                                    <div class="font-semibold text-base" x-text="formatNumber(currentAccountBalance.cash_balance)"></div>
+                                </div>
+                                <div>
+                                    <div class="text-slate-400 text-xs">Option BP</div>
+                                    <div class="font-semibold text-base" x-text="formatNumber(currentAccountBalance.derivative_buying_power)"></div>
+                                </div>
+                                <div>
+                                    <div class="text-slate-400 text-xs">NetLiq</div>
+                                    <div class="font-semibold text-base" x-text="formatNumber(currentAccountBalance.net_liquidating_value)"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Filters (Right Side) -->
                     <div class="flex flex-wrap items-center gap-4">
                         <!-- Instrument Type Filter -->
                         <div class="flex items-center space-x-2">
@@ -274,20 +295,6 @@
                                     <option :value="underlying" x-text="underlying"></option>
                                 </template>
                             </select>
-                        </div>
-                    </div>
-
-                    <!-- Summary Stats -->
-                    <div class="flex items-center space-x-6 text-sm">
-                        <div class="text-center">
-                            <div class="text-slate-400">Positions</div>
-                            <div class="font-semibold" x-text="filteredPositions.length"></div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-slate-400">Total P&L</div>
-                            <div class="font-semibold" 
-                                 :class="totalUnrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'"
-                                 x-text="formatNumber(totalUnrealizedPnL)"></div>
                         </div>
                     </div>
                 </div>
@@ -554,6 +561,7 @@
                 allPositions: [],
                 filteredPositions: [],
                 accounts: [],
+                accountBalances: {},
                 underlyings: [],
                 underlyingQuotes: {},
                 positionComments: {}, // Store comments by underlying symbol + account
@@ -579,6 +587,29 @@
                 // Computed properties
                 get totalUnrealizedPnL() {
                     return this.filteredPositions.reduce((sum, pos) => sum + this.getLiveUnrealizedPnL(pos), 0);
+                },
+                
+                get currentAccountBalance() {
+                    if (!this.selectedAccount || this.selectedAccount === '') {
+                        // Sum all account balances
+                        const values = Object.values(this.accountBalances);
+                        if (values.length === 0) return null;
+                        
+                        const totals = values.reduce((acc, balance) => {
+                            return {
+                                cash_balance: (acc.cash_balance || 0) + (balance.cash_balance || 0),
+                                derivative_buying_power: (acc.derivative_buying_power || 0) + (balance.derivative_buying_power || 0),
+                                net_liquidating_value: (acc.net_liquidating_value || 0) + (balance.net_liquidating_value || 0)
+                            };
+                        }, {
+                            cash_balance: 0,
+                            derivative_buying_power: 0,
+                            net_liquidating_value: 0
+                        });
+                        
+                        return totals;
+                    }
+                    return this.accountBalances[this.selectedAccount] || null;
                 },
                 
                 get groupedPositions() {
@@ -910,6 +941,9 @@
                             
                             return orderA - orderB;
                         });
+                        
+                        // Also load account balances
+                        await this.loadAccountBalances();
                         
                         console.log(`Loaded ${this.accounts.length} accounts`);
                     } catch (error) {
@@ -1891,6 +1925,34 @@
                     const profitCapturedPercent = costBasis > 0 ? (currentPnL / costBasis) * 100 : 0;
                     
                     return `${profitCapturedPercent.toFixed(0)}% profit captured in ${daysOpen} days`;
+                },
+                
+                async loadAccountBalances() {
+                    try {
+                        console.log('Fetching account balances...');
+                        const response = await fetch('/api/account-balances');
+                        
+                        if (!response.ok) {
+                            console.error('Failed to fetch account balances:', response.status, response.statusText);
+                            return;
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Account balances response:', data);
+                        
+                        // Store balances indexed by account number
+                        this.accountBalances = {};
+                        if (data.balances) {
+                            data.balances.forEach(balance => {
+                                this.accountBalances[balance.account_number] = balance;
+                            });
+                        }
+                        
+                        console.log('Loaded account balances:', this.accountBalances);
+                        console.log('Current account balance computed:', this.currentAccountBalance);
+                    } catch (error) {
+                        console.error('Error loading account balances:', error);
+                    }
                 },
                 
                 // Load last sync timestamp

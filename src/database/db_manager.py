@@ -358,6 +358,26 @@ class DatabaseManager:
                     cursor.execute("ALTER TABLE order_chains ADD COLUMN unrealized_pnl REAL DEFAULT 0.0")
                     logger.info("Added unrealized_pnl column to order_chains")
                 
+                # Check positions table for opened_at column
+                cursor.execute("PRAGMA table_info(positions)")
+                position_columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'opened_at' not in position_columns:
+                    cursor.execute("ALTER TABLE positions ADD COLUMN opened_at TIMESTAMP")
+                    logger.info("Added opened_at column to positions")
+                
+                if 'expires_at' not in position_columns:
+                    cursor.execute("ALTER TABLE positions ADD COLUMN expires_at TIMESTAMP")
+                    logger.info("Added expires_at column to positions")
+                
+                if 'strike_price' not in position_columns:
+                    cursor.execute("ALTER TABLE positions ADD COLUMN strike_price REAL")
+                    logger.info("Added strike_price column to positions")
+                
+                if 'option_type' not in position_columns:
+                    cursor.execute("ALTER TABLE positions ADD COLUMN option_type TEXT")
+                    logger.info("Added option_type column to positions")
+                
                 # Check positions_new table for new enhanced fields
                 cursor.execute("PRAGMA table_info(positions_new)")
                 position_columns = [column[1] for column in cursor.fetchall()]
@@ -790,8 +810,9 @@ class DatabaseManager:
                             account_number, symbol, underlying, instrument_type, quantity,
                             quantity_direction, average_open_price, close_price,
                             market_value, cost_basis, realized_day_gain,
-                            unrealized_pnl, pnl_percent
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            unrealized_pnl, pnl_percent, opened_at, expires_at,
+                            strike_price, option_type
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         account_number,
                         pos.get('symbol'),
@@ -805,7 +826,11 @@ class DatabaseManager:
                         pos.get('cost_basis'),
                         pos.get('realized_day_gain'),
                         pos.get('unrealized_pnl'),
-                        pos.get('pnl_percent')
+                        pos.get('pnl_percent'),
+                        pos.get('opened_at'),
+                        pos.get('expires_at'),
+                        pos.get('strike_price'),
+                        pos.get('option_type')
                     ))
                 
                 return True
