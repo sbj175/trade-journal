@@ -67,11 +67,11 @@ export class APIClient {
     
     // Sync methods
     async syncTrades() {
-        return this.request('/api/sync-trades', { method: 'POST' });
+        return this.request('/api/sync', { method: 'POST' });
     }
     
     async syncPositions() {
-        return this.request('/api/sync-positions', { method: 'POST' });
+        return this.request('/api/sync', { method: 'POST' });
     }
     
     async reprocessChains() {
@@ -79,7 +79,7 @@ export class APIClient {
     }
     
     async initialSync() {
-        return this.request('/api/initial-sync', { method: 'POST' });
+        return this.request('/api/sync/initial', { method: 'POST' });
     }
     
     // Trade edit methods
