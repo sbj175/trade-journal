@@ -11,16 +11,296 @@
     <!-- Shared CSS -->
     <link rel="stylesheet" href="/static/css/shared.css">
     
-    <!-- ES6 Modules -->
-    <script type="module">
-        import { positionsComponent } from '/static/js/modules/components.js';
-        
-        // Make component available globally for Alpine.js
-        window.positionsApp = positionsComponent;
-    </script>
-    
     <!-- Alpine.js for interactivity -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Inline positions app -->
+    <script>
+        function positionsApp() {
+            return {
+                // Basic state
+                allPositions: [],
+                filteredPositions: [],
+                accounts: [],
+                accountBalances: {},
+                underlyingQuotes: {},
+                positionComments: {},
+                selectedAccount: '',
+                selectedInstrumentType: '',
+                selectedUnderlying: '',
+                isLoading: false,
+                error: null,
+                liveQuotesActive: false,
+                lastQuoteUpdate: null,
+                lastSyncTimestamp: '',
+                cacheInfo: null,
+                ws: null,
+                
+                // Computed properties
+                get currentAccountBalance() {
+                    if (!this.selectedAccount || this.selectedAccount === '') {
+                        const values = Object.values(this.accountBalances);
+                        if (values.length === 0) return null;
+                        
+                        return values.reduce((acc, balance) => ({
+                            cash_balance: (acc.cash_balance || 0) + (balance.cash_balance || 0),
+                            derivative_buying_power: (acc.derivative_buying_power || 0) + (balance.derivative_buying_power || 0),
+                            net_liquidating_value: (acc.net_liquidating_value || 0) + (balance.net_liquidating_value || 0)
+                        }), { cash_balance: 0, derivative_buying_power: 0, net_liquidating_value: 0 });
+                    }
+                    return this.accountBalances[this.selectedAccount] || null;
+                },
+                
+                get groupedPositions() {
+                    if (this.isLoading || !this.allPositions || this.allPositions.length === 0) {
+                        return [];
+                    }
+                    
+                    const groups = new Map();
+                    this.filteredPositions.forEach(position => {
+                        const underlying = this.getUnderlyingSymbol(position);
+                        if (!underlying || underlying === 'Unknown') return;
+                        
+                        if (!groups.has(underlying)) {
+                            groups.set(underlying, []);
+                        }
+                        groups.get(underlying).push(position);
+                    });
+                    
+                    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                },
+                
+                // Initialize
+                async init() {
+                    console.log('Initializing positions page...');
+                    this.loadComments();
+                    await this.fetchAccounts();
+                    await this.fetchPositions();
+                    this.initializeWebSocket();
+                },
+                
+                // Basic methods (just essential ones for now)
+                async fetchAccounts() {
+                    try {
+                        const response = await fetch('/api/accounts');
+                        this.accounts = await response.json();
+                        console.log('Loaded accounts:', this.accounts);
+                    } catch (error) {
+                        console.error('Failed to load accounts:', error);
+                    }
+                },
+                
+                async fetchPositions(includeSync = false) {
+                    this.isLoading = true;
+                    this.error = null;
+                    
+                    try {
+                        if (includeSync) {
+                            await fetch('/api/sync', { method: 'POST' });
+                        }
+                        
+                        const response = await fetch('/api/positions');
+                        const data = await response.json();
+                        
+                        // Flatten positions from accounts
+                        this.allPositions = [];
+                        if (typeof data === 'object' && !Array.isArray(data)) {
+                            Object.values(data).forEach(accountPositions => {
+                                if (Array.isArray(accountPositions)) {
+                                    this.allPositions.push(...accountPositions);
+                                }
+                            });
+                        } else {
+                            this.allPositions = Array.isArray(data) ? data : [];
+                        }
+                        
+                        console.log('Sample position:', this.allPositions[0]);
+                        
+                        await this.loadAccountBalances();
+                        this.applyFilters();
+                        
+                    } catch (error) {
+                        console.error('Failed to load positions:', error);
+                        this.error = 'Failed to load positions';
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                
+                async loadAccountBalances() {
+                    try {
+                        const response = await fetch('/api/account-balances');
+                        const data = await response.json();
+                        const balances = data.balances || data;
+                        
+                        this.accountBalances = {};
+                        if (Array.isArray(balances)) {
+                            balances.forEach(balance => {
+                                this.accountBalances[balance.account_number] = balance;
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Failed to load account balances:', error);
+                    }
+                },
+                
+                initializeWebSocket() {
+                    try {
+                        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                        const wsUrl = `${protocol}//${location.host}/ws/quotes`;
+                        
+                        this.ws = new WebSocket(wsUrl);
+                        
+                        this.ws.onopen = () => {
+                            console.log('WebSocket connected successfully');
+                            this.liveQuotesActive = true;
+                        };
+                        
+                        this.ws.onmessage = (event) => {
+                            try {
+                                const message = JSON.parse(event.data);
+                                console.log('WebSocket message received:', message);
+                                
+                                if (message.type === 'connected') {
+                                    console.log('WebSocket connection confirmed, requesting quotes...');
+                                    this.requestLiveQuotes();
+                                } else if (message.type === 'quotes' && message.data) {
+                                    for (const [symbol, quoteData] of Object.entries(message.data)) {
+                                        if (quoteData && typeof quoteData === 'object') {
+                                            this.underlyingQuotes[symbol] = quoteData;
+                                        }
+                                    }
+                                    this.lastQuoteUpdate = new Date().toLocaleTimeString();
+                                    console.log('Updated quotes for:', Object.keys(message.data));
+                                } else if (message.error) {
+                                    console.error('WebSocket error from server:', message.error);
+                                }
+                            } catch (error) {
+                                console.error('Failed to parse WebSocket message:', error);
+                            }
+                        };
+                        
+                        this.ws.onclose = (event) => {
+                            console.log('WebSocket closed. Code:', event.code, 'Reason:', event.reason);
+                            this.liveQuotesActive = false;
+                            setTimeout(() => this.initializeWebSocket(), 5000);
+                        };
+                        
+                        this.ws.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                        };
+                        
+                    } catch (error) {
+                        console.error('WebSocket error:', error);
+                    }
+                },
+                
+                requestLiveQuotes() {
+                    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+                    
+                    const underlyings = [...new Set(this.filteredPositions.map(p => this.getUnderlyingSymbol(p)).filter(s => s && s !== 'Unknown'))];
+                    
+                    if (underlyings.length > 0) {
+                        console.log('Requesting quotes for:', underlyings);
+                        this.ws.send(JSON.stringify({
+                            subscribe: underlyings
+                        }));
+                    }
+                },
+                
+                // Filtering
+                applyFilters() {
+                    this.filteredPositions = this.allPositions.filter(position => {
+                        if (this.selectedAccount && position.account_number !== this.selectedAccount) {
+                            return false;
+                        }
+                        if (this.selectedInstrumentType && position.instrument_type !== this.selectedInstrumentType) {
+                            return false;
+                        }
+                        if (this.selectedUnderlying) {
+                            const underlying = this.getUnderlyingSymbol(position);
+                            if (underlying !== this.selectedUnderlying) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    });
+                },
+                
+                filterPositions() {
+                    this.applyFilters();
+                },
+                
+                saveFilterPreferences() {
+                    // Save filters to localStorage
+                },
+                
+                // Utility methods
+                getUnderlyingSymbol(position) {
+                    if (position.underlying) {
+                        return position.underlying;
+                    }
+                    
+                    if (position.symbol) {
+                        if (position.instrument_type === 'EQUITY') {
+                            return position.symbol;
+                        } else {
+                            return position.symbol.split(' ')[0] || position.symbol.split('_')[0];
+                        }
+                    }
+                    
+                    return 'Unknown';
+                },
+                
+                formatNumber(value, decimals = 2) {
+                    if (value === null || value === undefined || isNaN(value)) return '0';
+                    return new Intl.NumberFormat('en-US', {
+                        minimumFractionDigits: decimals,
+                        maximumFractionDigits: decimals
+                    }).format(value);
+                },
+                
+                // Position calculation stubs (minimal for now)
+                getGroupCostBasis(positions) { return 0; },
+                getGroupNetLiq(positions) { return 0; },
+                getGroupPnL(positions) { return 0; },
+                getGroupEfficiencyRatio(positions) { return '—'; },
+                getMinDTE(positions) { return null; },
+                getStrategyLabel(positions) { return 'Strategy'; },
+                shouldShowEfficiencyRatio(positions) { return false; },
+                shouldShowPriceIndicator(positions) { return false; },
+                getPricePositionIndicator(positions, underlying) { return ''; },
+                getUnderlyingQuote(underlying) { return null; },
+                getUnderlyingIV(underlying) { return null; },
+                getOptionType(position) { return 'Option'; },
+                getSignedQuantity(position) { return position.quantity || 0; },
+                getExpirationDate(position) { return position.expires_at || ''; },
+                getStrikePrice(position) { return position.strike_price || ''; },
+                getDTE(position) { return null; },
+                getLivePnLPercent(position) { return 0; },
+                
+                // Comments
+                loadComments() {
+                    try {
+                        this.positionComments = JSON.parse(localStorage.getItem('positionComments') || '{}');
+                    } catch (error) {
+                        this.positionComments = {};
+                    }
+                },
+                
+                getPositionComment(underlying) {
+                    const key = `${underlying}_${this.selectedAccount || 'default'}`;
+                    return this.positionComments[key] || '';
+                },
+                
+                updatePositionComment(underlying, value) {
+                    const key = `${underlying}_${this.selectedAccount || 'default'}`;
+                    this.positionComments[key] = value;
+                    localStorage.setItem('positionComments', JSON.stringify(this.positionComments));
+                }
+            };
+        }
+    </script>
     
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

@@ -36,7 +36,17 @@
       "Bash(pkill:*)",
       "Bash(true)",
       "Bash(./venv/bin/python:*)",
-      "WebFetch(domain:tastyworks-api.readthedocs.io)"
+      "WebFetch(domain:tastyworks-api.readthedocs.io)",
+      "Bash(./create-placeholder-icons.sh:*)",
+      "Bash(cp:*)",
+      "Bash(touch:*)",
+      "Bash(cargo run:*)",
+      "Bash(./start.sh:*)",
+      "Bash(timeout:*)",
+      "Bash(cat:*)",
+      "Bash(mv:*)",
+      "Bash(node:*)",
+      "Bash(journalctl:*)"
     ],
     "deny": []
   }

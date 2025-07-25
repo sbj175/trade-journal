@@ -60,9 +60,10 @@ python clean_rivn_trades.py
    - Serves the web interface and API endpoints
    - Handles trade sync, filtering, and updates
    - Manages strategy configuration
+   - WebSocket endpoint for real-time quotes
 
 2. **Database Layer** (`src/database/db_manager.py`):
-   - SQLite database with tables for trades, option_legs, stock_legs, accounts, and transactions
+   - SQLite database with tables for trades, option_legs, stock_legs, accounts, transactions, and positions
    - Context manager pattern for safe database operations
    - All trades stored locally in `trade_journal.db`
 
@@ -70,10 +71,10 @@ python clean_rivn_trades.py
    - Groups individual transactions into complete trades
    - Recognizes multi-leg option strategies (Iron Condors, Verticals, etc.)
    - Handles timezone conversion (UTC → US/Eastern)
-   - Key fix: Properly groups closing transactions with their openings
+   - Position-based roll linking and chain detection
 
 4. **Strategy Configuration** (`config/strategies.json`):
-   - JSON-based strategy definitions
+   - JSON-based strategy definitions with 15+ pre-configured strategies
    - Editable via web UI at `/strategy-config`
    - Defines recognition rules, categories, and display properties
 
@@ -81,12 +82,15 @@ python clean_rivn_trades.py
    - Authenticates and fetches transaction data
    - Supports multiple accounts
    - Uses unofficial tastytrade SDK
+   - Quote caching with 30-second TTL
 
 ### Frontend Structure
 
-- **Main Dashboard**: `static/index-fixed.html` with `static/js/app-fixed.js`
+- **Order Chains Dashboard**: `static/index-fixed.html` with `static/js/app-fixed.js`
+- **Open Positions Page**: `static/positions.html` with live quotes and position management
 - **Strategy Config UI**: `static/strategy-config.html`
 - **Alpine.js** for reactivity, **Chart.js** for visualizations
+- **WebSocket integration** for real-time price streaming
 
 ### Data Flow
 
@@ -96,7 +100,21 @@ python clean_rivn_trades.py
 4. Trades stored in SQLite database
 5. Frontend updates via API calls to display trades
 
+### Live Data Features
+
+1. **Real-time Quotes**: WebSocket connection (`/ws/quotes`) streams live market data
+2. **Position Tracking**: Current positions fetched from Tastytrade API with live P&L
+3. **Cross-page State**: Account selection synced between Order Chains and Positions pages
+4. **Persistent Comments**: User notes stored in localStorage, scoped by underlying + account
+
 ## Key Implementation Details
+
+### Order Chain System
+The system links related trades into "chains" (opening → rolls → closing) by:
+- Matching positions based on underlying, quantity, and timing
+- Tracking roll relationships through position changes
+- Aggregating P&L across entire chains
+- Visual progression display with chain indicators
 
 ### Transaction Grouping Algorithm
 The system matches closing transactions to their opening counterparts by:
@@ -113,9 +131,16 @@ All timestamps from Tastytrade (UTC) are converted to US/Eastern time to ensure 
 - PARTIAL: Some legs closed (for multi-leg strategies)
 - ASSIGNED/EXPIRED: Special close types
 
+### Position Page Features
+- **DTE Column**: Shows minimum days to expiration for option positions (yellow/bold ≤21 days)
+- **Price Position Indicators**: Visual representation of current price vs strike prices for spreads
+- **Strategy Recognition**: Automatic identification of Iron Condors, Verticals, Covered Calls, etc.
+- **Live P&L**: Real-time unrealized P&L calculations using current market prices
+- **Comments System**: Persistent user notes stored locally with localStorage
+
 ## Security Considerations
 
-- Credentials encrypted using `cryptography` library
+- Credentials encrypted using `cryptography` library with Fernet encryption
 - Never commit: `.env`, `crypto.key`, `encrypted_credentials.py`, `*.db`
 - All data stored locally - no external API calls except to Tastytrade
 
@@ -125,3 +150,4 @@ All timestamps from Tastytrade (UTC) are converted to US/Eastern time to ensure 
 2. **Multi-leg trades split up**: Fixed by improved transaction grouping algorithm
 3. **Database locked errors**: Use context managers, avoid long-running transactions
 4. **Authentication failures**: Run `python setup_credentials.py` to reset credentials
+5. **Missing quotes**: Check market hours and ensure symbols are valid

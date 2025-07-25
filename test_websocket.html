@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test for Trade Journal</h1>
+    <div id="status">Connecting...</div>
+    <div id="messages"></div>
+
+    <script>
+        const wsUrl = `ws://${window.location.host}/ws/quotes`;
+        console.log(`Connecting to WebSocket at ${wsUrl}`);
+        
+        const ws = new WebSocket(wsUrl);
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        
+        ws.onopen = () => {
+            console.log('✅ WebSocket connected');
+            statusDiv.textContent = '✅ WebSocket connected';
+            statusDiv.style.color = 'green';
+            
+            // Test subscription
+            ws.send(JSON.stringify({
+                subscribe: ['AAPL', 'SPY']
+            }));
+        };
+        
+        ws.onmessage = (event) => {
+            console.log('📨 Message received:', event.data);
+            const div = document.createElement('div');
+            div.textContent = `Message: ${event.data}`;
+            messagesDiv.appendChild(div);
+        };
+        
+        ws.onerror = (error) => {
+            console.error('❌ WebSocket error:', error);
+            statusDiv.textContent = '❌ WebSocket error';
+            statusDiv.style.color = 'red';
+        };
+        
+        ws.onclose = (event) => {
+            console.log('🔌 WebSocket closed:', event.code, event.reason);
+            statusDiv.textContent = `🔌 WebSocket closed: ${event.code} ${event.reason}`;
+            statusDiv.style.color = 'orange';
+        };
+    </script>
+</body>
+</html>

@@ -408,6 +408,7 @@ export function positionsComponent() {
         async fetchAccounts() {
             try {
                 this.accounts = await apiClient.getAccounts();
+                console.log('Loaded accounts:', this.accounts);
             } catch (error) {
                 console.error('Failed to fetch accounts:', error);
                 this.error = 'Failed to load accounts';
@@ -437,6 +438,12 @@ export function positionsComponent() {
                     });
                 } else {
                     this.allPositions = Array.isArray(response) ? response : [];
+                }
+                
+                // Debug: Log position data structure
+                if (this.allPositions.length > 0) {
+                    console.log('Sample position data:', this.allPositions[0]);
+                    console.log('All position count:', this.allPositions.length);
                 }
                 
                 this.cacheInfo = null; // No cache info in this response format
@@ -516,6 +523,15 @@ export function positionsComponent() {
             this.applyFilters();
         },
         
+        // Alternative function name for template compatibility
+        filterPositions() {
+            this.applyFilters();
+        },
+        
+        saveFilterPreferences() {
+            this.saveFilters();
+        },
+        
         // WebSocket for live quotes
         initializeWebSocket() {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -540,10 +556,16 @@ export function positionsComponent() {
                 
                 this.ws.onmessage = (event) => {
                     try {
-                        const data = JSON.parse(event.data);
-                        if (data.symbol && typeof data.price === 'number') {
-                            this.underlyingQuotes[data.symbol] = data;
+                        const message = JSON.parse(event.data);
+                        if (message.type === 'quotes' && message.data) {
+                            // Server sends: { "type": "quotes", "data": { "AAPL": quote_data, "MSFT": quote_data }, "timestamp": "..." }
+                            for (const [symbol, quoteData] of Object.entries(message.data)) {
+                                if (quoteData && typeof quoteData === 'object') {
+                                    this.underlyingQuotes[symbol] = quoteData;
+                                }
+                            }
                             this.lastQuoteUpdate = new Date().toLocaleTimeString();
+                            console.log('Updated quotes for symbols:', Object.keys(message.data));
                         }
                     } catch (error) {
                         console.error('Failed to parse quote message:', error);
@@ -587,6 +609,7 @@ export function positionsComponent() {
                     action: 'subscribe',
                     symbols: underlyings
                 });
+                console.log('Requesting live quotes for symbols:', underlyings);
                 this.ws.send(message);
             }
         },
@@ -743,6 +766,15 @@ export function positionsComponent() {
             }
         },
         
+        // Template compatibility functions
+        getPositionComment(underlying) {
+            return this.getComment(underlying, this.selectedAccount);
+        },
+        
+        updatePositionComment(underlying, value) {
+            this.saveComment(underlying, this.selectedAccount, value);
+        },
+        
         loadComments() {
             try {
                 const saved = localStorage.getItem('positionComments');
@@ -813,11 +845,14 @@ export function positionsComponent() {
                 return null;
             }
             
+            // Log the quote structure for debugging
+            console.log(`Quote for ${underlying}:`, quote);
+            
             return {
-                price: quote.price || quote.last || 0,
-                change: quote.change || 0,
-                changePercent: quote.changePercent || ((quote.price - quote.previousClose) / quote.previousClose * 100) || 0,
-                mark: quote.mark || quote.price || quote.last || 0
+                price: quote.price || quote.last || quote.bid || 0,
+                change: quote.change || (quote.price - quote.previousClose) || 0,
+                changePercent: quote.changePercent || quote.change_percent || ((quote.price - quote.previousClose) / quote.previousClose * 100) || 0,
+                mark: quote.mark || quote.mid || quote.price || quote.last || 0
             };
         },
         
@@ -936,6 +971,61 @@ export function positionsComponent() {
             } catch (error) {
                 return null;
             }
+        },
+        
+        // Price position indicator functions
+        shouldShowPriceIndicator(positions) {
+            // Show price indicator for option spreads and multi-leg strategies
+            return positions && positions.length > 1 && positions.some(p => 
+                p.instrument_type && p.instrument_type.includes('OPTION')
+            );
+        },
+        
+        getPricePositionIndicator(positions, underlying) {
+            if (!this.shouldShowPriceIndicator(positions)) {
+                return '';
+            }
+            
+            const quote = this.getUnderlyingQuote(underlying);
+            const currentPrice = quote ? quote.price : null;
+            
+            if (!currentPrice) {
+                return '<span class="text-slate-500">Price N/A</span>';
+            }
+            
+            // Get option positions and their strikes
+            const optionPositions = positions.filter(p => 
+                p.instrument_type && p.instrument_type.includes('OPTION')
+            );
+            
+            if (optionPositions.length === 0) return '';
+            
+            const strikes = optionPositions.map(p => parseFloat(p.strike_price)).filter(s => !isNaN(s)).sort((a, b) => a - b);
+            
+            if (strikes.length < 2) return '';
+            
+            const lowStrike = strikes[0];
+            const highStrike = strikes[strikes.length - 1];
+            
+            // Determine if price is between strikes
+            const isBetween = currentPrice >= lowStrike && currentPrice <= highStrike;
+            const priceClass = isBetween ? 'price-between' : 'price-outside';
+            
+            return `
+                <span class="strike-marker">${lowStrike}</span>
+                <div class="price-line"></div>
+                <span class="price-marker ${priceClass}">$${currentPrice.toFixed(2)}</span>
+                <div class="price-line"></div>
+                <span class="strike-marker">${highStrike}</span>
+            `;
+        },
+        
+        getLivePnLPercent(position) {
+            const costBasis = Math.abs(position.cost_basis || 0);
+            if (costBasis <= 0) return 0;
+            
+            const unrealizedPnL = this.getLiveUnrealizedPnL(position);
+            return (unrealizedPnL / costBasis) * 100;
         }
     };
 }

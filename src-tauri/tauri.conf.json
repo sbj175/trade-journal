@@ -1,0 +1,53 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "Trade Journal",
+  "version": "1.0.0",
+  "identifier": "com.tradejournal.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devUrl": "http://localhost:8000/static/positions.html",
+    "frontendDist": "http://localhost:8000/static/positions.html"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Trade Journal",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1200,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false
+      },
+      {
+        "label": "splash",
+        "title": "Trade Journal",
+        "width": 400,
+        "height": 500,
+        "resizable": false,
+        "center": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ]
+  }
+}

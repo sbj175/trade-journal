@@ -1,0 +1,219 @@
+pub const SPLASH_HTML: &str = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Journal - Loading</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        
+        .splash-container {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .logo-container {
+            margin-bottom: 2rem;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: bold;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+        }
+        
+        .app-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-top: 1rem;
+            background: linear-gradient(to right, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+        }
+        
+        .loader-container {
+            margin: 2.5rem 0;
+            animation: fadeIn 0.5s ease-out 0.2s both;
+        }
+        
+        .loader {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto;
+            position: relative;
+        }
+        
+        .loader-circle {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 3px solid transparent;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+        }
+        
+        .loader-circle:nth-child(2) {
+            border-top-color: #8b5cf6;
+            animation-delay: 0.15s;
+            width: 70%;
+            height: 70%;
+            top: 15%;
+            left: 15%;
+        }
+        
+        .loader-circle:nth-child(3) {
+            border-top-color: #6366f1;
+            animation-delay: 0.3s;
+            width: 40%;
+            height: 40%;
+            top: 30%;
+            left: 30%;
+        }
+        
+        .status-text {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-top: 2rem;
+            min-height: 1.2rem;
+            animation: fadeIn 0.5s ease-out 0.4s both;
+            transition: opacity 0.3s ease;
+        }
+        
+        .error-text {
+            color: #ef4444;
+            font-weight: 500;
+        }
+        
+        .progress-bar {
+            width: 200px;
+            height: 2px;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 1px;
+            margin: 1rem auto 0;
+            overflow: hidden;
+            animation: fadeIn 0.5s ease-out 0.6s both;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            border-radius: 1px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes fadeIn {
+            0% {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .loading-dots {
+            display: inline-block;
+        }
+        
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        
+        @keyframes dots {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+        }
+    </style>
+</head>
+<body>
+    <div class="splash-container">
+        <div class="logo-container">
+            <div class="logo">TJ</div>
+            <h1 class="app-title">Trade Journal</h1>
+        </div>
+        
+        <div class="loader-container">
+            <div class="loader">
+                <div class="loader-circle"></div>
+                <div class="loader-circle"></div>
+                <div class="loader-circle"></div>
+            </div>
+        </div>
+        
+        <div class="status-text" id="status-text">
+            Starting application<span class="loading-dots"></span>
+        </div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Listen for status updates from Tauri
+        if (window.__TAURI__) {
+            window.__TAURI__.event.listen('splash-status', (event) => {
+                const statusText = document.getElementById('status-text');
+                const progressFill = document.getElementById('progress-fill');
+                
+                if (event.payload.error) {
+                    statusText.innerHTML = `<span class="error-text">${event.payload.message}</span>`;
+                    statusText.classList.add('error-text');
+                    // Stop the loader animation
+                    document.querySelector('.loader').style.display = 'none';
+                } else {
+                    statusText.innerHTML = event.payload.message + '<span class="loading-dots"></span>';
+                    if (event.payload.progress !== undefined) {
+                        progressFill.style.width = event.payload.progress + '%';
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>"#;

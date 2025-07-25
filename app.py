@@ -1145,21 +1145,26 @@ async def health_check():
 async def websocket_quotes(websocket: WebSocket):
     """WebSocket endpoint for streaming live quotes"""
     await websocket.accept()
+    logger.info("WebSocket connection accepted")
     
     client = None
     subscribed_symbols = []
     
     try:
+        # Send a connection confirmation
+        await websocket.send_json({"type": "connected", "message": "WebSocket connected"})
+        
         # Initialize Tastytrade client
         client = TastytradeClient()
         
         # Authenticate with Tastytrade
         if not client.authenticate():
+            logger.error("Tastytrade authentication failed for WebSocket")
             await websocket.send_json({"error": "Failed to authenticate with Tastytrade"})
             await websocket.close()
             return
         
-        logger.info("WebSocket client connected for quote streaming")
+        logger.info("WebSocket client connected and Tastytrade authenticated")
         
         # Create tasks for receiving messages and sending updates
         async def receive_messages():
