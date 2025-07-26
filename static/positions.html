@@ -36,6 +36,7 @@
                 cacheInfo: null,
                 ws: null,
                 
+                
                 // Computed properties
                 get currentAccountBalance() {
                     if (!this.selectedAccount || this.selectedAccount === '') {
@@ -79,6 +80,7 @@
                     this.initializeWebSocket();
                 },
                 
+
                 // Basic methods (just essential ones for now)
                 async fetchAccounts() {
                     try {
@@ -105,9 +107,13 @@
                         // Flatten positions from accounts
                         this.allPositions = [];
                         if (typeof data === 'object' && !Array.isArray(data)) {
-                            Object.values(data).forEach(accountPositions => {
+                            Object.entries(data).forEach(([accountNumber, accountPositions]) => {
                                 if (Array.isArray(accountPositions)) {
-                                    this.allPositions.push(...accountPositions);
+                                    // Add account_number to each position
+                                    accountPositions.forEach(position => {
+                                        position.account_number = accountNumber;
+                                        this.allPositions.push(position);
+                                    });
                                 }
                             });
                         } else {
@@ -115,8 +121,8 @@
                         }
                         
                         console.log('Sample position:', this.allPositions[0]);
-                        
-                        await this.loadAccountBalances();
+                        console.log('Total positions loaded:', this.allPositions.length);
+                        console.log('Accounts in positions:', [...new Set(this.allPositions.map(p => p.account_number))]);
                         this.applyFilters();
                         
                     } catch (error) {
@@ -210,8 +216,12 @@
                 
                 // Filtering
                 applyFilters() {
+                    console.log('Applying filters with selectedAccount:', this.selectedAccount);
+                    console.log('All positions count:', this.allPositions.length);
+                    
                     this.filteredPositions = this.allPositions.filter(position => {
                         if (this.selectedAccount && position.account_number !== this.selectedAccount) {
+                            console.log(`Filtering out position ${position.symbol} - account ${position.account_number} != ${this.selectedAccount}`);
                             return false;
                         }
                         if (this.selectedInstrumentType && position.instrument_type !== this.selectedInstrumentType) {
@@ -225,6 +235,8 @@
                         }
                         return true;
                     });
+                    
+                    console.log('Filtered positions count:', this.filteredPositions.length);
                 },
                 
                 filterPositions() {

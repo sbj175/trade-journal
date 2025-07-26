@@ -56,71 +56,69 @@ order_manager = OrderManager(db)
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
-    """Calculate opening dates for positions based on transaction history"""
+    """Calculate opening dates for positions based on transaction history - OPTIMIZED"""
     logger.info(f"🔍 EFFICIENCY_DEBUG: Calculating opening dates for {len(positions)} positions in account {account_number}")
     
-    # Get existing positions to preserve their opening dates
-    existing_positions = db.get_open_positions()
-    existing_opened_at = {}
+    if not positions:
+        return positions
     
-    # Create a lookup map for existing positions by symbol
-    for pos in existing_positions:
-        if pos.get('account_number') == account_number and pos.get('opened_at'):
-            existing_opened_at[pos['symbol']] = pos['opened_at']
+    # Get existing positions for this account only (more efficient query)
+    existing_positions = []
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT symbol, opened_at 
+            FROM positions 
+            WHERE account_number = ? AND opened_at IS NOT NULL
+        """, (account_number,))
+        existing_positions = cursor.fetchall()
     
+    # Create efficient lookup map
+    existing_opened_at = {pos['symbol']: pos['opened_at'] for pos in existing_positions}
     logger.info(f"🔍 EFFICIENCY_DEBUG: Found {len(existing_opened_at)} existing positions with opening dates")
     
-    # Get raw transactions for this account
-    transactions = db.get_raw_transactions(account_number=account_number)
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Found {len(transactions)} transactions for account {account_number}")
+    # Get symbols that need opening date calculation
+    symbols_needing_dates = [pos['symbol'] for pos in positions if pos['symbol'] not in existing_opened_at]
     
-    # Group transactions by symbol for efficient lookup
-    opening_transactions = {}
-    for txn in transactions:
-        action = txn.get('action')
-        if not action:
-            continue
-        action = action.upper()
-        symbol = txn.get('symbol')
-        
-        if symbol and ('BUY_TO_OPEN' in action or 'SELL_TO_OPEN' in action):
-            if symbol not in opening_transactions:
-                opening_transactions[symbol] = []
-            opening_transactions[symbol].append(txn)
+    if not symbols_needing_dates:
+        # All positions already have opening dates
+        for position in positions:
+            position['opened_at'] = existing_opened_at.get(position['symbol'])
+        return positions
     
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Found opening transactions for {len(opening_transactions)} symbols")
-    if opening_transactions:
-        logger.info(f"🔍 EFFICIENCY_DEBUG: Sample opening transactions: {list(opening_transactions.keys())[:5]}")
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Need to calculate opening dates for {len(symbols_needing_dates)} symbols")
     
-    # Calculate opening dates for each position
+    # Optimized query: Get opening transactions for specific symbols only
+    opening_dates = {}
+    if symbols_needing_dates:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            # Use parameterized query with IN clause for specific symbols
+            placeholders = ','.join(['?' for _ in symbols_needing_dates])
+            cursor.execute(f"""
+                SELECT symbol, MIN(executed_at) as earliest_date
+                FROM raw_transactions 
+                WHERE account_number = ? 
+                AND symbol IN ({placeholders})
+                AND (action LIKE '%BUY_TO_OPEN%' OR action LIKE '%SELL_TO_OPEN%')
+                GROUP BY symbol
+            """, [account_number] + symbols_needing_dates)
+            
+            for row in cursor.fetchall():
+                opening_dates[row['symbol']] = row['earliest_date']
+    
+    logger.info(f"🔍 EFFICIENCY_DEBUG: Found opening dates for {len(opening_dates)} symbols via optimized query")
+    
+    # Apply opening dates to positions
     for position in positions:
         symbol = position.get('symbol')
         
-        # First check if we already have an opening date for this position
+        # Use existing date if available
         if symbol in existing_opened_at:
             position['opened_at'] = existing_opened_at[symbol]
-            continue
-        
-        # Look for opening transactions
-        if symbol in opening_transactions:
-            # Find the earliest opening transaction
-            earliest_date = None
-            for txn in opening_transactions[symbol]:
-                txn_date = txn.get('executed_at')
-                if txn_date:
-                    if isinstance(txn_date, str):
-                        try:
-                            txn_date = datetime.fromisoformat(txn_date.replace('Z', '+00:00'))
-                        except:
-                            continue
-                    
-                    if earliest_date is None or txn_date < earliest_date:
-                        earliest_date = txn_date
-            
-            if earliest_date:
-                position['opened_at'] = earliest_date.isoformat()
-            else:
-                position['opened_at'] = None
+        # Use calculated date if available
+        elif symbol in opening_dates:
+            position['opened_at'] = opening_dates[symbol]
         else:
             # No opening transaction found
             position['opened_at'] = None

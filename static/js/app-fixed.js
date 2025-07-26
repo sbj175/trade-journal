@@ -217,6 +217,145 @@ function tradeJournal() {
             return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         },
         
+        // Detect strategy from opening order positions
+        detectStrategy(chain) {
+            // Get the opening order
+            const openingOrder = chain.orders?.find(order => order.order_type === 'OPENING');
+            if (!openingOrder || !openingOrder.positions || openingOrder.positions.length === 0) {
+                return 'Unknown';
+            }
+            
+            const positions = openingOrder.positions;
+            
+            
+            const optionPositions = positions.filter(p => 
+                p.instrument_type === 'OPTION' || 
+                p.instrument_type === 'EQUITY_OPTION' ||
+                p.instrument_type === 'InstrumentType.EQUITY_OPTION' ||
+                (p.instrument_type && p.instrument_type.includes('OPTION'))
+            );
+            const stockPositions = positions.filter(p => p.instrument_type === 'EQUITY');
+            
+            
+            // Single position strategies
+            if (positions.length === 1) {
+                const position = positions[0];
+                if (position.instrument_type === 'EQUITY') {
+                    return position.quantity > 0 ? 'Long Stock' : 'Short Stock';
+                } else {
+                    const isCall = position.option_type === 'CALL';
+                    const isLong = position.quantity > 0;
+                    if (isCall && isLong) return 'Long Call';
+                    if (isCall && !isLong) return 'Short Call';
+                    if (!isCall && isLong) return 'Long Put';
+                    if (!isCall && !isLong) return 'Short Put';
+                }
+            }
+            
+            // Stock + Option combinations
+            if (stockPositions.length === 1 && optionPositions.length === 1) {
+                const stock = stockPositions[0];
+                const option = optionPositions[0];
+                
+                if (stock.quantity > 0 && option.quantity < 0 && option.option_type === 'CALL') {
+                    return 'Covered Call';
+                }
+                if (stock.quantity < 0 && option.quantity < 0 && option.option_type === 'PUT') {
+                    return 'Cash Secured Put';
+                }
+            }
+            
+            // Multi-leg option strategies
+            if (optionPositions.length === 2) {
+                const [opt1, opt2] = optionPositions.sort((a, b) => (a.strike || 0) - (b.strike || 0));
+                // Normalize option types for comparison
+                const opt1Type = (opt1.option_type || '').toUpperCase();
+                const opt2Type = (opt2.option_type || '').toUpperCase();
+                const sameType = opt1Type === opt2Type;
+                const sameExpiration = opt1.expiration === opt2.expiration;
+                const sameStrike = opt1.strike === opt2.strike;
+                
+                
+                if (sameStrike && sameExpiration && !sameType) {
+                    // Same strike, different types = Straddle/Strangle
+                    return 'Straddle';
+                }
+                
+                if (!sameStrike && sameExpiration && !sameType) {
+                    // Different strikes, different types = Strangle
+                    return 'Strangle';
+                }
+                
+                if (!sameStrike && sameExpiration && sameType) {
+                    // Vertical Spread
+                    const isCall = opt1Type === 'CALL';
+                    
+                    // Determine buy/sell based on opening_action
+                    const opt1IsBuy = opt1.opening_action && (
+                        opt1.opening_action.toUpperCase().includes('BUY')
+                    );
+                    const opt2IsBuy = opt2.opening_action && (
+                        opt2.opening_action.toUpperCase().includes('BUY')
+                    );
+                    
+                    const buyLower = opt1IsBuy;
+                    const sellHigher = !opt2IsBuy;
+                    
+                    if (isCall) {
+                        if (buyLower && sellHigher) return 'Bull Call Spread';
+                        if (!buyLower && !sellHigher) return 'Bear Call Spread';
+                    } else {
+                        // For puts, the logic is opposite
+                        if (buyLower && sellHigher) return 'Bull Put Spread';
+                        if (!buyLower && !sellHigher) return 'Bear Put Spread';
+                    }
+                    
+                }
+            }
+            
+            if (optionPositions.length === 3) {
+                return 'Butterfly';
+            }
+            
+            if (optionPositions.length === 4) {
+                const puts = optionPositions.filter(p => p.option_type === 'PUT');
+                const calls = optionPositions.filter(p => p.option_type === 'CALL');
+                
+                if (puts.length === 2 && calls.length === 2) {
+                    return 'Iron Condor';
+                } else if (puts.length === 4 || calls.length === 4) {
+                    return 'Iron Butterfly';
+                }
+                
+                return 'Four-Leg Strategy';
+            }
+            
+            return optionPositions.length > 0 ? 'Complex Strategy' : 'Mixed Strategy';
+        },
+        
+        // Get strategy badge CSS class
+        getStrategyBadgeClass(strategy) {
+            const complexStrategies = ['Iron Condor', 'Iron Butterfly', 'Butterfly', 'Complex Strategy'];
+            const spreadStrategies = ['Bull Put Spread', 'Bear Call Spread', 'Bull Call Spread', 'Bear Put Spread', 'Straddle', 'Strangle', 'Four-Leg Strategy'];
+            const coveredStrategies = ['Covered Call', 'Cash Secured Put'];
+            const singleStrategies = ['Long Call', 'Short Call', 'Long Put', 'Short Put'];
+            const stockStrategies = ['Long Stock', 'Short Stock'];
+            
+            if (complexStrategies.includes(strategy)) {
+                return 'bg-purple-600 text-white';
+            } else if (spreadStrategies.includes(strategy)) {
+                return 'bg-blue-600 text-white';
+            } else if (coveredStrategies.includes(strategy)) {
+                return 'bg-green-600 text-white';
+            } else if (singleStrategies.includes(strategy)) {
+                return 'bg-red-600 text-white';
+            } else if (stockStrategies.includes(strategy)) {
+                return 'bg-gray-600 text-white';
+            } else {
+                return 'bg-slate-600 text-slate-300';
+            }
+        },
+        
         // Format order action to standard abbreviations
         formatAction(action) {
             if (!action) return '';
@@ -286,7 +425,20 @@ function tradeJournal() {
                 }
                 const response = await fetch(url);
                 const data = await response.json();
-                this.dashboard = data;
+                // Merge the data instead of replacing to preserve filteredSummary
+                this.dashboard = {
+                    ...this.dashboard,
+                    ...data,
+                    filteredSummary: this.dashboard.filteredSummary || {
+                        total_pnl: 0,
+                        realized_pnl: 0,
+                        unrealized_pnl: 0,
+                        win_rate: 0,
+                        open_chains: 0,
+                        closed_chains: 0,
+                        total_chains: 0
+                    }
+                };
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             }
@@ -353,7 +505,10 @@ function tradeJournal() {
             
             // Apply strategy filtering if set
             if (this.filterStrategy) {
-                chains = chains.filter(chain => chain.strategy_type === this.filterStrategy);
+                chains = chains.filter(chain => {
+                    const detectedStrategy = this.detectStrategy(chain);
+                    return detectedStrategy === this.filterStrategy;
+                });
             }
             
             this.filteredChains = chains;

@@ -11,13 +11,8 @@
     <!-- Shared CSS -->
     <link rel="stylesheet" href="/static/css/shared.css">
     
-    <!-- ES6 Modules -->
-    <script type="module">
-        import { tradeJournalComponent } from '/static/js/modules/components.js';
-        
-        // Make component available globally for Alpine.js
-        window.tradeJournal = tradeJournalComponent;
-    </script>
+    <!-- Load the app JavaScript -->
+    <script src="/static/js/app-fixed.js"></script>
     
     <!-- Alpine.js Collapse Plugin -->
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
@@ -313,7 +308,12 @@
                                     
                                     <!-- Chain Info -->
                                     <div>
-                                        <h3 class="text-base font-semibold text-white" x-text="chain.underlying + ' ' + chain.strategy_type"></h3>
+                                        <h3 class="text-base font-semibold text-white">
+                                            <span x-text="chain.underlying"></span>
+                                            <span class="ml-2 text-sm px-2 py-1 rounded-md" 
+                                                  :class="getStrategyBadgeClass(detectStrategy(chain))"
+                                                  x-text="detectStrategy(chain)"></span>
+                                        </h3>
                                         <div class="flex items-center space-x-3 text-sm text-slate-400 mt-1">
                                             <span x-text="chain.opening_date"></span>
                                             <span x-show="chain.closing_date">→ <span x-text="chain.closing_date"></span></span>

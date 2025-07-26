@@ -282,28 +282,53 @@ class DatabaseManager:
                 )
             """)
             
-            # Create indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_underlying ON trades(underlying)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date)")
+            # Create strategic indexes for performance
+            # Core position and account queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_underlying ON positions(underlying)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_instrument_type ON positions(instrument_type)")
             
-            # Order system indexes
+            # Order system indexes - most frequently queried
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_account ON orders(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_underlying ON orders(underlying)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_new_order ON positions_new(order_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_new_account ON positions_new(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_account_underlying ON orders(account_number, underlying)")
+            
+            # Order chains - for chain linking and efficiency calculations
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_account ON order_chains(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_underlying ON order_chains(underlying)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_status ON order_chains(chain_status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_opening_date ON order_chains(opening_date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_account_underlying ON order_chains(account_number, underlying)")
+            
+            # Chain membership - critical for chain queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_chain ON order_chain_members(chain_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_order ON order_chain_members(order_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_sequence ON order_chain_members(chain_id, sequence_number)")
+            
+            # Raw transactions - for opening date calculations
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_order ON raw_transactions(order_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_account ON raw_transactions(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_symbol ON raw_transactions(symbol)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_executed_at ON raw_transactions(executed_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_action ON raw_transactions(action)")
+            
+            # Quote cache - for live data performance
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_quote_cache_symbol ON quote_cache(symbol)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_quote_cache_updated ON quote_cache(updated_at)")
             
+            # Account and balance lookups
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_account ON account_balances(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_timestamp ON account_balances(timestamp)")
+            
             # Add transaction action and timestamp columns if they don't exist
             self._add_transaction_columns()
+            
+            # Enable foreign key constraints
+            cursor.execute("PRAGMA foreign_keys = ON")
             
             logger.info("Database initialized successfully")
     
