@@ -22,18 +22,6 @@
         "resizable": true,
         "fullscreen": false,
         "visible": false
-      },
-      {
-        "label": "splash",
-        "title": "Trade Journal",
-        "width": 400,
-        "height": 500,
-        "resizable": false,
-        "center": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": true
       }
     ],
     "security": {
@@ -48,6 +36,9 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "splash.html"
     ]
   }
 }

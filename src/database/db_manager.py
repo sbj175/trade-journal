@@ -9,6 +9,7 @@ from datetime import datetime, date
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import json
+import time
 from loguru import logger
 
 # Add parent directory to path
@@ -21,7 +22,13 @@ from src.models.trade_strategy import Trade, OptionLeg, StockLeg, TradeStatus, S
 class DatabaseManager:
     def __init__(self, db_path: str = "trade_journal.db"):
         self.db_path = db_path
-        self.initialize_database()
+        self._initialized = False
+        # Note: initialize_database() is called explicitly by FastAPI startup event
+    
+    def ensure_initialized(self):
+        """Ensure database is initialized (for standalone scripts)"""
+        if not self._initialized:
+            self.initialize_database()
     
     @contextmanager
     def get_connection(self):
@@ -39,6 +46,8 @@ class DatabaseManager:
     
     def initialize_database(self):
         """Create all necessary tables"""
+        start_time = time.time()
+        logger.info("Starting database initialization...")
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
@@ -330,7 +339,9 @@ class DatabaseManager:
             # Enable foreign key constraints
             cursor.execute("PRAGMA foreign_keys = ON")
             
-            logger.info("Database initialized successfully")
+            self._initialized = True
+            elapsed_time = time.time() - start_time
+            logger.info(f"Database initialized successfully in {elapsed_time:.2f} seconds")
     
     def _add_transaction_columns(self):
         """Add transaction action and timestamp columns to existing tables"""
@@ -444,6 +455,7 @@ class DatabaseManager:
     
     def get_accounts(self) -> List[Dict[str, Any]]:
         """Get all accounts"""
+        self.ensure_initialized()
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM accounts WHERE is_active = 1 ORDER BY account_number")
@@ -586,6 +598,7 @@ class DatabaseManager:
         offset: int = 0
     ) -> List[Dict[str, Any]]:
         """Get trades with optional filters"""
+        self.ensure_initialized()
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
@@ -669,6 +682,7 @@ class DatabaseManager:
     
     def save_raw_transactions(self, transactions: List[Dict]) -> int:
         """Save raw transactions to database for order-based grouping"""
+        self.ensure_initialized()
         saved_count = 0
         
         with self.get_connection() as conn:
