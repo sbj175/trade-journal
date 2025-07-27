@@ -287,8 +287,12 @@ function tradeJournal() {
                 }
                 
                 if (!sameStrike && sameExpiration && sameType) {
-                    // Vertical Spread
+                    // Check for ZEBRA strategies first (2:1 ratios)
                     const isCall = opt1Type === 'CALL';
+                    
+                    // Get quantities for ratio analysis
+                    const opt1Qty = Math.abs(opt1.quantity || 0);
+                    const opt2Qty = Math.abs(opt2.quantity || 0);
                     
                     // Determine buy/sell based on opening_action
                     const opt1IsBuy = opt1.opening_action && (
@@ -298,6 +302,30 @@ function tradeJournal() {
                         opt2.opening_action.toUpperCase().includes('BUY')
                     );
                     
+                    // Check for ZEBRA pattern (2:1 ratio)
+                    const ratio1to2 = opt1Qty > 0 ? opt1Qty / opt2Qty : 0;
+                    const ratio2to1 = opt2Qty > 0 ? opt2Qty / opt1Qty : 0;
+                    
+                    // Bull ZEBRA: Long 2x ITM calls, Short 1x ATM calls
+                    if (isCall && opt1IsBuy && !opt2IsBuy && ratio1to2 === 2) {
+                        return 'Bull ZEBRA';
+                    }
+                    
+                    // Bear ZEBRA: Long 2x ITM puts, Short 1x ATM puts  
+                    if (!isCall && opt1IsBuy && !opt2IsBuy && ratio1to2 === 2) {
+                        return 'Bear ZEBRA';
+                    }
+                    
+                    // Alternative ZEBRA pattern (short lower, long higher)
+                    if (isCall && !opt1IsBuy && opt2IsBuy && ratio2to1 === 2) {
+                        return 'Bull ZEBRA';
+                    }
+                    
+                    if (!isCall && !opt1IsBuy && opt2IsBuy && ratio2to1 === 2) {
+                        return 'Bear ZEBRA';
+                    }
+                    
+                    // Standard Vertical Spreads (1:1 ratio)
                     const buyLower = opt1IsBuy;
                     const sellHigher = !opt2IsBuy;
                     
@@ -333,28 +361,6 @@ function tradeJournal() {
             return optionPositions.length > 0 ? 'Complex Strategy' : 'Mixed Strategy';
         },
         
-        // Get strategy badge CSS class
-        getStrategyBadgeClass(strategy) {
-            const complexStrategies = ['Iron Condor', 'Iron Butterfly', 'Butterfly', 'Complex Strategy'];
-            const spreadStrategies = ['Bull Put Spread', 'Bear Call Spread', 'Bull Call Spread', 'Bear Put Spread', 'Straddle', 'Strangle', 'Four-Leg Strategy'];
-            const coveredStrategies = ['Covered Call', 'Cash Secured Put'];
-            const singleStrategies = ['Long Call', 'Short Call', 'Long Put', 'Short Put'];
-            const stockStrategies = ['Long Stock', 'Short Stock'];
-            
-            if (complexStrategies.includes(strategy)) {
-                return 'bg-purple-600 text-white';
-            } else if (spreadStrategies.includes(strategy)) {
-                return 'bg-blue-600 text-white';
-            } else if (coveredStrategies.includes(strategy)) {
-                return 'bg-green-600 text-white';
-            } else if (singleStrategies.includes(strategy)) {
-                return 'bg-red-600 text-white';
-            } else if (stockStrategies.includes(strategy)) {
-                return 'bg-gray-600 text-white';
-            } else {
-                return 'bg-slate-600 text-slate-300';
-            }
-        },
         
         // Format order action to standard abbreviations
         formatAction(action) {
@@ -413,6 +419,54 @@ function tradeJournal() {
             
             // Return negative quantity for sell actions, positive for buy actions
             return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity);
+        },
+        
+        // Calculate per-share credit/debit for rolling orders
+        calculateRollCreditDebit(order) {
+            if (!order || order.order_type !== 'ROLLING' || !order.positions || order.positions.length === 0) {
+                return null;
+            }
+            
+            let closingPrice = null;
+            let openingPrice = null;
+            let contractsRolled = 0;
+            
+            for (const position of order.positions) {
+                const action = position.opening_action || '';
+                const price = position.opening_price || 0;
+                const quantity = Math.abs(position.quantity);
+                
+                // For rolls:
+                // - BUY_TO_CLOSE = closing the old position (price paid)
+                // - SELL_TO_OPEN = opening the new position (price received)
+                if (action.includes('BUY_TO_CLOSE')) {
+                    closingPrice = price;
+                    contractsRolled = quantity; // Use the quantity from the closing leg
+                } else if (action.includes('SELL_TO_OPEN')) {
+                    openingPrice = price;
+                }
+            }
+            
+            if (closingPrice === null || openingPrice === null || contractsRolled === 0) {
+                return null;
+            }
+            
+            // Calculate per-share credit/debit: new price received - old price paid
+            const perShareAmount = openingPrice - closingPrice;
+            const isCredit = perShareAmount > 0;
+            
+            return {
+                amount: Math.abs(perShareAmount),
+                type: isCredit ? 'credit' : 'debit'
+            };
+        },
+        
+        // Format roll credit/debit for display
+        formatRollCreditDebit(order) {
+            const rollData = this.calculateRollCreditDebit(order);
+            if (!rollData) return '';
+            
+            return `${rollData.amount.toFixed(2)} ${rollData.type}`;
         },
         
         // Load dashboard data

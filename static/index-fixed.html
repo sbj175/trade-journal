@@ -53,11 +53,6 @@
                                 <i class="fas fa-layer-group mr-1"></i>
                                 Open Positions
                             </a>
-                            <a href="/static/strategy-config.html" 
-                               class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                                <i class="fas fa-cog mr-1"></i>
-                                Strategy Config
-                            </a>
                         </div>
                     </div>
                     
@@ -241,6 +236,10 @@
                             <option value="Bull Call Spread">Bull Call Spread</option>
                             <option value="Bear Put Spread">Bear Put Spread</option>
                         </optgroup>
+                        <optgroup label="ZEBRA Strategies">
+                            <option value="Bull ZEBRA">Bull ZEBRA</option>
+                            <option value="Bear ZEBRA">Bear ZEBRA</option>
+                        </optgroup>
                         <optgroup label="Volatility Plays">
                             <option value="Straddle">Straddle</option>
                             <option value="Strangle">Strangle</option>
@@ -310,9 +309,7 @@
                                     <div>
                                         <h3 class="text-base font-semibold text-white">
                                             <span x-text="chain.underlying"></span>
-                                            <span class="ml-2 text-sm px-2 py-1 rounded-md" 
-                                                  :class="getStrategyBadgeClass(detectStrategy(chain))"
-                                                  x-text="detectStrategy(chain)"></span>
+                                            <span class="ml-2" x-text="detectStrategy(chain)"></span>
                                         </h3>
                                         <div class="flex items-center space-x-3 text-sm text-slate-400 mt-1">
                                             <span x-text="chain.opening_date"></span>
@@ -367,6 +364,11 @@
                                                                       'text-amber-600': order.order_type === 'ROLLING'
                                                                   }"
                                                                   x-text="order.order_type"></span>
+                                                            <!-- Roll Credit/Debit -->
+                                                            <span x-show="order.order_type === 'ROLLING' && formatRollCreditDebit(order)" 
+                                                                  class="ml-2 text-xs font-medium px-2 py-1 rounded"
+                                                                  :class="calculateRollCreditDebit(order)?.type === 'credit' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
+                                                                  x-text="formatRollCreditDebit(order)"></span>
                                                         </div>
                                                         <div class="text-xs text-slate-400">
                                                             <button @click="order.expanded = !order.expanded" 

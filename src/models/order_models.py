@@ -520,24 +520,60 @@ class OrderManager:
             
             realized_pnl = 0.0
             
-            # For each strike/expiration group, find completed round trips
+            # For each strike/expiration group, calculate proportional realized P&L
             for key, group_positions in position_groups.items():
+                opening_quantity = 0
+                closing_quantity = 0
                 opening_pnl = 0.0
                 closing_pnl = 0.0
-                has_opening = False
-                has_closing = False
                 
+                # First pass: collect quantities and P&L for opening and closing positions
                 for pos in group_positions:
-                    if 'TO_OPEN' in pos['action']:
-                        opening_pnl += pos['pnl']
-                        has_opening = True
-                    elif 'TO_CLOSE' in pos['action']:
-                        closing_pnl += pos['pnl']
-                        has_closing = True
+                    action = pos['action'] or ''  # Handle None action
+                    if 'TO_OPEN' in action:
+                        # Get the actual quantity for this position
+                        cursor.execute("""
+                            SELECT quantity FROM positions_new p
+                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
+                            AND p.opening_action = ?
+                        """, (chain_id, key[0], key[1], key[2], action))
+                        qty_result = cursor.fetchone()
+                        if qty_result:
+                            opening_quantity += abs(qty_result[0])
+                            opening_pnl += pos['pnl']
+                    elif 'TO_CLOSE' in action:
+                        # Get the actual quantity for this position  
+                        cursor.execute("""
+                            SELECT quantity FROM positions_new p
+                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
+                            AND p.opening_action = ?
+                        """, (chain_id, key[0], key[1], key[2], action))
+                        qty_result = cursor.fetchone()
+                        if qty_result:
+                            closing_quantity += abs(qty_result[0])
+                            closing_pnl += pos['pnl']
                 
-                # If we have both opening and closing for this strike, it's a completed round trip
-                if has_opening and has_closing:
-                    realized_pnl += opening_pnl + closing_pnl
+                # Calculate realized P&L based on actual quantities involved in round trips
+                if opening_quantity > 0 and closing_quantity > 0:
+                    # Determine how many contracts actually completed round trips
+                    completed_quantity = min(opening_quantity, closing_quantity)
+                    
+                    # Calculate proportional P&L for completed round trips
+                    if opening_quantity > 0:
+                        opening_ratio = completed_quantity / opening_quantity
+                        realized_opening_pnl = opening_pnl * opening_ratio
+                    else:
+                        realized_opening_pnl = 0.0
+                    
+                    if closing_quantity > 0:
+                        closing_ratio = completed_quantity / closing_quantity  
+                        realized_closing_pnl = closing_pnl * closing_ratio
+                    else:
+                        realized_closing_pnl = 0.0
+                    
+                    realized_pnl += realized_opening_pnl + realized_closing_pnl
             
             return realized_pnl
 
@@ -581,22 +617,48 @@ class OrderManager:
             
             unrealized_pnl = 0.0
             
-            # For each strike/expiration group, only count open positions without matching closes
+            # For each strike/expiration group, calculate unrealized P&L for remaining open positions
             for key, group_positions in position_groups.items():
-                has_opening = False
-                has_closing = False
+                opening_quantity = 0
+                closing_quantity = 0
                 opening_pnl = 0.0
                 
+                # First pass: collect quantities and P&L for opening and closing positions
                 for pos in group_positions:
-                    if 'TO_OPEN' in pos['action']:
-                        opening_pnl += pos['pnl']
-                        has_opening = True
-                    elif 'TO_CLOSE' in pos['action']:
-                        has_closing = True
+                    action = pos['action'] or ''  # Handle None action
+                    if 'TO_OPEN' in action:
+                        # Get the actual quantity for this position
+                        cursor.execute("""
+                            SELECT quantity FROM positions_new p
+                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
+                            AND p.opening_action = ?
+                        """, (chain_id, key[0], key[1], key[2], action))
+                        qty_result = cursor.fetchone()
+                        if qty_result:
+                            opening_quantity += abs(qty_result[0])
+                            opening_pnl += pos['pnl']
+                    elif 'TO_CLOSE' in action:
+                        # Get the actual quantity for this position  
+                        cursor.execute("""
+                            SELECT quantity FROM positions_new p
+                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
+                            AND p.opening_action = ?
+                        """, (chain_id, key[0], key[1], key[2], action))
+                        qty_result = cursor.fetchone()
+                        if qty_result:
+                            closing_quantity += abs(qty_result[0])
                 
-                # Only count opening P&L if there's no matching closing (truly unrealized)
-                if has_opening and not has_closing:
-                    unrealized_pnl += opening_pnl
+                # Calculate unrealized P&L for remaining open positions
+                if opening_quantity > 0:
+                    # Determine remaining open quantity after partial closes
+                    remaining_open_quantity = max(0, opening_quantity - closing_quantity)
+                    
+                    if remaining_open_quantity > 0:
+                        # Calculate proportional P&L for remaining open positions
+                        unrealized_ratio = remaining_open_quantity / opening_quantity
+                        unrealized_pnl += opening_pnl * unrealized_ratio
             
             return unrealized_pnl
 
@@ -1461,6 +1523,11 @@ class OrderManager:
         else:
             combined_strategy = "Multi-Strategy"
         
+        # Determine chain status based on position balance
+        chain_fully_closed = self.is_chain_fully_closed(all_orders)
+        chain_status = ChainStatus.CLOSED if chain_fully_closed else ChainStatus.OPEN
+        closing_date = closing_order.order_date if chain_fully_closed else None
+        
         # Create merged chain
         merged_chain = {
             'chain_id': chain_id,
@@ -1469,8 +1536,8 @@ class OrderManager:
             'opening_order_id': base_order.order_id,  # Use first opening order as primary
             'strategy_type': combined_strategy,
             'opening_date': base_order.order_date,
-            'closing_date': closing_order.order_date,
-            'chain_status': ChainStatus.CLOSED.value,
+            'closing_date': closing_date,
+            'chain_status': chain_status.value,
             'order_count': total_order_count,
             'total_pnl': total_pnl,
             'orders': all_orders
@@ -1655,7 +1722,7 @@ class OrderManager:
                 # Update chain totals
                 matching_chain['total_pnl'] += exp_order.total_pnl
                 
-                # Update chain status to closed
+                # Update chain status to closed (expiration always closes a chain)
                 matching_chain['chain_status'] = 'CLOSED'
                 matching_chain['closing_date'] = exp_order.order_date
                 
@@ -1711,7 +1778,7 @@ class OrderManager:
             # Update chain totals
             matching_chain['total_pnl'] += exp_order.total_pnl
             
-            # Update chain status to closed
+            # Update chain status to closed (expiration always closes a chain)
             matching_chain['chain_status'] = 'CLOSED'
             matching_chain['closing_date'] = exp_order.order_date
             
@@ -1901,13 +1968,10 @@ class OrderManager:
         # Calculate chain totals
         total_pnl = sum(order.total_pnl for order in orders)
         
-        # Determine chain status
-        if closing_order:
-            chain_status = ChainStatus.CLOSED
-            closing_date = closing_order.order_date
-        else:
-            chain_status = ChainStatus.OPEN
-            closing_date = None
+        # Determine chain status based on position balance
+        chain_fully_closed = self.is_chain_fully_closed(orders)
+        chain_status = ChainStatus.CLOSED if chain_fully_closed else ChainStatus.OPEN
+        closing_date = closing_order.order_date if (closing_order and chain_fully_closed) else None
         
         chain = {
             'chain_id': chain_id,
@@ -2098,3 +2162,75 @@ class OrderManager:
                 'chains_saved': 0,
                 'error': str(e)
             }
+    
+    def calculate_chain_position_balance(self, orders: List[Order]) -> Dict[str, float]:
+        """
+        Calculate net position quantities across all orders in a chain.
+        Returns a dictionary mapping position_key -> net_quantity.
+        Net quantity of 0 means position is fully closed.
+        Non-zero means position is still open.
+        
+        Position tracking logic:
+        - BUY_TO_OPEN: negative quantity (long position)
+        - SELL_TO_OPEN: positive quantity (short position)  
+        - BUY_TO_CLOSE: negative quantity (closes short position)
+        - SELL_TO_CLOSE: positive quantity (closes long position)
+        - EXPIRED: closes the position (expiration from system)
+        """
+        position_balances = {}
+        
+        for order in orders:
+            for position in order.positions:
+                # Create position key using symbol, strike, expiration
+                pos_key = self.get_position_key(position)
+                
+                if pos_key not in position_balances:
+                    position_balances[pos_key] = 0
+                
+                # Get opening action and quantity
+                opening_action = self.get_position_attr(position, 'opening_action')
+                closing_action = self.get_position_attr(position, 'closing_action')
+                quantity = abs(position.quantity)
+                
+                # Handle opening actions
+                if opening_action:
+                    if 'BUY_TO_OPEN' in opening_action:
+                        position_balances[pos_key] -= quantity  # Long position
+                    elif 'SELL_TO_OPEN' in opening_action:
+                        position_balances[pos_key] += quantity  # Short position
+                    elif 'BUY_TO_CLOSE' in opening_action:
+                        position_balances[pos_key] -= quantity  # Close short position
+                    elif 'SELL_TO_CLOSE' in opening_action:
+                        position_balances[pos_key] += quantity  # Close long position
+                
+                # Handle closing actions (system transactions like expiration)
+                if closing_action:
+                    if 'EXPIRED' in closing_action:
+                        # For expired options, we need to determine if they were long or short
+                        # Short options (credit) expire worthless - close the short position
+                        # Long options (debit) expire worthless - close the long position
+                        # We'll determine this based on the current balance
+                        current_balance = position_balances[pos_key]
+                        if current_balance > 0:
+                            # Positive balance = short position, expiring worthless closes it
+                            position_balances[pos_key] -= quantity
+                        elif current_balance < 0:
+                            # Negative balance = long position, expiring worthless closes it
+                            position_balances[pos_key] += quantity
+                        # If balance is 0, expiration has no effect
+        
+        return position_balances
+    
+    def is_chain_fully_closed(self, orders: List[Order]) -> bool:
+        """
+        Determine if all positions in a chain are fully closed.
+        Returns True only if ALL positions have zero net quantity.
+        """
+        position_balances = self.calculate_chain_position_balance(orders)
+        
+        # Check if all positions have zero net quantity (fully closed)
+        for net_quantity in position_balances.values():
+            if abs(net_quantity) > 1e-6:  # Use small epsilon for floating point comparison
+                return False  # Found an open position
+        
+        return True  # All positions are closed
