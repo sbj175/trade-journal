@@ -527,7 +527,7 @@ function tradeJournal() {
                 if (this.selectedAccount) params.append('account_number', this.selectedAccount);
                 if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
                 
-                const response = await fetch(`/api/chains-v2?${params}`);
+                const response = await fetch(`/api/chains?${params}`);
                 const data = await response.json();
                 this.chains = data.chains || [];
                 
@@ -633,7 +633,7 @@ function tradeJournal() {
                 if (this.selectedAccount) params.append('account_number', this.selectedAccount);
                 params.append('limit', '1000'); // Get more chains to ensure we see all underlyings
                 
-                const response = await fetch(`/api/chains-v2?${params}`);
+                const response = await fetch(`/api/chains?${params}`);
                 const data = await response.json();
                 const allChains = data.chains || [];
                 

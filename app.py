@@ -270,17 +270,17 @@ async def sync_unified_internal():
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the main application"""
-    # Use the fixed version to avoid infinite rendering issues
-    with open("static/index-fixed.html", "r", encoding="utf-8") as f:
+    """Serve the main application - Open Positions Page"""
+    with open("static/positions.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
-@app.get("/chains-v2", response_class=HTMLResponse)
-async def chains_v2():
-    """Serve the V2 order chains page"""
+@app.get("/chains", response_class=HTMLResponse)
+async def order_chains():
+    """Serve the Order Chains page"""
     with open("static/chains-v2.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
+
 
 
 @app.get("/test_websocket.html", response_class=HTMLResponse)
@@ -299,6 +299,7 @@ async def health_check():
     return {"status": "ok", "service": "Trade Journal"}
 
 
+
 @app.get("/api/chains")
 async def get_order_chains(
     account_number: Optional[str] = None,
@@ -306,185 +307,7 @@ async def get_order_chains(
     limit: int = 100,
     offset: int = 0
 ):
-    """Get order chains with enhanced display information"""
-    try:
-        # Get order chains from the new model
-        chains = order_manager.get_order_chains(
-            account_number=account_number, 
-            limit=limit, 
-            offset=offset
-        )
-        
-        # Filter by underlying if specified
-        if underlying:
-            chains = [chain for chain in chains if chain['underlying'] == underlying]
-        
-        # Transform to match frontend expectations
-        formatted_chains = []
-        for chain in chains:
-            # Get first and last orders for chain metadata
-            orders = chain.get('orders', [])
-            if not orders:
-                continue
-            
-            # Filter out chains that only contain stock positions (no options)
-            has_options = False
-            for order in orders:
-                for position in order.get('positions', []):
-                    if 'OPTION' in str(position.get('instrument_type', '')):
-                        has_options = True
-                        break
-                if has_options:
-                    break
-            
-            # Skip chains with no option positions
-            if not has_options:
-                continue
-                
-            opening_order = orders[0]  # First in sequence
-            closing_order = orders[-1] if orders else None
-            
-            # Calculate chain summary
-            formatted_chain = {
-                'chain_id': chain['chain_id'],
-                'underlying': chain['underlying'],
-                'strategy_type': chain['strategy_type'],
-                'opening_date': opening_order.get('order_date') if opening_order else None,
-                'closing_date': None,
-                'status': chain['chain_status'],
-                'order_count': len(orders),
-                'total_pnl': chain['total_pnl'],
-                'realized_pnl': chain['realized_pnl'],
-                'unrealized_pnl': chain['unrealized_pnl'],
-                'orders': []
-            }
-            
-            # Process each order in the chain
-            for order in orders:
-                # Create Order object to use consolidation method
-                from src.models.order_models import Order, Position, OrderType, OrderStatus, PositionStatus
-                
-                # Convert order dictionary to Order object
-                order_type = OrderType(order['order_type'])
-                order_status = OrderStatus(order['status'])
-                
-                order_obj = Order(
-                    order_id=order['order_id'],
-                    account_number=order['account_number'],
-                    underlying=order['underlying'],
-                    order_type=order_type,
-                    strategy_type=order.get('strategy_type'),
-                    order_date=order['order_date'],
-                    status=order_status,
-                    total_quantity=order['total_quantity'],
-                    total_pnl=order['total_pnl'],
-                    has_assignment=order.get('has_assignment', False),
-                    has_expiration=order.get('has_expiration', False),
-                    has_exercise=order.get('has_exercise', False),
-                    linked_order_id=order.get('linked_order_id'),
-                    positions=[]
-                )
-                
-                # Convert positions to Position objects
-                for pos_dict in order.get('positions', []):
-                    position_status = PositionStatus(pos_dict['status'])
-                    position = Position(
-                        position_id=pos_dict['position_id'],
-                        order_id=pos_dict['order_id'],
-                        account_number=pos_dict['account_number'],
-                        symbol=pos_dict['symbol'],
-                        underlying=pos_dict['underlying'],
-                        instrument_type=pos_dict['instrument_type'],
-                        option_type=pos_dict.get('option_type'),
-                        strike=pos_dict.get('strike'),
-                        expiration=pos_dict.get('expiration'),
-                        quantity=pos_dict['quantity'],
-                        opening_price=pos_dict['opening_price'],
-                        closing_price=pos_dict.get('closing_price'),
-                        opening_transaction_id=pos_dict['opening_transaction_id'],
-                        closing_transaction_id=pos_dict.get('closing_transaction_id'),
-                        opening_action=pos_dict['opening_action'],
-                        closing_action=pos_dict.get('closing_action'),
-                        status=position_status,
-                        pnl=pos_dict['pnl'],
-                        fill_count=pos_dict.get('fill_count', 1),
-                        created_at=pos_dict.get('created_at'),
-                        updated_at=pos_dict.get('updated_at')
-                    )
-                    order_obj.positions.append(position)
-                
-                # Apply consolidation
-                consolidated_positions = order_obj.consolidate_positions()
-                
-                # Convert back to dictionaries for JSON response
-                consolidated_pos_dicts = []
-                for pos in consolidated_positions:
-                    pos_dict = {
-                        'position_id': pos.position_id,
-                        'order_id': pos.order_id,
-                        'account_number': pos.account_number,
-                        'symbol': pos.symbol,
-                        'underlying': pos.underlying,
-                        'instrument_type': pos.instrument_type,
-                        'option_type': pos.option_type,
-                        'strike': pos.strike,
-                        'expiration': pos.expiration,
-                        'quantity': pos.quantity,
-                        'opening_price': pos.opening_price,
-                        'closing_price': pos.closing_price,
-                        'opening_transaction_id': pos.opening_transaction_id,
-                        'closing_transaction_id': pos.closing_transaction_id,
-                        'opening_action': pos.opening_action,
-                        'closing_action': pos.closing_action,
-                        'status': pos.status.value,
-                        'pnl': pos.pnl,
-                        'fill_count': pos.fill_count,
-                        'created_at': pos.created_at,
-                        'updated_at': pos.updated_at
-                    }
-                    consolidated_pos_dicts.append(pos_dict)
-                
-                order_info = {
-                    'order_id': order['order_id'],
-                    'order_type': order['order_type'],
-                    'order_date': order['order_date'],
-                    'strategy_type': order.get('strategy_type'),
-                    'status': order['status'],
-                    'total_pnl': order['total_pnl'],
-                    'positions': consolidated_pos_dicts,
-                    'emblems': []
-                }
-                
-                # Add emblems based on order characteristics
-                if order.get('has_assignment'):
-                    order_info['emblems'].append('A')
-                if order.get('has_expiration'):
-                    order_info['emblems'].append('E')
-                if order.get('has_exercise'):
-                    order_info['emblems'].append('X')
-                
-                formatted_chain['orders'].append(order_info)
-            
-            # Set closing date if last order is closed
-            if closing_order and closing_order['status'] == 'CLOSED':
-                formatted_chain['closing_date'] = closing_order.get('order_date')
-            
-            formatted_chains.append(formatted_chain)
-        
-        return {"chains": formatted_chains, "total": len(formatted_chains)}
-    except Exception as e:
-        logger.error(f"Error fetching order chains: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/chains-v2")
-async def get_order_chains_v2(
-    account_number: Optional[str] = None,
-    underlying: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0
-):
-    """Get order chains using the new V2 derivation system"""
+    """Get order chains using the V2 derivation system"""
     try:
         # Get all raw transactions
         raw_transactions = db.get_raw_transactions(

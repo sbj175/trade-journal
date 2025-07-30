@@ -391,15 +391,10 @@
                         </div>
                         
                         <div class="hidden sm:flex space-x-4">
-                            <a href="/static/index-fixed.html" 
+                            <a href="/chains" 
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-link mr-1"></i>
                                 Order Chains
-                            </a>
-                            <a href="/static/strategy-config.html" 
-                               class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                                <i class="fas fa-cog mr-1"></i>
-                                Strategy Config
                             </a>
                         </div>
                     </div>
@@ -596,7 +591,7 @@
                                 
                                 <!-- Order Chains Link Column -->
                                 <div class="flex items-center">
-                                    <a :href="'/static/index-fixed.html?underlying=' + encodeURIComponent(underlying) + (selectedAccount ? '&account=' + encodeURIComponent(selectedAccount) : '')" 
+                                    <a :href="'/chains?underlying=' + encodeURIComponent(underlying) + (selectedAccount ? '&account=' + encodeURIComponent(selectedAccount) : '')" 
                                        @click.stop
                                        class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/30 hover:bg-blue-900/50 rounded border border-blue-700/50 hover:border-blue-600 transition-colors" 
                                        title="View order chains for this symbol">

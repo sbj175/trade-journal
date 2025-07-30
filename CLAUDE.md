@@ -20,7 +20,7 @@ start.bat
 python app.py
 ```
 
-The application runs on http://localhost:8000 with auto-reload enabled during development.
+The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains.
 
 ### Setting Up Credentials
 ```bash
@@ -73,12 +73,7 @@ python clean_rivn_trades.py
    - Handles timezone conversion (UTC → US/Eastern)
    - Position-based roll linking and chain detection
 
-4. **Strategy Configuration** (`config/strategies.json`):
-   - JSON-based strategy definitions with 15+ pre-configured strategies
-   - Editable via web UI at `/strategy-config`
-   - Defines recognition rules, categories, and display properties
-
-5. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
+4. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
    - Authenticates and fetches transaction data
    - Supports multiple accounts
    - Uses unofficial tastytrade SDK
@@ -86,9 +81,8 @@ python clean_rivn_trades.py
 
 ### Frontend Structure
 
-- **Order Chains Dashboard**: `static/index-fixed.html` with `static/js/app-fixed.js`
-- **Open Positions Page**: `static/positions.html` with live quotes and position management
-- **Strategy Config UI**: `static/strategy-config.html`
+- **Open Positions Page** (default): `static/positions.html` with live quotes and position management
+- **Order Chains Dashboard**: `static/chains-v2.html` at `/chains` with `static/js/app-v2.js` (V2 system with advanced strategy detection)
 - **Alpine.js** for reactivity, **Chart.js** for visualizations
 - **WebSocket integration** for real-time price streaming
 
