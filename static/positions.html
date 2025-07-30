@@ -276,6 +276,8 @@
                 getGroupCostBasis(positions) { return 0; },
                 getGroupNetLiq(positions) { return 0; },
                 getGroupPnL(positions) { return 0; },
+                getGroupPnLPercent(positions) { return null; },
+                getGroupDaysOpen(positions) { return null; },
                 getGroupEfficiencyRatio(positions) { return '—'; },
                 getMinDTE(positions) { return null; },
                 getStrategyLabel(positions) { return 'Strategy'; },
@@ -361,11 +363,30 @@
         
         /* Aligned header grid */
         .header-stats-grid {
-            display: grid;
-            grid-template-columns: 60px 160px 120px 80px 80px 60px 60px 60px 180px 250px;
-            gap: 0.5rem;
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.3rem;
             align-items: center;
+            width: 100%;
         }
+        
+        .header-stat-column {
+            flex-shrink: 0;
+        }
+        
+        /* Strict column alignment - optimized for Comments space */
+        .header-stats-grid > div:nth-child(1) { width: 100px; flex-shrink: 0; }  /* Symbol + chevron */
+        .header-stats-grid > div:nth-child(2) { width: 160px; flex-shrink: 0; }  /* Price boxes */
+        .header-stats-grid > div:nth-child(3) { width: 40px; flex-shrink: 0; }   /* Chain link */
+        .header-stats-grid > div:nth-child(4) { width: 80px; flex-shrink: 0; }   /* Cost Basis */
+        .header-stats-grid > div:nth-child(5) { width: 80px; flex-shrink: 0; }   /* Net Liq */
+        .header-stats-grid > div:nth-child(6) { width: 70px; flex-shrink: 0; }   /* P&L */
+        .header-stats-grid > div:nth-child(7) { width: 60px; flex-shrink: 0; }   /* P&L% */
+        .header-stats-grid > div:nth-child(8) { width: 45px; flex-shrink: 0; }   /* Eff */
+        .header-stats-grid > div:nth-child(9) { width: 50px; flex-shrink: 0; }   /* Days */
+        .header-stats-grid > div:nth-child(10) { width: 50px; flex-shrink: 0; }  /* DTE */
+        .header-stats-grid > div:nth-child(11) { width: 150px; flex-shrink: 0; } /* Strategy */
+        .header-stats-grid > div:nth-child(12) { flex: 1; min-width: 200px; }    /* Comments */
         
         .header-stat-column {
             text-align: center;
@@ -549,13 +570,13 @@
                                 <div class="flex items-center space-x-2">
                                     <i class="fas fa-chevron-right text-slate-400 transition-transform duration-200" 
                                        :class="{ 'rotate-90': expanded }"></i>
-                                    <h3 class="text-lg font-semibold text-slate-100">
-                                        <span x-text="underlying"></span>
+                                    <div class="flex flex-col">
+                                        <h3 class="text-lg font-semibold text-slate-100" x-text="underlying"></h3>
                                         <span x-show="getUnderlyingIV(underlying)" 
-                                              class="text-sm"
+                                              class="text-sm -mt-1"
                                               :class="getUnderlyingIV(underlying) >= 30 ? 'font-bold text-yellow-400' : (getUnderlyingIV(underlying) >= 20 ? 'font-normal text-white' : 'font-normal text-slate-400')"
                                               x-text="getUnderlyingIV(underlying)"></span>
-                                    </h3>
+                                    </div>
                                 </div>
                                 
                                 <!-- Price Column -->
@@ -595,8 +616,7 @@
                                        @click.stop
                                        class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/30 hover:bg-blue-900/50 rounded border border-blue-700/50 hover:border-blue-600 transition-colors" 
                                        title="View order chains for this symbol">
-                                        <i class="fas fa-link mr-1"></i>
-                                        Order Chains
+                                        <i class="fas fa-link"></i>
                                     </a>
                                 </div>
                                 
@@ -621,6 +641,14 @@
                                          x-text="formatNumber(getGroupPnL(positions))"></div>
                                 </div>
                                 
+                                <!-- P&L Percent Column -->
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs text-center">P&L%</div>
+                                    <div class="font-semibold text-sm text-center" 
+                                         :class="getGroupPnLPercent(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                         x-text="getGroupPnLPercent(positions) !== null ? getGroupPnLPercent(positions) + '%' : ''"></div>
+                                </div>
+                                
                                 <!-- Efficiency Ratio Column -->
                                 <div class="header-stat-column">
                                     <template x-if="shouldShowEfficiencyRatio(positions)">
@@ -638,6 +666,13 @@
                                             <div class="text-xs text-slate-500">—</div>
                                         </div>
                                     </template>
+                                </div>
+                                
+                                <!-- Days Open Column -->
+                                <div class="header-stat-column">
+                                    <div class="text-slate-400 text-xs text-center">Days</div>
+                                    <div class="text-sm text-center font-semibold text-slate-300"
+                                         x-text="getGroupDaysOpen(positions) || ''"></div>
                                 </div>
                                 
                                 <!-- DTE Column -->
@@ -671,7 +706,7 @@
                                            :value="getPositionComment(underlying)"
                                            @input="updatePositionComment(underlying, $event.target.value)"
                                            @click.stop
-                                           class="w-full bg-transparent text-slate-100 text-sm border-none outline-none focus:bg-slate-700/30 rounded px-2 py-1"
+                                           class="bg-transparent text-slate-100 text-sm border-none outline-none focus:bg-slate-700/30 rounded px-2 py-1 w-full"
                                            placeholder="">
                                 </div>
                             </div>
@@ -2031,6 +2066,46 @@
                         'Butterfly', 'Iron Butterfly', 'Iron Condor'
                     ];
                     return definedRiskStrategies.includes(strategy);
+                },
+                
+                getGroupDaysOpen(positions) {
+                    if (!positions || positions.length === 0) {
+                        return null;
+                    }
+                    
+                    // Get earliest opened_at from positions (same logic as efficiency calculation)
+                    const openingDates = positions
+                        .map(p => p.opened_at)
+                        .filter(d => d)
+                        .map(d => new Date(d));
+                    
+                    if (openingDates.length === 0) {
+                        return null;
+                    }
+                    
+                    const openingDate = new Date(Math.min(...openingDates));
+                    const now = new Date();
+                    const daysOpen = Math.floor((now - openingDate) / (1000 * 60 * 60 * 24));
+                    
+                    return daysOpen;
+                },
+                
+                getGroupPnLPercent(positions) {
+                    if (!positions || positions.length === 0) {
+                        return null;
+                    }
+                    
+                    const totalPnL = this.getGroupPnL(positions);
+                    const totalCostBasis = positions.reduce((sum, position) => {
+                        return sum + Math.abs(position.cost_basis || 0);
+                    }, 0);
+                    
+                    if (totalCostBasis === 0) {
+                        return null;
+                    }
+                    
+                    const percent = (totalPnL / totalCostBasis) * 100;
+                    return Math.round(percent * 10) / 10; // Round to 1 decimal place
                 },
                 
                 getGroupEfficiencyRatio(positions) {
