@@ -27,6 +27,10 @@ class StrategyDetector:
         Returns:
             Strategy name (e.g., "Covered Call", "Iron Condor", "Short Put")
         """
+        # Debug logging for specific chain
+        if hasattr(chain, 'chain_id') and 'IBIT' in str(chain.chain_id):
+            logger.info(f"DEBUG ZEBRA - Starting strategy detection for chain: {chain.chain_id}")
+        
         if not chain.orders:
             return "Unknown"
         
@@ -40,21 +44,35 @@ class StrategyDetector:
         if not opening_order:
             return "Unknown"
         
-        # Get all positions from the opening order
-        positions = []
+        # Get all positions from the opening order and aggregate by symbol/strike/type
+        position_map = {}
         for tx in opening_order.transactions:
             if tx.option_type:  # Only options positions
-                positions.append({
-                    'symbol': tx.symbol,
-                    'underlying': tx.underlying_symbol,
-                    'option_type': tx.option_type,
-                    'strike': tx.strike,
-                    'expiration': tx.expiration,
-                    'quantity': tx.quantity,
-                    'action': tx.action,
-                    'is_buy': tx.is_buy,
-                    'is_sell': tx.is_sell
-                })
+                # Create unique key for aggregation (symbol includes strike and expiration info)
+                key = f"{tx.symbol}_{tx.option_type}"
+                
+                if key in position_map:
+                    # Aggregate quantities for same position (split fills)
+                    position_map[key]['quantity'] += tx.quantity
+                else:
+                    # Create new aggregated position
+                    position_map[key] = {
+                        'symbol': tx.symbol,
+                        'underlying': tx.underlying_symbol,
+                        'option_type': tx.option_type,
+                        'strike': tx.strike,
+                        'expiration': tx.expiration,
+                        'quantity': tx.quantity,
+                        'action': tx.action,
+                        'is_buy': tx.is_buy,
+                        'is_sell': tx.is_sell
+                    }
+        
+        positions = list(position_map.values())
+        
+        # Debug logging for IBIT chains
+        if hasattr(chain, 'chain_id') and 'IBIT' in str(chain.chain_id):
+            logger.info(f"DEBUG ZEBRA - Found {len(positions)} aggregated positions: {positions}")
         
         if not positions:
             return "Unknown"
@@ -112,6 +130,14 @@ class StrategyDetector:
         """Detect 2-leg strategies (spreads and ZEBRA)"""
         pos1, pos2 = positions
         
+        # Debug logging for specific order
+        debug_order = any(
+            pos.get('symbol', '').endswith('00047000') or pos.get('symbol', '').endswith('00061000')
+            for pos in positions
+        )
+        if debug_order:
+            logger.info(f"DEBUG ZEBRA - Two-leg detection for positions: {positions}")
+        
         # Must be same underlying and expiration for spreads
         if (pos1['underlying'] != pos2['underlying'] or 
             pos1['expiration'] != pos2['expiration']):
@@ -137,9 +163,16 @@ class StrategyDetector:
             high_qty = abs(high_pos['quantity'])
             
             if option_type == 'Call':
+                # Debug logging for ZEBRA detection
+                if debug_order:
+                    logger.info(f"DEBUG ZEBRA - Call analysis: low_qty={low_qty}, high_qty={high_qty}, low_is_buy={low_pos['is_buy']}, high_is_sell={high_pos['is_sell']}")
+                    logger.info(f"DEBUG ZEBRA - Checking Bull ZEBRA: {low_pos['is_buy']} and {high_pos['is_sell']} and {low_qty} == 2 * {high_qty} = {low_qty == 2 * high_qty}")
+                
                 # Check for Bull ZEBRA (long 2x at lower strike, short 1x at higher strike)
                 if (low_pos['is_buy'] and high_pos['is_sell'] and 
                     low_qty == 2 * high_qty):
+                    if debug_order:
+                        logger.info("DEBUG ZEBRA - Detected Bull ZEBRA!")
                     return "Bull ZEBRA"
                 # Check for Bear ZEBRA (short 2x at lower strike, long 1x at higher strike) 
                 elif (low_pos['is_sell'] and high_pos['is_buy'] and

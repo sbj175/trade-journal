@@ -217,149 +217,6 @@ function tradeJournal() {
             return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         },
         
-        // Detect strategy from opening order positions
-        detectStrategy(chain) {
-            // Get the opening order
-            const openingOrder = chain.orders?.find(order => order.order_type === 'OPENING');
-            if (!openingOrder || !openingOrder.positions || openingOrder.positions.length === 0) {
-                return 'Unknown';
-            }
-            
-            const positions = openingOrder.positions;
-            
-            
-            const optionPositions = positions.filter(p => 
-                p.instrument_type === 'OPTION' || 
-                p.instrument_type === 'EQUITY_OPTION' ||
-                p.instrument_type === 'InstrumentType.EQUITY_OPTION' ||
-                (p.instrument_type && p.instrument_type.includes('OPTION'))
-            );
-            const stockPositions = positions.filter(p => p.instrument_type === 'EQUITY');
-            
-            
-            // Single position strategies
-            if (positions.length === 1) {
-                const position = positions[0];
-                if (position.instrument_type === 'EQUITY') {
-                    return position.quantity > 0 ? 'Long Stock' : 'Short Stock';
-                } else {
-                    const isCall = position.option_type === 'CALL';
-                    const isLong = position.quantity > 0;
-                    if (isCall && isLong) return 'Long Call';
-                    if (isCall && !isLong) return 'Short Call';
-                    if (!isCall && isLong) return 'Long Put';
-                    if (!isCall && !isLong) return 'Short Put';
-                }
-            }
-            
-            // Stock + Option combinations
-            if (stockPositions.length === 1 && optionPositions.length === 1) {
-                const stock = stockPositions[0];
-                const option = optionPositions[0];
-                
-                if (stock.quantity > 0 && option.quantity < 0 && option.option_type === 'CALL') {
-                    return 'Covered Call';
-                }
-                if (stock.quantity < 0 && option.quantity < 0 && option.option_type === 'PUT') {
-                    return 'Cash Secured Put';
-                }
-            }
-            
-            // Multi-leg option strategies
-            if (optionPositions.length === 2) {
-                const [opt1, opt2] = optionPositions.sort((a, b) => (a.strike || 0) - (b.strike || 0));
-                // Normalize option types for comparison
-                const opt1Type = (opt1.option_type || '').toUpperCase();
-                const opt2Type = (opt2.option_type || '').toUpperCase();
-                const sameType = opt1Type === opt2Type;
-                const sameExpiration = opt1.expiration === opt2.expiration;
-                const sameStrike = opt1.strike === opt2.strike;
-                
-                
-                if (sameStrike && sameExpiration && !sameType) {
-                    // Same strike, different types = Straddle/Strangle
-                    return 'Straddle';
-                }
-                
-                if (!sameStrike && sameExpiration && !sameType) {
-                    // Different strikes, different types = Strangle
-                    return 'Strangle';
-                }
-                
-                if (!sameStrike && sameExpiration && sameType) {
-                    // Check for ZEBRA strategies first (2:1 ratios)
-                    const isCall = opt1Type === 'CALL';
-                    
-                    // Get quantities for ratio analysis
-                    const opt1Qty = Math.abs(opt1.quantity || 0);
-                    const opt2Qty = Math.abs(opt2.quantity || 0);
-                    
-                    // Determine buy/sell based on opening_action
-                    const opt1IsBuy = opt1.opening_action && (
-                        opt1.opening_action.toUpperCase().includes('BUY')
-                    );
-                    const opt2IsBuy = opt2.opening_action && (
-                        opt2.opening_action.toUpperCase().includes('BUY')
-                    );
-                    
-                    // Check for ZEBRA pattern (2:1 ratio)
-                    const ratio1to2 = opt1Qty > 0 ? opt1Qty / opt2Qty : 0;
-                    const ratio2to1 = opt2Qty > 0 ? opt2Qty / opt1Qty : 0;
-                    
-                    // Bull ZEBRA: Long 2x ITM calls, Short 1x ATM calls
-                    if (isCall && opt1IsBuy && !opt2IsBuy && ratio1to2 === 2) {
-                        return 'Bull ZEBRA';
-                    }
-                    
-                    // Bear ZEBRA: Long 2x ITM puts, Short 1x ATM puts  
-                    if (!isCall && opt1IsBuy && !opt2IsBuy && ratio1to2 === 2) {
-                        return 'Bear ZEBRA';
-                    }
-                    
-                    // Alternative ZEBRA pattern (short lower, long higher)
-                    if (isCall && !opt1IsBuy && opt2IsBuy && ratio2to1 === 2) {
-                        return 'Bull ZEBRA';
-                    }
-                    
-                    if (!isCall && !opt1IsBuy && opt2IsBuy && ratio2to1 === 2) {
-                        return 'Bear ZEBRA';
-                    }
-                    
-                    // Standard Vertical Spreads (1:1 ratio)
-                    const buyLower = opt1IsBuy;
-                    const sellHigher = !opt2IsBuy;
-                    
-                    if (isCall) {
-                        if (buyLower && sellHigher) return 'Bull Call Spread';
-                        if (!buyLower && !sellHigher) return 'Bear Call Spread';
-                    } else {
-                        // For puts, the logic is opposite
-                        if (buyLower && sellHigher) return 'Bull Put Spread';
-                        if (!buyLower && !sellHigher) return 'Bear Put Spread';
-                    }
-                    
-                }
-            }
-            
-            if (optionPositions.length === 3) {
-                return 'Butterfly';
-            }
-            
-            if (optionPositions.length === 4) {
-                const puts = optionPositions.filter(p => p.option_type === 'PUT');
-                const calls = optionPositions.filter(p => p.option_type === 'CALL');
-                
-                if (puts.length === 2 && calls.length === 2) {
-                    return 'Iron Condor';
-                } else if (puts.length === 4 || calls.length === 4) {
-                    return 'Iron Butterfly';
-                }
-                
-                return 'Four-Leg Strategy';
-            }
-            
-            return optionPositions.length > 0 ? 'Complex Strategy' : 'Mixed Strategy';
-        },
         
         
         // Format order action to standard abbreviations
@@ -421,27 +278,59 @@ function tradeJournal() {
             return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity);
         },
         
+        // Helper function to determine the correct divisor for credit/debit calculation
+        getCreditDebitDivisor(order) {
+            if (!order || !order.positions || order.positions.length === 0) {
+                return 0;
+            }
+            
+            // For single-leg orders, use the contract count
+            if (order.positions.length === 1) {
+                return Math.abs(order.positions[0].quantity || 0);
+            }
+            
+            // For multi-leg orders, check if it's a ratio spread
+            const optionPositions = order.positions.filter(pos => 
+                pos.instrument_type === 'OPTION' || 
+                pos.instrument_type === 'EQUITY_OPTION' ||
+                pos.instrument_type === 'InstrumentType.EQUITY_OPTION' ||
+                (pos.instrument_type && pos.instrument_type.includes('OPTION'))
+            );
+            
+            if (optionPositions.length === 2) {
+                const qty1 = Math.abs(optionPositions[0].quantity || 0);
+                const qty2 = Math.abs(optionPositions[1].quantity || 0);
+                
+                // Check if it's a ratio spread (quantities are not equal)
+                if (qty1 !== qty2) {
+                    // Use the smaller quantity for "per ratio" calculation
+                    return Math.min(qty1, qty2);
+                }
+            }
+            
+            // For regular spreads (1:1 ratio) or other cases, use the first position's quantity
+            return Math.abs(order.positions[0].quantity || 0);
+        },
+        
         // Calculate per-share credit/debit for rolling orders
         calculateRollCreditDebit(order) {
             if (!order || order.order_type !== 'ROLLING' || !order.positions || order.positions.length === 0) {
                 return null;
             }
             
-            // Simple approach: use order-level P&L divided by number of contracts
-            const orderPnL = order.total_pnl || 0;
+            // Use helper function to get the correct divisor (handles ratio spreads)
+            const divisor = this.getCreditDebitDivisor(order);
             
-            // For spreads, use the contract count from the first position (all legs have same count)
-            const contractCount = Math.abs(order.positions[0].quantity || 0);
-            
-            if (contractCount === 0) {
+            if (divisor === 0) {
                 return null;
             }
             
-            const perContractAmount = Math.abs(orderPnL) / contractCount / 100; // Divide by 100 to get per-share amount
+            const orderPnL = order.total_pnl || 0;
+            const perRatioAmount = Math.abs(orderPnL) / divisor / 100; // Divide by 100 to get per-share amount
             const isCredit = orderPnL > 0;
             
             return {
-                amount: perContractAmount,
+                amount: perRatioAmount,
                 type: isCredit ? 'credit' : 'debit'
             };
         },
@@ -460,21 +349,19 @@ function tradeJournal() {
                 return null;
             }
             
-            // Simple approach: use order-level P&L divided by number of contracts
-            const orderPnL = order.total_pnl || 0;
+            // Use helper function to get the correct divisor (handles ratio spreads)
+            const divisor = this.getCreditDebitDivisor(order);
             
-            // For spreads, use the contract count from the first position (all legs have same count)
-            const contractCount = Math.abs(order.positions[0].quantity || 0);
-            
-            if (contractCount === 0) {
+            if (divisor === 0) {
                 return null;
             }
             
-            const perContractAmount = Math.abs(orderPnL) / contractCount / 100; // Divide by 100 to get per-share amount
+            const orderPnL = order.total_pnl || 0;
+            const perRatioAmount = Math.abs(orderPnL) / divisor / 100; // Divide by 100 to get per-share amount
             const isCredit = orderPnL > 0;
             
             return {
-                amount: perContractAmount,
+                amount: perRatioAmount,
                 type: isCredit ? 'credit' : 'debit'
             };
         },
