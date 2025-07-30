@@ -2095,17 +2095,16 @@
                         return null;
                     }
                     
+                    // P&L% = (P&L / Cost Basis) × 100
                     const totalPnL = this.getGroupPnL(positions);
-                    const totalCostBasis = positions.reduce((sum, position) => {
-                        return sum + Math.abs(position.cost_basis || 0);
-                    }, 0);
+                    const totalCostBasis = Math.abs(this.getGroupCostBasis(positions));
                     
                     if (totalCostBasis === 0) {
                         return null;
                     }
                     
                     const percent = (totalPnL / totalCostBasis) * 100;
-                    return Math.round(percent * 10) / 10; // Round to 1 decimal place
+                    return Math.round(percent * 10) / 10;
                 },
                 
                 getGroupEfficiencyRatio(positions) {

@@ -299,6 +299,230 @@ async def health_check():
     return {"status": "ok", "service": "Trade Journal"}
 
 
+async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
+    """Check if cached chain data is fresh enough to use"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get the latest transaction timestamp
+            query = "SELECT MAX(created_at) FROM raw_transactions"
+            params = []
+            
+            if account_number or underlying:
+                conditions = []
+                if account_number:
+                    conditions.append("account_number = ?")
+                    params.append(account_number)
+                if underlying:
+                    conditions.append("underlying_symbol = ?")
+                    params.append(underlying)
+                query += " WHERE " + " AND ".join(conditions)
+            
+            cursor.execute(query, params)
+            latest_transaction = cursor.fetchone()[0]
+            
+            if not latest_transaction:
+                return False
+            
+            # Get the latest chain cache timestamp
+            cache_query = "SELECT MAX(updated_at) FROM order_chains"
+            cache_params = []
+            
+            if account_number or underlying:
+                conditions = []
+                if account_number:
+                    conditions.append("account_number = ?")
+                    cache_params.append(account_number)
+                if underlying:
+                    conditions.append("underlying = ?")
+                    cache_params.append(underlying)
+                cache_query += " WHERE " + " AND ".join(conditions)
+            
+            cursor.execute(cache_query, cache_params)
+            latest_cache = cursor.fetchone()[0]
+            
+            if not latest_cache:
+                return False
+            
+            # Cache is fresh if it's newer than the latest transaction
+            return latest_cache >= latest_transaction
+            
+    except Exception as e:
+        logger.error(f"Error checking cache freshness: {e}")
+        return False
+
+
+async def get_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None, 
+                          limit: int = 100, offset: int = 0):
+    """Get chains from cached data in order_chains table"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build query with filters
+            query = """
+                SELECT oc.chain_id, oc.underlying, oc.strategy_type, oc.opening_date, 
+                       oc.closing_date, oc.chain_status, oc.order_count, oc.total_pnl,
+                       oc.realized_pnl, oc.unrealized_pnl, oc.account_number
+                FROM order_chains oc
+            """
+            params = []
+            where_conditions = []
+            
+            if account_number:
+                where_conditions.append("oc.account_number = ?")
+                params.append(account_number)
+            
+            if underlying:
+                where_conditions.append("oc.underlying = ?")
+                params.append(underlying)
+            
+            if where_conditions:
+                query += " WHERE " + " AND ".join(where_conditions)
+            
+            query += " ORDER BY oc.opening_date DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            cursor.execute(query, params)
+            chain_rows = cursor.fetchall()
+            
+            if not chain_rows:
+                return {"chains": [], "total": 0}
+            
+            # Get total count for pagination
+            count_query = "SELECT COUNT(*) FROM order_chains oc"
+            count_params = []
+            if where_conditions:
+                count_query += " WHERE " + " AND ".join(where_conditions)
+                count_params = params[:-2]  # Remove limit and offset
+            
+            cursor.execute(count_query, count_params)
+            total_count = cursor.fetchone()[0]
+            
+            # Format cached chains for frontend (simplified - detailed positions loaded on demand)
+            formatted_chains = []
+            for row in chain_rows:
+                chain_id, underlying, strategy_type, opening_date, closing_date, chain_status = row[:6]
+                order_count, total_pnl, realized_pnl, unrealized_pnl, account_number = row[6:]
+                
+                formatted_chain = {
+                    'chain_id': chain_id,
+                    'underlying': underlying,
+                    'strategy_type': strategy_type,
+                    'opening_date': opening_date,
+                    'closing_date': closing_date,
+                    'status': chain_status,
+                    'order_count': order_count,
+                    'total_pnl': total_pnl or 0.0,
+                    'realized_pnl': realized_pnl or 0.0,
+                    'unrealized_pnl': unrealized_pnl or 0.0,
+                    'account_number': account_number,
+                    'orders': []  # Can be loaded on-demand when chain is expanded
+                }
+                formatted_chains.append(formatted_chain)
+            
+            return {
+                "chains": formatted_chains,
+                "total": total_count,
+                "cached": True  # Indicate this came from cache
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting cached chains: {e}")
+        return None
+
+
+async def update_chain_cache(chains):
+    """Update the order_chains table with fresh V2 derivation results"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Clear existing cache (could be more selective in the future)
+            cursor.execute("DELETE FROM order_chains")
+            cursor.execute("DELETE FROM order_chain_members")
+            
+            current_time = datetime.now()
+            
+            for chain in chains:
+                # Detect strategy for this chain
+                try:
+                    detected_strategy = strategy_detector.detect_chain_strategy(chain)
+                except Exception as e:
+                    logger.warning(f"Strategy detection failed for chain {chain.chain_id}: {e}")
+                    detected_strategy = "Unknown"
+                
+                # Calculate P&L values
+                total_pnl = 0.0
+                realized_pnl = 0.0
+                unrealized_pnl = 0.0
+                
+                for order in chain.orders:
+                    # Calculate order P&L from transactions since V2 Order doesn't have total_pnl
+                    order_pnl = 0.0
+                    for tx in order.transactions:
+                        if tx.is_closing:
+                            # For closing transactions, calculate P&L vs opening price
+                            # This is simplified - the V2 frontend does more complex P&L calc
+                            value = tx.price * abs(tx.quantity) * 100
+                            if tx.is_sell:
+                                order_pnl += value
+                            else:
+                                order_pnl -= value
+                        else:
+                            # For opening transactions, track as unrealized
+                            value = tx.price * abs(tx.quantity) * 100
+                            if tx.is_sell:
+                                order_pnl += value
+                            else:
+                                order_pnl -= value
+                    
+                    total_pnl += order_pnl
+                    
+                    if order.order_type.value == 'CLOSING':
+                        realized_pnl += order_pnl
+                    else:
+                        unrealized_pnl += order_pnl
+                
+                # Insert chain data
+                cursor.execute("""
+                    INSERT OR REPLACE INTO order_chains (
+                        chain_id, underlying, account_number, opening_order_id,
+                        strategy_type, opening_date, closing_date, chain_status,
+                        order_count, total_pnl, realized_pnl, unrealized_pnl,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    chain.chain_id,
+                    chain.underlying,
+                    chain.account_number, 
+                    chain.orders[0].order_id if chain.orders else None,
+                    detected_strategy,
+                    chain.opening_date,
+                    chain.closing_date,
+                    chain.status,
+                    len(chain.orders),
+                    total_pnl,
+                    realized_pnl,
+                    unrealized_pnl,
+                    current_time,
+                    current_time
+                ))
+                
+                # Insert chain membership links
+                for order in chain.orders:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO order_chain_members (chain_id, order_id)
+                        VALUES (?, ?)
+                    """, (chain.chain_id, order.order_id))
+            
+            conn.commit()
+            logger.info(f"Updated cache with {len(chains)} chains")
+            
+    except Exception as e:
+        logger.error(f"Error updating chain cache: {e}")
+
 
 @app.get("/api/chains")
 async def get_order_chains(
@@ -307,8 +531,19 @@ async def get_order_chains(
     limit: int = 100,
     offset: int = 0
 ):
-    """Get order chains using the V2 derivation system"""
+    """Get order chains with intelligent caching for optimal performance"""
     try:
+        # Re-enable caching for performance
+        use_cache = await should_use_cached_chains(account_number, underlying)
+        
+        if use_cache:
+            # Fast path: return cached data
+            cached_result = await get_cached_chains(account_number, underlying, limit, offset)
+            if cached_result is not None:
+                return cached_result
+            # If cache fails, fall through to V2 derivation
+        
+        # Slow path: derive fresh data and update cache
         # Get all raw transactions
         raw_transactions = db.get_raw_transactions(
             account_number=account_number,
@@ -329,6 +564,9 @@ async def get_order_chains(
         for account, chains in chains_by_account.items():
             for chain in chains:
                 all_chains.append(chain)
+        
+        # Update cache with fresh V2 data
+        await update_chain_cache(all_chains)
         
         # Sort by opening date (newest first)
         all_chains.sort(key=lambda c: c.opening_date or date.min, reverse=True)
@@ -590,7 +828,11 @@ async def get_order_chains(
             
             formatted_chains.append(formatted_chain)
         
-        return {"chains": formatted_chains, "total": len(formatted_chains)}
+        return {
+            "chains": formatted_chains, 
+            "total": len(formatted_chains),
+            "cached": False  # Indicate this was freshly derived
+        }
         
     except Exception as e:
         logger.error(f"Error fetching V2 order chains: {str(e)}")
