@@ -25,6 +25,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.database.db_manager import DatabaseManager
 from src.api.tastytrade_client import TastytradeClient
 from src.models.order_models import OrderManager
+from src.models.position_inventory import PositionInventoryManager
+from src.models.order_processor_v2 import OrderProcessorV2
+from src.models.strategy_detector import StrategyDetector
+from src.models.pnl_calculator_v2 import PnLCalculatorV2
 
 # Configure logging
 logger.add(
@@ -53,6 +57,12 @@ app.add_middleware(
 # Initialize database
 db = DatabaseManager()
 order_manager = OrderManager(db)
+
+# V2 System Components
+position_manager = PositionInventoryManager(db)
+order_processor_v2 = OrderProcessorV2(db, position_manager)
+strategy_detector = StrategyDetector(db)
+pnl_calculator_v2 = PnLCalculatorV2(db, position_manager)
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
@@ -266,6 +276,13 @@ async def root():
         return HTMLResponse(content=f.read())
 
 
+@app.get("/chains-v2", response_class=HTMLResponse)
+async def chains_v2():
+    """Serve the V2 order chains page"""
+    with open("static/chains-v2.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
 @app.get("/test_websocket.html", response_class=HTMLResponse)
 async def test_websocket():
     """Serve the WebSocket test page"""
@@ -457,6 +474,303 @@ async def get_order_chains(
         return {"chains": formatted_chains, "total": len(formatted_chains)}
     except Exception as e:
         logger.error(f"Error fetching order chains: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chains-v2")
+async def get_order_chains_v2(
+    account_number: Optional[str] = None,
+    underlying: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """Get order chains using the new V2 derivation system"""
+    try:
+        # Get all raw transactions
+        raw_transactions = db.get_raw_transactions(
+            account_number=account_number,
+            underlying=underlying
+        )
+        
+        if not raw_transactions:
+            return {"chains": [], "total": 0}
+        
+        # Clear and rebuild position inventory for accurate chain status
+        position_manager.clear_all_positions()
+        
+        # Process through V2 system to get derived chains  
+        chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+        
+        # Flatten chains from all accounts
+        all_chains = []
+        for account, chains in chains_by_account.items():
+            for chain in chains:
+                all_chains.append(chain)
+        
+        # Sort by opening date (newest first)
+        all_chains.sort(key=lambda c: c.opening_date or date.min, reverse=True)
+        
+        # Apply pagination
+        paginated_chains = all_chains[offset:offset + limit]
+        
+        # Format for frontend (similar to old system but with V2 data)
+        formatted_chains = []
+        for chain in paginated_chains:
+            # Calculate totals
+            total_credit = 0.0
+            total_debit = 0.0
+            total_quantity = 0
+            
+            for order in chain.orders:
+                for tx in order.transactions:
+                    amount = tx.price * abs(tx.quantity) * 100  # *100 for options
+                    if tx.is_opening:
+                        if tx.is_sell:
+                            total_credit += amount
+                        else:
+                            total_debit += amount
+                    total_quantity += abs(tx.quantity)
+            
+            # Calculate realized P&L from closed positions
+            realized_pnl = 0.0
+            unrealized_pnl = 0.0
+            
+            for order in chain.orders:
+                for tx in order.transactions:
+                    if tx.is_closing:
+                        if tx.is_assignment or tx.is_exercise or tx.is_expiration:
+                            # For assignment/exercise/expiration, calculate based on strike price
+                            quantity = abs(tx.quantity)
+                            if tx.is_assignment and tx.strike:
+                                # Assignment: net impact is +strike*100
+                                realized_pnl += tx.strike * 100 * quantity
+                            elif tx.is_exercise and tx.strike:
+                                # Exercise: net impact is -strike*100
+                                realized_pnl -= tx.strike * 100 * quantity
+                            # For expiration, P&L is 0 (options expire worthless)
+                        elif tx.price > 0:  # Regular closing transactions
+                            # Find the opening transaction for this symbol
+                            opening_tx = None
+                            for search_order in chain.orders:
+                                for search_tx in search_order.transactions:
+                                    if (search_tx.symbol == tx.symbol and 
+                                        search_tx.is_opening and 
+                                        search_tx.executed_at <= tx.executed_at):
+                                        opening_tx = search_tx
+                                        break
+                                if opening_tx:
+                                    break
+                            
+                            if opening_tx:
+                                # Calculate P&L for this closing transaction
+                                quantity = abs(tx.quantity)
+                                if opening_tx.is_sell:  # Short position (STO -> BTC)
+                                    pnl = (opening_tx.price - tx.price) * quantity * 100
+                                else:  # Long position (BTO -> STC)
+                                    pnl = (tx.price - opening_tx.price) * quantity * 100
+                                realized_pnl += pnl
+            
+            # Detect strategy for this chain
+            detected_strategy = strategy_detector.detect_chain_strategy(chain)
+            
+            formatted_chain = {
+                'chain_id': chain.chain_id,
+                'underlying': chain.underlying,
+                'strategy_type': detected_strategy,
+                'opening_date': chain.opening_date.isoformat() if chain.opening_date else None,
+                'closing_date': chain.closing_date.isoformat() if chain.closing_date else None,
+                'status': chain.status,
+                'order_count': len(chain.orders),
+                'total_quantity': total_quantity,
+                'total_credit': total_credit,
+                'total_debit': total_debit,
+                'net_premium': total_credit - total_debit,
+                'realized_pnl': realized_pnl,
+                'unrealized_pnl': unrealized_pnl,
+                'total_pnl': 0,  # Will be calculated after orders are processed
+                'account_number': chain.account_number,
+                'orders': []
+            }
+            
+            # Format orders
+            for order in chain.orders:
+                # Clean up system-generated order IDs for display
+                display_order_id = order.order_id
+                if order.order_id.startswith('SYSTEM_'):
+                    if 'Expiration' in order.order_id:
+                        display_order_id = f"EXPIRATION_{order.executed_at.strftime('%Y%m%d')}"
+                    elif 'Assignment' in order.order_id:
+                        display_order_id = f"ASSIGNMENT_{order.executed_at.strftime('%Y%m%d')}"
+                    elif 'Exercise' in order.order_id:
+                        display_order_id = f"EXERCISE_{order.executed_at.strftime('%Y%m%d')}"
+                    else:
+                        display_order_id = f"SYSTEM_{order.executed_at.strftime('%Y%m%d')}"
+                
+                order_info = {
+                    'order_id': display_order_id,
+                    'order_type': order.order_type.value,
+                    'order_date': order.executed_at.date().isoformat(),
+                    'strategy_type': None,
+                    'status': 'CLOSED' if order.order_type.value == 'CLOSING' else 'FILLED',
+                    'positions': [],
+                    'emblems': []
+                }
+                
+                # Create positions from all transactions in the order
+                position_id_counter = 1
+                processed_symbols = set()  # Track which symbols we've already processed
+                
+                for tx in order.transactions:
+                    # For closing transactions (assignment/exercise/expiration), don't create separate positions
+                    # Instead, they should update the original opening positions
+                    if tx.is_closing and (tx.is_assignment or tx.is_exercise or tx.is_expiration):
+                        continue  # Skip creating separate positions for these
+                    
+                    position_info = {
+                        'position_id': f"{order.order_id}_{position_id_counter}",
+                        'symbol': tx.symbol,
+                        'underlying': tx.underlying_symbol,
+                        'instrument_type': 'EQUITY_OPTION' if tx.option_type else 'EQUITY',
+                        'option_type': tx.option_type,
+                        'strike': tx.strike,
+                        'expiration': tx.expiration.isoformat() if tx.expiration else None,
+                        'quantity': tx.quantity if tx.is_buy else -abs(tx.quantity),  # Show negative for short positions
+                        'opening_action': str(tx.action).replace('OrderAction.', ''),
+                        'opening_price': tx.price,
+                        'closing_action': None,
+                        'closing_price': None,
+                        'status': 'OPEN',
+                        'opening_transaction_id': tx.id,
+                        'closing_transaction_id': None,
+                        'pnl': 0.0
+                    }
+                    
+                    # Set transaction amount (not P&L, just the credit/debit amount)
+                    quantity = abs(tx.quantity)
+                    amount = tx.price * 100 * quantity
+                    if tx.is_sell:  # Sell transactions are credits (positive)
+                        position_info['pnl'] = amount
+                    else:  # Buy transactions are debits (negative)  
+                        position_info['pnl'] = -amount
+                    
+                    # Check if this position was closed by assignment/exercise/expiration in a later order
+                    for check_order in chain.orders:
+                        if check_order.executed_at > order.executed_at:  # Only check later orders
+                            for closing_tx in check_order.transactions:
+                                if (closing_tx.symbol == tx.symbol and 
+                                    (closing_tx.is_assignment or closing_tx.is_exercise or closing_tx.is_expiration)):
+                                    # This position was closed by assignment/exercise/expiration
+                                    position_info['status'] = 'CLOSED'
+                                    if closing_tx.is_assignment:
+                                        position_info['closing_action'] = 'ASSIGNED'
+                                    elif closing_tx.is_exercise:
+                                        position_info['closing_action'] = 'EXERCISED'
+                                    elif closing_tx.is_expiration:
+                                        position_info['closing_action'] = 'EXPIRED'
+                                    position_info['closing_price'] = closing_tx.price or 0.0
+                                    position_info['closing_transaction_id'] = closing_tx.id
+                                    
+                                    # For positions closed by assignment/exercise, show the original transaction amount
+                                    # The assignment/exercise impact will show at the order level for those orders
+                                    quantity = abs(tx.quantity)
+                                    amount = tx.price * 100 * quantity
+                                    if tx.is_sell:  # Sell transactions are credits (positive)
+                                        position_info['pnl'] = amount
+                                    else:  # Buy transactions are debits (negative)
+                                        position_info['pnl'] = -amount
+                                    break
+                    
+                    # For regular closing transactions, try to find the matching opening transaction
+                    if tx.is_closing and not (tx.is_assignment or tx.is_exercise or tx.is_expiration):
+                        # Find matching opening transaction in the same order or previous orders in chain
+                        opening_tx = None
+                        for search_order in chain.orders:
+                            for search_tx in search_order.transactions:
+                                if (search_tx.symbol == tx.symbol and 
+                                    search_tx.is_opening and 
+                                    search_tx.executed_at <= tx.executed_at):
+                                    opening_tx = search_tx
+                                    break
+                            if opening_tx:
+                                break
+                        
+                        if opening_tx:
+                            # Just show the transaction amount for closing transactions
+                            quantity = abs(tx.quantity)
+                            amount = tx.price * 100 * quantity
+                            if tx.is_sell:  # Sell to close is a credit
+                                position_info['pnl'] = amount
+                            else:  # Buy to close is a debit
+                                position_info['pnl'] = -amount
+                            position_info['closing_action'] = str(tx.action).replace('OrderAction.', '')
+                            position_info['closing_price'] = tx.price
+                            position_info['status'] = 'CLOSED'
+                    
+                    order_info['positions'].append(position_info)
+                    position_id_counter += 1
+                
+                # Calculate order-level P&L
+                if order.order_type.value == 'OPENING':
+                    # For opening orders, P&L is the net premium (credits - debits)
+                    order_credit = 0.0
+                    order_debit = 0.0
+                    for tx in order.transactions:
+                        amount = tx.price * abs(tx.quantity) * 100
+                        if tx.is_sell:
+                            order_credit += amount
+                        else:
+                            order_debit += amount
+                    order_pnl = order_credit - order_debit
+                elif order.order_type.value == 'ROLLING':
+                    # For rolling orders, P&L is net of all credits and debits
+                    order_credit = 0.0
+                    order_debit = 0.0
+                    for tx in order.transactions:
+                        amount = tx.price * abs(tx.quantity) * 100
+                        if tx.is_sell:
+                            order_credit += amount
+                        else:
+                            order_debit += amount
+                    order_pnl = order_credit - order_debit
+                elif any(tx.is_assignment or tx.is_exercise or tx.is_expiration 
+                        for tx in order.transactions):
+                    # For assignment/exercise/expiration orders, P&L is the strike impact
+                    order_pnl = 0.0
+                    for tx in order.transactions:
+                        quantity = abs(tx.quantity)
+                        if tx.is_assignment and tx.strike:
+                            order_pnl += tx.strike * 100 * quantity  # Assignment: +strike*100
+                        elif tx.is_exercise and tx.strike:
+                            order_pnl -= tx.strike * 100 * quantity  # Exercise: -strike*100
+                else:
+                    # For regular closing orders (BTC/STC only), P&L is the debit/credit
+                    order_credit = 0.0
+                    order_debit = 0.0
+                    for tx in order.transactions:
+                        amount = tx.price * abs(tx.quantity) * 100
+                        if tx.is_sell:
+                            order_credit += amount
+                        else:
+                            order_debit += amount
+                    order_pnl = order_credit - order_debit
+                
+                order_info['total_pnl'] = order_pnl
+                
+                # Add emblems for special transaction types
+                if any(tx.is_expiration for tx in order.transactions):
+                    order_info['emblems'].append('E')
+                
+                formatted_chain['orders'].append(order_info)
+            
+            # Calculate chain P&L as sum of all order P&Ls
+            formatted_chain['total_pnl'] = sum(order['total_pnl'] for order in formatted_chain['orders'])
+            
+            formatted_chains.append(formatted_chain)
+        
+        return {"chains": formatted_chains, "total": len(formatted_chains)}
+        
+    except Exception as e:
+        logger.error(f"Error fetching V2 order chains: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1258,75 +1572,10 @@ async def websocket_quotes(websocket: WebSocket):
         logger.info("WebSocket connection closed")
 
 
-@app.get("/strategy-config", response_class=HTMLResponse)
-async def strategy_config_page():
-    """Serve the strategy configuration page"""
-    try:
-        with open("static/strategy-config.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    except Exception as e:
-        logger.error(f"Error serving strategy config page: {str(e)}")
-        return HTMLResponse(content=f"<h1>Error loading strategy config page: {str(e)}</h1>", status_code=500)
 
 
-@app.get("/api/strategy-config")
-async def get_strategy_configuration():
-    """Get the strategy configuration"""
-    try:
-        # Import here to avoid circular imports
-        from src.models.strategy_config import StrategyConfigLoader
-        
-        # Create a fresh instance
-        config = StrategyConfigLoader()
-        
-        result = {
-            "strategy_types": {},
-            "categories": config.get_categories(),
-            "direction_indicators": config.get_direction_indicators(),
-            "recognition_priority": config.get_recognition_priority()
-        }
-        
-        # Build strategy types dict
-        for key, strategy in config.strategies.items():
-            result["strategy_types"][key] = {
-                "name": strategy.name,
-                "code": strategy.code,
-                "category": strategy.category,
-                "direction": strategy.direction,
-                "legs": strategy.legs,
-                "description": strategy.description,
-                "recognition_rules": strategy.recognition_rules
-            }
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error getting strategy config: {str(e)}")
-        logger.exception(e)  # This will log the full traceback
-        # Return a more detailed error for debugging
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e), "type": type(e).__name__}
-        )
 
 
-@app.post("/api/strategy-config")
-async def update_strategy_config(request: Request):
-    """Update the strategy configuration"""
-    try:
-        data = await request.json()
-        config = get_strategy_config()
-        
-        # Update strategies if provided
-        if "strategy_types" in data:
-            # This would update the strategies in the config
-            # For now, just reload to demonstrate
-            config.reload()
-        
-        return {"message": "Configuration updated successfully"}
-    except Exception as e:
-        logger.error(f"Error updating strategy config: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 def create_initial_files():
