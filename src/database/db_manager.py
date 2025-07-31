@@ -10,7 +10,9 @@ from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import json
 import time
-from loguru import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path
 import sys
@@ -231,6 +233,17 @@ class DatabaseManager:
                     FOREIGN KEY (chain_id) REFERENCES order_chains (chain_id),
                     FOREIGN KEY (order_id) REFERENCES orders (order_id),
                     UNIQUE(chain_id, order_id)
+                )
+            """)
+            
+            # Order chain cache - stores complete order details for fast display
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS order_chain_cache (
+                    chain_id TEXT,
+                    order_id TEXT,
+                    order_data TEXT,  -- JSON blob of complete order data
+                    PRIMARY KEY (chain_id, order_id),
+                    FOREIGN KEY (chain_id) REFERENCES order_chains (chain_id)
                 )
             """)
             

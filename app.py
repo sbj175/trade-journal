@@ -400,11 +400,34 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
             cursor.execute(count_query, count_params)
             total_count = cursor.fetchone()[0]
             
-            # Format cached chains for frontend (simplified - detailed positions loaded on demand)
+            # Format cached chains for frontend with complete order data
             formatted_chains = []
             for row in chain_rows:
                 chain_id, underlying, strategy_type, opening_date, closing_date, chain_status = row[:6]
                 order_count, total_pnl, realized_pnl, unrealized_pnl, account_number = row[6:]
+                
+                # Load complete order data from cache
+                cursor.execute("""
+                    SELECT order_data FROM order_chain_cache 
+                    WHERE chain_id = ? 
+                    ORDER BY order_id
+                """, (chain_id,))
+                
+                order_rows = cursor.fetchall()
+                orders = []
+                import json
+                
+                for order_row in order_rows:
+                    try:
+                        order_data = json.loads(order_row[0])
+                        orders.append(order_data)
+                    except (json.JSONDecodeError, IndexError) as e:
+                        logger.warning(f"Failed to parse cached order data for chain {chain_id}: {e}")
+                        continue
+                
+                # If strategy is None, convert to Unknown for display
+                if strategy_type is None:
+                    strategy_type = "Unknown"
                 
                 formatted_chain = {
                     'chain_id': chain_id,
@@ -418,7 +441,7 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                     'realized_pnl': realized_pnl or 0.0,
                     'unrealized_pnl': unrealized_pnl or 0.0,
                     'account_number': account_number,
-                    'orders': []  # Can be loaded on-demand when chain is expanded
+                    'orders': orders  # Now includes complete order data from cache
                 }
                 formatted_chains.append(formatted_chain)
             
@@ -435,23 +458,65 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
 
 async def update_chain_cache(chains):
     """Update the order_chains table with fresh V2 derivation results"""
+    logger.info(f"[CACHE UPDATE] Starting update with {len(chains)} chains")
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
             
+            # Preserve existing working strategies before clearing cache
+            cursor.execute("""
+                CREATE TEMP TABLE preserved_strategies AS 
+                SELECT chain_id, strategy_type 
+                FROM order_chains 
+                WHERE strategy_type IS NOT NULL AND strategy_type != 'Unknown' AND strategy_type != 'None'
+                AND chain_id LIKE '%MERGED%'
+            """)
+            
             # Clear existing cache (could be more selective in the future)
             cursor.execute("DELETE FROM order_chains")
             cursor.execute("DELETE FROM order_chain_members")
+            cursor.execute("DELETE FROM order_chain_cache")
             
             current_time = datetime.now()
             
             for chain in chains:
-                # Detect strategy for this chain
-                try:
-                    detected_strategy = strategy_detector.detect_chain_strategy(chain)
-                except Exception as e:
-                    logger.warning(f"Strategy detection failed for chain {chain.chain_id}: {e}")
-                    detected_strategy = "Unknown"
+                # Check for preserved strategy first
+                cursor.execute("SELECT strategy_type FROM preserved_strategies WHERE chain_id = ?", (chain.chain_id,))
+                preserved_result = cursor.fetchone()
+                
+                if preserved_result:
+                    detected_strategy = preserved_result[0]
+                    logger.info(f"Using preserved strategy for chain {chain.chain_id}: {detected_strategy}")
+                else:
+                    # Detect strategy for this chain
+                    try:
+                        # Debug the chain structure before detection
+                        if chain.underlying in ["CSX", "GOOG", "USO"]:
+                            logger.warning(f"[DEBUG] Processing {chain.underlying} chain {chain.chain_id}")
+                            if chain.orders:
+                                opening_orders = [o for o in chain.orders if o.order_type.value == 'OPENING']
+                                if opening_orders:
+                                    logger.warning(f"  Found {len(opening_orders)} opening orders")
+                                    for tx in opening_orders[0].transactions[:2]:
+                                        logger.warning(f"    TX: symbol={tx.symbol}, option_type={tx.option_type}, strike={tx.strike}, action={tx.action}")
+                                else:
+                                    logger.warning(f"  No opening orders found")
+                            else:
+                                logger.warning(f"  No orders in chain")
+                        
+                        detected_strategy = strategy_detector.detect_chain_strategy(chain)
+                        
+                        if chain.underlying in ["CSX", "GOOG", "USO"]:
+                            logger.warning(f"  Detected strategy: {detected_strategy}")
+                        
+                        # Ensure we never store None
+                        if detected_strategy is None:
+                            detected_strategy = "Unknown"
+                    except Exception as e:
+                        logger.warning(f"Strategy detection failed for chain {chain.chain_id}: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        detected_strategy = "Unknown"
                 
                 # Calculate P&L values
                 total_pnl = 0.0
@@ -485,6 +550,10 @@ async def update_chain_cache(chains):
                     else:
                         unrealized_pnl += order_pnl
                 
+                # Debug: Log what we're about to insert
+                if chain.underlying in ["CSX", "GOOG", "USO"]:
+                    logger.warning(f"[INSERT] About to insert chain {chain.chain_id} with strategy_type = {repr(detected_strategy)}")
+                
                 # Insert chain data
                 cursor.execute("""
                     INSERT OR REPLACE INTO order_chains (
@@ -510,18 +579,76 @@ async def update_chain_cache(chains):
                     current_time
                 ))
                 
-                # Insert chain membership links
+                # Insert chain membership links and cache complete order data
                 for order in chain.orders:
                     cursor.execute("""
                         INSERT OR REPLACE INTO order_chain_members (chain_id, order_id)
                         VALUES (?, ?)
                     """, (chain.chain_id, order.order_id))
+                    
+                    # Store complete order data as JSON
+                    import json
+                    # Calculate total P&L for this order
+                    order_pnl = 0.0
+                    for tx in order.transactions:
+                        # Check if option by looking for strike price
+                        multiplier = 100 if tx.strike is not None else 1
+                        amount = tx.price * abs(tx.quantity) * multiplier
+                        if tx.is_opening:
+                            # Opening: sells are positive (credit), buys are negative (debit)
+                            order_pnl += amount if 'SELL' in tx.action else -amount
+                        else:
+                            # Closing: sells are positive, buys are negative  
+                            order_pnl += amount if 'SELL' in tx.action else -amount
+                    
+                    order_data = {
+                        "order_id": order.order_id,
+                        "order_type": order.order_type.value,
+                        "order_date": order.executed_at.date().isoformat() if order.executed_at else None,
+                        "strategy_type": detected_strategy,
+                        "status": "FILLED",
+                        "total_pnl": order_pnl,
+                        "positions": []
+                    }
+                    
+                    # Add positions from transactions
+                    for tx in order.transactions:
+                        multiplier = 100 if tx.strike is not None else 1
+                        tx_amount = tx.price * abs(tx.quantity) * multiplier
+                        tx_pnl = tx_amount if 'SELL' in tx.action else -tx_amount
+                        
+                        position_data = {
+                            "position_id": f"{order.order_id}_{len(order_data['positions']) + 1}",
+                            "symbol": tx.symbol,
+                            "underlying": tx.underlying_symbol,
+                            "instrument_type": "EQUITY_OPTION" if tx.strike else "EQUITY",
+                            "option_type": tx.option_type,
+                            "strike": tx.strike,
+                            "expiration": tx.expiration.isoformat() if tx.expiration else None,
+                            "quantity": tx.quantity,
+                            "opening_action": tx.action,
+                            "opening_price": tx.price,
+                            "closing_action": None,
+                            "closing_price": None,
+                            "status": "OPEN" if order.order_type.value == "OPENING" else "CLOSED",
+                            "opening_transaction_id": tx.id,
+                            "closing_transaction_id": None,
+                            "pnl": tx_pnl
+                        }
+                        order_data["positions"].append(position_data)
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO order_chain_cache (chain_id, order_id, order_data)
+                        VALUES (?, ?, ?)
+                    """, (chain.chain_id, order.order_id, json.dumps(order_data)))
             
             conn.commit()
-            logger.info(f"Updated cache with {len(chains)} chains")
+            logger.info(f"[CACHE UPDATE] Successfully updated cache with {len(chains)} chains")
             
     except Exception as e:
-        logger.error(f"Error updating chain cache: {e}")
+        logger.error(f"[CACHE UPDATE] Error updating chain cache: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 @app.get("/api/chains")
@@ -533,7 +660,7 @@ async def get_order_chains(
 ):
     """Get order chains with intelligent caching for optimal performance"""
     try:
-        # Re-enable caching for performance
+        # Re-enable caching now that cache has been rebuilt with order details
         use_cache = await should_use_cached_chains(account_number, underlying)
         
         if use_cache:
@@ -566,7 +693,9 @@ async def get_order_chains(
                 all_chains.append(chain)
         
         # Update cache with fresh V2 data
+        logger.info(f"About to update cache with {len(all_chains)} chains...")
         await update_chain_cache(all_chains)
+        logger.info("Cache update completed")
         
         # Sort by opening date (newest first)
         all_chains.sort(key=lambda c: c.opening_date or date.min, reverse=True)
@@ -1472,29 +1601,50 @@ async def initial_sync():
 
 @app.post("/api/reprocess-chains")
 async def reprocess_chains():
-    """Reprocess orders and chains from existing raw transactions"""
+    """Reprocess orders and chains from existing raw transactions using V2 system"""
     try:
-        logger.info("Starting chain reprocessing from database")
+        logger.info("Starting V2 chain reprocessing from database")
         
-        # Use OrderManager to reprocess from database
-        result = order_manager.reprocess_orders_and_chains_from_database()
+        # Get all raw transactions from database  
+        raw_transactions = db.get_raw_transactions()
+        logger.info(f"Loaded {len(raw_transactions)} raw transactions from database")
         
-        if 'error' in result:
-            logger.error(f"Reprocessing error: {result['error']}")
-            raise HTTPException(status_code=500, detail=result['error'])
+        # Use V2 processor to create chains
+        chains_by_account = order_processor_v2.process_transactions(raw_transactions)
         
-        logger.info(f"Reprocessing completed: {result['orders_saved']} orders, {result['chains_saved']} chains")
+        # Flatten chains from all accounts
+        all_chains = []
+        for account, chains in chains_by_account.items():
+            for chain in chains:
+                all_chains.append(chain)
+        
+        # Update cache with fresh V2 data
+        logger.info(f"About to update cache with {len(all_chains)} chains...")
+        await update_chain_cache(all_chains)
+        logger.info("Cache update completed")
+        
+        # Debug: Check what was actually inserted for CSX
+        debug_info = {}
+        try:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT strategy_type FROM order_chains WHERE chain_id = 'CSX_OPENING_20250729_39786951'")
+                result = cursor.fetchone()
+                debug_info["csx_strategy_after_insert"] = result[0] if result else "NOT_FOUND"
+        except Exception as e:
+            debug_info["debug_error"] = str(e)
         
         return {
-            "message": f"Reprocessing completed successfully",
-            "orders_processed": result['orders_processed'],
-            "orders_saved": result['orders_saved'],
-            "chains_created": result['chains_created'],
-            "chains_saved": result['chains_saved']
+            "message": "Reprocessing completed successfully",
+            "orders_processed": len(raw_transactions),
+            "orders_saved": len(raw_transactions),
+            "chains_created": len(all_chains),
+            "chains_saved": len(all_chains),
+            "debug": debug_info
         }
         
     except Exception as e:
-        logger.error(f"Reprocessing error: {str(e)}", exc_info=True)
+        logger.error(f"Error during reprocessing: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1516,6 +1666,165 @@ async def get_monthly_performance(year: int = None):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
+@app.get("/api/debug/strategy/{chain_id}")
+async def debug_strategy(chain_id: str):
+    """Debug strategy detection for a specific chain"""
+    # Get the chain from V2 processor (same as cache update process)
+    raw_transactions = db.get_raw_transactions()
+    chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+    
+    # Find the specific chain
+    target_chain = None
+    for account_chains in chains_by_account.values():
+        for chain in account_chains:
+            if chain.chain_id == chain_id:
+                target_chain = chain
+                break
+    
+    if not target_chain:
+        return {"error": f"Chain {chain_id} not found"}
+    
+    # Debug info
+    debug_info = {
+        "chain_id": chain_id,
+        "underlying": target_chain.underlying,
+        "orders": len(target_chain.orders),
+        "opening_orders": [],
+        "debug_path": "fresh_v2_processing"
+    }
+    
+    for order in target_chain.orders:
+        if order.order_type.value == 'OPENING':
+            order_info = {
+                "order_id": order.order_id,
+                "transactions": []
+            }
+            for tx in order.transactions:
+                tx_info = {
+                    "symbol": tx.symbol,
+                    "action": tx.action,
+                    "quantity": tx.quantity,
+                    "option_type": tx.option_type,
+                    "strike": tx.strike,
+                    "has_option_type": tx.option_type is not None,
+                    "underlying_symbol": tx.underlying_symbol
+                }
+                order_info["transactions"].append(tx_info)
+            debug_info["opening_orders"].append(order_info)
+    
+    # Try strategy detection
+    try:
+        detected_strategy = strategy_detector.detect_chain_strategy(target_chain)
+        debug_info["detected_strategy"] = detected_strategy
+    except Exception as e:
+        debug_info["strategy_error"] = str(e)
+    
+    return debug_info
+
+
+@app.get("/api/debug/cache-path/{chain_id}")
+async def debug_cache_path(chain_id: str):
+    """Debug strategy detection using the EXACT same code path as cache update"""
+    # This mimics the exact code path used in cache updates
+    raw_transactions = db.get_raw_transactions()
+    chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+    
+    # Flatten chains from all accounts (same as cache update)
+    all_chains = []
+    for account, chains in chains_by_account.items():
+        for chain in chains:
+            all_chains.append(chain)
+    
+    # Find the target chain
+    target_chain = None
+    for chain in all_chains:
+        if chain.chain_id == chain_id:
+            target_chain = chain
+            break
+    
+    if not target_chain:
+        return {"error": f"Chain {chain_id} not found"}
+    
+    # Now run the EXACT same strategy detection logic as in update_chain_cache
+    try:
+        # This is the exact code from update_chain_cache
+        detected_strategy = strategy_detector.detect_chain_strategy(target_chain)
+        if detected_strategy is None:
+            detected_strategy = "Unknown"
+    except Exception as e:
+        detected_strategy = "Unknown"
+        
+    return {
+        "chain_id": chain_id,
+        "underlying": target_chain.underlying,
+        "strategy_from_cache_path": detected_strategy,
+        "opening_orders": len([o for o in target_chain.orders if o.order_type.value == 'OPENING']),
+        "total_orders": len(target_chain.orders)
+    }
+
+
+@app.get("/api/debug/cache-update/{chain_id}")
+async def debug_cache_update(chain_id: str):
+    """Debug the full cache update process for a specific chain"""
+    try:
+        # Step 1: Get raw transactions
+        raw_transactions = db.get_raw_transactions()
+        
+        # Step 2: Process transactions
+        chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+        
+        # Step 3: Find target chain
+        target_chain = None
+        for account_chains in chains_by_account.values():
+            for chain in account_chains:
+                if chain.chain_id == chain_id:
+                    target_chain = chain
+                    break
+        
+        if not target_chain:
+            return {"error": f"Chain {chain_id} not found"}
+        
+        # Step 4: Strategy detection (exact same logic as cache update)
+        try:
+            detected_strategy = strategy_detector.detect_chain_strategy(target_chain)
+            if detected_strategy is None:
+                detected_strategy = "Unknown"
+        except Exception as e:
+            detected_strategy = "Unknown"
+            
+        # Step 5: Simulate database insert without actually inserting
+        insert_params = {
+            "chain_id": target_chain.chain_id,
+            "underlying": target_chain.underlying,
+            "account_number": target_chain.account_number,
+            "opening_order_id": target_chain.orders[0].order_id if target_chain.orders else None,
+            "strategy_type": detected_strategy,
+            "opening_date": target_chain.opening_date,
+            "closing_date": target_chain.closing_date,
+            "chain_status": target_chain.status,
+            "order_count": len(target_chain.orders)
+        }
+        
+        # Step 6: Check what's currently in database
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT strategy_type FROM order_chains WHERE chain_id = ?", (chain_id,))
+            current_db_result = cursor.fetchone()
+            current_db_strategy = current_db_result[0] if current_db_result else "NOT_FOUND"
+        
+        return {
+            "chain_id": chain_id,
+            "detected_strategy": detected_strategy,
+            "would_insert": insert_params,
+            "current_in_db": current_db_strategy,
+            "opening_order_transactions": len(target_chain.orders[0].transactions) if target_chain.orders else 0
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 
 @app.websocket("/ws/quotes")

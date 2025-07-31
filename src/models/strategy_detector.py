@@ -31,7 +31,19 @@ class StrategyDetector:
         if hasattr(chain, 'chain_id') and 'IBIT' in str(chain.chain_id):
             logger.info(f"DEBUG ZEBRA - Starting strategy detection for chain: {chain.chain_id}")
         
+        # Critical debug for CSX - let's see what's happening
+        if hasattr(chain, 'underlying') and chain.underlying == 'CSX':
+            chain_id = getattr(chain, 'chain_id', 'unknown')
+            logger.warning(f"[STRATEGY_DETECTOR] CSX chain {chain_id}: Starting detection")
+            logger.warning(f"  Chain has {len(chain.orders)} orders")
+            if chain.orders:
+                for i, order in enumerate(chain.orders):
+                    logger.warning(f"  Order {i}: type={order.order_type.value}, {len(order.transactions)} transactions")
+                    for j, tx in enumerate(order.transactions):
+                        logger.warning(f"    TX {j}: {tx.symbol}, option_type={tx.option_type}, strike={tx.strike}")
+        
         if not chain.orders:
+            logger.debug(f"Strategy detection: No orders in chain {getattr(chain, 'chain_id', 'unknown')}")
             return "Unknown"
         
         # For now, focus on the opening order to determine base strategy
@@ -42,11 +54,16 @@ class StrategyDetector:
                 break
         
         if not opening_order:
+            logger.debug(f"Strategy detection: No opening order found in chain {getattr(chain, 'chain_id', 'unknown')}")
             return "Unknown"
         
         # Get all positions from the opening order and aggregate by symbol/strike/type
         position_map = {}
         for tx in opening_order.transactions:
+            # Debug log for CSX/GOOG chains
+            if hasattr(chain, 'underlying') and chain.underlying in ['CSX', 'GOOG', 'USO']:
+                logger.warning(f"[STRATEGY_DETECTOR] Chain {chain.underlying}: Processing tx {tx.symbol}, option_type={tx.option_type}, strike={tx.strike}")
+            
             if tx.option_type:  # Only options positions
                 # Create unique key for aggregation (symbol includes strike and expiration info)
                 key = f"{tx.symbol}_{tx.option_type}"
@@ -82,7 +99,13 @@ class StrategyDetector:
             return self._detect_single_position_strategy(positions[0], chain, account_context)
         
         # Multi-position strategies
-        return self._detect_multi_position_strategy(positions, chain)
+        result = self._detect_multi_position_strategy(positions, chain)
+        
+        # Final debug for CSX
+        if hasattr(chain, 'underlying') and chain.underlying == 'CSX':
+            logger.warning(f"[STRATEGY_DETECTOR] CSX chain final result: {result}")
+        
+        return result
     
     def _detect_single_position_strategy(self, position: Dict, chain, account_context: Optional[Dict]) -> str:
         """Detect strategy for single option position"""
@@ -115,6 +138,8 @@ class StrategyDetector:
                 # For now, just return short put
                 return base_strategy
         
+        # Fallback for unrecognized option types
+        logger.warning(f"Unrecognized option type in strategy detection: {option_type}")
         return "Unknown"
     
     def _detect_multi_position_strategy(self, positions: List[Dict], chain) -> str:
