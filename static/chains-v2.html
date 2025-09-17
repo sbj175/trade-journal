@@ -141,10 +141,39 @@
                                 </p>
                                 <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
                             </div>
-                            <p class="text-3xl font-bold mt-2" 
+                            <p class="text-3xl font-bold mt-2"
                                :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
                                 $<span x-text="formatNumber(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl)"></span>
                             </p>
+                            <!-- P&L Breakdown -->
+                            <div x-show="!hasActiveFilters() && dashboard.summary.position_based_total" class="text-xs text-slate-400 mt-1">
+                                <div class="flex items-center gap-1">
+                                    <span>Realized:</span>
+                                    <span :class="dashboard.summary.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        $<span x-text="formatNumber(dashboard.summary.realized_pnl)"></span>
+                                    </span>
+                                    <span class="mx-1">|</span>
+                                    <span>Unrealized:</span>
+                                    <span :class="dashboard.summary.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        $<span x-text="formatNumber(dashboard.summary.unrealized_pnl)"></span>
+                                    </span>
+                                </div>
+                            </div>
+                            <!-- Filtered P&L Breakdown -->
+                            <div x-show="hasActiveFilters()" class="text-xs text-slate-400 mt-1">
+                                <div class="flex items-center gap-1">
+                                    <span>Realized:</span>
+                                    <span :class="dashboard.filteredSummary.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        $<span x-text="formatNumber(dashboard.filteredSummary.realized_pnl)"></span>
+                                    </span>
+                                    <span class="mx-1">|</span>
+                                    <span>Unrealized:</span>
+                                    <span :class="dashboard.filteredSummary.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        $<span x-text="formatNumber(dashboard.filteredSummary.unrealized_pnl)"></span>
+                                    </span>
+                                    <span class="text-slate-500 ml-2 text-xs">(chains only)</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="text-4xl" :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
                             <i :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'fas fa-chart-line' : 'fas fa-chart-line fa-rotate-180'"></i>

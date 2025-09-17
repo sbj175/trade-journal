@@ -66,45 +66,22 @@ pnl_calculator_v2 = PnLCalculatorV2(db, position_manager)
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
-    """Calculate opening dates for positions based on transaction history - OPTIMIZED"""
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Calculating opening dates for {len(positions)} positions in account {account_number}")
+    """Calculate opening dates for positions based on transaction history - HIGHLY OPTIMIZED"""
     
     if not positions:
         return positions
     
-    # Get existing positions for this account only (more efficient query)
-    existing_positions = []
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT symbol, opened_at 
-            FROM positions 
-            WHERE account_number = ? AND opened_at IS NOT NULL
-        """, (account_number,))
-        existing_positions = cursor.fetchall()
+    # Skip the debug logging to reduce overhead
     
-    # Create efficient lookup map
-    existing_opened_at = {pos['symbol']: pos['opened_at'] for pos in existing_positions}
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Found {len(existing_opened_at)} existing positions with opening dates")
-    
-    # Get symbols that need opening date calculation
-    symbols_needing_dates = [pos['symbol'] for pos in positions if pos['symbol'] not in existing_opened_at]
-    
-    if not symbols_needing_dates:
-        # All positions already have opening dates
-        for position in positions:
-            position['opened_at'] = existing_opened_at.get(position['symbol'])
-        return positions
-    
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Need to calculate opening dates for {len(symbols_needing_dates)} symbols")
-    
-    # Optimized query: Get opening transactions for specific symbols only
+    # Single optimized query to get all opening dates for this account's symbols
+    position_symbols = [pos['symbol'] for pos in positions]
     opening_dates = {}
-    if symbols_needing_dates:
+    
+    if position_symbols:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            # Use parameterized query with IN clause for specific symbols
-            placeholders = ','.join(['?' for _ in symbols_needing_dates])
+            # Batch query for all symbols at once - much more efficient
+            placeholders = ','.join(['?' for _ in position_symbols])
             cursor.execute(f"""
                 SELECT symbol, MIN(executed_at) as earliest_date
                 FROM raw_transactions 
@@ -112,36 +89,15 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
                 AND symbol IN ({placeholders})
                 AND (action LIKE '%BUY_TO_OPEN%' OR action LIKE '%SELL_TO_OPEN%')
                 GROUP BY symbol
-            """, [account_number] + symbols_needing_dates)
+            """, [account_number] + position_symbols)
             
             for row in cursor.fetchall():
                 opening_dates[row['symbol']] = row['earliest_date']
     
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Found opening dates for {len(opening_dates)} symbols via optimized query")
-    
     # Apply opening dates to positions
     for position in positions:
         symbol = position.get('symbol')
-        
-        # Use existing date if available
-        if symbol in existing_opened_at:
-            position['opened_at'] = existing_opened_at[symbol]
-        # Use calculated date if available
-        elif symbol in opening_dates:
-            position['opened_at'] = opening_dates[symbol]
-        else:
-            # No opening transaction found
-            position['opened_at'] = None
-    
-    # Log summary
-    positions_with_dates = sum(1 for p in positions if p.get('opened_at'))
-    logger.info(f"🔍 EFFICIENCY_DEBUG: Set opening dates for {positions_with_dates}/{len(positions)} positions")
-    
-    # Log some examples
-    for i, pos in enumerate(positions[:3]):
-        symbol = pos.get('symbol')
-        opened_at = pos.get('opened_at')
-        logger.info(f"🔍 EFFICIENCY_DEBUG: Position {i+1}: {symbol} -> opened_at: {opened_at}")
+        position['opened_at'] = opening_dates.get(symbol)
     
     return positions
 
@@ -953,8 +909,65 @@ async def get_order_chains(
                 formatted_chain['orders'].append(order_info)
             
             # Calculate chain P&L as sum of all order P&Ls
-            formatted_chain['total_pnl'] = sum(order['total_pnl'] for order in formatted_chain['orders'])
-            
+            # Calculate base P&L from orders (realized P&L)
+            realized_order_pnl = sum(order['total_pnl'] for order in formatted_chain['orders'])
+            formatted_chain['total_pnl'] = realized_order_pnl
+
+            # For open chains, use live position-based P&L calculation for accuracy
+            if formatted_chain['status'] == 'OPEN':
+                try:
+                    # Try to get fresh position data from Tastytrade API for more accurate P&L
+                    # This ensures we use the same current market prices as the Positions page
+                    client = TastytradeClient()
+                    if client.authenticate():
+                        live_positions_data = client.get_positions(account_number=formatted_chain['account_number'])
+                        account_positions = live_positions_data.get(formatted_chain['account_number'], [])
+
+                        # Filter for this chain's underlying
+                        chain_positions = [
+                            p for p in account_positions
+                            if p.get('underlying_symbol', p.get('symbol', '')).replace(' ', '') == formatted_chain['underlying']
+                        ]
+
+                        if chain_positions:
+                            # Calculate P&L using live market data (same as Positions page)
+                            current_market_value = sum(float(p.get('market_value', 0)) for p in chain_positions)
+                            current_cost_basis = sum(float(p.get('cost_basis', 0)) for p in chain_positions)
+                            current_unrealized_pnl = sum(float(p.get('unrealized_pnl', 0)) for p in chain_positions)
+
+                            # Use live position-based total P&L
+                            position_based_pnl = current_unrealized_pnl  # This should match Positions page
+
+                            formatted_chain['unrealized_pnl'] = current_unrealized_pnl
+                            formatted_chain['position_market_value'] = current_market_value
+                            formatted_chain['position_cost_basis'] = current_cost_basis
+                            formatted_chain['total_pnl'] = position_based_pnl  # Use live calculation
+                            formatted_chain['data_source'] = 'live_api'
+
+                            logger.debug(f"Chain {formatted_chain['chain_id']} (live): market_value={current_market_value:.2f}, cost_basis={current_cost_basis:.2f}, unrealized_pnl={current_unrealized_pnl:.2f}")
+                        else:
+                            logger.debug(f"No live positions found for {formatted_chain['underlying']} in account {formatted_chain['account_number']}")
+                    else:
+                        logger.warning("Could not authenticate with Tastytrade for live position data")
+                        # Fallback to cached database positions
+                        positions = db.get_open_positions()
+                        if positions:
+                            chain_positions = [
+                                p for p in positions
+                                if (p.get('underlying') == formatted_chain['underlying'] and
+                                    p.get('account_number') == formatted_chain['account_number'])
+                            ]
+                            if chain_positions:
+                                current_unrealized_pnl = sum(float(p.get('unrealized_pnl', 0)) for p in chain_positions)
+                                formatted_chain['unrealized_pnl'] = current_unrealized_pnl
+                                formatted_chain['total_pnl'] = current_unrealized_pnl
+                                formatted_chain['data_source'] = 'cached_db'
+
+                except Exception as e:
+                    logger.warning(f"Could not get live position-based P&L for chain {formatted_chain['chain_id']}: {e}")
+                    # Fallback to existing calculation
+                    pass
+
             formatted_chains.append(formatted_chain)
         
         return {
@@ -1218,9 +1231,34 @@ async def get_dashboard_data(account_number: Optional[str] = None):
         open_chains = [c for c in processed_chains if c['chain_status'] == 'OPEN']
         closed_chains = [c for c in processed_chains if c['chain_status'] == 'CLOSED']
         
-        total_pnl = sum(c['total_pnl'] for c in processed_chains)
-        realized_pnl = sum(c['realized_pnl'] for c in processed_chains)
-        
+        # Calculate realized P&L from chains (existing logic)
+        chains_total_pnl = sum(c['total_pnl'] for c in processed_chains)
+        chains_realized_pnl = sum(c['realized_pnl'] for c in processed_chains)
+
+        # Get unrealized P&L from current positions
+        unrealized_pnl = 0
+        position_data_source = "none"
+        try:
+            # Try to get cached positions first (faster, includes live market values)
+            positions = db.get_open_positions()
+            if positions:
+                # Filter by account if specified
+                if account_number:
+                    positions = [p for p in positions if p.get('account_number') == account_number]
+
+                # Calculate unrealized P&L from positions
+                unrealized_pnl = sum(float(p.get('unrealized_pnl', 0)) for p in positions)
+                position_data_source = "database"
+                logger.info(f"Dashboard: Using database positions data, unrealized P&L: ${unrealized_pnl:.2f}")
+            else:
+                logger.warning("Dashboard: No position data available")
+        except Exception as e:
+            logger.warning(f"Dashboard: Could not get position data for unrealized P&L: {e}")
+
+        # Calculate combined totals
+        total_pnl = chains_realized_pnl + unrealized_pnl
+        realized_pnl = chains_realized_pnl
+
         # Calculate win rate from closed chains
         profitable_closed = [c for c in closed_chains if c['total_pnl'] > 0]
         win_rate = len(profitable_closed) / len(closed_chains) * 100 if closed_chains else 0
@@ -1271,6 +1309,11 @@ async def get_dashboard_data(account_number: Optional[str] = None):
                 "open_trades": len(open_chains),
                 "closed_trades": len(closed_chains),
                 "total_pnl": total_pnl,
+                "realized_pnl": realized_pnl,
+                "unrealized_pnl": unrealized_pnl,
+                "chains_only_pnl": chains_total_pnl,  # Original chains-only calculation for comparison
+                "position_based_total": unrealized_pnl != 0,  # Flag indicating enhanced calculation
+                "data_source": position_data_source,
                 "win_rate": win_rate
             },
             "order_summary": order_stats,
@@ -1281,6 +1324,55 @@ async def get_dashboard_data(account_number: Optional[str] = None):
         logger.error(f"Error fetching dashboard data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/api/sync-positions-only")
+async def sync_positions_only():
+    """Fast sync that only updates current positions without reprocessing orders"""
+    try:
+        logger.info("Starting positions-only sync (fast mode)...")
+        
+        # Initialize clients
+        tastytrade = TastytradeClient()
+        
+        # Authenticate
+        if not tastytrade.authenticate():
+            logger.error("Failed to authenticate with Tastytrade")
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
+        
+        # Fetch and save current positions for all accounts
+        logger.info("Fetching current positions from all accounts...")
+        all_positions = tastytrade.get_positions()
+        total_positions = 0
+        
+        for account_number, positions in all_positions.items():
+            if positions:
+                # Calculate opening dates for positions
+                positions_with_dates = calculate_position_opening_dates(positions, account_number)
+                success = db.save_positions(positions_with_dates, account_number)
+                if success:
+                    logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
+                    total_positions += len(positions)
+                else:
+                    logger.error(f"Failed to save positions for account {account_number}")
+        
+        # Fetch and save account balances
+        logger.info("Fetching account balances...")
+        balances = tastytrade.get_account_balances()
+        if balances:
+            for balance in balances:
+                db.save_account_balance(balance)
+        
+        logger.info(f"Fast sync completed: {total_positions} positions updated")
+        
+        return {
+            "message": f"Fast sync completed: {total_positions} positions updated",
+            "positions_updated": total_positions,
+            "mode": "positions_only"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error during fast sync: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/sync")
 async def sync_unified():
@@ -1371,8 +1463,8 @@ async def sync_unified():
         db.update_last_sync_timestamp()
         logger.info("Updated last sync timestamp")
         
-        # Automatically reprocess chains after syncing new orders
-        logger.info("Auto-reprocessing chains after sync...")
+        # Always reprocess chains after sync to ensure strategy detection and linking is up to date
+        logger.info(f"Auto-reprocessing chains after sync (processed {saved_count} transactions)...")
         try:
             chain_result = order_manager.reprocess_orders_and_chains_from_database()
             if 'error' in chain_result:

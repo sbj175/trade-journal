@@ -484,10 +484,22 @@ function tradeJournal() {
             const openChains = chains.filter(chain => chain.status === 'OPEN');
             const closedChains = chains.filter(chain => chain.status === 'CLOSED');
             
-            // Calculate P&L totals
-            const totalPnl = chains.reduce((sum, chain) => sum + (chain.total_pnl || 0), 0);
-            const realizedPnl = chains.reduce((sum, chain) => sum + (chain.realized_pnl || 0), 0);
-            const unrealizedPnl = chains.reduce((sum, chain) => sum + (chain.unrealized_pnl || 0), 0);
+            // Calculate P&L totals with proper handling of enhanced open chains vs closed chains
+            let totalPnl = 0;
+            let realizedPnl = 0;
+            let unrealizedPnl = 0;
+
+            chains.forEach(chain => {
+                if (chain.status === 'OPEN' && chain.data_source === 'live_api') {
+                    // For open chains with live data, use the unrealized P&L
+                    totalPnl += (chain.unrealized_pnl || 0);
+                    unrealizedPnl += (chain.unrealized_pnl || 0);
+                } else {
+                    // For closed chains or chains without live data, use total_pnl (realized)
+                    totalPnl += (chain.total_pnl || 0);
+                    realizedPnl += (chain.total_pnl || 0);
+                }
+            });
             
             // Calculate win rate from closed chains
             const profitableClosedChains = closedChains.filter(chain => chain.total_pnl > 0);
@@ -507,8 +519,9 @@ function tradeJournal() {
         
         // Check if any filters are active
         hasActiveFilters() {
-            return this.filterUnderlying !== '' || 
-                   this.filterStrategy !== '' || 
+            return this.filterUnderlying !== '' ||
+                   this.filterStrategy !== '' ||
+                   this.selectedAccount !== '' ||  // Account filtering should trigger filtered view
                    !(this.showOpen && this.showClosed);
         },
         
