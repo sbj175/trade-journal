@@ -92,13 +92,15 @@
                     }
                 },
                 
-                async fetchPositions(includeSync = false) {
+                async fetchPositions(includeSync = false, fastMode = true) {
                     this.isLoading = true;
                     this.error = null;
                     
                     try {
                         if (includeSync) {
-                            await fetch('/api/sync', { method: 'POST' });
+                            // Use fast sync for positions page by default
+                            const endpoint = fastMode ? '/api/sync-positions-only' : '/api/sync';
+                            await fetch(endpoint, { method: 'POST' });
                         }
                         
                         const response = await fetch('/api/positions');
@@ -278,10 +280,10 @@
                 getGroupPnL(positions) { return 0; },
                 getGroupPnLPercent(positions) { return null; },
                 getGroupDaysOpen(positions) { return null; },
-                getGroupEfficiencyRatio(positions) { return '—'; },
+                getGroupMaxPercent(positions) { return '—'; },
                 getMinDTE(positions) { return null; },
                 getStrategyLabel(positions) { return 'Strategy'; },
-                shouldShowEfficiencyRatio(positions) { return false; },
+                shouldShowMaxPercent(positions) { return false; },
                 shouldShowPriceIndicator(positions) { return false; },
                 getPricePositionIndicator(positions, underlying) { return ''; },
                 getUnderlyingQuote(underlying) { return null; },
@@ -381,8 +383,8 @@
         .header-stats-grid > div:nth-child(4) { width: 80px; flex-shrink: 0; }   /* Cost Basis */
         .header-stats-grid > div:nth-child(5) { width: 80px; flex-shrink: 0; }   /* Net Liq */
         .header-stats-grid > div:nth-child(6) { width: 70px; flex-shrink: 0; }   /* P&L */
-        .header-stats-grid > div:nth-child(7) { width: 60px; flex-shrink: 0; }   /* P&L% */
-        .header-stats-grid > div:nth-child(8) { width: 45px; flex-shrink: 0; }   /* Eff */
+        .header-stats-grid > div:nth-child(7) { width: 60px; flex-shrink: 0; }   /* % Ret */
+        .header-stats-grid > div:nth-child(8) { width: 55px; flex-shrink: 0; }   /* % Max */
         .header-stats-grid > div:nth-child(9) { width: 50px; flex-shrink: 0; }   /* Days */
         .header-stats-grid > div:nth-child(10) { width: 50px; flex-shrink: 0; }  /* DTE */
         .header-stats-grid > div:nth-child(11) { width: 150px; flex-shrink: 0; } /* Strategy */
@@ -643,24 +645,24 @@
                                 
                                 <!-- P&L Percent Column -->
                                 <div class="header-stat-column">
-                                    <div class="text-slate-400 text-xs text-center">P&L%</div>
+                                    <div class="text-slate-400 text-xs text-center">% Ret</div>
                                     <div class="font-semibold text-sm text-center" 
                                          :class="getGroupPnLPercent(positions) >= 0 ? 'text-green-400' : 'text-red-400'"
                                          x-text="getGroupPnLPercent(positions) !== null ? getGroupPnLPercent(positions) + '%' : ''"></div>
                                 </div>
                                 
-                                <!-- Efficiency Ratio Column -->
+                                <!-- % Max Column -->
                                 <div class="header-stat-column">
-                                    <template x-if="shouldShowEfficiencyRatio(positions)">
+                                    <template x-if="shouldShowMaxPercent(positions)">
                                         <div>
-                                            <div class="text-slate-400 text-xs text-center">Eff</div>
+                                            <div class="text-slate-400 text-xs text-center">% Max</div>
                                             <div class="font-semibold text-sm text-center" 
-                                                 :class="getEfficiencyRatioColor(getGroupEfficiencyRatio(positions))"
-                                                 :title="getEfficiencyTooltip(positions)"
-                                                 x-text="getGroupEfficiencyRatio(positions)"></div>
+                                                 :class="getMaxPercentColor(getGroupMaxPercent(positions))"
+                                                 :title="getMaxPercentTooltip(positions)"
+                                                 x-text="getGroupMaxPercent(positions)"></div>
                                         </div>
                                     </template>
-                                    <template x-if="!shouldShowEfficiencyRatio(positions)">
+                                    <template x-if="!shouldShowMaxPercent(positions)">
                                         <div>
                                             <div class="text-slate-400 text-xs text-center">—</div>
                                             <div class="text-xs text-slate-500">—</div>
@@ -1721,10 +1723,10 @@
                 parseOptionSymbol(symbol) {
                     // Parse option symbol like "IBIT  250404C00050000"
                     if (!symbol || typeof symbol !== 'string') return null;
-                    
+
                     const parts = symbol.trim().split(/\s+/);
                     if (parts.length < 2) return null;
-                    
+
                     const optionCode = parts[1];
                     if (optionCode.length < 15) return null;
                     
@@ -1742,7 +1744,7 @@
                         
                         // Parse strike price (divide by 1000 to get actual price)
                         const strike = parseInt(strikeStr) / 1000;
-                        
+
                         return {
                             expiration: expirationDate,
                             optionType: optionType,
@@ -1787,9 +1789,9 @@
                     if (!position.instrument_type || !position.instrument_type.includes('EQUITY_OPTION')) {
                         return null;
                     }
-                    
+
                     let strike = null;
-                    
+
                     // First try the API field
                     if (position.strike_price !== null && position.strike_price !== undefined) {
                         strike = parseFloat(position.strike_price);
@@ -1800,7 +1802,7 @@
                             strike = parsed.strike;
                         }
                     }
-                    
+
                     return strike; // Return raw numeric value for sorting
                 },
                 
@@ -1928,7 +1930,8 @@
                     if (!positions || positions.length === 0) {
                         return 'No Positions';
                     }
-                    
+
+                    const underlying = positions[0]?.underlying || positions[0]?.symbol || 'UNKNOWN';
                     const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
                     const stockPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('EQUITY') && !p.instrument_type.includes('OPTION'));
                     
@@ -1963,7 +1966,7 @@
                     }
                     
                     if (optionPositions.length === 2) {
-                        const strikes = optionPositions.map(p => this.getNumericStrikePrice(p)).filter(s => s).sort((a, b) => a - b);
+                        const strikes = optionPositions.map(p => this.getNumericStrikePrice(p)).filter(s => s !== null && s !== undefined).sort((a, b) => a - b);
                         const quantities = optionPositions.map(p => this.getSignedQuantity(p));
                         const optionTypes = optionPositions.map(p => this.getOptionType(p));
                         const expirations = optionPositions.map(p => this.getExpirationDate(p));
@@ -2057,11 +2060,11 @@
                     }
                 },
                 
-                shouldShowEfficiencyRatio(positions) {
-                    // Only show efficiency ratio for defined-risk multi-leg strategies
+                shouldShowMaxPercent(positions) {
+                    // Show % Max for defined-risk strategies with calculable max profit/loss
                     const strategy = this.getStrategyLabel(positions);
                     const definedRiskStrategies = [
-                        'Bull Put Spread', 'Bear Call Spread', 
+                        'Bull Put Spread', 'Bear Call Spread',
                         'Bull Call Spread', 'Bear Put Spread',
                         'Butterfly', 'Iron Butterfly', 'Iron Condor'
                     ];
@@ -2072,21 +2075,36 @@
                     if (!positions || positions.length === 0) {
                         return null;
                     }
-                    
-                    // Get earliest opened_at from positions (same logic as efficiency calculation)
+
+                    // Get earliest opening date from positions
                     const openingDates = positions
-                        .map(p => p.opened_at)
+                        .map(p => p.opened_at || p.open_date || p.entry_date)
                         .filter(d => d)
                         .map(d => new Date(d));
-                    
+
                     if (openingDates.length === 0) {
+                        // Fallback: estimate based on expiration for options
+                        const expirationDates = positions
+                            .filter(p => p.expires_at)
+                            .map(p => new Date(p.expires_at));
+
+                        if (expirationDates.length > 0) {
+                            const minExpiration = new Date(Math.min(...expirationDates));
+                            const now = new Date();
+                            const daysToExpiry = Math.floor((minExpiration - now) / (1000 * 60 * 60 * 24));
+
+                            // Estimate opening as when position had 45 days to expiry (or 14 days ago minimum)
+                            const estimatedDaysFromOpen = Math.max(45 - daysToExpiry, 14);
+                            return estimatedDaysFromOpen;
+                        }
+
                         return null;
                     }
-                    
+
                     const openingDate = new Date(Math.min(...openingDates));
                     const now = new Date();
                     const daysOpen = Math.floor((now - openingDate) / (1000 * 60 * 60 * 24));
-                    
+
                     return daysOpen;
                 },
                 
@@ -2095,7 +2113,7 @@
                         return null;
                     }
                     
-                    // P&L% = (P&L / Cost Basis) × 100
+                    // % Ret = (P&L / Cost Basis) × 100
                     const totalPnL = this.getGroupPnL(positions);
                     const totalCostBasis = Math.abs(this.getGroupCostBasis(positions));
                     
@@ -2107,113 +2125,120 @@
                     return Math.round(percent * 10) / 10;
                 },
                 
-                getGroupEfficiencyRatio(positions) {
-                    if (!this.shouldShowEfficiencyRatio(positions)) {
+                getGroupMaxPercent(positions) {
+                    if (!this.shouldShowMaxPercent(positions)) {
                         return null;
                     }
-                    
-                    const underlying = positions[0]?.underlying || positions[0]?.symbol || 'UNKNOWN';
-                    
-                    // Get earliest opened_at from positions
-                    const openingDates = positions
-                        .map(p => p.opened_at)
-                        .filter(d => d)
-                        .map(d => new Date(d));
-                    
-                    if (openingDates.length === 0) {
-                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - No opening dates found`);
-                        return "—";
-                    }
-                    
-                    const openingDate = new Date(Math.min(...openingDates));
-                    const now = new Date();
-                    const daysOpen = Math.floor((now - openingDate) / (1000 * 60 * 60 * 24));
-                    
-                    // Get minimum expiration date to calculate total days
-                    const expirationDates = positions
-                        .filter(p => p.expires_at)
-                        .map(p => new Date(p.expires_at));
-                    
-                    if (expirationDates.length === 0) {
-                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - No expiration dates found`);
-                        return "—";
-                    }
-                    
-                    const minExpiration = new Date(Math.min(...expirationDates));
-                    const totalDays = Math.floor((minExpiration - openingDate) / (1000 * 60 * 60 * 24));
-                    
-                    if (totalDays <= 0) {
-                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - Invalid total days: ${totalDays}`);
-                        return "—";
-                    }
-                    
-                    const timeElapsedPercent = (daysOpen / totalDays) * 100;
-                    
-                    // Calculate profit captured percentage
+
+                    const strategy = this.getStrategyLabel(positions);
                     const currentPnL = this.getGroupPnL(positions);
                     const costBasis = Math.abs(this.getGroupCostBasis(positions));
-                    
+
                     if (costBasis <= 0) {
-                        console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} - Invalid cost basis: ${costBasis}`);
                         return "—";
                     }
-                    
-                    // For credit spreads, max profit is the premium received (cost basis)
-                    const profitCapturedPercent = (currentPnL / costBasis) * 100;
-                    
-                    // Calculate efficiency ratio
-                    const efficiency = timeElapsedPercent > 0 ? 
-                        (profitCapturedPercent / timeElapsedPercent) * 100 : 0;
-                    
-                    // Debug output with all raw values in a single message
-                    const displayValue = efficiency <= 0 ? '—' : (efficiency / 100).toFixed(1);
-                    console.log(`🔍 EFFICIENCY_DEBUG: ${underlying} | Opened: ${openingDate.toISOString().split('T')[0]} | Expires: ${minExpiration.toISOString().split('T')[0]} | Days: ${daysOpen}/${totalDays} (${timeElapsedPercent.toFixed(1)}%) | P&L: $${currentPnL.toFixed(2)} | Basis: $${costBasis.toFixed(2)} | Profit: ${profitCapturedPercent.toFixed(1)}% | Efficiency: ${efficiency.toFixed(1)}% → ${displayValue}`);
-                    
-                    if (efficiency <= 0) {
+
+                    let maxProfit = 0;
+                    let maxLoss = 0;
+
+                    // Get option positions for strike calculations
+                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
+
+                    if (optionPositions.length >= 2) {
+                        // Get strikes and calculate spread width
+                        const strikes = optionPositions.map(p => this.getNumericStrikePrice(p)).filter(s => s !== null && s !== undefined).sort((a, b) => a - b);
+                        const quantities = optionPositions.map(p => this.getSignedQuantity(p));
+
+                        if (strikes.length >= 2) {
+                            const strikeWidth = strikes[strikes.length - 1] - strikes[0]; // Max - Min strike
+                            const numContracts = Math.abs(quantities[0]); // Number of contracts
+
+                            if (strategy.includes('Bull Call') || strategy.includes('Bear Put')) {
+                                // Debit spreads
+                                maxProfit = (strikeWidth * numContracts * 100) - costBasis;
+                                maxLoss = costBasis;
+                            } else if (strategy.includes('Bear Call') || strategy.includes('Bull Put')) {
+                                // Credit spreads
+                                maxProfit = costBasis;
+                                maxLoss = (strikeWidth * numContracts * 100) - costBasis;
+                            } else if (strategy.includes('Iron Condor')) {
+                                // Iron Condor: credit received is max profit, max loss is spread width - credit
+                                maxProfit = costBasis; // Credit received (should be positive for credit strategies)
+
+                                // For Iron Condor with 4 legs, calculate the spread width
+                                // Method: find the gap between consecutive strikes to identify spread width
+                                let spreadWidth = 0;
+                                if (strikes.length >= 4) {
+                                    // Calculate gaps between consecutive strikes
+                                    const gaps = [];
+                                    for (let i = 1; i < strikes.length; i++) {
+                                        gaps.push(strikes[i] - strikes[i-1]);
+                                    }
+                                    // The spread width is typically the largest gap (between short strikes)
+                                    // or we can use the fact that both spreads should be the same width
+                                    spreadWidth = Math.max(...gaps);
+
+                                    // Sanity check: if gap seems too large, use average gap
+                                    const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+                                    if (spreadWidth > avgGap * 2) {
+                                        spreadWidth = avgGap;
+                                    }
+                                } else {
+                                    // Fallback: estimate from total width
+                                    spreadWidth = strikeWidth / 3; // Conservative estimate for 4-leg spread
+                                }
+
+                                // Iron Condor max loss = (spread width * contracts * 100) - credit received
+                                maxLoss = (spreadWidth * numContracts * 100) - costBasis;
+                            }
+                        }
+                    }
+
+                    if (maxProfit <= 0 && maxLoss <= 0) {
                         return "—";
                     }
-                    
-                    return (efficiency / 100).toFixed(1);
+
+                    let percent;
+                    if (currentPnL >= 0) {
+                        // Profit: calculate % of max profit
+                        percent = maxProfit > 0 ? (currentPnL / maxProfit) * 100 : 0;
+                    } else {
+                        // Loss: calculate % of max loss (show as negative)
+                        percent = maxLoss > 0 ? (currentPnL / maxLoss) * 100 : 0;
+                    }
+
+                    // Format: no sign for positive, minus sign for negative
+                    if (percent >= 0) {
+                        return percent.toFixed(1) + '%';
+                    } else {
+                        return percent.toFixed(1) + '%';
+                    }
                 },
                 
-                getEfficiencyRatioColor(efficiency) {
-                    if (!efficiency || efficiency === "—") {
+                getMaxPercentColor(maxPercent) {
+                    if (!maxPercent || maxPercent === "—") {
                         return 'text-slate-400';
                     }
-                    
-                    const value = parseInt(efficiency);
-                    if (value > 100) {
+
+                    const value = parseFloat(maxPercent.replace('%', ''));
+                    if (value >= 50) {
                         return 'text-green-400';
-                    } else if (value >= 50) {
+                    } else if (value >= 25) {
                         return 'text-yellow-400';
+                    } else if (value >= 0) {
+                        return 'text-blue-400';
                     } else {
                         return 'text-red-400';
                     }
                 },
                 
-                getEfficiencyTooltip(positions) {
-                    if (!this.shouldShowEfficiencyRatio(positions)) {
+                getMaxPercentTooltip(positions) {
+                    if (!this.shouldShowMaxPercent(positions)) {
                         return '';
                     }
-                    
-                    const openingDates = positions
-                        .map(p => p.opened_at)
-                        .filter(d => d)
-                        .map(d => new Date(d));
-                    
-                    if (openingDates.length === 0) {
-                        return 'Opening date not available';
-                    }
-                    
-                    const openingDate = new Date(Math.min(...openingDates));
-                    const now = new Date();
-                    const daysOpen = Math.floor((now - openingDate) / (1000 * 60 * 60 * 24));
-                    
-                    const currentPnL = this.getGroupPnL(positions);
-                    const costBasis = Math.abs(this.getGroupCostBasis(positions));
-                    const profitCapturedPercent = costBasis > 0 ? (currentPnL / costBasis) * 100 : 0;
-                    
-                    return `${profitCapturedPercent.toFixed(0)}% profit captured in ${daysOpen} days`;
+
+                    const strategy = this.getStrategyLabel(positions);
+                    return `Percentage of maximum ${strategy.includes('Bull Call') || strategy.includes('Bear Put') ? 'profit' : 'profit'} achieved`;
                 },
                 
                 async loadAccountBalances() {
