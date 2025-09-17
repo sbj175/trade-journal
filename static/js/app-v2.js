@@ -60,50 +60,61 @@ function tradeJournal() {
         tradeDetailsModalOpen: false,
         loadingTradeDetails: false,
         tradeDetails: null,
-        
+
+        // Initialization guard
+        _initialized: false,
+
         // Initialize
         async init() {
+            if (this._initialized) {
+                console.log('Trade Journal already initialized, skipping...');
+                return;
+            }
+            this._initialized = true;
             console.log('Initializing Trade Journal...');
-            
+
             // Get saved state before loading data
             const savedState = this.getSavedState();
-            
-            // Load accounts and set the saved one if it exists
+
+            // Load accounts first
             await this.loadAccounts();
-            
-            // Apply saved account after accounts are loaded
-            if (savedState && savedState.selectedAccount) {
+
+            // Check for URL parameters first (e.g., from positions page links)
+            const urlParams = new URLSearchParams(window.location.search);
+            const underlyingParam = urlParams.get('underlying');
+            const accountParam = urlParams.get('account');
+
+            // Determine final account to use (URL param takes priority over saved state)
+            let finalAccount = null;
+            if (accountParam) {
+                const accountExists = this.accounts.some(a => a.account_number === accountParam);
+                if (accountExists) {
+                    finalAccount = accountParam;
+                    console.log('Applied URL parameter account filter:', accountParam);
+                } else {
+                    console.log('URL account parameter not found:', accountParam);
+                }
+            }
+
+            // Fall back to saved account if no URL param
+            if (!finalAccount && savedState && savedState.selectedAccount) {
                 const accountExists = this.accounts.some(a => a.account_number === savedState.selectedAccount);
                 if (accountExists) {
-                    this.selectedAccount = savedState.selectedAccount;
+                    finalAccount = savedState.selectedAccount;
                     console.log('Restored account:', savedState.selectedAccount);
                 } else {
                     console.log('Saved account not found:', savedState.selectedAccount);
                 }
             }
-            
-            // Load dashboard with selected account
-            await this.loadDashboard();
-            
-            // Load available underlyings
-            await this.loadAvailableUnderlyings();
-            
-            // Check for URL parameters first (e.g., from positions page links)
-            const urlParams = new URLSearchParams(window.location.search);
-            const underlyingParam = urlParams.get('underlying');
-            const accountParam = urlParams.get('account');
-            
-            // Apply URL parameter account filter if provided and account exists
-            if (accountParam) {
-                const accountExists = this.accounts.some(a => a.account_number === accountParam);
-                if (accountExists) {
-                    this.selectedAccount = accountParam;
-                    console.log('Applied URL parameter account filter:', accountParam);
-                    // Reload data with new account
-                    await this.loadDashboard();
-                    await this.loadAvailableUnderlyings();
-                }
+
+            // Set the final account
+            if (finalAccount) {
+                this.selectedAccount = finalAccount;
             }
+
+            // Load dashboard and underlyings once with final account
+            await this.loadDashboard();
+            await this.loadAvailableUnderlyings();
             
             // Apply URL parameter underlying filter if provided (don't require it to be in available list yet)
             if (underlyingParam) {
@@ -198,17 +209,37 @@ function tradeJournal() {
         
         // Handle account change
         async onAccountChange() {
-            console.log('Account changed to:', this.selectedAccount);
-            
+            const totalStartTime = performance.now();
+            console.log('🕐 TIMING: Starting account change to:', this.selectedAccount);
+
             // Reset underlying filter when account changes
+            const resetStartTime = performance.now();
             this.filterUnderlying = '';
             console.log('Reset underlying filter to All');
-            
             this.saveState(); // Save state after resetting underlying
-            
+            const resetTime = performance.now() - resetStartTime;
+            console.log(`🕐 TIMING: Filter reset took ${resetTime.toFixed(0)}ms`);
+
+            const dashboardStartTime = performance.now();
             await this.loadDashboard();
-            await this.loadAvailableUnderlyings();
+            const dashboardTime = performance.now() - dashboardStartTime;
+            console.log(`🕐 TIMING: Dashboard completed in ${dashboardTime.toFixed(0)}ms`);
+
+            const chainsStartTime = performance.now();
             await this.loadChains();
+            const chainsTime = performance.now() - chainsStartTime;
+            console.log(`🕐 TIMING: Chains completed in ${chainsTime.toFixed(0)}ms`);
+
+            // Extract underlyings from loaded chains data (no additional API call needed)
+            const underlyingsStartTime = performance.now();
+            const underlyings = [...new Set(this.chains.map(chain => chain.underlying))];
+            this.availableUnderlyings = underlyings.sort();
+            const underlyingsTime = performance.now() - underlyingsStartTime;
+            console.log(`🕐 TIMING: Underlyings extracted from chains in ${underlyingsTime.toFixed(0)}ms (no API call)`);
+
+            const totalTime = performance.now() - totalStartTime;
+            console.log(`🕐 TIMING: *** TOTAL ACCOUNT CHANGE: ${totalTime.toFixed(0)}ms (${(totalTime/1000).toFixed(1)}s) ***`);
+            console.log(`🕐 TIMING: Breakdown - Reset:${resetTime.toFixed(0)}ms, Dashboard:${dashboardTime.toFixed(0)}ms, Underlyings:${underlyingsTime.toFixed(0)}ms, Chains:${chainsTime.toFixed(0)}ms`);
         },
         
         // Format number with commas
@@ -376,14 +407,17 @@ function tradeJournal() {
         
         // Load dashboard data
         async loadDashboard() {
+            const startTime = performance.now();
             try {
-                console.log('Loading dashboard...');
+                console.log('🕐 TIMING: Starting loadDashboard()');
                 let url = '/api/dashboard';
                 if (this.selectedAccount) {
                     url += `?account_number=${encodeURIComponent(this.selectedAccount)}`;
                 }
+                const fetchStart = performance.now();
                 const response = await fetch(url);
                 const data = await response.json();
+                const fetchTime = performance.now() - fetchStart;
                 // Merge the data instead of replacing to preserve filteredSummary
                 this.dashboard = {
                     ...this.dashboard,
@@ -398,8 +432,12 @@ function tradeJournal() {
                         total_chains: 0
                     }
                 };
+                const totalTime = performance.now() - startTime;
+                console.log(`🕐 TIMING: Dashboard loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms)`);
             } catch (error) {
                 console.error('Error loading dashboard:', error);
+                const errorTime = performance.now() - startTime;
+                console.log(`🕐 TIMING: Dashboard loading failed after ${errorTime.toFixed(0)}ms`);
             }
         },
         
@@ -407,15 +445,19 @@ function tradeJournal() {
         
         // Load trade chains
         async loadChains() {
+            const startTime = performance.now();
             this.chainsLoading = true;
             try {
-                console.log('Loading chains...');
+                console.log('🕐 TIMING: Starting loadChains()');
                 const params = new URLSearchParams();
                 if (this.selectedAccount) params.append('account_number', this.selectedAccount);
                 if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
-                
+
+                const fetchStart = performance.now();
                 const response = await fetch(`/api/chains?${params}`);
                 const data = await response.json();
+                const fetchTime = performance.now() - fetchStart;
+                console.log(`🕐 TIMING: API fetch took ${fetchTime.toFixed(0)}ms`);
                 this.chains = data.chains || [];
                 
                 // Sort chains by opening date descending (most recent first)
@@ -433,11 +475,32 @@ function tradeJournal() {
                     return dateB - dateA; // Descending order (most recent first)
                 });
                 
-                console.log(`Loaded and sorted ${this.chains.length} chains`);
+                const sortingStart = performance.now();
                 this.applyStatusFilter(); // Apply status filtering after loading
+                const sortingTime = performance.now() - sortingStart;
+
+                const saveStateStart = performance.now();
                 this.saveState(); // Save state when filters change
+                const saveStateTime = performance.now() - saveStateStart;
+
+                const totalTime = performance.now() - startTime;
+                console.log(`🕐 TIMING: Total loadChains took ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, sorting: ${sortingTime.toFixed(0)}ms, saveState: ${saveStateTime.toFixed(0)}ms)`);
+                console.log(`🕐 TIMING: Loaded and sorted ${this.chains.length} chains`);
+
+                // Log timing data from server if available
+                if (data.timing) {
+                    console.log(`🕐 TIMING: Server breakdown: total=${data.timing.total_time}s, db=${data.timing.db_time}s, v2=${data.timing.v2_time}s, format=${data.timing.format_time}s`);
+                }
+
+                // Schedule DOM update timing check
+                this.$nextTick(() => {
+                    const domUpdateTime = performance.now() - startTime;
+                    console.log(`🕐 TIMING: DOM updates completed after ${domUpdateTime.toFixed(0)}ms from loadChains start`);
+                });
             } catch (error) {
                 console.error('Error loading chains:', error);
+                const errorTime = performance.now() - startTime;
+                console.log(`🕐 TIMING: loadChains failed after ${errorTime.toFixed(0)}ms`);
             } finally {
                 this.chainsLoading = false;
             }
@@ -527,21 +590,33 @@ function tradeJournal() {
         
         // Load all available underlyings for the filter
         async loadAvailableUnderlyings() {
+            const startTime = performance.now();
+            console.log('🕐 TIMING: Starting loadAvailableUnderlyings()');
             try {
                 // Fetch all chains without filters to get complete underlying list
                 const params = new URLSearchParams();
                 if (this.selectedAccount) params.append('account_number', this.selectedAccount);
                 params.append('limit', '1000'); // Get more chains to ensure we see all underlyings
-                
+
+                const fetchStart = performance.now();
                 const response = await fetch(`/api/chains?${params}`);
                 const data = await response.json();
+                const fetchTime = performance.now() - fetchStart;
+
+                const processingStart = performance.now();
                 const allChains = data.chains || [];
-                
+
                 // Extract unique underlyings
                 const underlyings = [...new Set(allChains.map(chain => chain.underlying))];
                 this.availableUnderlyings = underlyings.sort();
+                const processingTime = performance.now() - processingStart;
+
+                const totalTime = performance.now() - startTime;
+                console.log(`🕐 TIMING: loadAvailableUnderlyings completed in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, processing: ${processingTime.toFixed(0)}ms)`);
             } catch (error) {
                 console.error('Error loading available underlyings:', error);
+                const errorTime = performance.now() - startTime;
+                console.log(`🕐 TIMING: loadAvailableUnderlyings failed after ${errorTime.toFixed(0)}ms`);
             }
         },
         

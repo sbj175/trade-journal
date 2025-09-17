@@ -374,13 +374,13 @@
                             <div class="p-3 bg-slate-800/30">
                                 <h4 class="text-sm font-medium text-slate-300 mb-2">Order Details</h4>
                                 <div class="space-y-1">
-                                    <template x-for="(order, index) in (chain.orders || []).sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0))" :key="order.order_id">
+                                    <template x-for="(order, index) in (chain.orders || []).filter(o => o != null).sort((a, b) => new Date(b?.order_date || 0) - new Date(a?.order_date || 0))" :key="`${chain.chain_id}_order_${index}_${order.order_id || 'unknown'}`">
                                         <div class="p-2 bg-slate-700/50 rounded-lg">
                                             <!-- Order Header -->
                                             <div class="flex items-center justify-between mb-2">
                                                 <div class="flex items-center space-x-3">
                                                     <div class="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center text-xs font-medium">
-                                                        <span x-text="chain.orders.length - index"></span>
+                                                        <span x-text="(chain.orders || []).length - index"></span>
                                                     </div>
                                                     <div>
                                                         <div class="text-sm font-medium text-white">
@@ -433,7 +433,7 @@
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            <template x-for="position in (order.positions || []).sort((a, b) => (a.strike || 0) - (b.strike || 0))" :key="position.position_id">
+                                                            <template x-for="position in (order.positions || []).sort((a, b) => (a.strike || 0) - (b.strike || 0))" :key="`${chain.chain_id}_${order.order_id || index}_pos_${position.position_id || Math.random()}`">
                                                                 <tr class="border-b border-slate-800/50">
                                                                     <td class="py-1 px-2">
                                                                         <div class="text-white text-xs">
