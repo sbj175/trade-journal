@@ -148,15 +148,13 @@ def main():
         logger.error("Please copy .env.example to .env and fill in your Google Sheets ID")
         sys.exit(1)
     
-    # Check if Tastytrade credentials are available (either encrypted or in env)
-    from src.utils.credential_manager import CredentialManager
-    cm = CredentialManager()
-    username, password = cm.get_tastytrade_credentials()
-    
+    # Check if Tastytrade credentials are available in environment
+    username = os.getenv('TASTYTRADE_USERNAME')
+    password = os.getenv('TASTYTRADE_PASSWORD')
+
     if not username or not password:
         logger.error("No Tastytrade credentials found!")
-        logger.error("Please run 'python setup_credentials.py' to set up encrypted credentials")
-        logger.error("Or add TASTYTRADE_USERNAME and TASTYTRADE_PASSWORD to your .env file")
+        logger.error("Please add TASTYTRADE_USERNAME and TASTYTRADE_PASSWORD to your .env file")
         sys.exit(1)
     
     # Run sync

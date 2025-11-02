@@ -2,6 +2,70 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## High-Level Application Overview
+
+### What is Trade Journal?
+
+Trade Journal is a comprehensive local web application designed for options traders who use Tastytrade. It automatically imports, organizes, and analyzes your trading data to provide insights into your trading performance and current positions.
+
+### Core Purpose
+
+The application solves several key problems for options traders:
+- **Trade Organization**: Automatically groups related transactions into coherent trades and chains
+- **Strategy Recognition**: Identifies complex multi-leg strategies (Iron Condors, Spreads, etc.)
+- **Roll Tracking**: Links rolled positions to show complete trade progression over time
+- **Live Monitoring**: Provides real-time P&L tracking for open positions
+- **Performance Analysis**: Calculates accurate profit/loss across complex trade chains
+
+### How It Works (User Perspective)
+
+1. **Login**: User logs in with Tastytrade credentials via secure web login page
+2. **Data Sync**: One-click sync imports all transactions from Tastytrade accounts
+3. **Automatic Processing**: System intelligently groups transactions into trades and identifies strategies
+4. **Live Tracking**: Open positions update with real-time market data via WebSocket
+5. **Analysis**: View trade chains, P&L progression, and performance metrics through web interface
+
+### Key Features
+
+**Position Management**:
+- Real-time portfolio overview with live P&L calculations
+- Days-to-expiration warnings for time-sensitive positions
+- Visual indicators showing current price relative to strike prices
+- Persistent user comments and notes on positions
+
+**Trade Chain Analysis**:
+- Links opening trades → rolls → closings into complete progressions
+- Accurate P&L calculation across entire chain lifecycle
+- Strategy detection for complex multi-leg positions
+- Visual chain progression with status indicators
+
+**Data Security & Privacy**:
+- 100% local application - no cloud storage or external data sharing
+- Credentials never stored on disk - authenticated per session only
+- Session-based authentication with HTTP-only cookies
+- SQLite database stored locally on user's machine
+
+### Technical Architecture
+
+The application follows a modern web architecture:
+- **Backend**: Python FastAPI server providing REST API and WebSocket endpoints
+- **Frontend**: Single-page applications using Alpine.js for reactivity
+- **Database**: SQLite for local data persistence
+- **Real-time Data**: WebSocket integration for live market quotes
+- **Security**: Session-based authentication with HTTP-only cookies (no persistent credential storage)
+
+### Data Flow Summary
+
+```
+Tastytrade API → Transaction Import → Strategy Detection → Database Storage → Web Interface
+                                                                ↓
+Live Market Data → WebSocket → Real-time Position Updates → User Dashboard
+```
+
+The system maintains two main views:
+1. **Open Positions**: Current portfolio with live P&L and risk metrics
+2. **Order Chains**: Historical view of complete trade progressions and strategy analysis
+
 ## Project Overview
 
 Trade Journal is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLite for local data storage.
@@ -20,22 +84,16 @@ start.bat
 python app.py
 ```
 
-The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains.
+The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains. Users log in at `/login` with their Tastytrade credentials.
 
-### Setting Up Credentials
-```bash
-# Set up encrypted Tastytrade credentials
-python setup_credentials.py
-
-# Check credentials are working
-python check_creds.py
-```
+### Authentication
+- Users log in at the `/login` page with their Tastytrade username and password
+- Credentials are validated against Tastytrade API and never stored on disk
+- Session tokens are stored in HTTP-only cookies and expire after 1 hour
+- All protected endpoints require valid session authentication
 
 ### Database Operations
 ```bash
-# Check database structure and content
-python check_db.py
-
 # Query specific trades
 python query_db.py
 
@@ -45,11 +103,17 @@ python migrate_database.py
 
 ### Managing Trades
 ```bash
-# Sync trades from Tastytrade
+# Interactive trade management CLI
 python manage_trades.py
+```
 
-# Clean up RIVN-specific trades (legacy script)
-python clean_rivn_trades.py
+### Testing
+```bash
+# Run individual test files directly with Python
+python test_pnl_calculation.py
+python test_chain_creation.py
+python test_v2_expiration.py
+# etc.
 ```
 
 ## Architecture Overview
@@ -59,32 +123,42 @@ python clean_rivn_trades.py
 1. **FastAPI Backend** (`app.py`):
    - Serves the web interface and API endpoints
    - Handles trade sync, filtering, and updates
-   - Manages strategy configuration
-   - WebSocket endpoint for real-time quotes
+   - WebSocket endpoint for real-time quotes at `/ws/quotes`
+   - V2 system components initialized on startup
 
 2. **Database Layer** (`src/database/db_manager.py`):
-   - SQLite database with tables for trades, option_legs, stock_legs, accounts, transactions, and positions
+   - SQLite database with tables for trades, option_legs, stock_legs, accounts, transactions, positions, and V2 tables (orders, order_legs, order_chains)
    - Context manager pattern for safe database operations
    - All trades stored locally in `trade_journal.db`
+   - Row factory returns sqlite3.Row objects for dict-like access
 
-3. **Trade Recognition System** (`src/models/trade_strategy.py`):
+3. **V2 Order Processing System** (migrated from legacy chain system):
+   - **OrderProcessorV2** (`src/models/order_processor_v2.py`): Core processing engine for transaction grouping
+   - **PositionInventoryManager** (`src/models/position_inventory.py`): Tracks open positions and matches closings
+   - **StrategyDetector** (`src/models/strategy_detector.py`): Identifies complex option strategies
+   - **PnLCalculatorV2** (`src/models/pnl_calculator_v2.py`): Calculates P&L with proper roll chain handling
+
+4. **Legacy Trade Recognition** (`src/models/trade_strategy.py`):
    - Groups individual transactions into complete trades
    - Recognizes multi-leg option strategies (Iron Condors, Verticals, etc.)
    - Handles timezone conversion (UTC → US/Eastern)
-   - Position-based roll linking and chain detection
+   - Still used alongside V2 for backward compatibility
 
-4. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
+5. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
    - Authenticates and fetches transaction data
    - Supports multiple accounts
-   - Uses unofficial tastytrade SDK
+   - Uses unofficial tastytrade SDK (tastytrade package)
    - Quote caching with 30-second TTL
 
 ### Frontend Structure
 
 - **Open Positions Page** (default): `static/positions.html` with live quotes and position management
 - **Order Chains Dashboard**: `static/chains-v2.html` at `/chains` with `static/js/app-v2.js` (V2 system with advanced strategy detection)
-- **Alpine.js** for reactivity, **Chart.js** for visualizations
+- **Alpine.js** for reactivity (loaded from CDN)
+- **Chart.js** for visualizations (loaded from CDN)
+- **Tailwind CSS** for styling (loaded from CDN)
 - **WebSocket integration** for real-time price streaming
+- **LocalStorage** for persistent user comments and settings
 
 ### Data Flow
 
@@ -132,16 +206,35 @@ All timestamps from Tastytrade (UTC) are converted to US/Eastern time to ensure 
 - **Live P&L**: Real-time unrealized P&L calculations using current market prices
 - **Comments System**: Persistent user notes stored locally with localStorage
 
+## V2 Migration Notes
+
+The system has been migrated from a legacy chain system to V2 with improved:
+- Position-based tracking instead of trade-based
+- Better handling of rolls and chain relationships
+- More accurate P&L calculations for complex strategies
+- Separation of orders from trades for cleaner data model
+
+Key V2 tables:
+- `orders`: Individual orders with strategy detection
+- `order_legs`: Option/stock legs for each order
+- `order_chains`: Links related orders (opening → rolls → closing)
+- `positions`: Current position inventory
+
 ## Security Considerations
 
-- Credentials encrypted using `cryptography` library with Fernet encryption
-- Never commit: `.env`, `crypto.key`, `encrypted_credentials.py`, `*.db`
+- Credentials are never stored on disk - only held in memory during authenticated session
+- Session tokens stored in HTTP-only cookies to prevent XSS attacks
+- Never commit: `.env`, `*.db`
 - All data stored locally - no external API calls except to Tastytrade
+- Session authentication required for all protected endpoints
+- In production, set `secure=True` on cookies and use HTTPS
 
 ## Common Issues and Solutions
 
 1. **Trades showing wrong dates**: Fixed by timezone conversion in `trade_strategy.py`
-2. **Multi-leg trades split up**: Fixed by improved transaction grouping algorithm
+2. **Multi-leg trades split up**: Fixed by improved transaction grouping in V2 OrderProcessor
 3. **Database locked errors**: Use context managers, avoid long-running transactions
 4. **Authentication failures**: Run `python setup_credentials.py` to reset credentials
 5. **Missing quotes**: Check market hours and ensure symbols are valid
+6. **Incorrect P&L for rolls**: V2 system properly tracks roll chains and calculates cumulative P&L
+7. **Expired positions showing as open**: V2 handles expirations, assignments, and exercises as closing events

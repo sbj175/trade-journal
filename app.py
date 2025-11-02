@@ -29,6 +29,7 @@ from src.models.position_inventory import PositionInventoryManager
 from src.models.order_processor_v2 import OrderProcessorV2
 from src.models.strategy_detector import StrategyDetector
 from src.models.pnl_calculator_v2 import PnLCalculatorV2
+from src.utils.auth_manager import AuthManager
 
 # Configure logging
 logger.add(
@@ -63,6 +64,9 @@ position_manager = PositionInventoryManager(db)
 order_processor_v2 = OrderProcessorV2(db, position_manager)
 strategy_detector = StrategyDetector(db)
 pnl_calculator_v2 = PnLCalculatorV2(db, position_manager)
+
+# Initialize authentication manager
+auth_manager = AuthManager()
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
@@ -115,6 +119,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # Pydantic models for API
+class LoginRequest(BaseModel):
+    """Request model for user login"""
+    username: str
+    password: str
+
+
 class SyncRequest(BaseModel):
     days_back: int = 30
 
@@ -133,26 +143,31 @@ async def startup_event():
     """Initialize database on startup"""
     logger.info("Starting Trade Journal Web App")
     db.initialize_database()
-    
-    # Check if we need to automatically sync on startup
-    try:
-        last_sync = db.get_last_sync_timestamp()
-        if last_sync:
-            # Calculate time since last sync
-            time_since_sync = datetime.now() - last_sync
-            hours_since_sync = time_since_sync.total_seconds() / 3600
-            
-            # Auto-sync if it's been more than 6 hours since last sync and it's market hours
-            if hours_since_sync > 6:
-                logger.info(f"Auto-sync triggered: {hours_since_sync:.1f} hours since last sync")
-                # Note: Auto-sync runs in background, don't await to avoid blocking startup
-                asyncio.create_task(background_auto_sync())
-            else:
-                logger.info(f"No auto-sync needed: {hours_since_sync:.1f} hours since last sync")
-        else:
-            logger.info("No previous sync found - auto-sync will be triggered on first manual sync")
-    except Exception as e:
-        logger.warning(f"Error checking auto-sync: {e}")
+
+    # Note: Auto-sync disabled since credentials are not stored
+    # Sync must be triggered manually by authenticated users via the web UI
+    # If you want auto-sync, configure TASTYTRADE_USERNAME and TASTYTRADE_PASSWORD
+    # environment variables and uncomment the code below
+
+    # # Check if we need to automatically sync on startup
+    # try:
+    #     last_sync = db.get_last_sync_timestamp()
+    #     if last_sync:
+    #         # Calculate time since last sync
+    #         time_since_sync = datetime.now() - last_sync
+    #         hours_since_sync = time_since_sync.total_seconds() / 3600
+    #
+    #         # Auto-sync if it's been more than 6 hours since last sync and it's market hours
+    #         if hours_since_sync > 6:
+    #             logger.info(f"Auto-sync triggered: {hours_since_sync:.1f} hours since last sync")
+    #             # Note: Auto-sync runs in background, don't await to avoid blocking startup
+    #             asyncio.create_task(background_auto_sync())
+    #         else:
+    #             logger.info(f"No auto-sync needed: {hours_since_sync:.1f} hours since last sync")
+    #     else:
+    #         logger.info("No previous sync found - auto-sync will be triggered on first manual sync")
+    # except Exception as e:
+    #     logger.warning(f"Error checking auto-sync: {e}")
 
 
 async def background_auto_sync():
@@ -224,16 +239,49 @@ async def sync_unified_internal():
     logger.info(f"Auto-sync completed: {total_positions} positions updated")
 
 
+async def require_auth(request: Request) -> str:
+    """
+    Verify that the request has valid authentication.
+
+    Returns the username if authenticated.
+    Raises HTTPException with 401 status if not authenticated.
+    """
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    username = auth_manager.get_session_username(session_id)
+    if not username:
+        raise HTTPException(status_code=401, detail="Session invalid or expired")
+
+    return username
+
+
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """Serve the main application - Open Positions Page"""
+    # Check authentication
+    try:
+        await require_auth(request)
+    except HTTPException:
+        # Redirect to login page if not authenticated
+        return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
+
     with open("static/positions.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
 @app.get("/chains", response_class=HTMLResponse)
-async def order_chains():
+async def order_chains(request: Request):
     """Serve the Order Chains page"""
+    # Check authentication
+    try:
+        await require_auth(request)
+    except HTTPException:
+        # Redirect to login page if not authenticated
+        return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
+
     with open("static/chains-v2.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -253,6 +301,84 @@ async def test_websocket():
 async def health_check():
     """Simple health check endpoint"""
     return {"status": "ok", "service": "Trade Journal"}
+
+
+# ============================================================================
+# Authentication Endpoints
+# ============================================================================
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Serve the login page"""
+    with open("static/login.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """
+    Authenticate user with Tastytrade credentials.
+
+    Returns session cookie on successful authentication.
+    """
+    success, session_id = auth_manager.authenticate(request.username, request.password)
+
+    if success:
+        # Create response with session cookie
+        response = JSONResponse(
+            {"message": "Login successful"},
+            status_code=200
+        )
+        # Set session cookie (HttpOnly for security, expires on browser close)
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            httponly=True,
+            secure=False,  # Set to True in production with HTTPS
+            samesite="lax",
+            max_age=3600  # 1 hour
+        )
+        logger.info(f"User authenticated: {request.username}")
+        return response
+    else:
+        logger.warning(f"Failed login attempt for user: {request.username}")
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request):
+    """
+    Logout the current user by invalidating their session.
+    """
+    session_id = request.cookies.get("session_id")
+
+    if session_id:
+        auth_manager.logout(session_id)
+        logger.info("User logged out")
+
+    # Clear session cookie
+    response = JSONResponse({"message": "Logged out successfully"})
+    response.delete_cookie("session_id")
+    return response
+
+
+@app.get("/api/auth/verify")
+async def verify_auth(request: Request):
+    """
+    Verify if the current session is valid.
+
+    Used by frontend to check authentication status.
+    """
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    username = auth_manager.get_session_username(session_id)
+    if not username:
+        raise HTTPException(status_code=401, detail="Session invalid or expired")
+
+    return {"authenticated": True, "username": username}
 
 
 async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
@@ -385,6 +511,55 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                 if strategy_type is None:
                     strategy_type = "Unknown"
                 
+                # Calculate cost basis, net liquidity, and fees for cached chains
+                cost_basis_total = 0.0
+                cost_basis_per_unit = 0.0
+                opening_quantity_total = 0
+                total_commission = 0.0
+                total_regulatory_fees = 0.0
+                total_clearing_fees = 0.0
+                net_liquidity = 0.0
+
+                # Calculate metrics from cached order data
+                if orders:
+                    for order in orders:
+                        # Count opening quantities and calculate cost basis
+                        if order.get('positions'):
+                            for pos in order['positions']:
+                                if pos.get('status') == 'OPEN' or not pos.get('closing_action'):
+                                    opening_quantity_total += abs(pos.get('quantity', 0))
+
+                    # Cost basis from total credit/debit if available
+                    total_credit = 0.0
+                    total_debit = 0.0
+                    for order in orders:
+                        for pos in order.get('positions', []):
+                            # Estimate from position info (this is approximate for cached data)
+                            if pos.get('opening_price'):
+                                qty = abs(pos.get('quantity', 0))
+                                amount = pos['opening_price'] * qty * 100 if pos.get('instrument_type') == 'EQUITY_OPTION' else pos['opening_price'] * qty
+                                if pos.get('opening_action') in ['BTO', 'BUY']:
+                                    total_debit += amount
+                                else:
+                                    total_credit += amount
+
+                    if total_debit > 0 or total_credit > 0:
+                        cost_basis_total = abs(total_debit - total_credit)
+                        if opening_quantity_total > 0:
+                            cost_basis_per_unit = cost_basis_total / opening_quantity_total
+
+                # Get net liquidity for open chains
+                if chain_status == 'OPEN':
+                    try:
+                        positions = db.get_open_positions()
+                        if positions:
+                            for pos in positions:
+                                if (pos.get('underlying') == underlying and
+                                    pos.get('account_number') == account_number):
+                                    net_liquidity += float(pos.get('market_value', 0))
+                    except Exception as e:
+                        logger.warning(f"Could not calculate net liquidity for cached chain {chain_id}: {e}")
+
                 formatted_chain = {
                     'chain_id': chain_id,
                     'underlying': underlying,
@@ -393,9 +568,16 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                     'closing_date': closing_date,
                     'status': chain_status,
                     'order_count': order_count,
+                    'cost_basis_total': cost_basis_total,
+                    'cost_basis_per_unit': cost_basis_per_unit,
                     'total_pnl': total_pnl or 0.0,
                     'realized_pnl': realized_pnl or 0.0,
                     'unrealized_pnl': unrealized_pnl or 0.0,
+                    'net_liquidity': net_liquidity,
+                    'total_commission': total_commission,
+                    'total_regulatory_fees': total_regulatory_fees,
+                    'total_clearing_fees': total_clearing_fees,
+                    'total_fees': total_commission + total_regulatory_fees + total_clearing_fees,
                     'account_number': account_number,
                     'orders': orders  # Now includes complete order data from cache
                 }
@@ -615,32 +797,53 @@ async def get_order_chains(
     offset: int = 0
 ):
     """Get order chains with intelligent caching for optimal performance"""
+    import time
+    start_time = time.time()
+    logger.info(f"🕐 TIMING: Starting chains API request for account={account_number}, underlying={underlying}")
+
     try:
         # Re-enable caching now that cache has been rebuilt with order details
         use_cache = await should_use_cached_chains(account_number, underlying)
         
         if use_cache:
             # Fast path: return cached data
+            cache_start = time.time()
             cached_result = await get_cached_chains(account_number, underlying, limit, offset)
+            cache_time = time.time() - cache_start
+            logger.info(f"🕐 TIMING: Cache lookup took {cache_time:.2f}s")
             if cached_result is not None:
+                total_time = time.time() - start_time
+                logger.info(f"🕐 TIMING: Total request time (cached): {total_time:.2f}s")
                 return cached_result
             # If cache fails, fall through to V2 derivation
+            logger.info("🕐 TIMING: Cache miss, falling through to V2 derivation")
         
         # Slow path: derive fresh data and update cache
         # Get all raw transactions
+        db_start = time.time()
         raw_transactions = db.get_raw_transactions(
             account_number=account_number,
             underlying=underlying
         )
-        
+        db_time = time.time() - db_start
+        logger.info(f"🕐 TIMING: Database query took {db_time:.2f}s, got {len(raw_transactions)} transactions")
+
         if not raw_transactions:
+            total_time = time.time() - start_time
+            logger.info(f"🕐 TIMING: Total request time (no data): {total_time:.2f}s")
             return {"chains": [], "total": 0}
-        
+
         # Clear and rebuild position inventory for accurate chain status
+        inventory_start = time.time()
         position_manager.clear_all_positions()
-        
-        # Process through V2 system to get derived chains  
+        inventory_time = time.time() - inventory_start
+        logger.info(f"🕐 TIMING: Position inventory clear took {inventory_time:.2f}s")
+
+        # Process through V2 system to get derived chains
+        v2_start = time.time()
         chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+        v2_time = time.time() - v2_start
+        logger.info(f"🕐 TIMING: V2 processing took {v2_time:.2f}s")
         
         # Flatten chains from all accounts
         all_chains = []
@@ -660,6 +863,34 @@ async def get_order_chains(
         paginated_chains = all_chains[offset:offset + limit]
         
         # Format for frontend (similar to old system but with V2 data)
+        format_start = time.time()
+        logger.info(f"🕐 TIMING: Starting formatting of {len(paginated_chains)} chains")
+
+        # Pre-fetch live position data once for all chains to improve performance
+        live_positions_cache = {}
+        api_fetch_start = time.time()
+        try:
+            client = TastytradeClient()
+            if client.authenticate():
+                # Get unique account numbers from chains
+                unique_accounts = set()
+                for chain in paginated_chains:
+                    if chain.status == 'OPEN':  # Only need for open chains
+                        unique_accounts.add(chain.account_number)
+
+                # Fetch positions for each account once
+                for account_num in unique_accounts:
+                    live_positions_data = client.get_positions(account_number=account_num)
+                    live_positions_cache[account_num] = live_positions_data.get(account_num, [])
+
+                api_fetch_time = time.time() - api_fetch_start
+                logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in {api_fetch_time:.2f}s")
+            else:
+                logger.warning("Could not authenticate for live position data - using cached data")
+        except Exception as e:
+            logger.warning(f"Could not pre-fetch live positions: {e}")
+            api_fetch_time = time.time() - api_fetch_start
+
         formatted_chains = []
         for chain in paginated_chains:
             # Calculate totals
@@ -716,9 +947,29 @@ async def get_order_chains(
                                     pnl = (tx.price - opening_tx.price) * quantity * 100
                                 realized_pnl += pnl
             
+            # Calculate cost basis per contract/share (total amount paid/received for opening transactions)
+            # For long positions: cost = buy debits
+            # For short positions: cost = sell credits (the premium received)
+            cost_basis_total = abs(total_debit - total_credit) if (total_debit > 0 or total_credit > 0) else 0.0
+
+            # Calculate the total quantity of opening transactions for per-unit calculation
+            opening_quantity_total = 0
+            for order in chain.orders:
+                for tx in order.transactions:
+                    if tx.is_opening:
+                        opening_quantity_total += abs(tx.quantity)
+
+            # Calculate weighted average cost basis per unit
+            cost_basis_per_unit = 0.0
+            if opening_quantity_total > 0:
+                cost_basis_per_unit = cost_basis_total / opening_quantity_total
+
+            # Debug logging
+            logger.debug(f"Chain {chain.chain_id} ({chain.underlying}): debit={total_debit:.2f}, credit={total_credit:.2f}, cost_basis_total={cost_basis_total:.2f}, opening_qty={opening_quantity_total}, per_unit={cost_basis_per_unit:.2f}")
+
             # Detect strategy for this chain
             detected_strategy = strategy_detector.detect_chain_strategy(chain)
-            
+
             formatted_chain = {
                 'chain_id': chain.chain_id,
                 'underlying': chain.underlying,
@@ -731,6 +982,8 @@ async def get_order_chains(
                 'total_credit': total_credit,
                 'total_debit': total_debit,
                 'net_premium': total_credit - total_debit,
+                'cost_basis_total': cost_basis_total,
+                'cost_basis_per_unit': cost_basis_per_unit,
                 'realized_pnl': realized_pnl,
                 'unrealized_pnl': unrealized_pnl,
                 'total_pnl': 0,  # Will be calculated after orders are processed
@@ -909,71 +1162,79 @@ async def get_order_chains(
                 formatted_chain['orders'].append(order_info)
             
             # Calculate chain P&L as sum of all order P&Ls
-            # Calculate base P&L from orders (realized P&L)
-            realized_order_pnl = sum(order['total_pnl'] for order in formatted_chain['orders'])
-            formatted_chain['total_pnl'] = realized_order_pnl
+            # For open chains, the total P&L includes:
+            # 1. Realized P&L from closed positions (already calculated above from transaction analysis)
+            # 2. For still-open positions, we only show the premium collected/paid (credit/debit from opening orders)
+            #
+            # Note: We cannot reliably match live API positions to chains when multiple chains have the same underlying
+            # So we use the order-based calculation which correctly reflects the premiums and any realized gains/losses
+            order_pnl_total = sum(order['total_pnl'] for order in formatted_chain['orders'])
 
-            # For open chains, use live position-based P&L calculation for accuracy
+            if formatted_chain['status'] == 'CLOSED':
+                # For closed chains, all P&L is realized
+                formatted_chain['total_pnl'] = order_pnl_total
+                formatted_chain['realized_pnl'] = order_pnl_total
+                formatted_chain['unrealized_pnl'] = 0.0
+            else:
+                # For open chains, show the order P&L as total (which includes opening credits and any closing transactions)
+                # This avoids the bug where all SPY chains would sum up all SPY positions
+                formatted_chain['total_pnl'] = order_pnl_total
+                # Keep the realized_pnl that was calculated from transaction analysis above
+
+            # Calculate net liquidity for OPEN chains (current market value of open positions)
+            net_liquidity = 0.0
             if formatted_chain['status'] == 'OPEN':
                 try:
-                    # Try to get fresh position data from Tastytrade API for more accurate P&L
-                    # This ensures we use the same current market prices as the Positions page
-                    client = TastytradeClient()
-                    if client.authenticate():
-                        live_positions_data = client.get_positions(account_number=formatted_chain['account_number'])
-                        account_positions = live_positions_data.get(formatted_chain['account_number'], [])
-
-                        # Filter for this chain's underlying
-                        chain_positions = [
-                            p for p in account_positions
-                            if p.get('underlying_symbol', p.get('symbol', '')).replace(' ', '') == formatted_chain['underlying']
-                        ]
-
-                        if chain_positions:
-                            # Calculate P&L using live market data (same as Positions page)
-                            current_market_value = sum(float(p.get('market_value', 0)) for p in chain_positions)
-                            current_cost_basis = sum(float(p.get('cost_basis', 0)) for p in chain_positions)
-                            current_unrealized_pnl = sum(float(p.get('unrealized_pnl', 0)) for p in chain_positions)
-
-                            # Use live position-based total P&L
-                            position_based_pnl = current_unrealized_pnl  # This should match Positions page
-
-                            formatted_chain['unrealized_pnl'] = current_unrealized_pnl
-                            formatted_chain['position_market_value'] = current_market_value
-                            formatted_chain['position_cost_basis'] = current_cost_basis
-                            formatted_chain['total_pnl'] = position_based_pnl  # Use live calculation
-                            formatted_chain['data_source'] = 'live_api'
-
-                            logger.debug(f"Chain {formatted_chain['chain_id']} (live): market_value={current_market_value:.2f}, cost_basis={current_cost_basis:.2f}, unrealized_pnl={current_unrealized_pnl:.2f}")
-                        else:
-                            logger.debug(f"No live positions found for {formatted_chain['underlying']} in account {formatted_chain['account_number']}")
-                    else:
-                        logger.warning("Could not authenticate with Tastytrade for live position data")
-                        # Fallback to cached database positions
-                        positions = db.get_open_positions()
-                        if positions:
-                            chain_positions = [
-                                p for p in positions
-                                if (p.get('underlying') == formatted_chain['underlying'] and
-                                    p.get('account_number') == formatted_chain['account_number'])
-                            ]
-                            if chain_positions:
-                                current_unrealized_pnl = sum(float(p.get('unrealized_pnl', 0)) for p in chain_positions)
-                                formatted_chain['unrealized_pnl'] = current_unrealized_pnl
-                                formatted_chain['total_pnl'] = current_unrealized_pnl
-                                formatted_chain['data_source'] = 'cached_db'
-
+                    # Get all open positions and filter for this chain's underlying + account
+                    positions = db.get_open_positions()
+                    if positions:
+                        for pos in positions:
+                            if (pos.get('underlying') == formatted_chain['underlying'] and
+                                pos.get('account_number') == formatted_chain['account_number']):
+                                net_liquidity += float(pos.get('market_value', 0))
                 except Exception as e:
-                    logger.warning(f"Could not get live position-based P&L for chain {formatted_chain['chain_id']}: {e}")
-                    # Fallback to existing calculation
-                    pass
+                    logger.warning(f"Could not calculate net liquidity for chain {formatted_chain['chain_id']}: {e}")
+                    net_liquidity = 0.0
+
+            formatted_chain['net_liquidity'] = net_liquidity
+
+            # Calculate total commissions and fees from all transactions in the chain
+            total_commission = 0.0
+            total_regulatory_fees = 0.0
+            total_clearing_fees = 0.0
+
+            try:
+                for order in chain.orders:
+                    for tx in order.transactions:
+                        total_commission += float(tx.commission) if tx.commission else 0.0
+                        total_regulatory_fees += float(tx.regulatory_fees) if tx.regulatory_fees else 0.0
+                        total_clearing_fees += float(tx.clearing_fees) if tx.clearing_fees else 0.0
+            except Exception as e:
+                logger.warning(f"Could not calculate fees for chain {formatted_chain['chain_id']}: {e}")
+
+            formatted_chain['total_commission'] = total_commission
+            formatted_chain['total_regulatory_fees'] = total_regulatory_fees
+            formatted_chain['total_clearing_fees'] = total_clearing_fees
+            formatted_chain['total_fees'] = total_commission + total_regulatory_fees + total_clearing_fees
 
             formatted_chains.append(formatted_chain)
         
+        format_time = time.time() - format_start
+        total_time = time.time() - start_time
+
+        logger.info(f"🕐 TIMING: Chain formatting took {format_time:.2f}s for {len(formatted_chains)} chains")
+        logger.info(f"🕐 TIMING: Total request time: {total_time:.2f}s")
+
         return {
-            "chains": formatted_chains, 
+            "chains": formatted_chains,
             "total": len(formatted_chains),
-            "cached": False  # Indicate this was freshly derived
+            "cached": False,  # Indicate this was freshly derived
+            "timing": {
+                "total_time": round(total_time, 2),
+                "db_time": round(db_time, 2),
+                "v2_time": round(v2_time, 2),
+                "format_time": round(format_time, 2)
+            }
         }
         
     except Exception as e:
@@ -1326,17 +1587,28 @@ async def get_dashboard_data(account_number: Optional[str] = None):
 
 
 @app.post("/api/sync-positions-only")
-async def sync_positions_only():
+async def sync_positions_only(request: Request):
     """Fast sync that only updates current positions without reprocessing orders"""
     try:
-        logger.info("Starting positions-only sync (fast mode)...")
-        
-        # Initialize clients
-        tastytrade = TastytradeClient()
-        
+        # Check authentication
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        logger.info(f"Starting positions-only sync (fast mode) for user: {username}...")
+
+        # Initialize client with credentials from session
+        tastytrade = TastytradeClient(username=username, password=password)
+
         # Authenticate
         if not tastytrade.authenticate():
-            logger.error("Failed to authenticate with Tastytrade")
+            logger.error(f"Failed to authenticate with Tastytrade for user: {username}")
             raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
         
         # Fetch and save current positions for all accounts
@@ -1375,14 +1647,27 @@ async def sync_positions_only():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/sync")
-async def sync_unified():
+async def sync_unified(request: Request):
     """Unified sync endpoint with smart date range calculation"""
     try:
         from datetime import datetime, timedelta
-        
+
+        # Check authentication and get credentials from session
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        logger.info(f"Sync requested by user: {username}")
+
         # Check last sync timestamp to determine date range
         last_sync = db.get_last_sync_timestamp()
-        
+
         if last_sync:
             # Calculate days back from last sync + 1 day buffer
             days_back = (datetime.now() - last_sync).days + 1
@@ -1393,13 +1678,13 @@ async def sync_unified():
             # No previous sync, fetch last 90 days
             days_back = 90
             logger.info(f"First sync detected, fetching {days_back} days")
-        
-        # Initialize clients
-        tastytrade = TastytradeClient()
-        
+
+        # Initialize client with credentials from session
+        tastytrade = TastytradeClient(username=username, password=password)
+
         # Authenticate
         if not tastytrade.authenticate():
-            logger.error("Failed to authenticate with Tastytrade")
+            logger.error(f"Failed to authenticate with Tastytrade for user: {username}")
             raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
         
         # Save all accounts to database
@@ -1466,11 +1751,31 @@ async def sync_unified():
         # Always reprocess chains after sync to ensure strategy detection and linking is up to date
         logger.info(f"Auto-reprocessing chains after sync (processed {saved_count} transactions)...")
         try:
-            chain_result = order_manager.reprocess_orders_and_chains_from_database()
-            if 'error' in chain_result:
-                logger.error(f"Chain reprocessing error: {chain_result['error']}")
+            # Get raw transactions for reprocessing
+            raw_transactions = db.get_raw_transactions()
+
+            # Process using V2 system which returns chains
+            chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+
+            # Flatten chains from all accounts
+            all_chains = []
+            for account, chains in chains_by_account.items():
+                for chain in chains:
+                    all_chains.append(chain)
+
+            if all_chains:
+                logger.info(f"Chain reprocessing created {len(all_chains)} chains")
+
+                # Now run strategy detection on the newly created chains
+                logger.info("Running strategy detection on newly created chains...")
+                try:
+                    # Update cache with strategy detection
+                    await update_chain_cache(all_chains)
+                    logger.info("Strategy detection completed")
+                except Exception as e:
+                    logger.error(f"Error during strategy detection after sync: {str(e)}", exc_info=True)
             else:
-                logger.info(f"Chain reprocessing completed: {chain_result['orders_saved']} orders, {chain_result['chains_saved']} chains")
+                logger.warning("No chains created during reprocessing")
         except Exception as e:
             logger.error(f"Error during auto chain reprocessing: {str(e)}")
         
@@ -1500,10 +1805,21 @@ async def get_sync_status():
 
 
 @app.post("/api/migrate-realized-pnl")
-async def migrate_realized_pnl():
+async def migrate_realized_pnl(request: Request):
     """One-time migration to populate realized_pnl for existing chains"""
     try:
-        logger.info("Starting realized P&L migration...")
+        # Check authentication
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        logger.info(f"Starting realized P&L migration for user: {username}...")
         
         # Get all chains for complete recalculation
         with db.get_connection() as conn:
@@ -1552,46 +1868,57 @@ async def debug_chains():
 
 
 @app.post("/api/sync/initial")
-async def initial_sync():
+async def initial_sync(request: Request):
     """Complete initial sync - clears database and rebuilds from scratch"""
     try:
-        logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
-        
+        # Check authentication and get credentials from session
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        logger.info(f"Starting INITIAL SYNC for user: {username} - this will rebuild the entire database")
+
         # Reset sync metadata
         logger.info("Resetting sync metadata...")
         db.reset_sync_metadata()
-        
+
         # Note: User data preservation removed since we're moving away from trades model
         logger.info("Skipping user data preservation (moving to order-based system)")
-        
+
         # Clear and recreate database tables with latest schema
         logger.info("Clearing existing database and recreating tables...")
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            
+
             # Drop order-related tables to ensure clean schema
             cursor.execute("DROP TABLE IF EXISTS order_chain_members")
-            cursor.execute("DROP TABLE IF EXISTS order_chains") 
+            cursor.execute("DROP TABLE IF EXISTS order_chains")
             cursor.execute("DROP TABLE IF EXISTS positions_new")
             cursor.execute("DROP TABLE IF EXISTS orders")
-            
+
             # Clear data tables but keep structure
             cursor.execute("DELETE FROM positions")  # Keep for current positions
             cursor.execute("DELETE FROM account_balances")
             cursor.execute("DELETE FROM raw_transactions")  # Clear raw transactions too
-            
+
             logger.info("Database cleared successfully")
-        
+
         # Reinitialize database to create tables with latest schema
         logger.info("Recreating database tables with latest schema...")
         db.initialize_database()
-        
-        # Initialize clients
-        tastytrade = TastytradeClient()
-        
+
+        # Initialize client with credentials from session
+        tastytrade = TastytradeClient(username=username, password=password)
+
         # Authenticate
         if not tastytrade.authenticate():
-            logger.error("Failed to authenticate with Tastytrade")
+            logger.error(f"Failed to authenticate with Tastytrade for user: {username}")
             raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
         
         # Save all accounts to database
@@ -1692,10 +2019,21 @@ async def initial_sync():
 
 
 @app.post("/api/reprocess-chains")
-async def reprocess_chains():
+async def reprocess_chains(request: Request):
     """Reprocess orders and chains from existing raw transactions using V2 system"""
     try:
-        logger.info("Starting V2 chain reprocessing from database")
+        # Check authentication
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        logger.info(f"Starting V2 chain reprocessing from database for user: {username}")
         
         # Get all raw transactions from database  
         raw_transactions = db.get_raw_transactions()
@@ -1919,30 +2257,191 @@ async def debug_cache_update(chain_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
+@app.get("/screener", response_class=HTMLResponse)
+async def screener_page():
+    """Serve the options screener page"""
+    screener_html = Path("static/screener.html")
+    if screener_html.exists():
+        return screener_html.read_text()
+    else:
+        return "<h1>Screener page not found</h1>"
+
+
+# Pydantic models for screener
+class ScreenerRequest(BaseModel):
+    """Request model for options screener"""
+    tickers: List[str]
+    near_dte_min: int = 30
+    near_dte_max: int = 45
+    leaps_dte_min: int = 365
+    leaps_delta_min: float = 0.70
+    leaps_delta_max: float = 0.80
+    min_iv_spread: float = 10.0
+    min_near_iv: float = 30.0
+    min_volume: int = 100
+    min_open_interest: int = 100
+
+
+@app.post("/api/screener/run")
+async def run_screener(request_data: ScreenerRequest, request: Request):
+    """
+    Run the options term structure screener.
+
+    Analyzes options chains to find PMCC candidates based on term structure.
+    """
+    try:
+        # Check authentication and get credentials from session
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        logger.info(f"Running screener for user: {username}")
+
+        # Import here to avoid circular imports
+        from src.models.options_screener import OptionsScreener
+
+        # Authenticate with Tastytrade using session credentials
+        client = TastytradeClient(username=username, password=password)
+        if not client.authenticate():
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
+
+        # Create screener
+        screener = OptionsScreener(client.session)
+
+        # Run screening
+        logger.info(f"Running screener for {len(request_data.tickers)} tickers...")
+        candidates = screener.screen_tickers(
+            tickers=request_data.tickers,
+            near_dte_range=(request_data.near_dte_min, request_data.near_dte_max),
+            leaps_dte_min=request_data.leaps_dte_min,
+            leaps_delta_range=(request_data.leaps_delta_min, request_data.leaps_delta_max),
+            min_iv_spread=request_data.min_iv_spread,
+            min_near_iv=request_data.min_near_iv,
+            min_volume=request_data.min_volume,
+            min_open_interest=request_data.min_open_interest
+        )
+
+        logger.info(f"Screener found {len(candidates)} candidates")
+
+        return {
+            "success": True,
+            "candidates": candidates,
+            "total_screened": len(request_data.tickers),
+            "total_candidates": len(candidates),
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error running screener: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/screener/presets")
+async def get_screener_presets():
+    """Get preset ticker lists for the screener"""
+    return {
+        "high_iv_tech": {
+            "name": "High IV Tech Stocks",
+            "tickers": ["NVDA", "TSLA", "AMD", "PLTR", "COIN", "MSTR", "SMCI", "AVGO"]
+        },
+        "popular_underlyings": {
+            "name": "Popular Options Underlyings",
+            "tickers": ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "GOOGL", "AMD"]
+        },
+        "high_vol_stocks": {
+            "name": "High Volatility Stocks",
+            "tickers": ["OKLO", "MSTR", "TSLA", "COIN", "RIVN", "LCID", "NIO", "PLTR"]
+        },
+        "etfs": {
+            "name": "Popular ETFs",
+            "tickers": ["SPY", "QQQ", "IWM", "TLT", "GLD", "SLV", "XLE", "XLF", "XLK"]
+        }
+    }
+
+
+@app.get("/api/screener/term-structure/{ticker}")
+async def get_term_structure(ticker: str):
+    """
+    Get the full implied volatility term structure for a ticker.
+
+    Returns IV at all available expiration dates for visualization.
+    """
+    try:
+        from src.models.options_screener import OptionsScreener
+
+        # Authenticate
+        client = TastytradeClient()
+        if not client.authenticate():
+            raise HTTPException(status_code=401, detail="Authentication failed")
+
+        # Create screener
+        screener = OptionsScreener(client.session)
+
+        # Get term structure
+        logger.info(f"Fetching term structure for {ticker}...")
+        result = screener.get_term_structure(ticker.upper())
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Could not fetch term structure for {ticker}")
+
+        return {
+            "success": True,
+            "data": result,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting term structure: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.websocket("/ws/quotes")
 async def websocket_quotes(websocket: WebSocket):
     """WebSocket endpoint for streaming live quotes"""
     await websocket.accept()
     logger.info("WebSocket connection accepted")
-    
+
     client = None
     subscribed_symbols = []
-    
+
     try:
         # Send a connection confirmation
         await websocket.send_json({"type": "connected", "message": "WebSocket connected"})
-        
-        # Initialize Tastytrade client
-        client = TastytradeClient()
-        
+
+        # Get session credentials from cookies
+        session_id = websocket.cookies.get("session_id")
+        if not session_id:
+            logger.error("WebSocket connection rejected: No session")
+            await websocket.send_json({"error": "Not authenticated - please login first"})
+            await websocket.close()
+            return
+
+        username, password = auth_manager.get_session_credentials(session_id)
+        if not username or not password:
+            logger.error("WebSocket connection rejected: Invalid session")
+            await websocket.send_json({"error": "Session invalid or expired"})
+            await websocket.close()
+            return
+
+        # Initialize Tastytrade client with session credentials
+        client = TastytradeClient(username=username, password=password)
+
         # Authenticate with Tastytrade
         if not client.authenticate():
-            logger.error("Tastytrade authentication failed for WebSocket")
+            logger.error(f"Tastytrade authentication failed for WebSocket user: {username}")
             await websocket.send_json({"error": "Failed to authenticate with Tastytrade"})
             await websocket.close()
             return
-        
-        logger.info("WebSocket client connected and Tastytrade authenticated")
+
+        logger.info(f"WebSocket client connected and Tastytrade authenticated for user: {username}")
         
         # Create tasks for receiving messages and sending updates
         async def receive_messages():

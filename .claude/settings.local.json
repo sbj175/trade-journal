@@ -1,13 +1,14 @@
 {
   "permissions": {
     "allow": [
+      "Bash(curl:*)",
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
       "Bash(grep:*)",
       "WebFetch(domain:github.com)",
       "Bash(python3:*)",
       "Bash(source:*)",
-      "Bash(python:*)",
+      "Bash(python3:*)",
       "Bash(ls:*)",
       "Bash(git commit:*)",
       "Bash(pip install:*)",
@@ -17,7 +18,6 @@
       "Bash(sqlite3:*)",
       "Bash(find:*)",
       "Bash(echo)",
-      "Bash(curl:*)",
       "WebFetch(domain:localhost)",
       "Bash(rg:*)",
       "Bash(/usr/local/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg \"_analyze_roll|roll.*metadata|includes_roll\" src/models/ -A 5 -B 2)",
@@ -46,7 +46,12 @@
       "Bash(cat:*)",
       "Bash(mv:*)",
       "Bash(node:*)",
-      "Bash(journalctl:*)"
+      "Bash(journalctl:*)",
+      "Bash(cargo tauri:*)",
+      "Bash(cargo:*)",
+      "Bash(kill:*)",
+      "Bash(python:*)",
+      "Bash(time curl:*)"
     ],
     "deny": []
   }

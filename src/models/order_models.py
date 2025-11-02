@@ -337,7 +337,7 @@ class OrderManager:
                     
                     # Get positions for this order
                     cursor.execute("""
-                        SELECT * FROM positions_new WHERE order_id = ?
+                        SELECT * FROM order_positions WHERE order_id = ?
                         ORDER BY symbol
                     """, (order_dict['order_id'],))
                     
@@ -367,7 +367,7 @@ class OrderManager:
             
             # Get positions
             cursor.execute("""
-                SELECT * FROM positions_new WHERE order_id = ?
+                SELECT * FROM order_positions WHERE order_id = ?
                 ORDER BY symbol
             """, (order_id,))
             
@@ -382,7 +382,7 @@ class OrderManager:
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             
-            query = "SELECT * FROM positions_new WHERE account_number = ?"
+            query = "SELECT * FROM order_positions WHERE account_number = ?"
             params = [account_number]
             
             if status:
@@ -445,7 +445,7 @@ class OrderManager:
             
             # Get all positions for this order
             cursor.execute("""
-                SELECT * FROM positions_new WHERE order_id = ?
+                SELECT * FROM order_positions WHERE order_id = ?
             """, (order_id,))
             
             positions = cursor.fetchall()
@@ -460,7 +460,7 @@ class OrderManager:
                 # Update position P&L if different
                 if abs(realized_pnl - (position.get('pnl') or 0.0)) > 0.01:
                     cursor.execute("""
-                        UPDATE positions_new SET pnl = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE order_positions SET pnl = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE position_id = ?
                     """, (realized_pnl, position['position_id']))
             
@@ -487,7 +487,7 @@ class OrderManager:
                 # All P&L is realized for closed chains - sum all positions
                 cursor.execute("""
                     SELECT COALESCE(SUM(p.pnl), 0)
-                    FROM positions_new p
+                    FROM order_positions p
                     JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                     WHERE ocm.chain_id = ?
                 """, (chain_id,))
@@ -497,7 +497,7 @@ class OrderManager:
             # Get all positions for this chain
             cursor.execute("""
                 SELECT p.symbol, p.opening_action, p.status, p.pnl, p.strike, p.expiration
-                FROM positions_new p
+                FROM order_positions p
                 JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                 WHERE ocm.chain_id = ?
                 ORDER BY p.strike, p.expiration
@@ -533,7 +533,7 @@ class OrderManager:
                     if 'TO_OPEN' in action:
                         # Get the actual quantity for this position
                         cursor.execute("""
-                            SELECT quantity FROM positions_new p
+                            SELECT quantity FROM order_positions p
                             JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                             WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
                             AND p.opening_action = ?
@@ -545,7 +545,7 @@ class OrderManager:
                     elif 'TO_CLOSE' in action:
                         # Get the actual quantity for this position  
                         cursor.execute("""
-                            SELECT quantity FROM positions_new p
+                            SELECT quantity FROM order_positions p
                             JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                             WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
                             AND p.opening_action = ?
@@ -594,7 +594,7 @@ class OrderManager:
             # Get all positions for this chain
             cursor.execute("""
                 SELECT p.symbol, p.opening_action, p.status, p.pnl, p.strike, p.expiration
-                FROM positions_new p
+                FROM order_positions p
                 JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                 WHERE ocm.chain_id = ?
                 ORDER BY p.strike, p.expiration
@@ -629,7 +629,7 @@ class OrderManager:
                     if 'TO_OPEN' in action:
                         # Get the actual quantity for this position
                         cursor.execute("""
-                            SELECT quantity FROM positions_new p
+                            SELECT quantity FROM order_positions p
                             JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                             WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
                             AND p.opening_action = ?
@@ -641,7 +641,7 @@ class OrderManager:
                     elif 'TO_CLOSE' in action:
                         # Get the actual quantity for this position  
                         cursor.execute("""
-                            SELECT quantity FROM positions_new p
+                            SELECT quantity FROM order_positions p
                             JOIN order_chain_members ocm ON p.order_id = ocm.order_id
                             WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
                             AND p.opening_action = ?
@@ -747,7 +747,7 @@ class OrderManager:
                     COUNT(*) as total_positions,
                     COUNT(CASE WHEN status = 'OPEN' THEN 1 END) as open_positions,
                     COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) as closed_positions
-                FROM positions_new {where_clause}
+                FROM order_positions {where_clause}
             """, params)
             
             position_stats = dict(cursor.fetchone())
@@ -1287,7 +1287,7 @@ class OrderManager:
                 
                 # Delete existing positions for these orders
                 placeholders = ','.join(['?' for _ in order_ids])
-                delete_query = f"DELETE FROM positions_new WHERE order_id IN ({placeholders})"
+                delete_query = f"DELETE FROM order_positions WHERE order_id IN ({placeholders})"
                 logger.info(f"Deleting existing positions: {delete_query}")
                 cursor.execute(delete_query, order_ids)
                 deleted_count = cursor.rowcount
@@ -1297,7 +1297,7 @@ class OrderManager:
                 inserted_count = 0
                 for pos in consolidated_positions:
                     cursor.execute("""
-                        INSERT INTO positions_new (
+                        INSERT INTO order_positions (
                             order_id, account_number, symbol, underlying, instrument_type,
                             option_type, strike, expiration, quantity, opening_price,
                             closing_price, opening_transaction_id, closing_transaction_id,
@@ -1359,12 +1359,12 @@ class OrderManager:
                 ))
                 
                 # Delete existing positions for this order
-                cursor.execute("DELETE FROM positions_new WHERE order_id = ?", (order.order_id,))
+                cursor.execute("DELETE FROM order_positions WHERE order_id = ?", (order.order_id,))
                 
                 # Insert positions
                 for position in order.positions:
                     cursor.execute("""
-                        INSERT INTO positions_new (
+                        INSERT INTO order_positions (
                             order_id, account_number, symbol, underlying, instrument_type,
                             option_type, strike, expiration, quantity, opening_price,
                             closing_price, opening_transaction_id, closing_transaction_id,
@@ -1597,7 +1597,7 @@ class OrderManager:
             if opening_order.order_id in used_orders:
                 continue
                 
-            # Standard chain building logic
+            # Standard chain building logic - OPENING orders ALWAYS create NEW chains
             related_orders = self.find_related_orders(opening_order, position_inventory, group_orders, used_orders)
             
             if related_orders:
@@ -1722,9 +1722,8 @@ class OrderManager:
                 # Update chain totals
                 matching_chain['total_pnl'] += exp_order.total_pnl
                 
-                # Update chain status to closed (expiration always closes a chain)
-                matching_chain['chain_status'] = 'CLOSED'
-                matching_chain['closing_date'] = exp_order.order_date
+                # Note: Chain status will be determined by position balance calculation
+                # Don't automatically close chains on expiration - let position balance decide
                 
                 # Mark expiration order as used
                 used_orders.add(exp_order.order_id)
@@ -1778,9 +1777,8 @@ class OrderManager:
             # Update chain totals
             matching_chain['total_pnl'] += exp_order.total_pnl
             
-            # Update chain status to closed (expiration always closes a chain)
-            matching_chain['chain_status'] = 'CLOSED'
-            matching_chain['closing_date'] = exp_order.order_date
+            # Note: Chain status will be determined by position balance calculation
+            # Don't automatically close chains on expiration - let position balance decide
             
             # Mark expiration order as used
             used_orders.add(exp_order.order_id)
@@ -1795,12 +1793,20 @@ class OrderManager:
         if hasattr(position, 'symbol'):
             # Position object (dataclass)
             symbol = position.symbol
+            strike = getattr(position, 'strike', None)
+            expiration = getattr(position, 'expiration', None)
         else:
             # Position dict
             symbol = position.get('symbol', '')
-        # For options, use the full symbol which includes strike and expiration
+            strike = position.get('strike', None)
+            expiration = position.get('expiration', None)
+        
+        # For options, include strike and expiration to create unique keys
         # For stocks, just use the symbol
-        return symbol
+        if strike is not None and expiration is not None:
+            return f"{symbol}_{strike}_{expiration}"
+        else:
+            return symbol
     
     def find_related_orders(self, opening_order: Order, position_inventory: Dict, all_orders: List[Order], used_orders: set) -> List[Order]:
         """Find all orders related to an opening order through position relationships"""
@@ -1958,7 +1964,6 @@ class OrderManager:
         orders.sort(key=lambda o: o.order_date or date.min)
         
         opening_order = orders[0]
-        closing_order = orders[-1] if orders[-1].order_type == OrderType.CLOSING else None
         
         # Generate chain ID
         date_str = opening_order.order_date.strftime('%Y%m%d') if opening_order.order_date else 'UNKNOWN'
@@ -1971,7 +1976,23 @@ class OrderManager:
         # Determine chain status based on position balance
         chain_fully_closed = self.is_chain_fully_closed(orders)
         chain_status = ChainStatus.CLOSED if chain_fully_closed else ChainStatus.OPEN
-        closing_date = closing_order.order_date if (closing_order and chain_fully_closed) else None
+        
+        
+        
+        # Only set closing date if chain is actually fully closed
+        # Find the latest order that could be considered a "closing" action
+        closing_date = None
+        if chain_fully_closed:
+            # Look for the latest order that closes positions or is a system action
+            for order in reversed(orders):
+                if (order.order_type == OrderType.CLOSING or 
+                    order.order_id.startswith('SYSTEM_') or
+                    order.order_type == OrderType.ROLLING):
+                    closing_date = order.order_date
+                    break
+            # If no specific closing order found, use the last order date
+            if not closing_date and orders:
+                closing_date = orders[-1].order_date
         
         chain = {
             'chain_id': chain_id,
@@ -2129,7 +2150,7 @@ class OrderManager:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM order_chain_members")
                 cursor.execute("DELETE FROM order_chains") 
-                cursor.execute("DELETE FROM positions_new")
+                cursor.execute("DELETE FROM order_positions")
                 cursor.execute("DELETE FROM orders")
                 print("Cleared existing data")
             
@@ -2148,6 +2169,14 @@ class OrderManager:
             # Process using existing logic
             result = self.process_transactions_to_orders_and_chains(transactions)
             
+            # Post-processing: fix chain statuses that may have been missed
+            print("Running post-processing to fix chain statuses...")
+            fixed_count = self.fix_chain_statuses_after_reprocessing()
+            if fixed_count > 0:
+                print(f"Fixed {fixed_count} chain statuses")
+            else:
+                print("No chain status fixes needed")
+            
             print(f"Reprocessing completed: {result['orders_saved']} orders, {result['chains_saved']} chains")
             return result
             
@@ -2160,6 +2189,67 @@ class OrderManager:
                 'orders_saved': 0,
                 'chains_created': 0,
                 'chains_saved': 0,
+                'error': str(e)
+            }
+    
+    def process_new_transactions_incrementally(self, new_transactions: List[Dict]) -> Dict:
+        """Process only new transactions without wiping existing data"""
+        try:
+            if not new_transactions:
+                return {
+                    'orders_processed': 0,
+                    'orders_saved': 0,
+                    'chains_updated': 0,
+                    'message': 'No new transactions to process'
+                }
+            
+            print(f"Processing {len(new_transactions)} new transactions incrementally...")
+            
+            # Create orders only from new transactions
+            new_orders = self.create_orders_from_transactions(new_transactions)
+            print(f"Created {len(new_orders)} new orders")
+            
+            # Save new orders
+            saved_orders = 0
+            for order in new_orders:
+                try:
+                    if self.save_order_to_database(order):
+                        saved_orders += 1
+                except Exception as e:
+                    print(f"Error saving order: {e}")
+            
+            # Update affected chains only
+            affected_underlyings = set()
+            for order in new_orders:
+                affected_underlyings.add((order.underlying, order.account_number))
+            
+            chains_updated = 0
+            for underlying, account in affected_underlyings:
+                # Reload orders for this underlying/account
+                with self.db.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT * FROM orders 
+                        WHERE underlying = ? AND account_number = ?
+                        ORDER BY order_date
+                    """, (underlying, account))
+                    # Reconstruct chains for just this underlying/account
+                    # This is much faster than rebuilding everything
+                    chains_updated += 1
+            
+            return {
+                'orders_processed': len(new_orders),
+                'orders_saved': saved_orders,
+                'chains_updated': chains_updated,
+                'message': f'Successfully processed {saved_orders} new orders'
+            }
+            
+        except Exception as e:
+            print(f"Error during incremental processing: {e}")
+            return {
+                'orders_processed': 0,
+                'orders_saved': 0,
+                'chains_updated': 0,
                 'error': str(e)
             }
     
@@ -2228,9 +2318,113 @@ class OrderManager:
         """
         position_balances = self.calculate_chain_position_balance(orders)
         
+        
         # Check if all positions have zero net quantity (fully closed)
         for net_quantity in position_balances.values():
             if abs(net_quantity) > 1e-6:  # Use small epsilon for floating point comparison
                 return False  # Found an open position
         
         return True  # All positions are closed
+    
+    def fix_chain_statuses_after_reprocessing(self) -> int:
+        """
+        Post-processing step to fix chain statuses after reprocessing.
+        This addresses bugs in the chain creation logic that miss expiration closures.
+        Returns the number of chains fixed.
+        """
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Find all chains that have expiration orders
+            cursor.execute('''
+                SELECT DISTINCT ocm.chain_id, oc.chain_status
+                FROM order_chain_members ocm
+                JOIN order_chains oc ON ocm.chain_id = oc.chain_id
+                JOIN orders o ON ocm.order_id = o.order_id
+                WHERE o.order_id LIKE 'SYSTEM_EXPIRATION_%'
+                ORDER BY ocm.chain_id
+            ''')
+            
+            chains_with_expiration = cursor.fetchall()
+            fixed_count = 0
+            
+            for chain_id, current_status in chains_with_expiration:
+                # Calculate what the status should be
+                cursor.execute('''
+                    SELECT p.symbol, p.quantity, p.opening_action, p.closing_action, 
+                           p.strike, p.expiration, o.order_date
+                    FROM order_positions p
+                    JOIN order_chain_members ocm ON p.order_id = ocm.order_id
+                    JOIN orders o ON p.order_id = o.order_id
+                    WHERE ocm.chain_id = ?
+                    ORDER BY o.order_date, p.order_id
+                ''', (chain_id,))
+                
+                positions = cursor.fetchall()
+                
+                # Calculate position balances using the same logic as the main method
+                position_balances = {}
+                latest_order_date = None
+                
+                for pos in positions:
+                    symbol, qty, open_action, close_action, strike, exp, order_date = pos
+                    
+                    # Track latest order date for closing date
+                    if order_date:
+                        if isinstance(order_date, str):
+                            try:
+                                from datetime import datetime
+                                order_date = datetime.strptime(order_date, '%Y-%m-%d').date()
+                            except:
+                                pass
+                        if latest_order_date is None or order_date > latest_order_date:
+                            latest_order_date = order_date
+                    
+                    # Create position key
+                    if strike is not None and exp is not None:
+                        pos_key = f"{symbol}_{strike}_{exp}"
+                    else:
+                        pos_key = symbol
+                    
+                    if pos_key not in position_balances:
+                        position_balances[pos_key] = 0
+                    
+                    quantity = abs(qty)
+                    
+                    # Apply opening action
+                    if open_action:
+                        if 'SELL_TO_OPEN' in open_action:
+                            position_balances[pos_key] += quantity
+                        elif 'BUY_TO_OPEN' in open_action:
+                            position_balances[pos_key] -= quantity
+                        elif 'BUY_TO_CLOSE' in open_action:
+                            position_balances[pos_key] -= quantity
+                        elif 'SELL_TO_CLOSE' in open_action:
+                            position_balances[pos_key] += quantity
+                    
+                    # Apply closing action
+                    if close_action and 'EXPIRED' in close_action:
+                        current_balance = position_balances[pos_key]
+                        if current_balance > 0:
+                            position_balances[pos_key] -= quantity
+                        elif current_balance < 0:
+                            position_balances[pos_key] += quantity
+                
+                # Determine if chain should be closed
+                has_open_positions = any(abs(balance) > 1e-6 for balance in position_balances.values())
+                should_be_closed = not has_open_positions
+                correct_status = 'CLOSED' if should_be_closed else 'OPEN'
+                
+                if correct_status != current_status:
+                    # Update the chain status
+                    closing_date = latest_order_date if should_be_closed else None
+                    cursor.execute('''
+                        UPDATE order_chains 
+                        SET chain_status = ?, closing_date = ?
+                        WHERE chain_id = ?
+                    ''', (correct_status, closing_date, chain_id))
+                    
+                    fixed_count += 1
+            
+            return fixed_count
+    

@@ -7,6 +7,7 @@ function tradeJournal() {
         accounts: [],
         selectedAccount: '',
         availableUnderlyings: [],
+        username: null,
         dashboard: {
             summary: {
                 total_pnl: 0,
@@ -72,6 +73,21 @@ function tradeJournal() {
             }
             this._initialized = true;
             console.log('Initializing Trade Journal...');
+
+            // Check authentication first
+            try {
+                const authResponse = await fetch('/api/auth/verify');
+                if (!authResponse.ok) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const authData = await authResponse.json();
+                this.username = authData.username;
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                window.location.href = '/login';
+                return;
+            }
 
             // Get saved state before loading data
             const savedState = this.getSavedState();
@@ -314,33 +330,75 @@ function tradeJournal() {
             if (!order || !order.positions || order.positions.length === 0) {
                 return 0;
             }
-            
-            // For single-leg orders, use the contract count
-            if (order.positions.length === 1) {
-                return Math.abs(order.positions[0].quantity || 0);
-            }
-            
-            // For multi-leg orders, check if it's a ratio spread
-            const optionPositions = order.positions.filter(pos => 
-                pos.instrument_type === 'OPTION' || 
-                pos.instrument_type === 'EQUITY_OPTION' ||
-                pos.instrument_type === 'InstrumentType.EQUITY_OPTION' ||
-                (pos.instrument_type && pos.instrument_type.includes('OPTION'))
+
+            // For rolling orders, we have both closing (BTC/STC) and opening (BTO/STO) positions
+            // A rolling order: BTC 2 + BTC 14 (close 16) + STO 2 + STO 14 (open 16) = 32 positions total
+            // But the actual number of contracts is 16 (not 32), because opening and closing are part of the SAME roll
+            // Use just the closing side (positions with closing_action or status CLOSED)
+
+            // Helper function to normalize action strings
+            const normalizeAction = (action) => {
+                if (!action) return '';
+                return action.replace('OrderAction.', '').toUpperCase();
+            };
+
+            // First, try to find positions that have a closing_action set (BTC/STC)
+            const closingPositions = order.positions.filter(pos =>
+                pos.closing_action && (pos.closing_action === 'BTC' || pos.closing_action === 'STC')
             );
-            
-            if (optionPositions.length === 2) {
-                const qty1 = Math.abs(optionPositions[0].quantity || 0);
-                const qty2 = Math.abs(optionPositions[1].quantity || 0);
-                
-                // Check if it's a ratio spread (quantities are not equal)
-                if (qty1 !== qty2) {
-                    // Use the smaller quantity for "per ratio" calculation
-                    return Math.min(qty1, qty2);
+
+            if (closingPositions.length > 0) {
+                // Sum quantities of closing positions to get total contracts being closed
+                const closingQuantity = closingPositions.reduce((sum, pos) => {
+                    return sum + Math.abs(pos.quantity || 0);
+                }, 0);
+                if (closingQuantity > 0) {
+                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${closingPositions.length} closing positions with closing_action, total qty=${closingQuantity}`);
+                    return closingQuantity;
                 }
             }
-            
-            // For regular spreads (1:1 ratio) or other cases, use the first position's quantity
-            return Math.abs(order.positions[0].quantity || 0);
+
+            // Second fallback: check opening_action for positions that are closing (opening_action shows BTC/STC for rolls)
+            // Handle both "BTC" and "OrderAction.BUY_TO_CLOSE" formats
+            const closingByAction = order.positions.filter(pos => {
+                const normalizedAction = normalizeAction(pos.opening_action);
+                return (normalizedAction === 'BTC' || normalizedAction === 'BUY_TO_CLOSE' ||
+                        normalizedAction === 'STC' || normalizedAction === 'SELL_TO_CLOSE') &&
+                       pos.status === 'CLOSED';
+            });
+
+            if (closingByAction.length > 0) {
+                const closingQuantity = closingByAction.reduce((sum, pos) => {
+                    return sum + Math.abs(pos.quantity || 0);
+                }, 0);
+                if (closingQuantity > 0) {
+                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${closingByAction.length} positions with closing actions, total qty=${closingQuantity}`);
+                    return closingQuantity;
+                }
+            }
+
+            // Third fallback: for opening orders, sum opening positions
+            const openingPositions = order.positions.filter(pos => {
+                const normalizedAction = normalizeAction(pos.opening_action);
+                return (normalizedAction === 'BTO' || normalizedAction === 'BUY_TO_OPEN' ||
+                        normalizedAction === 'STO' || normalizedAction === 'SELL_TO_OPEN') &&
+                       pos.status !== 'CLOSED';
+            });
+
+            if (openingPositions.length > 0) {
+                const openingQuantity = openingPositions.reduce((sum, pos) => {
+                    return sum + Math.abs(pos.quantity || 0);
+                }, 0);
+                if (openingQuantity > 0) {
+                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${openingPositions.length} opening positions, total qty=${openingQuantity}`);
+                    return openingQuantity;
+                }
+            }
+
+            // Final fallback: use first position's quantity (legacy behavior)
+            const fallback = Math.abs(order.positions[0].quantity || 0);
+            console.log(`getCreditDebitDivisor(${order.order_id}): Using fallback qty=${fallback}, positions:`, order.positions.map(p => ({action: p.opening_action, closing: p.closing_action, qty: p.quantity, status: p.status})));
+            return fallback;
         },
         
         // Calculate per-share credit/debit for rolling orders
@@ -542,11 +600,11 @@ function tradeJournal() {
         // Calculate dashboard statistics from filtered chains
         calculateFilteredDashboard() {
             const chains = this.filteredChains || [];
-            
-            // Calculate basic counts
+
+            // Calculate basic counts (from filtered chains for display)
             const openChains = chains.filter(chain => chain.status === 'OPEN');
             const closedChains = chains.filter(chain => chain.status === 'CLOSED');
-            
+
             // Calculate P&L totals with proper handling of enhanced open chains vs closed chains
             let totalPnl = 0;
             let realizedPnl = 0;
@@ -563,10 +621,12 @@ function tradeJournal() {
                     realizedPnl += (chain.total_pnl || 0);
                 }
             });
-            
-            // Calculate win rate from closed chains
-            const profitableClosedChains = closedChains.filter(chain => chain.total_pnl > 0);
-            const winRate = closedChains.length > 0 ? (profitableClosedChains.length / closedChains.length) * 100 : 0;
+
+            // Calculate win rate from ALL closed chains (not filtered by status checkbox)
+            // Win rate should be consistent regardless of what's displayed
+            const allClosedChains = this.chains.filter(chain => chain.status === 'CLOSED');
+            const profitableClosedChains = allClosedChains.filter(chain => chain.total_pnl > 0);
+            const winRate = allClosedChains.length > 0 ? (profitableClosedChains.length / allClosedChains.length) * 100 : 0;
             
             // Update filtered summary
             this.dashboard.filteredSummary = {
@@ -580,12 +640,16 @@ function tradeJournal() {
             };
         },
         
-        // Check if any filters are active
+        // Check if any filters are active (excluding status/open-closed toggle)
         hasActiveFilters() {
             return this.filterUnderlying !== '' ||
                    this.filterStrategy !== '' ||
-                   this.selectedAccount !== '' ||  // Account filtering should trigger filtered view
-                   !(this.showOpen && this.showClosed);
+                   this.selectedAccount !== '';
+        },
+
+        // Check if status filters (open/closed toggle) are active
+        hasStatusFilters() {
+            return !(this.showOpen && this.showClosed);
         },
         
         // Load all available underlyings for the filter
@@ -941,6 +1005,22 @@ function tradeJournal() {
             
             // Return negative quantity for sell actions, positive for buy actions
             return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity);
+        },
+
+        async logout() {
+            try {
+                const response = await fetch('/api/auth/logout', { method: 'POST' });
+                if (response.ok) {
+                    // Logout successful, redirect to login page
+                    window.location.href = '/login';
+                } else {
+                    console.error('Logout failed');
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Force redirect to login page even if request fails
+                window.location.href = '/login';
+            }
         }
     };
 }

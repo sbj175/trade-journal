@@ -10,21 +10,31 @@ from loguru import logger
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.utils.credential_manager import CredentialManager
-
 load_dotenv()
 
 
 class TastytradeClient:
-    def __init__(self):
-        # Try to get credentials from encrypted file first, then fall back to env vars
-        credential_manager = CredentialManager()
-        self.username, self.password = credential_manager.get_tastytrade_credentials()
-        
+    def __init__(self, username: Optional[str] = None, password: Optional[str] = None):
+        """
+        Initialize TastytradeClient with credentials.
+
+        Args:
+            username: Tastytrade username (if None, attempts to load from environment)
+            password: Tastytrade password (if None, attempts to load from environment)
+        """
+        # Use provided credentials or fall back to environment variables
+        if username and password:
+            self.username = username
+            self.password = password
+        else:
+            # Fallback to environment variables if no credentials provided
+            self.username = os.getenv('TASTYTRADE_USERNAME')
+            self.password = os.getenv('TASTYTRADE_PASSWORD')
+
         self.session = None
         self.accounts = []
         self.current_account = None
-        
+
         # Quote caching
         self._quote_cache = {}
         self._quote_cache_time = {}

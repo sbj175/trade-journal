@@ -35,6 +35,7 @@
                 lastSyncTimestamp: '',
                 cacheInfo: null,
                 ws: null,
+                username: null,
                 
                 
                 // Computed properties
@@ -74,6 +75,21 @@
                 // Initialize
                 async init() {
                     console.log('Initializing positions page...');
+                    // Check authentication first
+                    try {
+                        const authResponse = await fetch('/api/auth/verify');
+                        if (!authResponse.ok) {
+                            window.location.href = '/login';
+                            return;
+                        }
+                        const authData = await authResponse.json();
+                        this.username = authData.username;
+                    } catch (error) {
+                        console.error('Auth check failed:', error);
+                        window.location.href = '/login';
+                        return;
+                    }
+
                     this.loadComments();
                     await this.fetchAccounts();
                     await this.fetchPositions();
@@ -313,6 +329,22 @@
                     const key = `${underlying}_${this.selectedAccount || 'default'}`;
                     this.positionComments[key] = value;
                     localStorage.setItem('positionComments', JSON.stringify(this.positionComments));
+                },
+
+                async logout() {
+                    try {
+                        const response = await fetch('/api/auth/logout', { method: 'POST' });
+                        if (response.ok) {
+                            // Logout successful, redirect to login page
+                            window.location.href = '/login';
+                        } else {
+                            console.error('Logout failed');
+                        }
+                    } catch (error) {
+                        console.error('Logout error:', error);
+                        // Force redirect to login page even if request fails
+                        window.location.href = '/login';
+                    }
                 }
             };
         }
@@ -414,10 +446,15 @@
                         </div>
                         
                         <div class="hidden sm:flex space-x-4">
-                            <a href="/chains" 
+                            <a href="/chains"
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-link mr-1"></i>
                                 Order Chains
+                            </a>
+                            <a href="/screener"
+                               class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                <i class="fas fa-search mr-1"></i>
+                                Options Screener
                             </a>
                         </div>
                     </div>
@@ -456,20 +493,33 @@
                         <!-- Account Selector -->
                         <div class="flex items-center space-x-2">
                             <label for="account-select" class="text-sm font-medium text-slate-300">Account:</label>
-                            <select 
+                            <select
                                 id="account-select"
-                                x-model="selectedAccount" 
+                                x-model="selectedAccount"
                                 @change="filterPositions(); saveFilterPreferences()"
                                 class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2"
                             >
                                 <option value="">All Accounts</option>
                                 <template x-for="account in accounts" :key="account.account_number">
-                                    <option 
-                                        :value="account.account_number" 
+                                    <option
+                                        :value="account.account_number"
                                         x-text="account.account_name || account.account_number"
                                     ></option>
                                 </template>
                             </select>
+                        </div>
+
+                        <!-- User Menu with Logout -->
+                        <div class="flex items-center space-x-4 ml-4 pl-4 border-l border-slate-600">
+                            <div class="text-sm text-slate-300">
+                                <i class="fas fa-user mr-1"></i>
+                                <span x-text="username || 'User'"></span>
+                            </div>
+                            <button @click="logout()"
+                                    class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                                <i class="fas fa-sign-out-alt mr-1"></i>
+                                Logout
+                            </button>
                         </div>
                     </div>
                 </div>

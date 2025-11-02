@@ -48,10 +48,15 @@
                         </div>
                         
                         <div class="hidden sm:flex space-x-4">
-                            <a href="/" 
+                            <a href="/"
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-layer-group mr-1"></i>
                                 Open Positions
+                            </a>
+                            <a href="/screener"
+                               class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                <i class="fas fa-search mr-1"></i>
+                                Options Screener
                             </a>
                         </div>
                     </div>
@@ -96,20 +101,33 @@
                         <!-- Account Selector -->
                         <div class="flex items-center space-x-2">
                             <label for="account-select" class="text-sm font-medium text-slate-300">Account:</label>
-                            <select 
+                            <select
                                 id="account-select"
-                                x-model="selectedAccount" 
+                                x-model="selectedAccount"
                                 @change="onAccountChange()"
                                 class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2"
                             >
                                 <option value="">All Accounts</option>
                                 <template x-for="account in accounts" :key="account.account_number">
-                                    <option 
-                                        :value="account.account_number" 
+                                    <option
+                                        :value="account.account_number"
                                         x-text="account.account_name || account.account_number"
                                     ></option>
                                 </template>
                             </select>
+                        </div>
+
+                        <!-- User Menu with Logout -->
+                        <div class="flex items-center space-x-4 ml-4 pl-4 border-l border-slate-600">
+                            <div class="text-sm text-slate-300">
+                                <i class="fas fa-user mr-1"></i>
+                                <span x-text="username || 'User'"></span>
+                            </div>
+                            <button @click="logout()"
+                                    class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                                <i class="fas fa-sign-out-alt mr-1"></i>
+                                Logout
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -197,6 +215,7 @@
                                 <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
                             </div>
                             <p class="text-3xl font-bold mt-2 text-blue-400">
+                                <!-- Win rate always shows overall win rate, not affected by status (open/closed) toggle -->
                                 <span x-text="(hasActiveFilters() ? dashboard.filteredSummary.win_rate : dashboard.summary.win_rate)?.toFixed(1) || '0.0'"></span>%
                             </p>
                         </div>
@@ -361,14 +380,54 @@
                                     <div class="text-xs text-slate-400">
                                         <span x-show="chain.status === 'CLOSED'">Realized P&L</span>
                                         <span x-show="chain.status === 'OPEN'">
-                                            Realized: $<span x-text="formatNumber(chain.realized_pnl)"></span> | 
+                                            Realized: $<span x-text="formatNumber(chain.realized_pnl)"></span> |
                                             Unrealized: $<span x-text="formatNumber(chain.total_pnl - chain.realized_pnl)"></span>
                                         </span>
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Secondary Metrics Row -->
+                            <div class="border-t border-slate-700 px-4 py-3 bg-slate-800/50 text-xs">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <!-- Cost Basis -->
+                                    <div>
+                                        <div class="text-slate-400 font-medium mb-1">Cost Basis</div>
+                                        <div class="text-slate-200">
+                                            <div><span>$</span><span x-text="formatNumber(chain.cost_basis_total)"></span></div>
+                                            <div class="text-slate-500 text-xs">
+                                                <span>$</span><span x-text="formatNumber(chain.cost_basis_per_unit)"></span><span>/ct</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Realized P&L -->
+                                    <div>
+                                        <div class="text-slate-400 font-medium mb-1">Realized P&L</div>
+                                        <div :class="chain.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                            <span>$</span><span x-text="formatNumber(chain.realized_pnl)"></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Net Liquidity (OPEN chains only) -->
+                                    <div x-show="chain.status === 'OPEN'">
+                                        <div class="text-slate-400 font-medium mb-1">Net Liquidity</div>
+                                        <div class="text-slate-200">
+                                            <span>$</span><span x-text="formatNumber(chain.net_liquidity)"></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Total Fees -->
+                                    <div>
+                                        <div class="text-slate-400 font-medium mb-1">Fees</div>
+                                        <div :class="chain.total_fees > 0 ? 'text-red-400' : 'text-slate-200'">
+                                            <span>-$</span><span x-text="formatNumber(chain.total_fees)"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        
+
                         <!-- Individual Trades (Expandable) -->
                         <div x-show="chain.expanded" x-collapse class="border-t border-slate-700">
                             <div class="p-3 bg-slate-800/30">
