@@ -217,9 +217,11 @@ class TastytradeClient:
                     is_short = (quantity < 0) or (pos.quantity_direction == 'Short')
                     
                     if pos.instrument_type and 'option' in str(pos.instrument_type).lower():
-                        # Option cost basis = abs(quantity) * average_open_price * 100 (always positive)
-                        cost_basis = abs(quantity) * average_open_price * 100
-                        
+                        # Option cost basis = abs(quantity) * average_open_price * 100
+                        # Sign matters: negative for long (cost), positive for short (credit)
+                        cost_basis_abs = abs(quantity) * average_open_price * 100
+                        cost_basis = -cost_basis_abs if not is_short else cost_basis_abs
+
                         if is_short:
                             # For short positions: use negative of the total mark value
                             market_value = -abs(mark_value)
@@ -227,9 +229,11 @@ class TastytradeClient:
                             # For long positions: use the total mark value directly
                             market_value = mark_value
                     else:
-                        # Stock cost basis = abs(quantity) * average_open_price (always positive)
-                        cost_basis = abs(quantity) * average_open_price
-                        
+                        # Stock cost basis = abs(quantity) * average_open_price
+                        # Sign matters: negative for long (cost), positive for short (credit)
+                        cost_basis_abs = abs(quantity) * average_open_price
+                        cost_basis = -cost_basis_abs if not is_short else cost_basis_abs
+
                         if is_short:
                             # For short positions: market value is negative
                             market_value = -abs(mark_value)
