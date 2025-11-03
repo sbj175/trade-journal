@@ -317,15 +317,21 @@
                                     this.requestLiveQuotes();
                                 } else if (message.type === 'quotes' && message.data) {
                                     // Update quotes using direct property assignment for Alpine.js reactivity
+                                    const updatedSymbols = [];
                                     for (const [symbol, quoteData] of Object.entries(message.data)) {
                                         if (quoteData && typeof quoteData === 'object') {
                                             this.underlyingQuotes[symbol] = quoteData;
+                                            updatedSymbols.push(symbol);
+                                            // Debug: Log option quotes specifically
+                                            if (symbol.includes('C') || symbol.includes('P')) {
+                                                console.log(`Option quote received for ${symbol}: mark=${quoteData.mark}, price=${quoteData.price}`);
+                                            }
                                         }
                                     }
                                     // Increment counter to force re-render
                                     this.quoteUpdateCounter++;
                                     this.lastQuoteUpdate = new Date().toLocaleTimeString();
-                                    console.log('Updated quotes for:', Object.keys(message.data).filter(s => message.data[s] && typeof message.data[s] === 'object'), '| quoteUpdateCounter:', this.quoteUpdateCounter);
+                                    console.log('Updated quotes for:', updatedSymbols, '| Total quotes available:', Object.keys(this.underlyingQuotes).length, '| quoteUpdateCounter:', this.quoteUpdateCounter);
                                 } else if (message.error) {
                                     console.error('WebSocket error from server:', message.error);
                                 }
@@ -567,13 +573,18 @@
                             marketValue = position.quantity_direction === 'Short' ? -absValue : absValue;
                         }
                     } else {
-                        // For option positions, update with live quote if available
-                        const optionSymbol = position.symbol;
+                        // For option positions, update with live option quote (NOT underlying quote)
+                        const optionSymbol = position.symbol.trim();
                         const optionQuote = this.underlyingQuotes[optionSymbol];
-                        if (optionQuote && optionQuote.mark) {
+                        if (optionQuote && optionQuote.mark !== undefined) {
                             // Options: market_value = mark price * quantity * 100 (options are quoted per share, 100 shares per contract)
                             const absValue = optionQuote.mark * position.quantity * 100;
                             marketValue = position.quantity_direction === 'Short' ? -absValue : absValue;
+                        } else {
+                            // Debug: log if we're missing a quote for an option
+                            if (!optionQuote && position.quantity > 0) {
+                                console.debug(`No quote found for option ${optionSymbol}. Available quotes: ${Object.keys(this.underlyingQuotes).filter(k => k.includes('C') || k.includes('P')).slice(0, 3).join(', ')}`);
+                            }
                         }
                     }
 
