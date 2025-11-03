@@ -357,11 +357,16 @@
                 
                 getPositionSymbol(position) {
                     // For options, return the full symbol; for equities, return the stock symbol
-                    if (position.instrument_type === 'EQUITY' || !position.instrument_type) {
+                    // Note: instrument_type can be "InstrumentType.EQUITY_OPTION" or "InstrumentType.EQUITY"
+                    const isOption = position.instrument_type && position.instrument_type.includes('OPTION');
+
+                    if (isOption) {
+                        // For options, use the full symbol
+                        return position.symbol;
+                    } else {
+                        // For equities and unknown types, use the underlying symbol
                         return this.getUnderlyingSymbol(position);
                     }
-                    // For options, use the full symbol
-                    return position.symbol;
                 },
 
                 requestLiveQuotes() {
@@ -557,10 +562,13 @@
                     // Short positions: negative
                     let marketValue = position.market_value || 0;
 
-                    // Check if this is an equity/stock position (not options)
-                    const isEquity = !position.instrument_type ||
+                    // Check if this is an option or equity position
+                    // Note: instrument_type can be "InstrumentType.EQUITY_OPTION" or "InstrumentType.EQUITY"
+                    // Check for OPTION first before checking for EQUITY (since EQUITY_OPTION contains "EQUITY")
+                    const isOption = position.instrument_type && position.instrument_type.includes('OPTION');
+                    const isEquity = !isOption && (!position.instrument_type ||
                                    position.instrument_type === 'EQUITY' ||
-                                   position.instrument_type.includes('EQUITY');
+                                   position.instrument_type.includes('EQUITY'));
 
                     // For equity positions, update with live quote if available
                     if (isEquity) {
