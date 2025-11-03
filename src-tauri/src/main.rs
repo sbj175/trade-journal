@@ -667,7 +667,8 @@ pub fn run() {
                         thread::sleep(Duration::from_secs(3));
                     }
                     
-                    match reqwest::blocking::get("http://localhost:8000/") {
+                    // Check login endpoint - returns 200 when server is ready (before authentication)
+                    match reqwest::blocking::get("http://localhost:8000/login") {
                         Ok(response) => {
                             if response.status().is_success() {
                                 println!("Server is fully ready!");
@@ -678,11 +679,11 @@ pub fn run() {
                                     splash.update_status_with_progress("Ready!", 100);
                                     thread::sleep(Duration::from_millis(300));
                                 }
-                                
+
                                 // Wait a bit longer to ensure server is fully ready
                                 thread::sleep(Duration::from_secs(1));
                                 let _ = main_window_clone.show();
-                                
+
                                 // Close splash after main window is shown
                                 #[cfg(windows)]
                                 if let Some(ref splash) = splash_for_thread {
@@ -693,9 +694,10 @@ pub fn run() {
                             }
                         }
                         Err(_) => {
-                            // Also try the root endpoint
-                            if let Ok(response) = reqwest::blocking::get("http://localhost:8000") {
-                                if response.status().is_success() {
+                            // Also try the root endpoint as fallback
+                            if let Ok(response) = reqwest::blocking::get("http://localhost:8000/") {
+                                // Accept 401 from root endpoint (authentication required) as sign server is ready
+                                if response.status().is_success() || response.status() == reqwest::http::StatusCode::UNAUTHORIZED {
                                     println!("Root endpoint responded successfully");
                                     #[cfg(windows)]
                                     if let Some(ref splash) = splash_for_thread {
