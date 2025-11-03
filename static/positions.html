@@ -121,6 +121,7 @@
 
                     this.loadComments();
                     await this.fetchAccounts();
+                    await this.loadAccountBalances();
                     await this.fetchPositions();
                     this.initializeWebSocket();
                 },
