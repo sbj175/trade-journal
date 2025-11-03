@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use tauri::{Manager, AppHandle};
 use std::thread;
 use std::time::Duration;
+use reqwest::StatusCode;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -697,7 +698,7 @@ pub fn run() {
                             // Also try the root endpoint as fallback
                             if let Ok(response) = reqwest::blocking::get("http://localhost:8000/") {
                                 // Accept 401 from root endpoint (authentication required) as sign server is ready
-                                if response.status().is_success() || response.status() == reqwest::http::StatusCode::UNAUTHORIZED {
+                                if response.status().is_success() || response.status() == StatusCode::UNAUTHORIZED {
                                     println!("Root endpoint responded successfully");
                                     #[cfg(windows)]
                                     if let Some(ref splash) = splash_for_thread {
