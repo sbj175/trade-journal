@@ -242,15 +242,10 @@ class TastytradeClient:
                             market_value = mark_value
                     
                     # Calculate unrealized P&L
-                    if is_short:
-                        # For short positions: P&L = cost_basis + market_value
-                        # (cost_basis is what you received, market_value is negative for shorts)
-                        # Example: Sold for +2424, now worth -1096, P&L = 2424 + (-1096) = +1328
-                        unrealized_pnl = cost_basis + market_value
-                    else:
-                        # For long positions: P&L = market_value - cost_basis
-                        # (profit when market value increases)
-                        unrealized_pnl = market_value - cost_basis
+                    # Works uniformly for both long and short positions because signs are preserved:
+                    # Long: market_value=positive, cost_basis=negative → P&L = pos - neg = profit
+                    # Short: market_value=negative, cost_basis=positive → P&L = neg - pos = loss
+                    unrealized_pnl = market_value - cost_basis
                     
                     # Calculate P&L percentage
                     pnl_percent = (unrealized_pnl / abs(cost_basis) * 100) if cost_basis != 0 else 0
