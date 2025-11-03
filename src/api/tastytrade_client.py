@@ -528,12 +528,14 @@ class TastytradeClient:
                     
                     quote_data = {
                         'symbol': symbol,
+                        'price': current_price,  # Frontend expects 'price' not 'mark'
                         'mark': current_price,
                         'bid': bid_price,
                         'ask': ask_price,
                         'last': float(market_data.last) if market_data.last else current_price,
                         'change': change,
-                        'change_percent': change_percent,
+                        'changePercent': change_percent,  # Frontend expects camelCase
+                        'change_percent': change_percent,  # Keep snake_case for compatibility
                         'volume': int(market_data.volume) if market_data.volume else 0,
                         'prev_close': prev_close,
                         'day_high': day_high,
@@ -726,12 +728,14 @@ class TastytradeClient:
                                 
                                 quotes[symbol] = {
                                     'symbol': symbol,
+                                    'price': mark_price,  # Frontend expects 'price' not 'mark'
                                     'mark': mark_price,
                                     'bid': float(bid_price) if bid_price else 0.0,
                                     'ask': float(ask_price) if ask_price else 0.0,
                                     'last': float(last_price) if last_price else mark_price,
                                     'change': float(change) if change else 0.0,
-                                    'change_percent': float(change_percent) if change_percent else 0.0,
+                                    'changePercent': float(change_percent) if change_percent else 0.0,  # Frontend expects camelCase
+                                    'change_percent': float(change_percent) if change_percent else 0.0,  # Keep snake_case for compatibility
                                     'volume': int(volume) if volume else 0,
                                 }
                                 
