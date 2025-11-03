@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 class PositionEnricher:
     """Enriches live positions with chain metadata for intelligent grouping"""
 
+    def __init__(self, db_connection=None):
+        """Initialize enricher with optional database connection for precise matching"""
+        self.db = db_connection
+
     def enrich_positions(
         self,
         live_positions: List[Dict[str, Any]],
@@ -31,22 +35,18 @@ class PositionEnricher:
         """
         unmatched = []
 
-        # Convert chains to a lookup structure for faster matching
-        chain_lookup = self._build_chain_lookup(open_chains)
+        # Build lookup of positions by symbol for database-based matching
+        position_symbol_lookup = self._build_position_symbol_lookup(open_chains)
 
         logger.info(
             f"Enriching {len(live_positions)} positions against {len(open_chains)} open chains. "
-            f"Chain lookup has {len(chain_lookup)} unique (underlying, account) keys"
+            f"Position symbol lookup has {len(position_symbol_lookup)} symbols mapped to chains"
         )
-
-        # Debug: Log all chain lookup keys
-        if chain_lookup:
-            logger.debug(f"Available chain keys: {list(chain_lookup.keys())}")
 
         # Enrich each position
         enriched_count = 0
         for position in live_positions:
-            chain = self._find_matching_chain(position, chain_lookup)
+            chain = self._find_matching_chain_by_symbol(position, position_symbol_lookup)
 
             if chain:
                 position['chain_id'] = chain['chain_id']
@@ -73,78 +73,102 @@ class PositionEnricher:
 
         return live_positions, unmatched
 
-    def _build_chain_lookup(
+    def _build_position_symbol_lookup(
         self,
         open_chains: List[Dict[str, Any]]
-    ) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """
-        Build lookup structure: (underlying, account_number) -> chain_info
+        Build lookup structure: position_symbol -> chain_info
 
-        This is simplified since each account/underlying/strategy combo should have
-        only one OPEN chain (or be a multi-leg strategy where all legs are in same chain)
+        Maps each position symbol in a chain to that chain's metadata.
+        This requires querying order_positions table to get the actual positions in each chain.
+        Falls back to underlying-based matching if database connection not available.
+        """
+        lookup = {}
 
-        For more complex scenarios, we may need to group by strategy_type as well.
+        # If we don't have database connection, fall back to underlying matching
+        if not self.db:
+            logger.warning("No database connection for position symbol lookup. Using underlying-based matching only.")
+            return self._build_underlying_lookup(open_chains)
+
+        # Query database to find which symbols belong to each chain
+        try:
+            # Get all position symbols in each open chain
+            cursor = self.db.cursor()
+            cursor.execute("""
+                SELECT DISTINCT op.symbol, ocm.chain_id
+                FROM order_positions op
+                JOIN order_chain_members ocm ON op.order_id = ocm.order_id
+                WHERE ocm.chain_id IN ({})
+            """.format(','.join('?' * len(open_chains))),
+                [chain.get('chain_id') for chain in open_chains]
+            )
+
+            # Build lookup of symbol -> chain_info
+            chain_map = {chain.get('chain_id'): chain for chain in open_chains}
+
+            for row in cursor.fetchall():
+                symbol = row[0]
+                chain_id = row[1]
+                chain_info = chain_map.get(chain_id)
+
+                if chain_info:
+                    lookup[symbol] = {
+                        'chain_id': chain_id,
+                        'strategy_type': chain_info.get('strategy_type', 'Unknown')
+                    }
+
+            logger.debug(f"Built symbol lookup with {len(lookup)} position symbols mapped to chains")
+
+        except Exception as e:
+            logger.warning(f"Error building position symbol lookup: {e}. Falling back to underlying matching.")
+            lookup = self._build_underlying_lookup(open_chains)
+
+        return lookup
+
+    def _build_underlying_lookup(
+        self,
+        open_chains: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Fallback: Build lookup by underlying symbol only.
+        Note: This will match all positions of the same underlying to one chain!
         """
         lookup = {}
 
         for chain in open_chains:
-            # Normalize values: strip whitespace for reliable matching
             underlying = chain.get('underlying', '').strip()
-            account = chain.get('account_number', '').strip()
-            strategy = chain.get('strategy_type', 'Unknown')
-
-            key = (underlying, account)
-
-            # Log if we're overwriting (shouldn't happen in normal case)
-            if key in lookup:
-                existing_strategy = lookup[key].get('strategy_type', '')
-                logger.warning(
-                    f"Multiple OPEN chains for {underlying} in account {account}: "
-                    f"{existing_strategy} and {strategy}. Using most recent."
-                )
-
-            lookup[key] = {
-                'chain_id': chain.get('chain_id', ''),
-                'strategy_type': strategy,
-                'chain': chain
-            }
+            if underlying:
+                # Store chain by underlying - note: if multiple chains have same underlying,
+                # only the last one is kept (this is the old problematic behavior)
+                lookup[underlying] = {
+                    'chain_id': chain.get('chain_id', ''),
+                    'strategy_type': chain.get('strategy_type', 'Unknown')
+                }
 
         return lookup
 
-    def _find_matching_chain(
+    def _find_matching_chain_by_symbol(
         self,
         position: Dict[str, Any],
-        chain_lookup: Dict[Tuple[str, str], Dict[str, Any]]
+        symbol_lookup: Dict[str, Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
-        Find matching chain for a position.
-
-        Matching criteria:
-        1. Underlying symbol matches
-        2. Account number matches
-        3. Instrument type is consistent (both options or both stock)
+        Find matching chain for a position by exact symbol match.
+        Falls back to underlying match if symbol not found.
         """
-        # Normalize values: strip whitespace for reliable matching
+        symbol = position.get('symbol', '').strip()
         underlying = position.get('underlying', '').strip()
-        account = position.get('account_number', '').strip()
-        instrument_type = position.get('instrument_type', '')
 
-        key = (underlying, account)
+        # Try exact symbol match first (most precise)
+        if symbol in symbol_lookup:
+            return symbol_lookup[symbol]
 
-        if key not in chain_lookup:
-            return None
+        # Fall back to underlying match
+        if underlying in symbol_lookup:
+            return symbol_lookup[underlying]
 
-        chain_info = chain_lookup[key]
-
-        # Additional validation: check instrument type consistency
-        if not self._instrument_types_compatible(position, chain_info['chain']):
-            logger.warning(
-                f"Position {position['symbol']} has incompatible instrument type "
-                f"with chain {chain_info['chain_id']}"
-            )
-            return None
-
-        return chain_info
+        return None
 
     def _instrument_types_compatible(
         self,

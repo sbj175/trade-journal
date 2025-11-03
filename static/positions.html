@@ -61,6 +61,19 @@
                         }
 
                         const groups = new Map();
+
+                        // Debug: Log all SPY positions to check chain_id distribution
+                        const spyPositions = this.filteredPositions.filter(p => this.getUnderlyingSymbol(p) === 'SPY');
+                        if (spyPositions.length > 0) {
+                            const spyChainIds = spyPositions.map(p => p.chain_id);
+                            const uniqueChainIds = [...new Set(spyChainIds)];
+                            console.log(`Found ${spyPositions.length} SPY positions`);
+                            console.log(`Unique chain_ids: ${uniqueChainIds.length}`, uniqueChainIds);
+                            spyPositions.forEach((p, i) => {
+                                console.log(`  SPY[${i}]: ${p.symbol} -> chain_id: ${p.chain_id}`);
+                            });
+                        }
+
                         this.filteredPositions.forEach(position => {
                             const underlying = this.getUnderlyingSymbol(position);
                             if (!underlying || underlying === 'Unknown') {

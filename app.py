@@ -1452,8 +1452,10 @@ async def get_cached_positions(account_number: Optional[str] = None):
             open_chains = []
 
         # Enrich positions with chain metadata for grouping
-        enricher = PositionEnricher()
-        enriched_positions, unmatched = enricher.enrich_positions(positions, open_chains)
+        # Pass database connection for precise symbol-based matching
+        with db.get_connection() as conn:
+            enricher = PositionEnricher(db_connection=conn)
+            enriched_positions, unmatched = enricher.enrich_positions(positions, open_chains)
 
         # Get the last sync timestamp for freshness metadata
         last_sync = db.get_last_sync_timestamp()
@@ -1616,8 +1618,10 @@ async def get_positions(account_number: Optional[str] = None):
             open_chains = []
 
         # Enrich positions with chain metadata
-        enricher = PositionEnricher()
-        enriched_positions, unmatched_positions = enricher.enrich_positions(live_positions, open_chains)
+        # Pass database connection for precise symbol-based matching
+        with db.get_connection() as conn:
+            enricher = PositionEnricher(db_connection=conn)
+            enriched_positions, unmatched_positions = enricher.enrich_positions(live_positions, open_chains)
 
         # Log enrichment results
         enriched_count = sum(1 for p in enriched_positions if 'chain_id' in p)
