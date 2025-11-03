@@ -6,8 +6,8 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "devUrl": "http://localhost:8000/static/positions.html",
-    "frontendDist": "http://localhost:8000/static/positions.html"
+    "devUrl": "http://localhost:8000/",
+    "frontendDist": "http://localhost:8000/"
   },
   "app": {
     "withGlobalTauri": true,
@@ -38,7 +38,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "splash.html"
+      "splash.html",
+      "../static"
     ]
   }
 }

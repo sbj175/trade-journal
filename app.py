@@ -269,7 +269,10 @@ async def root(request: Request):
         # Redirect to login page if not authenticated
         return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
 
-    with open("static/positions.html", "r", encoding="utf-8") as f:
+    # Use absolute path to work in bundled Tauri app and development
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    positions_file = os.path.join(app_dir, "static", "positions.html")
+    with open(positions_file, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
@@ -283,7 +286,10 @@ async def order_chains(request: Request):
         # Redirect to login page if not authenticated
         return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
 
-    with open("static/chains-v2.html", "r", encoding="utf-8") as f:
+    # Use absolute path to work in bundled Tauri app and development
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    chains_file = os.path.join(app_dir, "static", "chains-v2.html")
+    with open(chains_file, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
@@ -311,7 +317,10 @@ async def health_check():
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
     """Serve the login page"""
-    with open("static/login.html", "r", encoding="utf-8") as f:
+    # Use absolute path to work in bundled Tauri app and development
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    login_file = os.path.join(app_dir, "static", "login.html")
+    with open(login_file, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 

@@ -667,7 +667,7 @@ pub fn run() {
                         thread::sleep(Duration::from_secs(3));
                     }
                     
-                    match reqwest::blocking::get("http://localhost:8000/static/positions.html") {
+                    match reqwest::blocking::get("http://localhost:8000/") {
                         Ok(response) => {
                             if response.status().is_success() {
                                 println!("Server is fully ready!");
