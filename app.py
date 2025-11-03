@@ -568,7 +568,8 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                                     total_credit += amount
 
                     if total_debit > 0 or total_credit > 0:
-                        cost_basis_total = abs(total_debit - total_credit)
+                        # Preserve sign: negative = money spent (long), positive = money received (short)
+                        cost_basis_total = total_debit - total_credit
                         if opening_quantity_total > 0:
                             cost_basis_per_unit = cost_basis_total / opening_quantity_total
 
@@ -972,9 +973,10 @@ async def get_order_chains(
                                 realized_pnl += pnl
             
             # Calculate cost basis per contract/share (total amount paid/received for opening transactions)
-            # For long positions: cost = buy debits
-            # For short positions: cost = sell credits (the premium received)
-            cost_basis_total = abs(total_debit - total_credit) if (total_debit > 0 or total_credit > 0) else 0.0
+            # Sign matters: negative = money spent (long), positive = money received (short)
+            # For long positions: cost_basis = -(total_debit - total_credit), i.e., negative cost
+            # For short positions: cost_basis = (total_credit - total_debit), i.e., positive cost
+            cost_basis_total = total_debit - total_credit  # Preserve sign: negative for long, positive for short
 
             # Calculate the total quantity of opening transactions for per-unit calculation
             opening_quantity_total = 0
@@ -983,7 +985,7 @@ async def get_order_chains(
                     if tx.is_opening:
                         opening_quantity_total += abs(tx.quantity)
 
-            # Calculate weighted average cost basis per unit
+            # Calculate weighted average cost basis per unit (preserving sign)
             cost_basis_per_unit = 0.0
             if opening_quantity_total > 0:
                 cost_basis_per_unit = cost_basis_total / opening_quantity_total
