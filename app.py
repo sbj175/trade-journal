@@ -89,10 +89,10 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
             placeholders = ','.join(['?' for _ in position_symbols])
             cursor.execute(f"""
                 SELECT symbol, MIN(executed_at) as earliest_date
-                FROM raw_transactions 
-                WHERE account_number = ? 
+                FROM raw_transactions
+                WHERE account_number = ?
                 AND symbol IN ({placeholders})
-                AND (action LIKE '%BUY_TO_OPEN%' OR action LIKE '%SELL_TO_OPEN%')
+                AND action IN ('BUY_TO_OPEN', 'SELL_TO_OPEN')
                 GROUP BY symbol
             """, [account_number] + position_symbols)
             
@@ -1257,20 +1257,66 @@ async def get_order(order_id: str):
 
 
 @app.get("/api/quotes")
-async def get_market_quotes(symbols: str, refresh: bool = False):
-    """Get current market quotes for symbols"""
+async def get_market_quotes(symbols: str, refresh: bool = False, request: Request = None):
+    """Get current market quotes for symbols (cached or fresh)"""
     try:
         # Parse comma-separated symbols
         symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
-        
+        logger.info(f"GET /api/quotes requested for symbols: {symbol_list}")
+
         if not symbol_list:
             raise HTTPException(status_code=400, detail="No symbols provided")
-        
-        # Initialize Tastytrade client
-        client = TastytradeClient()
-        
+
+        # If not forcing refresh, try cached quotes first (no auth needed)
+        if not refresh:
+            logger.info(f"Attempting to get cached quotes for: {symbol_list}")
+            cached_quotes = db.get_cached_quotes(symbol_list)
+            logger.info(f"Cache lookup returned {len(cached_quotes) if cached_quotes else 0} quotes")
+            if cached_quotes:
+                logger.info(f"Returning {len(cached_quotes)} cached quotes for: {list(cached_quotes.keys())}")
+                # Convert to camelCase for frontend compatibility
+                for symbol, quote_data in cached_quotes.items():
+                    if 'mark' in quote_data and quote_data['mark'] is not None:
+                        quote_data['price'] = quote_data['mark']
+                    if 'change_percent' in quote_data:
+                        quote_data['changePercent'] = quote_data['change_percent']
+                    if 'iv_percentile' in quote_data:
+                        quote_data['ivPercentile'] = quote_data['iv_percentile']
+                logger.info(f"Returning {len(cached_quotes)} quotes with camelCase conversion")
+                return cached_quotes
+            # If cache miss and no refresh requested, still try fresh quotes
+            logger.info(f"Cache miss for symbols: {symbol_list}, attempting fresh quotes")
+
+        # Get session credentials from request for fresh quotes
+        session_id = None
+        username = None
+        password = None
+
+        if request:
+            session_id = request.cookies.get("session_id")
+            if session_id:
+                username, password = auth_manager.get_session_credentials(session_id)
+
+        # Initialize Tastytrade client with session credentials if available, otherwise use env vars
+        if username and password:
+            client = TastytradeClient(username=username, password=password)
+        else:
+            client = TastytradeClient()
+
         # Authenticate with Tastytrade
         if not client.authenticate():
+            # If we can't authenticate for fresh quotes, return cached as fallback
+            cached_quotes = db.get_cached_quotes(symbol_list)
+            if cached_quotes:
+                logger.info(f"Auth failed, returning fallback cached quotes: {list(cached_quotes.keys())}")
+                for symbol, quote_data in cached_quotes.items():
+                    if 'mark' in quote_data and quote_data['mark'] is not None:
+                        quote_data['price'] = quote_data['mark']
+                    if 'change_percent' in quote_data:
+                        quote_data['changePercent'] = quote_data['change_percent']
+                    if 'iv_percentile' in quote_data:
+                        quote_data['ivPercentile'] = quote_data['iv_percentile']
+                return cached_quotes
             raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
         
         # Clear cache if refresh requested
@@ -1292,12 +1338,10 @@ async def get_market_quotes(symbols: str, refresh: bool = False):
             logger.warning("No quotes available - streaming data unavailable")
         
         return quotes
-        
+
     except Exception as e:
         logger.error(f"Error fetching quotes from Tastytrade: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch quotes: {str(e)}")
-
-
 
 
 @app.get("/api/accounts")
@@ -1497,10 +1541,11 @@ async def get_positions(account_number: Optional[str] = None):
         enriched_positions, unmatched_positions = enricher.enrich_positions(live_positions, open_chains)
 
         # If positions are unmatched, trigger background sync
-        if unmatched_positions:
-            logger.info(f"Found {len(unmatched_positions)} unmatched positions: {unmatched_positions}")
-            logger.info("Triggering background incremental sync to update chain data")
-            asyncio.create_task(background_incremental_sync())
+        # NOTE: Commenting out to improve responsiveness - background sync will happen on chains page
+        # if unmatched_positions:
+        #     logger.info(f"Found {len(unmatched_positions)} unmatched positions: {unmatched_positions}")
+        #     logger.info("Triggering background incremental sync to update chain data")
+        #     asyncio.create_task(background_incremental_sync())
 
         # Group positions by account (matching the expected frontend format)
         positions_by_account = {}
@@ -2547,8 +2592,8 @@ async def websocket_quotes(websocket: WebSocket):
                         break
                     
                     if subscribed_symbols:
-                        # Clear cache to get fresh quotes
-                        client.clear_quote_cache()
+                        # Don't clear cache - let the 30-second TTL work naturally
+                        # This ensures we use cached quotes when available and only fetch fresh data when cache expires
                         quotes = client.get_quotes(subscribed_symbols)
                         
                         # Cache quotes in database for persistence

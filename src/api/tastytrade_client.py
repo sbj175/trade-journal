@@ -524,7 +524,8 @@ class TastytradeClient:
                     # Debug: Log all available fields for the first symbol
                     if symbol == market_data_list[0].symbol:
                         all_fields = [attr for attr in dir(market_data) if not attr.startswith('_')]
-                        logger.info(f"Available fields for {symbol}: {all_fields}")
+                        # Removed wasteful logging of all Pydantic model fields
+                        # logger.info(f"Available fields for {symbol}: {all_fields}")
                     
                     quote_data = {
                         'symbol': symbol,
@@ -560,7 +561,8 @@ class TastytradeClient:
                 # Try to get market metrics (IV/IVR) for equity symbols
                 if symbol_types['equities']:
                     try:
-                        logger.info(f"Attempting to fetch market metrics for {len(symbol_types['equities'])} equity symbols")
+                        # Removed redundant logging - happens every 5 seconds in WebSocket loop
+                        # logger.info(f"Attempting to fetch market metrics for {len(symbol_types['equities'])} equity symbols")
                         metrics = self.get_market_metrics(symbol_types['equities'])
                         
                         for symbol, metric_data in metrics.items():
@@ -1016,8 +1018,9 @@ class TastytradeClient:
                             data = metric_data[0]
                             
                             # Debug: Log all available fields
-                            all_fields = [attr for attr in dir(data) if not attr.startswith('_')]
-                            logger.info(f"Market metrics fields for {symbol}: {all_fields}")
+                            # REMOVED: Wasteful logging of 60+ Pydantic introspection fields every 5 seconds
+                            # all_fields = [attr for attr in dir(data) if not attr.startswith('_')]
+                            # logger.info(f"Market metrics fields for {symbol}: {all_fields}")
                             
                             # Extract IV-related fields with comprehensive search
                             iv = None
