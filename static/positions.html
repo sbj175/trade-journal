@@ -786,7 +786,7 @@
                     return 'Max percent of max loss';
                 },
                 
-                // Comments
+                // Comments - now per-position/chain instead of per-underlying
                 loadComments() {
                     try {
                         this.positionComments = JSON.parse(localStorage.getItem('positionComments') || '{}');
@@ -794,14 +794,27 @@
                         this.positionComments = {};
                     }
                 },
-                
-                getPositionComment(underlying) {
-                    const key = `${underlying}_${this.selectedAccount || 'default'}`;
+
+                getCommentKey(group) {
+                    // Use chain_id if available (enriched positions), otherwise use symbol + account
+                    if (group.chainId && group.chainId !== 'unenriched') {
+                        return `chain_${group.chainId}`;
+                    }
+                    // For unenriched positions, use symbol + expiration + account to be unique
+                    const symbol = group.underlying;
+                    const account = this.selectedAccount || 'default';
+                    // Find first position's expiration in this group
+                    const expiration = group.positions[0]?.expires_at || group.positions[0]?.expiration || 'noexp';
+                    return `pos_${symbol}_${expiration}_${account}`;
+                },
+
+                getPositionComment(group) {
+                    const key = this.getCommentKey(group);
                     return this.positionComments[key] || '';
                 },
-                
-                updatePositionComment(underlying, value) {
-                    const key = `${underlying}_${this.selectedAccount || 'default'}`;
+
+                updatePositionComment(group, value) {
+                    const key = this.getCommentKey(group);
                     this.positionComments[key] = value;
                     localStorage.setItem('positionComments', JSON.stringify(this.positionComments));
                 },
@@ -1261,8 +1274,8 @@
                                 <div class="header-stat-column">
                                     <div class="text-slate-400 text-xs text-left">Comments</div>
                                     <input type="text"
-                                           :value="getPositionComment(group.underlying)"
-                                           @input="updatePositionComment(group.underlying, $event.target.value)"
+                                           :value="getPositionComment(group)"
+                                           @input="updatePositionComment(group, $event.target.value)"
                                            @click.stop
                                            class="bg-transparent text-slate-100 text-sm border-none outline-none focus:bg-slate-700/30 rounded px-2 py-1 w-full"
                                            placeholder="">
