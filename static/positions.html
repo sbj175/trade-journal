@@ -336,15 +336,25 @@
                     }
                 },
                 
+                getPositionSymbol(position) {
+                    // For options, return the full symbol; for equities, return the stock symbol
+                    if (position.instrument_type === 'EQUITY' || !position.instrument_type) {
+                        return this.getUnderlyingSymbol(position);
+                    }
+                    // For options, use the full symbol
+                    return position.symbol;
+                },
+
                 requestLiveQuotes() {
                     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-                    
-                    const underlyings = [...new Set(this.filteredPositions.map(p => this.getUnderlyingSymbol(p)).filter(s => s && s !== 'Unknown'))];
-                    
-                    if (underlyings.length > 0) {
-                        console.log('Requesting quotes for:', underlyings);
+
+                    // Subscribe to all position symbols (both equities and options)
+                    const symbols = [...new Set(this.filteredPositions.map(p => this.getPositionSymbol(p)).filter(s => s && s !== 'Unknown'))];
+
+                    if (symbols.length > 0) {
+                        console.log('Requesting quotes for:', symbols);
                         this.ws.send(JSON.stringify({
-                            subscribe: underlyings
+                            subscribe: symbols
                         }));
                     }
                 },
@@ -520,16 +530,67 @@
                     return hasCall && hasPut;
                 },
                 calculateLiveMarketValue(position) {
-                    // Use stored market_value which already contains correct option pricing
-                    // NOTE: WebSocket quotes are for underlying only, not individual option contracts
-                    // So we use the pre-calculated market_value from position data
-                    return position.market_value || 0;
+                    // Force reactivity by accessing quoteUpdateCounter
+                    this.quoteUpdateCounter;
+
+                    // Market value is stored in the database with correct sign:
+                    // Long positions: positive
+                    // Short positions: negative
+                    let marketValue = position.market_value || 0;
+
+                    // Check if this is an equity/stock position (not options)
+                    const isEquity = !position.instrument_type ||
+                                   position.instrument_type === 'EQUITY' ||
+                                   position.instrument_type.includes('EQUITY');
+
+                    // For equity positions, update with live quote if available
+                    if (isEquity) {
+                        const underlying = this.getUnderlyingSymbol(position);
+                        const quote = this.underlyingQuotes[underlying];
+                        if (quote && quote.price) {
+                            // Stock: market_value = price × quantity (NO multiplier for stocks)
+                            // Apply correct sign based on position direction
+                            const absValue = quote.price * position.quantity;
+                            marketValue = position.quantity_direction === 'Short' ? -absValue : absValue;
+                        }
+                    } else {
+                        // For option positions, update with live quote if available
+                        const optionSymbol = position.symbol;
+                        const optionQuote = this.underlyingQuotes[optionSymbol];
+                        if (optionQuote && optionQuote.mark) {
+                            // Options: market_value = mark price * quantity * 100 (options are quoted per share, 100 shares per contract)
+                            const absValue = optionQuote.mark * position.quantity * 100;
+                            marketValue = position.quantity_direction === 'Short' ? -absValue : absValue;
+                        }
+                    }
+
+                    return marketValue;
                 },
                 calculateLivePositionPnL(position) {
-                    // Use live market value minus cost basis
+                    // Calculate unrealized P&L as the gain/loss from current price vs entry price
+                    // Formula: P&L = |CurrentPrice - EntryPrice| × Quantity
+                    // Which equals: |MarketValue| - |CostBasis|
+                    //
+                    // Long: (current_price - entry_price) × qty = |MV| - |CB|
+                    // Short: (entry_price - current_price) × qty = |CB| - |MV|
+                    //
+                    // For display:
+                    // Long: positive when profitable (current > entry)
+                    // Short: negative when current > entry (losing money), positive when current < entry
+
                     const liveMarketValue = this.calculateLiveMarketValue(position);
                     const costBasis = position.cost_basis || 0;
-                    return liveMarketValue - costBasis;
+
+                    const absMarketValue = Math.abs(liveMarketValue);
+                    const absCostBasis = Math.abs(costBasis);
+
+                    if (position.quantity_direction === 'Short') {
+                        // Short: P&L = entry_price - current_price = |CB| - |MV|
+                        return absCostBasis - absMarketValue;
+                    } else {
+                        // Long: P&L = current_price - entry_price = |MV| - |CB|
+                        return absMarketValue - absCostBasis;
+                    }
                 },
                 getGroupNetLiqWithLiveQuotes(positions) {
                     // Force reactivity by accessing quoteUpdateCounter
