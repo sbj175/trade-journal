@@ -320,26 +320,140 @@
                     }).format(value);
                 },
                 
-                // Position calculation stubs (minimal for now)
-                getGroupCostBasis(positions) { return 0; },
-                getGroupNetLiq(positions) { return 0; },
-                getGroupPnL(positions) { return 0; },
-                getGroupPnLPercent(positions) { return null; },
-                getGroupDaysOpen(positions) { return null; },
-                getGroupMaxPercent(positions) { return '—'; },
-                getMinDTE(positions) { return null; },
-                getStrategyLabel(positions) { return 'Strategy'; },
-                shouldShowMaxPercent(positions) { return false; },
-                shouldShowPriceIndicator(positions) { return false; },
-                getPricePositionIndicator(positions, underlying) { return ''; },
-                getUnderlyingQuote(underlying) { return null; },
-                getUnderlyingIV(underlying) { return null; },
-                getOptionType(position) { return 'Option'; },
-                getSignedQuantity(position) { return position.quantity || 0; },
-                getExpirationDate(position) { return position.expires_at || ''; },
-                getStrikePrice(position) { return position.strike_price || ''; },
-                getDTE(position) { return null; },
-                getLivePnLPercent(position) { return 0; },
+                // Position calculation functions
+                getGroupCostBasis(positions) {
+                    if (!Array.isArray(positions)) return 0;
+                    return positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
+                },
+                getGroupNetLiq(positions) {
+                    if (!Array.isArray(positions)) return 0;
+                    return positions.reduce((sum, pos) => sum + (pos.market_value || 0), 0);
+                },
+                getGroupPnL(positions) {
+                    if (!Array.isArray(positions)) return 0;
+                    return positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+                },
+                getGroupPnLPercent(positions) {
+                    if (!Array.isArray(positions) || positions.length === 0) return null;
+                    const totalCostBasis = positions.reduce((sum, pos) => sum + Math.abs(pos.cost_basis || 0), 0);
+                    const totalPnL = this.getGroupPnL(positions);
+                    if (totalCostBasis === 0) return null;
+                    return ((totalPnL / totalCostBasis) * 100).toFixed(2);
+                },
+                getGroupDaysOpen(positions) {
+                    if (!Array.isArray(positions) || positions.length === 0) return null;
+                    const firstPos = positions[0];
+                    if (!firstPos.opened_at) return null;
+                    const openedDate = new Date(firstPos.opened_at);
+                    const now = new Date();
+                    const days = Math.floor((now - openedDate) / (1000 * 60 * 60 * 24));
+                    return days > 0 ? days : 0;
+                },
+                getGroupMaxPercent(positions) {
+                    // For Iron Condor style positions, calculate max profit percentage
+                    const totalCostBasis = positions.reduce((sum, pos) => sum + Math.abs(pos.cost_basis || 0), 0);
+                    if (totalCostBasis === 0) return '—';
+                    const totalPnL = this.getGroupPnL(positions);
+                    const maxProfit = positions.reduce((sum, pos) => sum + (pos.market_value || 0), 0);
+                    if (maxProfit >= totalPnL) return '—';
+                    const maxPercent = ((Math.abs(maxProfit) / totalCostBasis) * 100).toFixed(1);
+                    return maxPercent + '%';
+                },
+                getMinDTE(positions) {
+                    if (!Array.isArray(positions) || positions.length === 0) return null;
+                    let minDTE = null;
+                    for (const pos of positions) {
+                        if (pos.expires_at) {
+                            const expDate = new Date(pos.expires_at);
+                            const now = new Date();
+                            const dte = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
+                            if (minDTE === null || dte < minDTE) {
+                                minDTE = dte;
+                            }
+                        }
+                    }
+                    return minDTE;
+                },
+                getStrategyLabel(positions) {
+                    if (!Array.isArray(positions) || positions.length === 0) return 'Unknown';
+                    // Check if positions include both calls and puts (Iron Condor style)
+                    const hasCall = positions.some(p => p.option_type === 'Call' || p.symbol.includes('C'));
+                    const hasPut = positions.some(p => p.option_type === 'Put' || p.symbol.includes('P'));
+                    if (hasCall && hasPut) return 'Spread';
+                    if (hasCall) return 'Call';
+                    if (hasPut) return 'Put';
+                    return 'Stock';
+                },
+                shouldShowMaxPercent(positions) {
+                    if (!Array.isArray(positions)) return false;
+                    // Show max percent for spreads and similar limited-risk strategies
+                    const hasCall = positions.some(p => p.option_type === 'Call' || p.symbol.includes('C'));
+                    const hasPut = positions.some(p => p.option_type === 'Put' || p.symbol.includes('P'));
+                    return hasCall && hasPut;
+                },
+                shouldShowPriceIndicator(positions) {
+                    if (!Array.isArray(positions)) return false;
+                    // Show price indicator for spreads (has both calls and puts)
+                    const hasCall = positions.some(p => p.option_type === 'Call' || p.symbol.includes('C'));
+                    const hasPut = positions.some(p => p.option_type === 'Put' || p.symbol.includes('P'));
+                    return hasCall && hasPut;
+                },
+                getPricePositionIndicator(positions, underlying) {
+                    if (!Array.isArray(positions)) return '';
+                    const quote = this.getUnderlyingQuote(underlying);
+                    if (!quote) return '';
+
+                    const calls = positions.filter(p => p.option_type === 'Call' || p.symbol.includes('C'));
+                    const puts = positions.filter(p => p.option_type === 'Put' || p.symbol.includes('P'));
+
+                    if (calls.length === 0 || puts.length === 0) return '';
+
+                    const callStrike = Math.max(...calls.map(p => p.strike_price || 0).filter(x => x > 0));
+                    const putStrike = Math.min(...puts.map(p => p.strike_price || 0).filter(x => x > 0));
+                    const price = quote.price || 0;
+
+                    if (price < putStrike) return '<span class="price-below">Below</span>';
+                    if (price > callStrike) return '<span class="price-above">Above</span>';
+                    return '<span class="price-between">Between</span>';
+                },
+                getUnderlyingQuote(underlying) {
+                    return this.underlyingQuotes[underlying] || null;
+                },
+                getUnderlyingIV(underlying) {
+                    const quote = this.getUnderlyingQuote(underlying);
+                    if (!quote || !quote.iv) return null;
+                    return (quote.iv * 100).toFixed(1);
+                },
+                getOptionType(position) {
+                    if (position.option_type) return position.option_type.charAt(0).toUpperCase();
+                    if (position.symbol.includes('C')) return 'C';
+                    if (position.symbol.includes('P')) return 'P';
+                    return '—';
+                },
+                getSignedQuantity(position) {
+                    const qty = position.quantity || 0;
+                    if (position.quantity_direction === 'Short') return -qty;
+                    return qty;
+                },
+                getExpirationDate(position) {
+                    if (!position.expires_at) return '';
+                    const date = new Date(position.expires_at);
+                    return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+                },
+                getStrikePrice(position) {
+                    return position.strike_price ? position.strike_price.toFixed(2) : '';
+                },
+                getDTE(position) {
+                    if (!position.expires_at) return null;
+                    const expDate = new Date(position.expires_at);
+                    const now = new Date();
+                    const dte = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
+                    return dte > 0 ? dte : 0;
+                },
+                getLivePnLPercent(position) {
+                    if (!position.cost_basis || position.cost_basis === 0) return 0;
+                    return ((position.unrealized_pnl || 0) / Math.abs(position.cost_basis) * 100).toFixed(1);
+                },
                 
                 // Comments
                 loadComments() {
