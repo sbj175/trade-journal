@@ -423,7 +423,12 @@
                 getUnderlyingIV(underlying) {
                     const quote = this.getUnderlyingQuote(underlying);
                     if (!quote || !quote.iv) return null;
-                    return (quote.iv * 100).toFixed(1);
+                    return quote.iv.toFixed(1);  // IV is already in percentage form from TT
+                },
+                getUnderlyingIVR(underlying) {
+                    const quote = this.getUnderlyingQuote(underlying);
+                    if (!quote || !quote.ivr) return null;
+                    return (quote.ivr * 100).toFixed(1);  // IVR is 0-1 range, convert to percentage
                 },
                 getOptionType(position) {
                     if (position.option_type) return position.option_type.charAt(0).toUpperCase();
@@ -769,10 +774,10 @@
                                        :class="{ 'rotate-90': expanded }"></i>
                                     <div class="flex flex-col">
                                         <h3 class="text-lg font-semibold text-slate-100" x-text="group.displayKey"></h3>
-                                        <span x-show="getUnderlyingIV(group.underlying) !== null"
+                                        <span x-show="getUnderlyingIVR(group.underlying) !== null"
                                               class="text-sm -mt-1"
-                                              :class="parseFloat(getUnderlyingIV(group.underlying)) >= 30 ? 'font-bold text-yellow-400' : (parseFloat(getUnderlyingIV(group.underlying)) >= 20 ? 'font-normal text-white' : 'font-normal text-slate-400')"
-                                              x-text="getUnderlyingIV(group.underlying)"></span>
+                                              :class="parseFloat(getUnderlyingIVR(group.underlying)) >= 50 ? 'font-bold text-yellow-400' : (parseFloat(getUnderlyingIVR(group.underlying)) >= 30 ? 'font-normal text-white' : 'font-normal text-slate-400')"
+                                              x-text="getUnderlyingIVR(group.underlying) + '%'"></span>
                                     </div>
                                 </div>
                                 
