@@ -2585,8 +2585,9 @@ async def websocket_quotes(websocket: WebSocket):
                             subscribed_symbols = symbols
                             logger.info(f"WebSocket subscribing to quotes for: {symbols}")
                             
-                            # Send initial quotes
+                            # Send initial quotes (force fresh to populate cache)
                             if subscribed_symbols:
+                                client.clear_quote_cache()  # Clear on first subscription to get fresh data
                                 quotes = client.get_quotes(subscribed_symbols)
                                 await websocket.send_json({
                                     "type": "quotes",
