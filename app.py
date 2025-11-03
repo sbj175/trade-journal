@@ -1424,26 +1424,56 @@ async def get_cached_positions(account_number: Optional[str] = None):
     """Get cached positions immediately without sync - for fast loading"""
     try:
         positions = db.get_open_positions()
-        
+
+        if account_number:
+            positions = [p for p in positions if p.get('account_number') == account_number]
+
+        # Get all open chains for enrichment matching
+        open_chains = []
+        try:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    SELECT
+                        chain_id, underlying, account_number, strategy_type, chain_status
+                    FROM order_chains
+                    WHERE chain_status = 'OPEN'
+                """
+                params = []
+                if account_number:
+                    query += " AND account_number = ?"
+                    params.append(account_number)
+
+                cursor.execute(query, params)
+                for row in cursor.fetchall():
+                    open_chains.append(dict(row))
+        except Exception as e:
+            logger.warning(f"Could not fetch chains for cached positions enrichment: {e}")
+            open_chains = []
+
+        # Enrich positions with chain metadata for grouping
+        enricher = PositionEnricher()
+        enriched_positions, unmatched = enricher.enrich_positions(positions, open_chains)
+
         # Get the last sync timestamp for freshness metadata
         last_sync = db.get_last_sync_timestamp()
-        
+
         # Calculate data age
         data_age_minutes = None
         if last_sync:
             data_age_minutes = (datetime.now() - last_sync).total_seconds() / 60
-            
+
         # Group positions by account (matching the expected frontend format)
         positions_by_account = {}
-        for position in positions:
+        for position in enriched_positions:
             account = position.get('account_number', 'unknown')
             if account not in positions_by_account:
                 positions_by_account[account] = []
             positions_by_account[account].append(position)
-        
+
         # Get cached quotes for immediate display
         cached_quotes = db.get_cached_quotes()
-        
+
         return {
             "positions": positions_by_account,
             "quotes": cached_quotes,
