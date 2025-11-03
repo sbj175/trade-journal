@@ -424,12 +424,35 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
             
             cursor.execute(cache_query, cache_params)
             latest_cache = cursor.fetchone()[0]
-            
+
             if not latest_cache:
                 return False
-            
+
             # Cache is fresh if it's newer than the latest transaction
-            return latest_cache >= latest_transaction
+            # With a 2-minute grace period: allow slightly stale cache if it's within 2 minutes
+            # This prevents expensive full reprocessing of 10k+ transactions for small updates
+            # Background incremental sync will update the cache in the background
+            from datetime import datetime, timedelta
+            cache_staleness = (datetime.fromisoformat(latest_transaction) - datetime.fromisoformat(latest_cache)).total_seconds() if isinstance(latest_transaction, str) and isinstance(latest_cache, str) else 0
+            grace_period_seconds = 120  # 2 minute grace period
+
+            if latest_cache >= latest_transaction:
+                return True  # Cache is current
+
+            # Allow cache to be used even if slightly stale (within grace period)
+            # to avoid expensive full reprocessing
+            if isinstance(latest_transaction, str) and isinstance(latest_cache, str):
+                try:
+                    cache_time = datetime.fromisoformat(latest_cache)
+                    transaction_time = datetime.fromisoformat(latest_transaction)
+                    staleness = (transaction_time - cache_time).total_seconds()
+                    if staleness <= grace_period_seconds:
+                        logger.info(f"Cache is {staleness:.0f}s stale (within {grace_period_seconds}s grace period), using cached data")
+                        return True
+                except:
+                    pass
+
+            return False
             
     except Exception as e:
         logger.error(f"Error checking cache freshness: {e}")
