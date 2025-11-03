@@ -4,7 +4,9 @@ Enriches positions with chain metadata (chain_id, strategy_type) by matching the
 """
 
 from typing import List, Tuple, Dict, Any, Optional
-from loguru import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PositionEnricher:
