@@ -1557,9 +1557,31 @@ async def get_positions(account_number: Optional[str] = None):
         if account_number:
             live_positions = [p for p in live_positions if p.get('account_number') == account_number]
 
-        # Get all open chains for enrichment matching
-        all_open_chains = order_manager.get_order_chains(account_number=account_number)
-        open_chains = [c for c in all_open_chains if c.get('chain_status') == 'OPEN']
+        # Get all open chains directly from database for enrichment matching
+        # This bypasses order_manager which may apply filters or caching
+        import json
+        open_chains = []
+        try:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    SELECT
+                        chain_id, underlying, account_number, strategy_type, chain_status
+                    FROM order_chains
+                    WHERE chain_status = 'OPEN'
+                """
+                params = []
+                if account_number:
+                    query += " AND account_number = ?"
+                    params.append(account_number)
+
+                cursor.execute(query, params)
+                for row in cursor.fetchall():
+                    open_chains.append(dict(row))
+                logger.info(f"Fetched {len(open_chains)} open chains for enrichment")
+        except Exception as e:
+            logger.warning(f"Could not fetch chains for enrichment: {e}. Continuing without enrichment.")
+            open_chains = []
 
         # Enrich positions with chain metadata
         enricher = PositionEnricher()

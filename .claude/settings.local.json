@@ -51,7 +51,11 @@
       "Bash(cargo:*)",
       "Bash(kill:*)",
       "Bash(python:*)",
-      "Bash(time curl:*)"
+      "Bash(time curl:*)",
+      "Bash(pgrep:*)",
+      "Bash(tee:*)",
+      "Bash(lsof:*)",
+      "Bash(awk:*)"
     ],
     "deny": []
   }

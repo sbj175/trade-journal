@@ -1,0 +1,70 @@
+@startuml Position Balance Calculation Logic
+!theme plain
+skinparam defaultFontSize 10
+
+start
+
+:Receive List of Orders;
+
+:Initialize position_balances = {};
+
+while (For each order) is (more orders)
+  
+  while (For each position in order) is (more positions)
+    
+    :Create position_key\n(symbol_strike_expiration);
+    
+    if (position_key not in balances?) then (yes)
+      :Initialize balance[key] = 0;
+    else (no)
+    endif
+    
+    :Get absolute quantity;
+    
+    partition "**Opening Action Processing**" {
+      if (Has opening_action?) then (yes)
+        if (SELL_TO_OPEN?) then (yes)
+          :balance += quantity;
+          note right: Short position
+        elseif (BUY_TO_OPEN?) then (yes)
+          :balance -= quantity;
+          note right: Long position
+        elseif (BUY_TO_CLOSE?) then (yes)
+          :balance -= quantity;
+          note right: Close short
+        elseif (SELL_TO_CLOSE?) then (yes)
+          :balance += quantity;
+          note right: Close long
+        endif
+      else (no)
+      endif
+    }
+    
+    partition "**Closing Action Processing**" {
+      if (Has closing_action AND\ncontains 'EXPIRED'?) then (yes)
+        :Get current_balance;
+        
+        if (current_balance > 0?) then (yes)
+          :balance -= quantity;
+          note right: Close short position
+        elseif (current_balance < 0?) then (yes)
+          :balance += quantity;
+          note right: Close long position
+        else (zero)
+          :No change;
+          note right: Already closed
+        endif
+      else (no)
+      endif
+    }
+    
+  endwhile (no more positions)
+  
+endwhile (no more orders)
+
+:Return position_balances;
+note right: BUG FOCUS: During reprocessing,\nare Order objects created with\ncorrect position data?
+
+stop
+
+@enduml

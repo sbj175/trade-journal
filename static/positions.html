@@ -24,6 +24,7 @@
                 accounts: [],
                 accountBalances: {},
                 underlyingQuotes: {},
+                quoteUpdateCounter: 0,  // Increment this whenever quotes change to trigger re-renders
                 positionComments: {},
                 selectedAccount: '',
                 selectedInstrumentType: '',
@@ -54,53 +55,77 @@
                 },
                 
                 get groupedPositions() {
-                    if (this.isLoading || !this.allPositions || this.allPositions.length === 0) {
-                        return [];
-                    }
-
-                    const groups = new Map();
-                    this.filteredPositions.forEach(position => {
-                        const underlying = this.getUnderlyingSymbol(position);
-                        if (!underlying || underlying === 'Unknown') return;
-
-                        // Group by (underlying, chain_id, strategy_type) for intelligent multi-chain display
-                        // If position has chain_id (enriched), use it; otherwise group separately as "unenriched"
-                        const chainId = position.chain_id || 'unenriched';
-                        const strategyType = position.strategy_type || 'Unknown';
-
-                        // Create a unique key combining underlying, chain_id, and strategy
-                        const groupKey = `${underlying}|${chainId}|${strategyType}`;
-
-                        // Create a display key that includes strategy for ambiguous underlyings
-                        const displayKey = chainId !== 'unenriched' ? `${underlying} (${strategyType})` : underlying;
-
-                        if (!groups.has(groupKey)) {
-                            groups.set(groupKey, {
-                                displayKey,
-                                underlying,
-                                chainId,
-                                strategyType,
-                                positions: []
-                            });
+                    try {
+                        if (this.isLoading || !this.allPositions || this.allPositions.length === 0) {
+                            return [];
                         }
-                        groups.get(groupKey).positions.push(position);
-                    });
 
-                    // Convert to array and sort by underlying, then by chain_id
-                    const result = Array.from(groups.values())
-                        .sort((a, b) => {
+                        const groups = new Map();
+                        this.filteredPositions.forEach(position => {
+                            const underlying = this.getUnderlyingSymbol(position);
+                            if (!underlying || underlying === 'Unknown') {
+                                return;
+                            }
+
+                            // Group strategy:
+                            // - Enriched positions (with chain_id): group by chain_id
+                            // - Unenriched positions (without chain_id): group by expiration date
+                            const chainId = position.chain_id;
+                            const strategyType = position.strategy_type || 'Unknown';
+
+                            let groupKey;
+                            let displayKey;
+
+                            if (chainId) {
+                                // Enriched position - group by chain_id and strategy
+                                groupKey = `${underlying}|${chainId}|${strategyType}`;
+                                displayKey = underlying;  // Don't include strategy in header; show in indicator area
+                            } else {
+                                // Unenriched position - group by expiration only
+                                const expiration = position.expires_at || position.expiration || 'Unknown';
+                                groupKey = `${underlying}|unenriched|${expiration}`;
+                                displayKey = underlying;
+                            }
+
+                            if (!groups.has(groupKey)) {
+                                groups.set(groupKey, {
+                                    displayKey,
+                                    underlying,
+                                    chainId: chainId || 'unenriched',
+                                    strategyType,
+                                    positions: []
+                                });
+                            }
+                            groups.get(groupKey).positions.push(position);
+                        });
+
+                        // Convert to array and sort
+                        const result = Array.from(groups.values()).sort((a, b) => {
+                            // Sort by underlying first
                             if (a.underlying !== b.underlying) {
                                 return a.underlying.localeCompare(b.underlying);
                             }
-                            // Secondary sort by chain_id (unenriched last)
-                            if (a.chainId === 'unenriched') return 1;
-                            if (b.chainId === 'unenriched') return -1;
-                            return (a.chainId || '').localeCompare(b.chainId || '');
+                            // Then by whether enriched or not
+                            if ((a.chainId === 'unenriched') !== (b.chainId === 'unenriched')) {
+                                return a.chainId === 'unenriched' ? 1 : -1;
+                            }
+                            // Then by chain_id/expiration
+                            const aKey = a.positions[0]?.chain_id || a.positions[0]?.expires_at || '';
+                            const bKey = b.positions[0]?.chain_id || b.positions[0]?.expires_at || '';
+                            return (aKey || '').localeCompare(bKey || '');
                         });
 
-                    return result;
+                        return result;
+                    } catch (error) {
+                        console.error('Error in groupedPositions:', error);
+                        return [];
+                    }
                 },
-                
+
+                get underlyings() {
+                    return [...new Set(this.filteredPositions.map(p => this.getUnderlyingSymbol(p)).filter(s => s && s !== 'Unknown'))];
+                },
+
                 // Initialize
                 async init() {
                     console.log('Initializing positions page...');
@@ -121,9 +146,11 @@
 
                     this.loadComments();
                     await this.fetchAccounts();
+                    this.loadFilterPreferences();
                     await this.loadAccountBalances();
-                    await this.fetchPositions();
-                    this.initializeWebSocket();
+                    await this.fetchPositions();  // This calls applyFilters() internally
+                    await this.loadCachedQuotes();  // Load cached quotes immediately (from previous session)
+                    this.initializeWebSocket();  // WebSocket will stream fresh quotes
                 },
                 
 
@@ -198,7 +225,63 @@
                         console.error('Failed to load account balances:', error);
                     }
                 },
-                
+
+                async loadCachedQuotes() {
+                    try {
+                        // Get unique underlying symbols from positions
+                        const underlyings = [...new Set(this.filteredPositions.map(p => this.getUnderlyingSymbol(p)).filter(s => s && s !== 'Unknown'))];
+
+                        console.log('loadCachedQuotes: filteredPositions.length =', this.filteredPositions.length);
+                        console.log('loadCachedQuotes: underlyings =', underlyings);
+
+                        if (underlyings.length === 0) {
+                            console.log('No underlyings to load quotes for');
+                            return;
+                        }
+
+                        // Fetch cached quotes for all underlyings
+                        const url = `/api/quotes?symbols=${encodeURIComponent(underlyings.join(','))}`;
+                        console.log('loadCachedQuotes: fetching', url);
+
+                        const response = await fetch(url);
+                        console.log('*** loadCachedQuotes: response status =', response.status);
+                        console.log('*** loadCachedQuotes: response.ok =', response.ok);
+
+                        if (response.ok) {
+                            const quotes = await response.json();
+                            console.log('*** loadCachedQuotes: received quotes from API:', quotes);
+                            console.log('*** loadCachedQuotes: quotes is type:', typeof quotes);
+                            console.log('*** loadCachedQuotes: quotes keys:', Object.keys(quotes));
+
+                            if (Object.keys(quotes).length === 0) {
+                                console.warn('*** loadCachedQuotes: API returned empty quotes object!');
+                                return;
+                            }
+
+                            // Store quotes using direct property assignment for Alpine.js reactivity
+                            console.log('*** loadCachedQuotes: BEFORE assignment, this.underlyingQuotes =', this.underlyingQuotes);
+                            for (const [symbol, quoteData] of Object.entries(quotes)) {
+                                if (quoteData && typeof quoteData === 'object') {
+                                    this.underlyingQuotes[symbol] = quoteData;
+                                }
+                            }
+                            console.log('*** loadCachedQuotes: AFTER assignment, this.underlyingQuotes =', this.underlyingQuotes);
+                            console.log('*** loadCachedQuotes: AFTER assignment, keys =', Object.keys(this.underlyingQuotes));
+
+                            this.lastQuoteUpdate = new Date().toLocaleTimeString();
+                            this.quoteUpdateCounter++;
+
+                            console.log(`*** loadCachedQuotes: Successfully loaded ${Object.keys(quotes).length} cached quotes`);
+                            console.log('*** loadCachedQuotes: underlyingQuotes now contains:', Object.keys(this.underlyingQuotes).join(', '));
+                        } else {
+                            const errorText = await response.text();
+                            console.warn('*** Failed to load cached quotes: status=' + response.status + ', response=' + errorText);
+                        }
+                    } catch (error) {
+                        console.error('Error loading cached quotes:', error);
+                    }
+                },
+
                 initializeWebSocket() {
                     try {
                         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -220,13 +303,16 @@
                                     console.log('WebSocket connection confirmed, requesting quotes...');
                                     this.requestLiveQuotes();
                                 } else if (message.type === 'quotes' && message.data) {
+                                    // Update quotes using direct property assignment for Alpine.js reactivity
                                     for (const [symbol, quoteData] of Object.entries(message.data)) {
                                         if (quoteData && typeof quoteData === 'object') {
                                             this.underlyingQuotes[symbol] = quoteData;
                                         }
                                     }
+                                    // Increment counter to force re-render
+                                    this.quoteUpdateCounter++;
                                     this.lastQuoteUpdate = new Date().toLocaleTimeString();
-                                    console.log('Updated quotes for:', Object.keys(message.data));
+                                    console.log('Updated quotes for:', Object.keys(message.data).filter(s => message.data[s] && typeof message.data[s] === 'object'), '| quoteUpdateCounter:', this.quoteUpdateCounter);
                                 } else if (message.error) {
                                     console.error('WebSocket error from server:', message.error);
                                 }
@@ -265,12 +351,12 @@
                 
                 // Filtering
                 applyFilters() {
-                    console.log('Applying filters with selectedAccount:', this.selectedAccount);
-                    console.log('All positions count:', this.allPositions.length);
-                    
+                    console.log('=== applyFilters called ===');
+                    console.log('selectedAccount:', this.selectedAccount);
+                    console.log('allPositions.length:', this.allPositions.length);
+
                     this.filteredPositions = this.allPositions.filter(position => {
                         if (this.selectedAccount && position.account_number !== this.selectedAccount) {
-                            console.log(`Filtering out position ${position.symbol} - account ${position.account_number} != ${this.selectedAccount}`);
                             return false;
                         }
                         if (this.selectedInstrumentType && position.instrument_type !== this.selectedInstrumentType) {
@@ -284,8 +370,31 @@
                         }
                         return true;
                     });
-                    
-                    console.log('Filtered positions count:', this.filteredPositions.length);
+
+                    // If the selectedAccount filter resulted in no positions, reset it
+                    // This handles the case where a saved account preference doesn't have any positions
+                    if (this.selectedAccount && this.filteredPositions.length === 0 && this.allPositions.length > 0) {
+                        console.log(`Account ${this.selectedAccount} has no positions, clearing filter`);
+                        this.selectedAccount = '';
+                        // Re-apply filters without the account restriction
+                        this.filteredPositions = this.allPositions.filter(position => {
+                            if (this.selectedInstrumentType && position.instrument_type !== this.selectedInstrumentType) {
+                                return false;
+                            }
+                            if (this.selectedUnderlying) {
+                                const underlying = this.getUnderlyingSymbol(position);
+                                if (underlying !== this.selectedUnderlying) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        });
+                    }
+
+                    console.log('filteredPositions.length:', this.filteredPositions.length);
+                    if (this.filteredPositions.length > 0) {
+                        console.log('Sample filtered position:', this.filteredPositions[0]);
+                    }
                 },
                 
                 filterPositions() {
@@ -293,7 +402,17 @@
                 },
                 
                 saveFilterPreferences() {
-                    // Save filters to localStorage
+                    // Save account selection to localStorage
+                    localStorage.setItem('positionsSelectedAccount', this.selectedAccount || '');
+                },
+
+                loadFilterPreferences() {
+                    // Load account selection from localStorage
+                    const savedAccount = localStorage.getItem('positionsSelectedAccount');
+                    if (savedAccount) {
+                        this.selectedAccount = savedAccount;
+                        console.log('Restored account selection from localStorage:', savedAccount);
+                    }
                 },
                 
                 // Utility methods
@@ -375,6 +494,14 @@
                     }
                     return minDTE;
                 },
+                getGroupStrategyLabel(group) {
+                    // Prioritize strategy_type from API enrichment data
+                    if (group.strategyType && group.strategyType !== 'Unknown') {
+                        return group.strategyType;
+                    }
+                    // Fall back to inferring from position types
+                    return this.getStrategyLabel(group.positions);
+                },
                 getStrategyLabel(positions) {
                     if (!Array.isArray(positions) || positions.length === 0) return 'Unknown';
                     // Check if positions include both calls and puts (Iron Condor style)
@@ -394,31 +521,101 @@
                 },
                 shouldShowPriceIndicator(positions) {
                     if (!Array.isArray(positions)) return false;
-                    // Show price indicator for spreads (has both calls and puts)
-                    const hasCall = positions.some(p => p.option_type === 'Call' || p.symbol.includes('C'));
-                    const hasPut = positions.some(p => p.option_type === 'Put' || p.symbol.includes('P'));
-                    return hasCall && hasPut;
+                    // Show price indicator for all option positions (anything with a strike price)
+                    return positions.some(p => {
+                        // Check if it's an option position
+                        if (p.instrument_type && p.instrument_type.includes('OPTION')) {
+                            return true;
+                        }
+                        // Check if symbol contains a call or put indicator
+                        const match = (p.symbol || '').match(/([CP])(\d+)/);
+                        return match !== null;
+                    });
                 },
                 getPricePositionIndicator(positions, underlying) {
-                    if (!Array.isArray(positions)) return '';
-                    const quote = this.getUnderlyingQuote(underlying);
-                    if (!quote) return '';
+                    // Visual semi-graphical representation of price relative to strikes
+                    // Example: ◆65.2——70——75 or 70——◆72.5——75
+                    const underlyingQuote = this.getUnderlyingQuote(underlying);
+                    const currentPrice = underlyingQuote ? underlyingQuote.price : null;
 
-                    const calls = positions.filter(p => p.option_type === 'Call' || p.symbol.includes('C'));
-                    const puts = positions.filter(p => p.option_type === 'Put' || p.symbol.includes('P'));
+                    if (!currentPrice) {
+                        return '<span class="text-slate-500">Price N/A</span>';
+                    }
 
-                    if (calls.length === 0 || puts.length === 0) return '';
+                    // Get all strikes from option positions
+                    const getStrike = (p) => {
+                        if (p.strike_price && p.strike_price > 0) return p.strike_price;
+                        const match = (p.symbol || '').match(/([CP])(\d+)/);
+                        if (match) {
+                            const priceStr = match[2];
+                            if (priceStr.length >= 3) {
+                                return parseFloat(priceStr.slice(0, -3) + '.' + priceStr.slice(-3));
+                            }
+                        }
+                        return null;
+                    };
 
-                    const callStrike = Math.max(...calls.map(p => p.strike_price || 0).filter(x => x > 0));
-                    const putStrike = Math.min(...puts.map(p => p.strike_price || 0).filter(x => x > 0));
-                    const price = quote.price || 0;
+                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
+                    const strikes = optionPositions.map(getStrike).filter(s => s !== null && s > 0).sort((a, b) => a - b);
 
-                    if (price < putStrike) return '<span class="price-below">Below</span>';
-                    if (price > callStrike) return '<span class="price-above">Above</span>';
-                    return '<span class="price-between">Between</span>';
+                    if (strikes.length < 2) {
+                        return '<span class="text-slate-500">—</span>';
+                    }
+
+                    // Format strikes and price for display
+                    const formatStrike = (strike) => strike % 1 === 0 ? strike.toString() : strike.toFixed(1);
+                    const formatPrice = (price) => price.toFixed(1);
+                    const currentPriceFormatted = formatPrice(currentPrice);
+
+                    if (strikes.length === 2) {
+                        // Two-leg spread
+                        const [low, high] = strikes;
+                        if (currentPrice < low) {
+                            return `<span class="price-marker price-outside">◆${currentPriceFormatted}</span><span class="price-line">——</span><span class="strike-marker">${formatStrike(low)}</span><span class="price-line">——</span><span class="strike-marker">${formatStrike(high)}</span>`;
+                        } else if (currentPrice > high) {
+                            return `<span class="strike-marker">${formatStrike(low)}</span><span class="price-line">——</span><span class="strike-marker">${formatStrike(high)}</span><span class="price-line">——</span><span class="price-marker price-outside">◆${currentPriceFormatted}</span>`;
+                        } else {
+                            return `<span class="strike-marker">${formatStrike(low)}</span><span class="price-line">——</span><span class="price-marker price-between">◆${currentPriceFormatted}</span><span class="price-line">——</span><span class="strike-marker">${formatStrike(high)}</span>`;
+                        }
+                    } else if (strikes.length === 4) {
+                        // Iron Condor: 4 strikes
+                        const [s1, s2, s3, s4] = strikes;
+                        if (currentPrice < s1) {
+                            return `<span class="price-marker price-outside">◆${currentPriceFormatted}</span><span class="price-line">——</span><span class="strike-marker">${formatStrike(s1)}</span>—<span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span>—<span class="strike-marker">${formatStrike(s4)}</span>`;
+                        } else if (currentPrice > s4) {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span>—<span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span>—<span class="strike-marker">${formatStrike(s4)}</span><span class="price-line">——</span><span class="price-marker price-outside">◆${currentPriceFormatted}</span>`;
+                        } else if (currentPrice >= s2 && currentPrice <= s3) {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span>—<span class="strike-marker">${formatStrike(s2)}</span><span class="price-marker price-between">◆${currentPriceFormatted}</span><span class="strike-marker">${formatStrike(s3)}</span>—<span class="strike-marker">${formatStrike(s4)}</span>`;
+                        } else if (currentPrice < s2) {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span><span class="price-marker price-outside">◆${currentPriceFormatted}</span><span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span>—<span class="strike-marker">${formatStrike(s4)}</span>`;
+                        } else {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span>—<span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span><span class="price-marker price-outside">◆${currentPriceFormatted}</span><span class="strike-marker">${formatStrike(s4)}</span>`;
+                        }
+                    } else if (strikes.length === 3) {
+                        // Butterfly: 3 strikes
+                        const [s1, s2, s3] = strikes;
+                        if (currentPrice < s1) {
+                            return `<span class="price-marker price-outside">◆${currentPriceFormatted}</span><span class="price-line">——</span><span class="strike-marker">${formatStrike(s1)}</span>—<span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span>`;
+                        } else if (currentPrice > s3) {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span>—<span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span><span class="price-line">——</span><span class="price-marker price-outside">◆${currentPriceFormatted}</span>`;
+                        } else if (Math.abs(currentPrice - s2) < Math.min(Math.abs(currentPrice - s1), Math.abs(currentPrice - s3))) {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span>—<span class="price-marker price-between">◆${currentPriceFormatted}</span>—<span class="strike-marker">${formatStrike(s3)}</span>`;
+                        } else {
+                            return `<span class="strike-marker">${formatStrike(s1)}</span><span class="price-marker price-outside">◆${currentPriceFormatted}</span><span class="strike-marker">${formatStrike(s2)}</span>—<span class="strike-marker">${formatStrike(s3)}</span>`;
+                        }
+                    }
+
+                    return '<span class="text-slate-500">Complex</span>';
                 },
                 getUnderlyingQuote(underlying) {
-                    return this.underlyingQuotes[underlying] || null;
+                    const quote = this.underlyingQuotes[underlying];
+                    if (!quote && underlying) {
+                        const availableKeys = Object.keys(this.underlyingQuotes);
+                        console.warn(`getUnderlyingQuote called for '${underlying}', but no quote found.`);
+                        console.warn(`Available keys (${availableKeys.length}):`, availableKeys);
+                        console.warn(`Full underlyingQuotes object:`, this.underlyingQuotes);
+                    }
+                    return quote || null;
                 },
                 getUnderlyingIV(underlying) {
                     const quote = this.getUnderlyingQuote(underlying);
@@ -428,7 +625,7 @@
                 getUnderlyingIVR(underlying) {
                     const quote = this.getUnderlyingQuote(underlying);
                     if (!quote || !quote.ivr) return null;
-                    return (quote.ivr * 100).toFixed(1);  // IVR is 0-1 range, convert to percentage
+                    return Math.round(quote.ivr * 100);  // IVR is 0-1 range, convert to integer percentage
                 },
                 getOptionType(position) {
                     if (position.option_type) return position.option_type.charAt(0).toUpperCase();
@@ -447,7 +644,24 @@
                     return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
                 },
                 getStrikePrice(position) {
-                    return position.strike_price ? position.strike_price.toFixed(2) : '';
+                    // First try the strike_price field
+                    if (position.strike_price && position.strike_price > 0) {
+                        return position.strike_price.toFixed(2);
+                    }
+
+                    // Fall back to parsing from symbol if strike_price is missing
+                    // Symbol format: "SPY  251115C00550000" -> strike is 550.00
+                    const symbol = position.symbol || '';
+                    const match = symbol.match(/([CP])(\d+)/);
+                    if (match) {
+                        const priceStr = match[2];
+                        if (priceStr.length >= 3) {
+                            const strike = parseFloat(priceStr.slice(0, -3) + '.' + priceStr.slice(-3));
+                            return strike.toFixed(2);
+                        }
+                    }
+
+                    return '';
                 },
                 getDTE(position) {
                     if (!position.expires_at) return null;
@@ -456,9 +670,20 @@
                     const dte = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
                     return dte > 0 ? dte : 0;
                 },
+                getLiveUnrealizedPnL(position) {
+                    return position.unrealized_pnl || 0;
+                },
                 getLivePnLPercent(position) {
                     if (!position.cost_basis || position.cost_basis === 0) return 0;
-                    return ((position.unrealized_pnl || 0) / Math.abs(position.cost_basis) * 100).toFixed(1);
+                    return ((position.unrealized_pnl || 0) / Math.abs(position.cost_basis) * 100);
+                },
+                getMaxPercentColor(value) {
+                    if (value >= 50) return 'text-yellow-400 font-bold';
+                    if (value >= 30) return 'text-white';
+                    return 'text-slate-400';
+                },
+                getMaxPercentTooltip(positions) {
+                    return 'Max percent of max loss';
                 },
                 
                 // Comments
@@ -505,11 +730,42 @@
     
     <!-- Page-specific styles -->
     <style>
-        /* Price position specific styles */
+        /* Price position indicator styles */
+        .price-marker {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .price-marker.price-between {
+            color: #10b981;
+        }
+
+        .price-marker.price-outside {
+            color: #ef4444;
+        }
+
+        .strike-marker {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        .price-line {
+            color: #64748b;
+            margin: 0 2px;
+        }
+
+        .price-below {
+            color: #ef4444;
+        }
+
+        .price-above {
+            color: #ef4444;
+        }
+
         .price-between {
             color: #10b981;
         }
-        
+
         .price-outside {
             color: #ef4444;
         }
@@ -646,7 +902,7 @@
                             <select
                                 id="account-select"
                                 x-model="selectedAccount"
-                                @change="filterPositions(); saveFilterPreferences()"
+                                @change="filterPositions(); saveFilterPreferences(); requestLiveQuotes()"
                                 class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2"
                             >
                                 <option value="">All Accounts</option>
@@ -712,7 +968,7 @@
                         <!-- Instrument Type Filter -->
                         <div class="flex items-center space-x-2">
                             <label class="text-sm font-medium text-slate-300">Type:</label>
-                            <select x-model="selectedInstrumentType" @change="filterPositions()"
+                            <select x-model="selectedInstrumentType" @change="filterPositions(); requestLiveQuotes()"
                                     class="bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
                                 <option value="">All Types</option>
                                 <option value="EQUITY">Stocks</option>
@@ -723,7 +979,7 @@
                         <!-- Underlying Filter -->
                         <div class="flex items-center space-x-2">
                             <label class="text-sm font-medium text-slate-300">Underlying:</label>
-                            <select x-model="selectedUnderlying" @change="filterPositions()"
+                            <select x-model="selectedUnderlying" @change="filterPositions(); requestLiveQuotes()"
                                     class="bg-slate-700 border border-slate-600 text-slate-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2">
                                 <option value="">All Underlyings</option>
                                 <template x-for="underlying in underlyings" :key="underlying">
@@ -762,7 +1018,7 @@
 
             <!-- Grouped Positions -->
             <div x-show="!isLoading && !error && filteredPositions.length > 0 && allPositions.length > 0" class="space-y-3">
-                <template x-for="group in groupedPositions" :key="`${group.underlying}|${group.chainId}|${group.strategyType}`">
+                <template x-for="group in groupedPositions" :key="`${group.underlying}|${group.chainId}|${group.positions[0]?.expires_at || group.positions[0]?.opened_at}`">
                     <div class="bg-slate-800 rounded-lg overflow-hidden" x-data="{ expanded: false }">
                         <!-- Group Header (Clickable) -->
                         <div class="bg-slate-700 px-6 py-2 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
@@ -776,13 +1032,13 @@
                                         <h3 class="text-lg font-semibold text-slate-100" x-text="group.displayKey"></h3>
                                         <span x-show="getUnderlyingIVR(group.underlying) !== null"
                                               class="text-sm -mt-1"
-                                              :class="parseFloat(getUnderlyingIVR(group.underlying)) >= 50 ? 'font-bold text-yellow-400' : (parseFloat(getUnderlyingIVR(group.underlying)) >= 30 ? 'font-normal text-white' : 'font-normal text-slate-400')"
-                                              x-text="getUnderlyingIVR(group.underlying) + '%'"></span>
+                                              :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-yellow-400' : (getUnderlyingIVR(group.underlying) >= 30 ? 'font-normal text-white' : 'font-normal text-slate-400')"
+                                              x-text="getUnderlyingIVR(group.underlying)"></span>
                                     </div>
                                 </div>
                                 
                                 <!-- Price Column -->
-                                <div class="flex items-center space-x-2">
+                                <div class="flex items-center space-x-2" :key="`price-${group.underlying}-${quoteUpdateCounter}`">
                                     <template x-if="getUnderlyingQuote(group.underlying)">
                                         <div class="flex items-center space-x-2">
                                             <!-- Price with colored background -->
@@ -805,9 +1061,9 @@
                                         </div>
                                     </template>
                                     <template x-if="!getUnderlyingQuote(group.underlying)">
-                                        <span class="text-sm text-orange-400" title="Live price data not available">
-                                            <i class="fas fa-exclamation-triangle mr-1"></i>
-                                            Price N/A
+                                        <span class="text-sm text-slate-400">
+                                            <i class="fas fa-spinner fa-spin mr-1"></i>
+                                            Loading...
                                         </span>
                                     </template>
                                 </div>
@@ -889,13 +1145,13 @@
                                 <div class="header-stat-column">
                                     <template x-if="shouldShowPriceIndicator(group.positions)">
                                         <div>
-                                            <div class="text-slate-400 text-xs" x-text="getStrategyLabel(group.positions)"></div>
+                                            <div class="text-slate-400 text-xs font-semibold" x-text="getGroupStrategyLabel(group)"></div>
                                             <div class="price-position-indicator" x-html="getPricePositionIndicator(group.positions, group.underlying)"></div>
                                         </div>
                                     </template>
                                     <template x-if="!shouldShowPriceIndicator(group.positions)">
                                         <div>
-                                            <div class="text-slate-400 text-xs" x-text="getStrategyLabel(group.positions)"></div>
+                                            <div class="text-slate-400 text-xs font-semibold" x-text="getGroupStrategyLabel(group)"></div>
                                             <div class="text-xs text-slate-500">—</div>
                                         </div>
                                     </template>
@@ -969,14 +1225,14 @@
                                             
                                             <!-- Cost Basis -->
                                             <td class="px-3 py-2 whitespace-nowrap text-right">
-                                                <span class="text-sm font-medium" 
-                                                      :class="getCostBasisDisplay(position) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                      x-text="formatNumber(getCostBasisDisplay(position))"></span>
+                                                <span class="text-sm font-medium"
+                                                      :class="position.cost_basis >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="formatNumber(position.cost_basis)"></span>
                                             </td>
-                                            
+
                                             <!-- NetLiq (mark price, negative for short positions) -->
                                             <td class="px-3 py-2 whitespace-nowrap text-right">
-                                                <span class="text-sm text-slate-300" x-text="formatNumber(getNetLiq(position))"></span>
+                                                <span class="text-sm text-slate-300" x-text="formatNumber(position.market_value)"></span>
                                             </td>
                                             
                                             <!-- Unrealized P&L -->

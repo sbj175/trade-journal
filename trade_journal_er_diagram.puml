@@ -1,0 +1,240 @@
+@startuml Trade Journal ER Diagram
+
+' Configuration
+skinparam linetype ortho
+skinparam roundcorner 5
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+' Core Tables
+entity "accounts" as accounts {
+  * account_number : TEXT <<PK>>
+  --
+  account_name : TEXT
+  account_type : TEXT
+  is_active : BOOLEAN
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "positions" as positions {
+  * id : INTEGER <<PK>>
+  --
+  # account_number : TEXT <<FK>>
+  symbol : TEXT
+  underlying : TEXT
+  instrument_type : TEXT
+  quantity : INTEGER
+  quantity_direction : TEXT
+  average_open_price : REAL
+  close_price : REAL
+  market_value : REAL
+  cost_basis : REAL
+  realized_day_gain : REAL
+  unrealized_pnl : REAL
+  pnl_percent : REAL
+  opened_at : TIMESTAMP
+  expires_at : TIMESTAMP
+  strike_price : REAL
+  option_type : TEXT
+  updated_at : TIMESTAMP
+}
+
+' V2 Order System Tables
+entity "orders" as orders {
+  * order_id : TEXT <<PK>>
+  --
+  account_number : TEXT
+  underlying : TEXT
+  order_type : TEXT
+  strategy_type : TEXT
+  order_date : DATE
+  status : TEXT
+  total_quantity : INTEGER
+  total_pnl : REAL
+  has_assignment : BOOLEAN
+  has_expiration : BOOLEAN
+  has_exercise : BOOLEAN
+  linked_order_id : TEXT
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "positions_new" as positions_new {
+  * position_id : INTEGER <<PK>>
+  --
+  # order_id : TEXT <<FK>>
+  account_number : TEXT
+  symbol : TEXT
+  underlying : TEXT
+  instrument_type : TEXT
+  option_type : TEXT
+  strike : REAL
+  expiration : DATE
+  quantity : INTEGER
+  opening_price : REAL
+  closing_price : REAL
+  opening_transaction_id : TEXT
+  closing_transaction_id : TEXT
+  opening_action : TEXT
+  closing_action : TEXT
+  opening_order_id : TEXT
+  closing_order_id : TEXT
+  opening_amount : REAL
+  closing_amount : REAL
+  status : TEXT
+  pnl : REAL
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "order_chains" as order_chains {
+  * chain_id : TEXT <<PK>>
+  --
+  underlying : TEXT
+  account_number : TEXT
+  opening_order_id : TEXT
+  strategy_type : TEXT
+  opening_date : DATE
+  closing_date : DATE
+  chain_status : TEXT
+  order_count : INTEGER
+  total_pnl : REAL
+  realized_pnl : REAL
+  unrealized_pnl : REAL
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "order_chain_members" as order_chain_members {
+  * id : INTEGER <<PK>>
+  --
+  # chain_id : TEXT <<FK>>
+  # order_id : TEXT <<FK>>
+  sequence_number : INTEGER
+}
+
+entity "order_chain_cache" as order_chain_cache {
+  * chain_id : TEXT <<PK>>
+  * order_id : TEXT <<PK>>
+  --
+  order_data : TEXT (JSON)
+}
+
+' Supporting Tables
+entity "raw_transactions" as raw_transactions {
+  * id : TEXT <<PK>>
+  --
+  account_number : TEXT
+  order_id : TEXT
+  transaction_type : TEXT
+  transaction_sub_type : TEXT
+  description : TEXT
+  executed_at : TEXT
+  transaction_date : TEXT
+  action : TEXT
+  symbol : TEXT
+  instrument_type : TEXT
+  underlying_symbol : TEXT
+  quantity : REAL
+  price : REAL
+  value : REAL
+  regulatory_fees : REAL
+  clearing_fees : REAL
+  commission : REAL
+  net_value : REAL
+  is_estimated_fee : BOOLEAN
+  created_at : TIMESTAMP
+}
+
+entity "account_balances" as account_balances {
+  * id : INTEGER <<PK>>
+  --
+  account_number : TEXT
+  cash_balance : REAL
+  net_liquidating_value : REAL
+  equity_buying_power : REAL
+  derivative_buying_power : REAL
+  day_trading_buying_power : REAL
+  maintenance_requirement : REAL
+  timestamp : TIMESTAMP
+}
+
+entity "sync_metadata" as sync_metadata {
+  * id : INTEGER <<PK>>
+  --
+  key : TEXT <<UNIQUE>>
+  value : TEXT
+  updated_at : TIMESTAMP
+}
+
+entity "quote_cache" as quote_cache {
+  * symbol : TEXT <<PK>>
+  --
+  mark : REAL
+  bid : REAL
+  ask : REAL
+  last : REAL
+  change : REAL
+  change_percent : REAL
+  volume : INTEGER
+  prev_close : REAL
+  day_high : REAL
+  day_low : REAL
+  iv : REAL
+  ivr : REAL
+  iv_percentile : REAL
+  updated_at : TIMESTAMP
+}
+
+' Relationships
+accounts ||--o{ positions : "has"
+orders ||--o{ positions_new : "contains"
+order_chains ||--o{ order_chain_members : "contains"
+orders ||--o{ order_chain_members : "member of"
+order_chains ||--o{ order_chain_cache : "cached in"
+
+' Notes
+note right of accounts
+  **Core Account Information**
+  Links to V2 order system
+end note
+
+note right of orders
+  **V2 Order-Based System**
+  Main transaction grouping
+  Includes strategy detection
+end note
+
+note right of order_chains
+  **Chain Linking**
+  Links related orders together:
+  opening → rolls → closing
+  Tracks complete trade lifecycle
+end note
+
+note right of positions_new
+  **V2 Position Tracking**
+  Individual option/stock legs
+  Opening & closing details
+end note
+
+note right of raw_transactions
+  **Source of Truth**
+  Raw data from Tastytrade API
+  All processing starts here
+end note
+
+note right of quote_cache
+  **Live Market Data**
+  Persistent WebSocket quotes
+  Used for real-time P&L
+end note
+
+note right of positions
+  **Current Open Positions**
+  Synced from Tastytrade API
+  Used for live portfolio view
+end note
+
+@enduml

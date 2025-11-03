@@ -1,0 +1,69 @@
+@startuml Chain Creation Detailed Logic
+!theme plain
+skinparam defaultFontSize 10
+
+start
+
+:Receive List of Orders;
+
+if (Orders list empty?) then (yes)
+  :Return None;
+  stop
+else (no)
+endif
+
+:Sort Orders by Date;
+
+:Get Opening Order\n(first in list);
+
+:Generate Chain ID\nfrom opening order;
+
+:Calculate Total P&L\nfrom all orders;
+
+partition "**CRITICAL SECTION: Chain Status Calculation**" {
+  :Call is_chain_fully_closed(orders);
+  
+  :is_chain_fully_closed calls\ncalculate_chain_position_balance;
+  
+  note right
+    **THIS IS WHERE THE BUG LIKELY IS**
+    
+    The manual calculation works perfectly,
+    but during reprocessing something
+    in this chain goes wrong.
+    
+    Possible issues:
+    - Order.positions not loaded correctly
+    - Position data missing/incomplete
+    - Expiration positions not processed
+    - Different data structure than expected
+  end note
+  
+  if (All positions closed?) then (yes)
+    :chain_status = CLOSED;
+  else (no)
+    :chain_status = OPEN;
+  endif
+}
+
+if (Chain fully closed?) then (yes)
+  :Find latest closing order\nfor closing_date;
+  
+  :Look for CLOSING orders,\nSYSTEM_ orders, or\nROLLING orders;
+  
+  if (Found closing order?) then (yes)
+    :Set closing_date to\norder.order_date;
+  else (no)
+    :Set closing_date to\nlast order date;
+  endif
+else (no)
+  :closing_date = None;
+endif
+
+:Create Chain Dictionary\nwith all metadata;
+
+:Return Chain;
+
+stop
+
+@enduml

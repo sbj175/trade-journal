@@ -1,0 +1,79 @@
+@startuml Chain Processing Logic
+!theme plain
+skinparam defaultFontSize 10
+skinparam activityFontSize 9
+
+start
+
+:Load Raw Transactions;
+
+:Group Transactions by\nUnderlying + Account;
+
+:Create Orders from\nTransaction Groups;
+
+:Group Orders by\nUnderlying + Account;
+
+while (For each order group) is (more groups)
+  
+  :Detect Multi-Chain\nClosing Orders;
+  
+  :Build Position Inventory\n(Opens vs Closes);
+  
+  :Handle Multi-Chain\nClosing Orders First;
+  
+  :Get OPENING Orders\nNot Yet Used;
+  
+  while (For each opening order) is (more orders)
+    
+    if (Order already used?) then (yes)
+      :Skip to next order;
+    else (no)
+      :Find Related Orders\n(rolls, closes, etc.);
+      
+      :Sort Orders by Date;
+      
+      :Create Chain from Orders;
+      note right
+        This calls create_order_chain_from_orders()
+        which should call is_chain_fully_closed()
+      end note
+      
+      if (Chain created successfully?) then (yes)
+        :Add to chains list;
+        :Mark orders as used;
+      else (no)
+        :Log error;
+      endif
+    endif
+  endwhile (no more)
+  
+  :Handle Remaining\nUnprocessed Orders;
+  
+  while (For each unprocessed order) is (more orders)
+    if (Is SYSTEM_EXPIRATION order?) then (yes)
+      :Try to match to\nexisting chain;
+      
+      if (Match found?) then (yes)
+        :Add to existing chain;
+        :Mark as used;
+      else (no)
+        :Create standalone chain;
+      endif
+    else (no)
+      :Handle other order types;
+    endif
+  endwhile (no more)
+  
+endwhile (no more groups)
+
+:Save All Chains\nto Database;
+
+:Run Post-Processing\nChain Status Fix;
+note right
+  This is our current band-aid fix
+  that corrects expiration issues
+end note
+
+stop
+
+@enduml
