@@ -130,7 +130,8 @@
                 async fetchAccounts() {
                     try {
                         const response = await fetch('/api/accounts');
-                        this.accounts = await response.json();
+                        const data = await response.json();
+                        this.accounts = data.accounts || [];
                         console.log('Loaded accounts:', this.accounts);
                     } catch (error) {
                         console.error('Failed to load accounts:', error);
