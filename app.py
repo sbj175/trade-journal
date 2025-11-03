@@ -1553,9 +1553,11 @@ async def get_positions(account_number: Optional[str] = None):
     try:
         # Get live positions from database
         live_positions = db.get_open_positions()
+        logger.info(f"/api/positions: Fetched {len(live_positions)} total live positions from database")
 
         if account_number:
             live_positions = [p for p in live_positions if p.get('account_number') == account_number]
+            logger.info(f"/api/positions: Filtered to {len(live_positions)} positions for account {account_number}")
 
         # Get all open chains directly from database for enrichment matching
         # This bypasses order_manager which may apply filters or caching
@@ -1578,7 +1580,7 @@ async def get_positions(account_number: Optional[str] = None):
                 cursor.execute(query, params)
                 for row in cursor.fetchall():
                     open_chains.append(dict(row))
-                logger.info(f"Fetched {len(open_chains)} open chains for enrichment")
+                logger.info(f"/api/positions: Fetched {len(open_chains)} open chains for enrichment")
         except Exception as e:
             logger.warning(f"Could not fetch chains for enrichment: {e}. Continuing without enrichment.")
             open_chains = []
@@ -1586,6 +1588,13 @@ async def get_positions(account_number: Optional[str] = None):
         # Enrich positions with chain metadata
         enricher = PositionEnricher()
         enriched_positions, unmatched_positions = enricher.enrich_positions(live_positions, open_chains)
+
+        # Log enrichment results
+        enriched_count = sum(1 for p in enriched_positions if 'chain_id' in p)
+        logger.info(
+            f"/api/positions: Enrichment result: {enriched_count}/{len(enriched_positions)} positions have chain_id. "
+            f"{len(unmatched_positions)} positions unmatched."
+        )
 
         # If positions are unmatched, trigger background sync
         # NOTE: Commenting out to improve responsiveness - background sync will happen on chains page
@@ -1602,6 +1611,7 @@ async def get_positions(account_number: Optional[str] = None):
                 positions_by_account[account] = []
             positions_by_account[account].append(position)
 
+        logger.info(f"/api/positions: Returning positions grouped by {len(positions_by_account)} accounts")
         return positions_by_account
     except Exception as e:
         logger.error(f"Error fetching positions: {str(e)}")

@@ -34,13 +34,24 @@ class PositionEnricher:
         # Convert chains to a lookup structure for faster matching
         chain_lookup = self._build_chain_lookup(open_chains)
 
+        logger.info(
+            f"Enriching {len(live_positions)} positions against {len(open_chains)} open chains. "
+            f"Chain lookup has {len(chain_lookup)} unique (underlying, account) keys"
+        )
+
+        # Debug: Log all chain lookup keys
+        if chain_lookup:
+            logger.debug(f"Available chain keys: {list(chain_lookup.keys())}")
+
         # Enrich each position
+        enriched_count = 0
         for position in live_positions:
             chain = self._find_matching_chain(position, chain_lookup)
 
             if chain:
                 position['chain_id'] = chain['chain_id']
                 position['strategy_type'] = chain['strategy_type']
+                enriched_count += 1
                 logger.debug(
                     f"Enriched position: {position['symbol']} -> chain {chain['chain_id']} "
                     f"({chain['strategy_type']})"
@@ -48,10 +59,17 @@ class PositionEnricher:
             else:
                 # Position has no matching chain - flag for sync
                 unmatched.append(self._position_key(position))
+                underlying = position.get('underlying', 'UNKNOWN')
+                account = position.get('account_number', 'UNKNOWN')
                 logger.debug(
-                    f"Unmatched position: {position['symbol']} in account "
-                    f"{position['account_number']}"
+                    f"Unmatched position: {position['symbol']} (underlying='{underlying}', "
+                    f"account='{account}')"
                 )
+
+        logger.info(
+            f"Enrichment complete: {enriched_count} positions enriched, "
+            f"{len(unmatched)} positions unmatched"
+        )
 
         return live_positions, unmatched
 
@@ -70,8 +88,9 @@ class PositionEnricher:
         lookup = {}
 
         for chain in open_chains:
-            underlying = chain.get('underlying', '')
-            account = chain.get('account_number', '')
+            # Normalize values: strip whitespace for reliable matching
+            underlying = chain.get('underlying', '').strip()
+            account = chain.get('account_number', '').strip()
             strategy = chain.get('strategy_type', 'Unknown')
 
             key = (underlying, account)
@@ -105,8 +124,9 @@ class PositionEnricher:
         2. Account number matches
         3. Instrument type is consistent (both options or both stock)
         """
-        underlying = position.get('underlying', '')
-        account = position.get('account_number', '')
+        # Normalize values: strip whitespace for reliable matching
+        underlying = position.get('underlying', '').strip()
+        account = position.get('account_number', '').strip()
         instrument_type = position.get('instrument_type', '')
 
         key = (underlying, account)
