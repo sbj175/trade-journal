@@ -520,38 +520,10 @@
                     return hasCall && hasPut;
                 },
                 calculateLiveMarketValue(position) {
-                    // Get the underlying symbol and current quote
-                    const underlying = this.getUnderlyingSymbol(position);
-                    const quote = this.underlyingQuotes[underlying];
-
-                    if (!quote || !quote.price) {
-                        // Fallback to stored market_value if no live quote available
-                        return position.market_value || 0;
-                    }
-
-                    const price = quote.price;
-                    const quantity = position.quantity || 0;
-                    let liveMarketValue = 0;
-
-                    // Check if this is an option (has strike price)
-                    const isOption = position.strike_price !== null && position.strike_price !== undefined;
-
-                    if (isOption) {
-                        // Options: multiply by quantity and by 100 (contract multiplier)
-                        liveMarketValue = price * quantity * 100;
-                    } else {
-                        // Stock: multiply by quantity
-                        liveMarketValue = price * quantity;
-                    }
-
-                    // Apply sign based on direction: negative for long positions, positive for short
-                    if (position.quantity_direction === 'Long') {
-                        liveMarketValue = -Math.abs(liveMarketValue);
-                    } else if (position.quantity_direction === 'Short') {
-                        liveMarketValue = Math.abs(liveMarketValue);
-                    }
-
-                    return liveMarketValue;
+                    // Use stored market_value which already contains correct option pricing
+                    // NOTE: WebSocket quotes are for underlying only, not individual option contracts
+                    // So we use the pre-calculated market_value from position data
+                    return position.market_value || 0;
                 },
                 calculateLivePositionPnL(position) {
                     // Use live market value minus cost basis
