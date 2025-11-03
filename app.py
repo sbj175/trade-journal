@@ -29,6 +29,7 @@ from src.models.position_inventory import PositionInventoryManager
 from src.models.order_processor_v2 import OrderProcessorV2
 from src.models.strategy_detector import StrategyDetector
 from src.models.pnl_calculator_v2 import PnLCalculatorV2
+from src.models.position_enricher import PositionEnricher
 from src.utils.auth_manager import AuthManager
 
 # Configure logging
@@ -1437,20 +1438,125 @@ async def get_cached_positions(account_number: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def background_incremental_sync():
+    """
+    Background task to perform incremental sync when unmatched positions are detected.
+    This keeps position enrichment data fresh without blocking the user.
+    """
+    try:
+        logger.info("Starting background incremental sync...")
+
+        # Get last sync timestamp to determine date range
+        last_sync = db.get_last_sync_timestamp()
+
+        if last_sync:
+            # Calculate days back from last sync + 1 day buffer
+            days_back = (datetime.now() - last_sync).days + 1
+            days_back = max(days_back, 1)  # Minimum 1 day
+            days_back = min(days_back, 90)  # Maximum 90 days for safety
+            logger.info(f"Background sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
+        else:
+            # No previous sync, fetch last 30 days
+            days_back = 30
+            logger.info(f"Background sync: no previous sync, fetching {days_back} days")
+
+        # Try to get authenticated client from auth manager
+        try:
+            # Get first available session to use for sync
+            session_credentials = auth_manager.get_any_session_credentials()
+            if not session_credentials:
+                logger.warning("Background sync: no authenticated sessions available, skipping sync")
+                return
+
+            username, password = session_credentials
+            tastytrade = TastytradeClient(username=username, password=password)
+
+            if not tastytrade.authenticate():
+                logger.error("Background sync: failed to authenticate")
+                return
+
+        except Exception as e:
+            logger.warning(f"Background sync: could not get authenticated client: {e}")
+            return
+
+        try:
+            # Fetch transactions from all accounts
+            transactions = tastytrade.get_transactions(days_back=days_back)
+            logger.info(f"Background sync: fetched {len(transactions)} transactions")
+
+            # Save raw transactions
+            raw_saved = db.save_raw_transactions(transactions)
+            logger.info(f"Background sync: saved {raw_saved} raw transactions")
+
+            # Fetch and save current positions
+            all_positions = tastytrade.get_positions()
+            total_positions = 0
+
+            for account_number, positions in all_positions.items():
+                if positions:
+                    positions_with_dates = calculate_position_opening_dates(positions, account_number)
+                    success = db.save_positions(positions_with_dates, account_number)
+                    if success:
+                        total_positions += len(positions)
+
+            logger.info(f"Background sync: saved {total_positions} positions")
+
+            # Reprocess chains to update order processing
+            raw_transactions = db.get_raw_transactions()
+            chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+
+            all_chains = []
+            for account, chains in chains_by_account.items():
+                for chain in chains:
+                    all_chains.append(chain)
+
+            if all_chains:
+                logger.info(f"Background sync: reprocessed {len(all_chains)} chains")
+
+            # Update last sync timestamp
+            db.set_last_sync_timestamp(datetime.now())
+            logger.info("Background sync: completed successfully")
+
+        except Exception as e:
+            logger.error(f"Background sync: error during processing: {e}")
+            return
+
+    except Exception as e:
+        logger.error(f"Background incremental sync failed: {e}")
+
+
 @app.get("/api/positions")
 async def get_positions(account_number: Optional[str] = None):
-    """Get current open positions - this endpoint returns cached data but formatted for current frontend"""
+    """Get current open positions with chain enrichment for intelligent grouping"""
     try:
-        positions = db.get_open_positions()
-        
+        # Get live positions from database
+        live_positions = db.get_open_positions()
+
+        if account_number:
+            live_positions = [p for p in live_positions if p.get('account_number') == account_number]
+
+        # Get all open chains for enrichment matching
+        all_open_chains = order_manager.get_order_chains(account_number=account_number)
+        open_chains = [c for c in all_open_chains if c.get('chain_status') == 'OPEN']
+
+        # Enrich positions with chain metadata
+        enricher = PositionEnricher()
+        enriched_positions, unmatched_positions = enricher.enrich_positions(live_positions, open_chains)
+
+        # If positions are unmatched, trigger background sync
+        if unmatched_positions:
+            logger.info(f"Found {len(unmatched_positions)} unmatched positions: {unmatched_positions}")
+            logger.info("Triggering background incremental sync to update chain data")
+            asyncio.create_task(background_incremental_sync())
+
         # Group positions by account (matching the expected frontend format)
         positions_by_account = {}
-        for position in positions:
+        for position in enriched_positions:
             account = position.get('account_number', 'unknown')
             if account not in positions_by_account:
                 positions_by_account[account] = []
             positions_by_account[account].append(position)
-        
+
         return positions_by_account
     except Exception as e:
         logger.error(f"Error fetching positions: {str(e)}")
