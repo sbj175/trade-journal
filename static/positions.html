@@ -519,6 +519,60 @@
                     const hasPut = positions.some(p => p.option_type === 'Put' || p.symbol.includes('P'));
                     return hasCall && hasPut;
                 },
+                calculateLiveMarketValue(position) {
+                    // Get the underlying symbol and current quote
+                    const underlying = this.getUnderlyingSymbol(position);
+                    const quote = this.underlyingQuotes[underlying];
+
+                    if (!quote || !quote.price) {
+                        // Fallback to stored market_value if no live quote available
+                        return position.market_value || 0;
+                    }
+
+                    const price = quote.price;
+                    const quantity = position.quantity || 0;
+                    let liveMarketValue = 0;
+
+                    // Check if this is an option (has strike price)
+                    const isOption = position.strike_price !== null && position.strike_price !== undefined;
+
+                    if (isOption) {
+                        // Options: multiply by quantity and by 100 (contract multiplier)
+                        liveMarketValue = price * quantity * 100;
+                    } else {
+                        // Stock: multiply by quantity
+                        liveMarketValue = price * quantity;
+                    }
+
+                    // Apply sign based on direction: negative for long positions, positive for short
+                    if (position.quantity_direction === 'Long') {
+                        liveMarketValue = -Math.abs(liveMarketValue);
+                    } else if (position.quantity_direction === 'Short') {
+                        liveMarketValue = Math.abs(liveMarketValue);
+                    }
+
+                    return liveMarketValue;
+                },
+                calculateLivePositionPnL(position) {
+                    // Use live market value minus cost basis
+                    const liveMarketValue = this.calculateLiveMarketValue(position);
+                    const costBasis = position.cost_basis || 0;
+                    return liveMarketValue - costBasis;
+                },
+                getGroupNetLiqWithLiveQuotes(positions) {
+                    // Force reactivity by accessing quoteUpdateCounter
+                    this.quoteUpdateCounter;
+
+                    if (!Array.isArray(positions)) return 0;
+                    return positions.reduce((sum, pos) => sum + this.calculateLiveMarketValue(pos), 0);
+                },
+                getGroupPnLWithLiveQuotes(positions) {
+                    // Force reactivity by accessing quoteUpdateCounter
+                    this.quoteUpdateCounter;
+
+                    if (!Array.isArray(positions)) return 0;
+                    return positions.reduce((sum, pos) => sum + this.calculateLivePositionPnL(pos), 0);
+                },
                 shouldShowPriceIndicator(positions) {
                     if (!Array.isArray(positions)) return false;
                     // Show price indicator for all option positions (anything with a strike price)
@@ -1089,14 +1143,14 @@
                                 <div class="header-stat-column">
                                     <div class="text-slate-400 text-xs text-right">NetLiq</div>
                                     <div class="font-semibold text-sm text-slate-100 text-right"
-                                         x-text="formatNumber(getGroupNetLiq(group.positions))"></div>
+                                         x-text="formatNumber(getGroupNetLiqWithLiveQuotes(group.positions))"></div>
                                 </div>
 
                                 <div class="header-stat-column">
                                     <div class="text-slate-400 text-xs text-right">P&L</div>
                                     <div class="font-semibold text-sm text-right"
-                                         :class="getGroupPnL(group.positions) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                         x-text="formatNumber(getGroupPnL(group.positions))"></div>
+                                         :class="getGroupPnLWithLiveQuotes(group.positions) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                         x-text="formatNumber(getGroupPnLWithLiveQuotes(group.positions))"></div>
                                 </div>
 
                                 <!-- P&L Percent Column -->
@@ -1232,21 +1286,21 @@
 
                                             <!-- NetLiq (mark price, negative for short positions) -->
                                             <td class="px-3 py-2 whitespace-nowrap text-right">
-                                                <span class="text-sm text-slate-300" x-text="formatNumber(position.market_value)"></span>
+                                                <span class="text-sm text-slate-300" x-text="formatNumber(calculateLiveMarketValue(position))"></span>
                                             </td>
-                                            
+
                                             <!-- Unrealized P&L -->
                                             <td class="px-3 py-2 whitespace-nowrap text-right">
-                                                <span class="text-sm font-medium" 
-                                                      :class="getLiveUnrealizedPnL(position) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                      x-text="formatNumber(getLiveUnrealizedPnL(position))"></span>
+                                                <span class="text-sm font-medium"
+                                                      :class="calculateLivePositionPnL(position) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="formatNumber(calculateLivePositionPnL(position))"></span>
                                             </td>
-                                            
+
                                             <!-- P&L % -->
                                             <td class="px-3 py-2 whitespace-nowrap text-right">
-                                                <span class="text-sm font-medium" 
-                                                      :class="getLivePnLPercent(position) >= 0 ? 'text-green-400' : 'text-red-400'"
-                                                      x-text="getLivePnLPercent(position).toFixed(1) + '%'"></span>
+                                                <span class="text-sm font-medium"
+                                                      :class="(calculateLivePositionPnL(position) / Math.abs(position.cost_basis || 1) * 100) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      x-text="(calculateLivePositionPnL(position) / Math.abs(position.cost_basis || 1) * 100).toFixed(1) + '%'"></span>
                                             </td>
                                         </tr>
                                     </template>
