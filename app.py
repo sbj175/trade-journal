@@ -528,7 +528,7 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
 
                     if total_debit > 0 or total_credit > 0:
                         # Preserve sign: negative = money spent (long), positive = money received (short)
-                        cost_basis_total = total_debit - total_credit
+                        cost_basis_total = total_credit - total_debit
                         cost_basis_per_unit = 0.0
                         cost_basis_per_share = 0.0
                         pnl_per_share = 0.0
@@ -941,7 +941,7 @@ async def get_order_chains(
             # Sign matters: negative = money spent (long), positive = money received (short)
             # For long positions: cost_basis = -(total_debit - total_credit), i.e., negative cost
             # For short positions: cost_basis = (total_credit - total_debit), i.e., positive cost
-            cost_basis_total = total_debit - total_credit  # Preserve sign: negative for long, positive for short
+            cost_basis_total = total_credit - total_debit  # Preserve sign: negative for long, positive for short
 
             # Calculate the total quantity of opening transactions for per-unit calculation
             # For multi-leg spreads, all legs have the same quantity, so use the first leg's quantity
