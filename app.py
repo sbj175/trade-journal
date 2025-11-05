@@ -575,9 +575,12 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                             if pos.get('opening_price'):
                                 qty = abs(pos.get('quantity', 0))
                                 amount = pos['opening_price'] * qty * 100 if pos.get('instrument_type') == 'EQUITY_OPTION' else pos['opening_price'] * qty
-                                if pos.get('opening_action') in ['BTO', 'BUY']:
+                                opening_action = str(pos.get('opening_action', ''))
+                                # Check for both string abbreviations and OrderAction enum names
+                                # SELL actions (STO, STC) are credits, BUY actions (BTO, BTC) are debits
+                                if 'BUY_TO_' in opening_action or opening_action in ['BTO', 'BUY']:
                                     total_debit += amount
-                                else:
+                                elif 'SELL_TO_' in opening_action or opening_action in ['STO', 'STC', 'SELL']:
                                     total_credit += amount
 
                     if total_debit > 0 or total_credit > 0:
@@ -943,55 +946,53 @@ async def get_order_chains(
             total_credit = 0.0
             total_debit = 0.0
             total_quantity = 0
-            
+
             for order in chain.orders:
-                for tx in order.transactions:
-                    amount = tx.price * abs(tx.quantity) * 100  # *100 for options
-                    if tx.is_opening:
-                        if tx.is_sell:
-                            total_credit += amount
-                        else:
+                for position in order.positions:
+                    # Get opening price and quantity
+                    opening_price = position.opening_price
+                    quantity = abs(position.quantity)
+
+                    if opening_price > 0 and quantity > 0:
+                        # Calculate amount based on instrument type
+                        amount = opening_price * quantity * 100 if position.is_option else opening_price * quantity
+
+                        # Determine if opening action is a buy or sell
+                        opening_action = str(position.opening_action)
+                        if 'BUY_TO_' in opening_action or opening_action in ['BTO', 'BUY']:
                             total_debit += amount
-                    total_quantity += abs(tx.quantity)
+                        elif 'SELL_TO_' in opening_action or opening_action in ['STO', 'STC', 'SELL']:
+                            total_credit += amount
+
+                    total_quantity += quantity
             
             # Calculate realized P&L from closed positions
             realized_pnl = 0.0
             unrealized_pnl = 0.0
-            
+
             for order in chain.orders:
-                for tx in order.transactions:
-                    if tx.is_closing:
-                        if tx.is_assignment or tx.is_exercise or tx.is_expiration:
-                            # For assignment/exercise/expiration, calculate based on strike price
-                            quantity = abs(tx.quantity)
-                            if tx.is_assignment and tx.strike:
-                                # Assignment: net impact is +strike*100
-                                realized_pnl += tx.strike * 100 * quantity
-                            elif tx.is_exercise and tx.strike:
-                                # Exercise: net impact is -strike*100
-                                realized_pnl -= tx.strike * 100 * quantity
+                for position in order.positions:
+                    # Only process closed or system-closed positions
+                    if position.closing_action:
+                        quantity = abs(position.quantity)
+
+                        if position.closing_action in ['ASSIGNED', 'EXERCISE', 'EXPIRATION']:
+                            # For system closures, use closing amount or strike price
+                            if position.closing_action == 'ASSIGNED' and position.strike:
+                                realized_pnl += position.strike * 100 * quantity
+                            elif position.closing_action == 'EXERCISE' and position.strike:
+                                realized_pnl -= position.strike * 100 * quantity
                             # For expiration, P&L is 0 (options expire worthless)
-                        elif tx.price > 0:  # Regular closing transactions
-                            # Find the opening transaction for this symbol
-                            opening_tx = None
-                            for search_order in chain.orders:
-                                for search_tx in search_order.transactions:
-                                    if (search_tx.symbol == tx.symbol and 
-                                        search_tx.is_opening and 
-                                        search_tx.executed_at <= tx.executed_at):
-                                        opening_tx = search_tx
-                                        break
-                                if opening_tx:
-                                    break
-                            
-                            if opening_tx:
-                                # Calculate P&L for this closing transaction
-                                quantity = abs(tx.quantity)
-                                if opening_tx.is_sell:  # Short position (STO -> BTC)
-                                    pnl = (opening_tx.price - tx.price) * quantity * 100
-                                else:  # Long position (BTO -> STC)
-                                    pnl = (tx.price - opening_tx.price) * quantity * 100
-                                realized_pnl += pnl
+                        elif position.closing_price and position.closing_price > 0:
+                            # Regular closing - calculate P&L
+                            opening_price = position.opening_price
+                            closing_price = position.closing_price
+
+                            if 'SELL' in position.opening_action:  # Short position (STO -> BTC)
+                                pnl = (opening_price - closing_price) * quantity * 100
+                            else:  # Long position (BTO -> STC)
+                                pnl = (closing_price - opening_price) * quantity * 100
+                            realized_pnl += pnl
             
             # Calculate cost basis per contract/share (total amount paid/received for opening transactions)
             # Sign matters: negative = money spent (long), positive = money received (short)
@@ -1004,9 +1005,9 @@ async def get_order_chains(
             # (don't sum all legs, which would count each leg separately)
             opening_quantity_total = 0
             for order in chain.orders:
-                for tx in order.transactions:
-                    if tx.is_opening:
-                        opening_quantity_total = abs(tx.quantity)  # Use first opening quantity, don't sum
+                for position in order.positions:
+                    if position.opening_price > 0:  # Has opening price means it was opened in this order
+                        opening_quantity_total = abs(position.quantity)  # Use first opening quantity, don't sum
                         break
                 if opening_quantity_total > 0:
                     break
