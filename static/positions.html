@@ -414,7 +414,26 @@
                     }
 
                     // Subscribe to all position symbols (both equities and options)
-                    const symbols = [...new Set(this.filteredPositions.map(p => this.getPositionSymbol(p)).filter(s => s && s !== 'Unknown'))];
+                    // For options, we need BOTH the option symbol AND the underlying symbol for quote display
+                    const symbolSet = new Set();
+
+                    this.filteredPositions.forEach(p => {
+                        const posSymbol = this.getPositionSymbol(p);
+                        if (posSymbol && posSymbol !== 'Unknown') {
+                            symbolSet.add(posSymbol);
+                        }
+
+                        // For options, also add the underlying symbol
+                        const isOption = p.instrument_type && p.instrument_type.includes('OPTION');
+                        if (isOption) {
+                            const underlying = this.getUnderlyingSymbol(p);
+                            if (underlying && underlying !== 'Unknown') {
+                                symbolSet.add(underlying);
+                            }
+                        }
+                    });
+
+                    const symbols = Array.from(symbolSet);
 
                     console.log('>>>   filteredPositions.length:', this.filteredPositions.length);
                     console.log('>>>   unique symbols to subscribe to:', symbols);
