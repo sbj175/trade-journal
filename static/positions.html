@@ -304,6 +304,7 @@
                         
                         this.ws.onopen = () => {
                             console.log('WebSocket connected successfully');
+                            console.log('WebSocket readyState:', this.ws.readyState);
                             this.liveQuotesActive = true;
                         };
                         
@@ -311,9 +312,10 @@
                             try {
                                 const message = JSON.parse(event.data);
                                 console.log('WebSocket message received:', message);
-                                
+
                                 if (message.type === 'connected') {
-                                    console.log('WebSocket connection confirmed, requesting quotes...');
+                                    console.log('✓ WebSocket connection confirmed');
+                                    console.log('  Calling requestLiveQuotes...');
                                     this.requestLiveQuotes();
                                 } else if (message.type === 'quotes' && message.data) {
                                     // Update quotes using direct property assignment for Alpine.js reactivity
@@ -370,16 +372,29 @@
                 },
 
                 requestLiveQuotes() {
-                    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+                    console.log('requestLiveQuotes() called');
+                    console.log('  this.ws:', this.ws);
+                    console.log('  this.ws.readyState:', this.ws ? this.ws.readyState : 'NO WS');
+                    console.log('  WebSocket.OPEN:', WebSocket.OPEN);
+
+                    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                        console.log('  Skipping - WebSocket not ready');
+                        return;
+                    }
 
                     // Subscribe to all position symbols (both equities and options)
                     const symbols = [...new Set(this.filteredPositions.map(p => this.getPositionSymbol(p)).filter(s => s && s !== 'Unknown'))];
 
+                    console.log('  filteredPositions.length:', this.filteredPositions.length);
+                    console.log('  symbols to subscribe to:', symbols);
+
                     if (symbols.length > 0) {
-                        console.log('Requesting quotes for:', symbols);
+                        console.log('  Sending subscribe message for:', symbols);
                         this.ws.send(JSON.stringify({
                             subscribe: symbols
                         }));
+                    } else {
+                        console.log('  No symbols to subscribe to');
                     }
                 },
                 
