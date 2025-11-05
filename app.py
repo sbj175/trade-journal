@@ -874,17 +874,23 @@ async def get_order_chains(
         chains_by_account = order_processor_v2.process_transactions(raw_transactions)
         v2_time = time.time() - v2_start
         logger.info(f"🕐 TIMING: V2 processing took {v2_time:.2f}s")
-        
+
         # Flatten chains from all accounts
         all_chains = []
         for account, chains in chains_by_account.items():
             for chain in chains:
                 all_chains.append(chain)
-        
+
         # Update cache with fresh V2 data
         logger.info(f"About to update cache with {len(all_chains)} chains...")
-        await update_chain_cache(all_chains)
-        logger.info("Cache update completed")
+        try:
+            await update_chain_cache(all_chains)
+            logger.info("Cache update completed")
+        except Exception as cache_err:
+            logger.warning(f"Could not update cache: {cache_err}")
+            import traceback
+            logger.error(f"Cache update traceback: {traceback.format_exc()}")
+            # Continue without cache update - data will still be returned
         
         # Sort by opening date (newest first)
         all_chains.sort(key=lambda c: c.opening_date or date.min, reverse=True)
