@@ -910,15 +910,22 @@ async def get_order_chains(
 
                 # Fetch positions for each account once
                 for account_num in unique_accounts:
-                    live_positions_data = client.get_positions(account_number=account_num)
-                    live_positions_cache[account_num] = live_positions_data.get(account_num, [])
+                    try:
+                        live_positions_data = client.get_positions(account_number=account_num)
+                        live_positions_cache[account_num] = live_positions_data.get(account_num, [])
+                    except Exception as pos_err:
+                        logger.warning(f"Could not fetch positions for account {account_num}: {pos_err}")
+                        live_positions_cache[account_num] = []
 
                 api_fetch_time = time.time() - api_fetch_start
                 logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in {api_fetch_time:.2f}s")
             else:
                 logger.warning("Could not authenticate for live position data - using cached data")
+                api_fetch_time = time.time() - api_fetch_start
         except Exception as e:
             logger.warning(f"Could not pre-fetch live positions: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             api_fetch_time = time.time() - api_fetch_start
 
         formatted_chains = []
