@@ -296,25 +296,25 @@
                 },
 
                 initializeWebSocket() {
-                    console.log('>>> initializeWebSocket() called');
+                    const ts = Date.now();
+                    console.log(`[${ts}] >>> initializeWebSocket() called`);
                     try {
                         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                         const wsUrl = `${protocol}//${location.host}/ws/quotes`;
-                        console.log('>>> Creating WebSocket to:', wsUrl);
+                        console.log(`[${ts}] >>> Creating WebSocket to: ${wsUrl}`);
                         this.ws = new WebSocket(wsUrl);
-                        console.log('>>> WebSocket created:', this.ws);
-                        console.log('>>> About to set onopen handler');
+                        console.log(`[${ts}] >>> WebSocket created, readyState=${this.ws.readyState}`);
+                        console.log(`[${ts}] >>> About to set onopen handler`);
 
                         this.ws.onopen = () => {
-                            console.log('WebSocket connected successfully');
-                            console.log('WebSocket readyState:', this.ws.readyState);
+                            console.log(`[${ts}] [ONOPEN] WebSocket connected, readyState=${this.ws.readyState}`);
                             this.liveQuotesActive = true;
                         };
 
-                        console.log('>>> onopen handler set, now setting onmessage handler');
+                        console.log(`[${ts}] >>> onopen handler set, now setting onmessage handler`);
                         this.ws.onmessage = (event) => {
                             const message = JSON.parse(event.data);
-                            console.log('[WS] Message received:', message.type);
+                            console.log(`[${ts}] [ONMESSAGE] Received: ${message.type}`);
 
                             if (message.type === 'connected') {
                                 console.log('[WS] Connected - requesting quotes in 100ms');
