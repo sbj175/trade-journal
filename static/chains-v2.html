@@ -400,14 +400,6 @@
                                         </div>
                                     </div>
 
-                                    <!-- Realized P&L -->
-                                    <div>
-                                        <div class="text-slate-400 font-medium mb-1">Realized P&L</div>
-                                        <div :class="chain.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                            <span>$</span><span x-text="formatNumber(chain.realized_pnl)"></span>
-                                        </div>
-                                    </div>
-
                                     <!-- Net Liquidity (OPEN chains only) -->
                                     <div x-show="chain.status === 'OPEN'">
                                         <div class="text-slate-400 font-medium mb-1">Net Liquidity</div>
