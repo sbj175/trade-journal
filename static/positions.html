@@ -506,24 +506,41 @@
                     return days > 0 ? days : 0;
                 },
                 getGroupMaxPercent(positions) {
-                    // For Iron Condor style positions, calculate max profit percentage
-                    // This represents the best-case scenario profit as a percentage of cost basis
+                    // For spread strategies, calculate max profit percentage
+                    // Max Profit = (Spread Width × 100 × Num Contracts) - Debit Paid
                     const totalCostBasis = positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
                     if (totalCostBasis === 0) return '—';
 
-                    // Use live P&L (current market values) for max profit calculation
-                    const currentNetLiq = positions.reduce((sum, pos) => sum + this.calculateLiveMarketValue(pos), 0);
-                    const currentPnL = currentNetLiq - totalCostBasis;
+                    // Extract strike prices from option symbols
+                    const strikes = positions
+                        .map(p => {
+                            // Symbol format: "HOOD  251219C00135000" -> extract 135
+                            const match = (p.symbol || '').match(/([CP])(\d{8})$/);
+                            if (match) {
+                                // Strike is in the last 8 digits, divide by 1000 to get actual strike
+                                return parseInt(match[2]) / 1000;
+                            }
+                            return p.strike_price;
+                        })
+                        .filter(s => s !== null && s !== undefined)
+                        .sort((a, b) => a - b);
 
-                    // For spreads, max profit is typically limited by strike width
-                    // If we're already at max profit or beyond, show the current P&L as max
-                    const maxPercent = ((currentPnL / Math.abs(totalCostBasis)) * 100).toFixed(1);
-
-                    // Only show if this is actually a spread (multiple legs) with meaningful calculation
-                    if (positions.length > 1) {
-                        return maxPercent + '%';
+                    if (strikes.length < 2) {
+                        // Can't calculate spread width with less than 2 strikes
+                        return '—';
                     }
-                    return '—';
+
+                    // Calculate spread width (difference between highest and lowest strike)
+                    const spreadWidth = strikes[strikes.length - 1] - strikes[0];
+                    const numContracts = Math.max(...positions.map(p => Math.abs(p.quantity || 0)));
+
+                    // Max profit = (spread width × 100 × num contracts) - absolute debit paid
+                    const maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis);
+
+                    // Calculate as percentage of cost basis
+                    const maxPercent = ((maxProfit / Math.abs(totalCostBasis)) * 100).toFixed(1);
+
+                    return maxPercent + '%';
                 },
                 getMinDTE(positions) {
                     if (!Array.isArray(positions) || positions.length === 0) return null;
