@@ -83,8 +83,85 @@ class Position:
         """Check if position was closed by system (expiration/assignment)"""
         if not self.closing_action:
             return False
-        return any(action in self.closing_action.upper() for action in 
+        return any(action in self.closing_action.upper() for action in
                   ['EXPIRED', 'ASSIGNED', 'EXERCISED', 'CASH_SETTLED'])
+
+    @property
+    def commission(self) -> float:
+        """Commission for this position (not tracked at position level)"""
+        return 0.0
+
+    @property
+    def regulatory_fees(self) -> float:
+        """Regulatory fees for this position (not tracked at position level)"""
+        return 0.0
+
+    @property
+    def clearing_fees(self) -> float:
+        """Clearing fees for this position (not tracked at position level)"""
+        return 0.0
+
+    # Legacy transaction-like properties for backward compatibility
+    @property
+    def is_closing(self) -> bool:
+        """Whether this position is a closing transaction"""
+        return bool(self.closing_action)
+
+    @property
+    def is_opening(self) -> bool:
+        """Whether this position is an opening transaction"""
+        return not self.closing_action
+
+    @property
+    def is_buy(self) -> bool:
+        """Whether the opening action was a buy"""
+        return 'BUY' in str(self.opening_action).upper()
+
+    @property
+    def is_sell(self) -> bool:
+        """Whether the opening action was a sell"""
+        return 'SELL' in str(self.opening_action).upper()
+
+    @property
+    def is_assignment(self) -> bool:
+        """Whether this position was closed by assignment"""
+        return self.closing_action == 'ASSIGNED' if self.closing_action else False
+
+    @property
+    def is_exercise(self) -> bool:
+        """Whether this position was closed by exercise"""
+        return self.closing_action == 'EXERCISED' if self.closing_action else False
+
+    @property
+    def is_expiration(self) -> bool:
+        """Whether this position was closed by expiration"""
+        return self.closing_action == 'EXPIRED' if self.closing_action else False
+
+    @property
+    def underlying_symbol(self) -> str:
+        """Underlying symbol (alias for compatibility)"""
+        return self.underlying
+
+    @property
+    def price(self) -> float:
+        """Opening price (alias for compatibility)"""
+        return self.opening_price
+
+    @property
+    def id(self) -> str:
+        """Position ID (alias for compatibility)"""
+        return str(self.position_id)
+
+    @property
+    def action(self) -> str:
+        """Opening action (alias for compatibility)"""
+        return self.opening_action
+
+    # executed_at would need to be added as a field; using a datetime from created_at for now
+    @property
+    def executed_at(self) -> datetime:
+        """Execution timestamp (using created_at as proxy)"""
+        return self.created_at or datetime.now()
 
 
 @dataclass
@@ -128,7 +205,12 @@ class Order:
         if self.is_rolling:
             emblems.append('R')  # Roll
         return emblems
-    
+
+    @property
+    def transactions(self) -> List[Position]:
+        """Alias for positions to support legacy code that accesses .transactions"""
+        return self.positions
+
     def consolidate_positions(self) -> List[Position]:
         """Consolidate multiple fills of the same position into single entries"""
         if not self.positions:
