@@ -298,6 +298,7 @@
                 initializeWebSocket() {
                     const ts = Date.now();
                     console.log(`[${ts}] >>> initializeWebSocket() called`);
+                    console.log(">>> SIMPLE LOG TEST");
                     try {
                         console.log(`[${ts}] >>> ENTERED try block`);
                         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
