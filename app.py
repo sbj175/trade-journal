@@ -393,78 +393,21 @@ async def verify_auth(request: Request):
 
 async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
     """Check if cached chain data is fresh enough to use"""
+    # TEMPORARY: Always use cache due to issues with V2 primary path
+    # The V2 path has compatibility issues with order.transactions that need refactoring
+    # For now, cached path works correctly and is performant
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            
-            # Get the latest transaction timestamp
-            query = "SELECT MAX(created_at) FROM raw_transactions"
-            params = []
-            
-            if account_number or underlying:
-                conditions = []
-                if account_number:
-                    conditions.append("account_number = ?")
-                    params.append(account_number)
-                if underlying:
-                    conditions.append("underlying_symbol = ?")
-                    params.append(underlying)
-                query += " WHERE " + " AND ".join(conditions)
-            
-            cursor.execute(query, params)
-            latest_transaction = cursor.fetchone()[0]
-            
-            if not latest_transaction:
-                return False
-            
-            # Get the latest chain cache timestamp
-            cache_query = "SELECT MAX(updated_at) FROM order_chains"
-            cache_params = []
-            
-            if account_number or underlying:
-                conditions = []
-                if account_number:
-                    conditions.append("account_number = ?")
-                    cache_params.append(account_number)
-                if underlying:
-                    conditions.append("underlying = ?")
-                    cache_params.append(underlying)
-                cache_query += " WHERE " + " AND ".join(conditions)
-            
-            cursor.execute(cache_query, cache_params)
-            latest_cache = cursor.fetchone()[0]
-
-            if not latest_cache:
-                return False
-
-            # Cache is fresh if it's newer than the latest transaction
-            # With a 2-minute grace period: allow slightly stale cache if it's within 2 minutes
-            # This prevents expensive full reprocessing of 10k+ transactions for small updates
-            # Background incremental sync will update the cache in the background
-            from datetime import datetime, timedelta
-            cache_staleness = (datetime.fromisoformat(latest_transaction) - datetime.fromisoformat(latest_cache)).total_seconds() if isinstance(latest_transaction, str) and isinstance(latest_cache, str) else 0
-            grace_period_seconds = 120  # 2 minute grace period
-
-            if latest_cache >= latest_transaction:
-                return True  # Cache is current
-
-            # Allow cache to be used even if slightly stale (within grace period)
-            # to avoid expensive full reprocessing
-            if isinstance(latest_transaction, str) and isinstance(latest_cache, str):
-                try:
-                    cache_time = datetime.fromisoformat(latest_cache)
-                    transaction_time = datetime.fromisoformat(latest_transaction)
-                    staleness = (transaction_time - cache_time).total_seconds()
-                    if staleness <= grace_period_seconds:
-                        logger.info(f"Cache is {staleness:.0f}s stale (within {grace_period_seconds}s grace period), using cached data")
-                        return True
-                except:
-                    pass
-
-            return False
-            
+            # Just check if we have any cached chains
+            cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
+            count = cursor.fetchone()[0]
+            has_cache = count > 0
+            if has_cache:
+                logger.debug("Using cached chains (V2 primary path temporarily disabled)")
+            return has_cache
     except Exception as e:
-        logger.error(f"Error checking cache freshness: {e}")
+        logger.error(f"Error checking cache: {e}")
         return False
 
 
@@ -948,7 +891,7 @@ async def get_order_chains(
             total_quantity = 0
 
             for order in chain.orders:
-                for position in order.positions:
+                for position in order.transactions:  # Use .transactions alias for compatibility
                     # Get opening price and quantity
                     opening_price = position.opening_price
                     quantity = abs(position.quantity)
@@ -971,7 +914,7 @@ async def get_order_chains(
             unrealized_pnl = 0.0
 
             for order in chain.orders:
-                for position in order.positions:
+                for position in order.transactions:  # Use .transactions alias for compatibility
                     # Only process closed or system-closed positions
                     if position.closing_action:
                         quantity = abs(position.quantity)
@@ -1005,7 +948,7 @@ async def get_order_chains(
             # (don't sum all legs, which would count each leg separately)
             opening_quantity_total = 0
             for order in chain.orders:
-                for position in order.positions:
+                for position in order.transactions:  # Use .transactions alias for compatibility
                     if position.opening_price > 0:  # Has opening price means it was opened in this order
                         opening_quantity_total = abs(position.quantity)  # Use first opening quantity, don't sum
                         break
