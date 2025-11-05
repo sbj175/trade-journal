@@ -377,13 +377,6 @@
                                          :class="chain.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
                                         $<span x-text="formatNumber(chain.total_pnl)"></span>
                                     </div>
-                                    <div class="text-xs text-slate-400">
-                                        <span x-show="chain.status === 'CLOSED'">Realized P&L</span>
-                                        <span x-show="chain.status === 'OPEN'">
-                                            Realized: $<span x-text="formatNumber(chain.realized_pnl)"></span> |
-                                            Unrealized: $<span x-text="formatNumber(chain.total_pnl - chain.realized_pnl)"></span>
-                                        </span>
-                                    </div>
                                 </div>
                             </div>
 
