@@ -458,10 +458,15 @@
                                                                   :class="calculateRollCreditDebit(order)?.type === 'credit' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
                                                                   x-text="formatRollCreditDebit(order)"></span>
                                                             <!-- Opening Credit/Debit -->
-                                                            <span x-show="order.order_type === 'OPENING' && formatOpeningCreditDebit(order)" 
+                                                            <span x-show="order.order_type === 'OPENING' && formatOpeningCreditDebit(order)"
                                                                   class="ml-2 text-xs font-medium px-2 py-1 rounded"
                                                                   :class="calculateOpeningCreditDebit(order)?.type === 'credit' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
                                                                   x-text="formatOpeningCreditDebit(order)"></span>
+                                                            <!-- Closing Credit/Debit -->
+                                                            <span x-show="order.order_type === 'CLOSING' && formatClosingCreditDebit(order)"
+                                                                  class="ml-2 text-xs font-medium px-2 py-1 rounded"
+                                                                  :class="calculateClosingCreditDebit(order)?.type === 'credit' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
+                                                                  x-text="formatClosingCreditDebit(order)"></span>
                                                         </div>
                                                         <div class="text-xs text-slate-400">
                                                             <button @click="order.expanded = !order.expanded" 

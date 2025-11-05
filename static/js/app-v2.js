@@ -455,10 +455,41 @@ function tradeJournal() {
         formatOpeningCreditDebit(order) {
             const openingData = this.calculateOpeningCreditDebit(order);
             if (!openingData) return '';
-            
+
             return `${openingData.amount.toFixed(2)} ${openingData.type}`;
         },
-        
+
+        // Calculate per-share credit/debit for closing orders
+        calculateClosingCreditDebit(order) {
+            if (!order || order.order_type !== 'CLOSING' || !order.positions || order.positions.length === 0) {
+                return null;
+            }
+
+            // Use helper function to get the correct divisor (handles ratio spreads)
+            const divisor = this.getCreditDebitDivisor(order);
+
+            if (divisor === 0) {
+                return null;
+            }
+
+            const orderPnL = order.total_pnl || 0;
+            const perRatioAmount = Math.abs(orderPnL) / divisor / 100; // Divide by 100 to get per-share amount
+            const isCredit = orderPnL > 0;
+
+            return {
+                amount: perRatioAmount,
+                type: isCredit ? 'credit' : 'debit'
+            };
+        },
+
+        // Format closing credit/debit for display
+        formatClosingCreditDebit(order) {
+            const closingData = this.calculateClosingCreditDebit(order);
+            if (!closingData) return '';
+
+            return `${closingData.amount.toFixed(2)} ${closingData.type}`;
+        },
+
         // Load dashboard data
         async loadDashboard() {
             const startTime = performance.now();
