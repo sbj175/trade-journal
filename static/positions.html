@@ -506,8 +506,9 @@
                     return days > 0 ? days : 0;
                 },
                 getGroupMaxPercent(positions) {
-                    // For spread strategies, calculate max profit percentage
-                    // Max Profit = (Spread Width × 100 × Num Contracts) - Debit Paid
+                    // For spread strategies, calculate current P&L as percentage of max profit
+                    // % Max = (Current P&L / Max Profit) × 100
+                    // Where Max Profit = (Spread Width × 100 × Num Contracts) - Debit Paid
                     const totalCostBasis = positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
                     if (totalCostBasis === 0) return '—';
 
@@ -540,8 +541,14 @@
                     // Max profit = (spread width × 100 × num contracts) - absolute debit paid
                     const maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis);
 
-                    // Calculate as percentage of cost basis
-                    const maxPercent = ((maxProfit / Math.abs(totalCostBasis)) * 100).toFixed(1);
+                    if (maxProfit <= 0) return '—';
+
+                    // Current P&L using live market values
+                    const currentNetLiq = positions.reduce((sum, pos) => sum + this.calculateLiveMarketValue(pos), 0);
+                    const currentPnL = currentNetLiq - totalCostBasis;
+
+                    // % Max = (Current P&L / Max Profit) × 100
+                    const maxPercent = ((currentPnL / maxProfit) * 100).toFixed(1);
 
                     return maxPercent + '%';
                 },
