@@ -227,22 +227,28 @@ function tradeJournal() {
         async onAccountChange() {
             const totalStartTime = performance.now();
             console.log('🕐 TIMING: Starting account change to:', this.selectedAccount);
+            console.log('DEBUG: onAccountChange - this.selectedAccount is now:', this.selectedAccount);
 
             // Reset underlying filter when account changes
             const resetStartTime = performance.now();
             this.filterUnderlying = '';
-            console.log('Reset underlying filter to All');
+            console.log('DEBUG: Reset underlying filter to All');
             this.saveState(); // Save state after resetting underlying
             const resetTime = performance.now() - resetStartTime;
             console.log(`🕐 TIMING: Filter reset took ${resetTime.toFixed(0)}ms`);
 
             const dashboardStartTime = performance.now();
+            console.log('DEBUG: About to call loadDashboard()');
             await this.loadDashboard();
+            console.log('DEBUG: loadDashboard() completed');
             const dashboardTime = performance.now() - dashboardStartTime;
             console.log(`🕐 TIMING: Dashboard completed in ${dashboardTime.toFixed(0)}ms`);
 
             const chainsStartTime = performance.now();
+            console.log('DEBUG: About to call loadChains() with selectedAccount =', this.selectedAccount);
             await this.loadChains();
+            console.log('DEBUG: loadChains() completed, this.chains.length =', this.chains.length);
+            console.log('DEBUG: this.filteredChains.length =', this.filteredChains.length);
             const chainsTime = performance.now() - chainsStartTime;
             console.log(`🕐 TIMING: Chains completed in ${chainsTime.toFixed(0)}ms`);
 
@@ -534,17 +540,27 @@ function tradeJournal() {
             this.chainsLoading = true;
             try {
                 console.log('🕐 TIMING: Starting loadChains()');
+                console.log('DEBUG: selectedAccount =', this.selectedAccount);
+                console.log('DEBUG: filterUnderlying =', this.filterUnderlying);
+
                 const params = new URLSearchParams();
                 // Always pass account_number - empty string for "All Accounts", specific value for single account
                 params.append('account_number', this.selectedAccount || '');
                 if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
 
+                const urlStr = `/api/chains?${params}`;
+                console.log('DEBUG: Fetching from URL:', urlStr);
+
                 const fetchStart = performance.now();
-                const response = await fetch(`/api/chains?${params}`);
+                const response = await fetch(urlStr);
                 const data = await response.json();
                 const fetchTime = performance.now() - fetchStart;
                 console.log(`🕐 TIMING: API fetch took ${fetchTime.toFixed(0)}ms`);
+                console.log('DEBUG: API response data:', data);
+                console.log('DEBUG: API response chains count:', data.chains?.length || 0);
+
                 this.chains = data.chains || [];
+                console.log('DEBUG: Assigned to this.chains, length =', this.chains.length);
                 
                 // Sort chains by opening date descending (most recent first)
                 this.chains.sort((a, b) => {
@@ -560,10 +576,13 @@ function tradeJournal() {
                     const dateB = new Date(b.opening_date || '1900-01-01');
                     return dateB - dateA; // Descending order (most recent first)
                 });
-                
+                console.log('DEBUG: After sorting, this.chains.length =', this.chains.length);
+
                 const sortingStart = performance.now();
                 this.applyStatusFilter(); // Apply status filtering after loading
                 const sortingTime = performance.now() - sortingStart;
+                console.log('DEBUG: After applyStatusFilter, this.filteredChains.length =', this.filteredChains.length);
+                console.log('DEBUG: this.filteredChains =', this.filteredChains);
 
                 const saveStateStart = performance.now();
                 this.saveState(); // Save state when filters change
@@ -588,35 +607,46 @@ function tradeJournal() {
         
         // Apply status filtering to chains
         applyStatusFilter() {
+            console.log('DEBUG: applyStatusFilter called');
+            console.log('DEBUG: this.chains.length =', this.chains.length);
+            console.log('DEBUG: this.showOpen =', this.showOpen, ', this.showClosed =', this.showClosed);
+
             let chains = this.chains;
 
             // Apply status filtering
             if (!this.showOpen && !this.showClosed) {
                 // If both are unchecked, show nothing
                 chains = [];
+                console.log('DEBUG: Both showOpen and showClosed are false, chains set to []');
             } else if (this.showOpen && this.showClosed) {
                 // If both are checked, show all
                 chains = this.chains;
+                console.log('DEBUG: Both showOpen and showClosed are true, showing all');
             } else if (this.showOpen) {
                 // Show only open chains
                 chains = this.chains.filter(chain => chain.status === 'OPEN');
+                console.log('DEBUG: Filtered to OPEN chains, count =', chains.length);
             } else if (this.showClosed) {
                 // Show only closed chains
                 chains = this.chains.filter(chain => chain.status === 'CLOSED');
+                console.log('DEBUG: Filtered to CLOSED chains, count =', chains.length);
             }
 
             // Apply strategy filtering if set
             if (this.filterStrategy) {
+                const beforeCount = chains.length;
                 chains = chains.filter(chain => {
                     const strategy = chain.strategy_type || 'Unknown';
                     return strategy === this.filterStrategy;
                 });
+                console.log('DEBUG: After strategy filter, count =', chains.length, '(was', beforeCount, ')');
             }
 
             // Force reactivity by creating a new array reference
             // This ensures Alpine.js detects the change
+            console.log('DEBUG: Setting this.filteredChains to array of length', chains.length);
             this.filteredChains = [...chains];
-            console.log('applyStatusFilter updated: ' + this.filteredChains.length + ' chains');
+            console.log('DEBUG: applyStatusFilter complete, this.filteredChains.length =', this.filteredChains.length);
 
             // Calculate filtered dashboard statistics
             this.calculateFilteredDashboard();
