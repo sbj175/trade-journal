@@ -555,12 +555,16 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
 
                 # Calculate metrics from cached order data
                 if orders:
+                    # For multi-leg spreads, all legs have the same quantity, so use the first leg's quantity
                     for order in orders:
                         # Count opening quantities and calculate cost basis
                         if order.get('positions'):
                             for pos in order['positions']:
                                 if pos.get('status') == 'OPEN' or not pos.get('closing_action'):
-                                    opening_quantity_total += abs(pos.get('quantity', 0))
+                                    opening_quantity_total = abs(pos.get('quantity', 0))  # Use first opening qty, don't sum
+                                    break
+                            if opening_quantity_total > 0:
+                                break
 
                     # Cost basis from total credit/debit if available
                     total_credit = 0.0
@@ -579,8 +583,11 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                     if total_debit > 0 or total_credit > 0:
                         # Preserve sign: negative = money spent (long), positive = money received (short)
                         cost_basis_total = total_debit - total_credit
+                        cost_basis_per_unit = 0.0
+                        cost_basis_per_share = 0.0
                         if opening_quantity_total > 0:
                             cost_basis_per_unit = cost_basis_total / opening_quantity_total
+                            cost_basis_per_share = cost_basis_per_unit / 100  # Convert to per-share
 
                 # Get net liquidity for open chains
                 if chain_status == 'OPEN':
@@ -604,6 +611,7 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                     'order_count': order_count,
                     'cost_basis_total': cost_basis_total,
                     'cost_basis_per_unit': cost_basis_per_unit,
+                    'cost_basis_per_share': cost_basis_per_share,
                     'total_pnl': total_pnl or 0.0,
                     'realized_pnl': realized_pnl or 0.0,
                     'unrealized_pnl': unrealized_pnl or 0.0,
@@ -988,16 +996,24 @@ async def get_order_chains(
             cost_basis_total = total_debit - total_credit  # Preserve sign: negative for long, positive for short
 
             # Calculate the total quantity of opening transactions for per-unit calculation
+            # For multi-leg spreads, all legs have the same quantity, so use the first leg's quantity
+            # (don't sum all legs, which would count each leg separately)
             opening_quantity_total = 0
             for order in chain.orders:
                 for tx in order.transactions:
                     if tx.is_opening:
-                        opening_quantity_total += abs(tx.quantity)
+                        opening_quantity_total = abs(tx.quantity)  # Use first opening quantity, don't sum
+                        break
+                if opening_quantity_total > 0:
+                    break
 
             # Calculate weighted average cost basis per unit (preserving sign)
+            # Also calculate per-share basis (divide by 100 for options, as prices are in cents)
             cost_basis_per_unit = 0.0
+            cost_basis_per_share = 0.0
             if opening_quantity_total > 0:
                 cost_basis_per_unit = cost_basis_total / opening_quantity_total
+                cost_basis_per_share = cost_basis_per_unit / 100  # Convert to per-share
 
             # Debug logging
             logger.debug(f"Chain {chain.chain_id} ({chain.underlying}): debit={total_debit:.2f}, credit={total_credit:.2f}, cost_basis_total={cost_basis_total:.2f}, opening_qty={opening_quantity_total}, per_unit={cost_basis_per_unit:.2f}")
@@ -1019,6 +1035,7 @@ async def get_order_chains(
                 'net_premium': total_credit - total_debit,
                 'cost_basis_total': cost_basis_total,
                 'cost_basis_per_unit': cost_basis_per_unit,
+                'cost_basis_per_share': cost_basis_per_share,
                 'realized_pnl': realized_pnl,
                 'unrealized_pnl': unrealized_pnl,
                 'total_pnl': 0,  # Will be calculated after orders are processed
