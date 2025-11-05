@@ -341,12 +341,23 @@
                                     return;
                                 }
                                 console.log('>> [QUOTES] Processing quote update with', Object.keys(message.data).length, 'symbols');
+
+                                // Update each quote in the object
+                                let quotesUpdated = false;
                                 for (const [symbol, quoteData] of Object.entries(message.data)) {
                                     if (quoteData && typeof quoteData === 'object') {
                                         this.underlyingQuotes[symbol] = quoteData;
+                                        quotesUpdated = true;
                                         console.log('>>   Updated quote for', symbol, ':', quoteData.bid, '-', quoteData.ask);
                                     }
                                 }
+
+                                // Force Alpine reactivity by reassigning the object
+                                if (quotesUpdated) {
+                                    console.log('>> [QUOTES] Forcing reactivity with object reassignment');
+                                    this.underlyingQuotes = { ...this.underlyingQuotes };
+                                }
+
                                 this.quoteUpdateCounter++;
                                 this.lastQuoteUpdate = new Date().toLocaleTimeString();
                                 console.log('>> [QUOTES] Updated counter to', this.quoteUpdateCounter, 'at', this.lastQuoteUpdate);
@@ -1261,7 +1272,7 @@
 
             <!-- Grouped Positions -->
             <div x-show="!isLoading && !error && filteredPositions.length > 0 && allPositions.length > 0" class="space-y-3">
-                <template x-for="group in groupedPositions" :key="`${group.underlying}|${group.chainId}|${group.positions[0]?.expires_at || group.positions[0]?.opened_at}`">
+                <template x-for="group in groupedPositions" :key="`${group.underlying}|${group.chainId}|${group.positions[0]?.expires_at || group.positions[0]?.opened_at}|${quoteUpdateCounter}`">
                     <div class="bg-slate-800 rounded-lg overflow-hidden" x-data="{ expanded: false }">
                         <!-- Group Header (Clickable) -->
                         <div class="bg-slate-700 px-6 py-2 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
@@ -1281,7 +1292,7 @@
                                 </div>
                                 
                                 <!-- Price Column -->
-                                <div class="flex items-center space-x-2" :key="`price-${group.underlying}-${quoteUpdateCounter}`">
+                                <div class="flex items-center space-x-2">
                                     <template x-if="getUnderlyingQuote(group.underlying)">
                                         <div class="flex items-center space-x-2">
                                             <!-- Price with colored background -->
