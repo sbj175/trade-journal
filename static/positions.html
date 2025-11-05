@@ -507,13 +507,23 @@
                 },
                 getGroupMaxPercent(positions) {
                     // For Iron Condor style positions, calculate max profit percentage
-                    const totalCostBasis = positions.reduce((sum, pos) => sum + Math.abs(pos.cost_basis || 0), 0);
+                    // This represents the best-case scenario profit as a percentage of cost basis
+                    const totalCostBasis = positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
                     if (totalCostBasis === 0) return '—';
-                    const totalPnL = this.getGroupPnL(positions);
-                    const maxProfit = positions.reduce((sum, pos) => sum + (pos.market_value || 0), 0);
-                    if (maxProfit >= totalPnL) return '—';
-                    const maxPercent = ((Math.abs(maxProfit) / totalCostBasis) * 100).toFixed(1);
-                    return maxPercent + '%';
+
+                    // Use live P&L (current market values) for max profit calculation
+                    const currentNetLiq = positions.reduce((sum, pos) => sum + this.calculateLiveMarketValue(pos), 0);
+                    const currentPnL = currentNetLiq - totalCostBasis;
+
+                    // For spreads, max profit is typically limited by strike width
+                    // If we're already at max profit or beyond, show the current P&L as max
+                    const maxPercent = ((currentPnL / Math.abs(totalCostBasis)) * 100).toFixed(1);
+
+                    // Only show if this is actually a spread (multiple legs) with meaningful calculation
+                    if (positions.length > 1) {
+                        return maxPercent + '%';
+                    }
+                    return '—';
                 },
                 getMinDTE(positions) {
                     if (!Array.isArray(positions) || positions.length === 0) return null;
