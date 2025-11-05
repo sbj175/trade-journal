@@ -571,18 +571,12 @@ function tradeJournal() {
 
                 const totalTime = performance.now() - startTime;
                 console.log(`🕐 TIMING: Total loadChains took ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, sorting: ${sortingTime.toFixed(0)}ms, saveState: ${saveStateTime.toFixed(0)}ms)`);
-                console.log(`🕐 TIMING: Loaded and sorted ${this.chains.length} chains`);
+                console.log(`🕐 TIMING: Loaded and sorted ${this.chains.length} chains, filtered to ${this.filteredChains.length}`);
 
                 // Log timing data from server if available
                 if (data.timing) {
                     console.log(`🕐 TIMING: Server breakdown: total=${data.timing.total_time}s, db=${data.timing.db_time}s, v2=${data.timing.v2_time}s, format=${data.timing.format_time}s`);
                 }
-
-                // Schedule DOM update timing check
-                this.$nextTick(() => {
-                    const domUpdateTime = performance.now() - startTime;
-                    console.log(`🕐 TIMING: DOM updates completed after ${domUpdateTime.toFixed(0)}ms from loadChains start`);
-                });
             } catch (error) {
                 console.error('Error loading chains:', error);
                 const errorTime = performance.now() - startTime;
@@ -595,7 +589,7 @@ function tradeJournal() {
         // Apply status filtering to chains
         applyStatusFilter() {
             let chains = this.chains;
-            
+
             // Apply status filtering
             if (!this.showOpen && !this.showClosed) {
                 // If both are unchecked, show nothing
@@ -610,7 +604,7 @@ function tradeJournal() {
                 // Show only closed chains
                 chains = this.chains.filter(chain => chain.status === 'CLOSED');
             }
-            
+
             // Apply strategy filtering if set
             if (this.filterStrategy) {
                 chains = chains.filter(chain => {
@@ -618,9 +612,12 @@ function tradeJournal() {
                     return strategy === this.filterStrategy;
                 });
             }
-            
-            this.filteredChains = chains;
-            
+
+            // Force reactivity by creating a new array reference
+            // This ensures Alpine.js detects the change
+            this.filteredChains = [...chains];
+            console.log('applyStatusFilter updated: ' + this.filteredChains.length + ' chains');
+
             // Calculate filtered dashboard statistics
             this.calculateFilteredDashboard();
         },
