@@ -235,10 +235,14 @@
                     this.selectedTickerForChart = ticker;
 
                     try {
-                        const response = await fetch(`/api/screener/term-structure/${ticker}`);
+                        const url = `/api/screener/term-structure/${ticker}`;
+                        console.log('Fetching term structure from:', url);
+                        const response = await fetch(url);
+                        console.log('Response status:', response.status);
                         const data = await response.json();
+                        console.log('Response data:', data);
 
-                        if (data.success) {
+                        if (response.ok && data.success) {
                             this.termStructureData = data.data;
                             console.log('Term structure data loaded:', this.termStructureData);
 
@@ -251,11 +255,16 @@
                                     }, 100);
                                 });
                             });
+                        } else if (!response.ok) {
+                            console.error('HTTP error:', response.status, data);
+                            alert(`Error: ${data.detail || 'Failed to load term structure'}`);
                         } else {
                             console.error('Failed to load term structure:', data);
+                            alert(`Error: ${data.detail || 'Failed to load term structure'}`);
                         }
                     } catch (error) {
                         console.error('Error fetching term structure:', error);
+                        alert(`Error: ${error.message}`);
                     } finally {
                         this.loadingChart = false;
                     }
@@ -628,10 +637,16 @@
                 <div class="flex justify-between items-center mb-4">
                     <div>
                         <h3 class="text-xl font-bold" x-text="selectedTickerForChart + ' - IV Term Structure (IVx)'"></h3>
-                        <div x-show="termStructureData" class="text-sm text-gray-400 mt-1">
-                            <span x-show="termStructureData?.ivx">IVx: <span class="text-blue-400 font-semibold" x-text="formatPercent(termStructureData.ivx)"></span></span>
-                            <span x-show="termStructureData?.iv_rank" class="ml-4">IV Rank: <span class="text-green-400 font-semibold" x-text="formatNumber(termStructureData.iv_rank * 100, 1)"></span></span>
-                            <span x-show="termStructureData?.price" class="ml-4">Price: <span class="text-white font-semibold" x-text="formatPrice(termStructureData.price)"></span></span>
+                        <div x-show="termStructureData && !loadingChart" class="text-sm text-gray-400 mt-1">
+                            <template x-if="termStructureData && termStructureData.ivx">
+                                <span>IVx: <span class="text-blue-400 font-semibold" x-text="formatPercent(termStructureData.ivx)"></span></span>
+                            </template>
+                            <template x-if="termStructureData && termStructureData.iv_rank">
+                                <span class="ml-4">IV Rank: <span class="text-green-400 font-semibold" x-text="formatNumber(termStructureData.iv_rank * 100, 1)"></span></span>
+                            </template>
+                            <template x-if="termStructureData && termStructureData.price">
+                                <span class="ml-4">Price: <span class="text-white font-semibold" x-text="formatPrice(termStructureData.price)"></span></span>
+                            </template>
                         </div>
                     </div>
                     <button @click="closeTermStructure()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
