@@ -309,44 +309,28 @@
                         };
                         
                         this.ws.onmessage = (event) => {
-                            try {
-                                const message = JSON.parse(event.data);
-                                console.log('WebSocket message received:', message);
+                            const message = JSON.parse(event.data);
+                            console.log('[WS] Message:', message.type);
 
-                                if (message.type === 'connected') {
-                                    console.log('CONNECTED MESSAGE DETECTED');
-                                    try {
-                                        console.log('INSIDE TRY BLOCK');
-                                        setTimeout(() => {
-                                            console.log('SETTIMEOUT CALLBACK FIRED');
-                                            this.requestLiveQuotes();
-                                        }, 50);
-                                    } catch (e) {
-                                        console.error('CAUGHT ERROR:', e);
+                            if (message.type === 'connected') {
+                                console.log('[WS] Connected - requesting quotes in 100ms');
+                                setTimeout(() => {
+                                    console.log('[WS] Timeout fired - calling requestLiveQuotes');
+                                    this.requestLiveQuotes();
+                                }, 100);
+                            }
+                            else if (message.type === 'quotes' && message.data) {
+                                for (const [symbol, quoteData] of Object.entries(message.data)) {
+                                    if (quoteData && typeof quoteData === 'object') {
+                                        this.underlyingQuotes[symbol] = quoteData;
                                     }
-                                } else if (message.type === 'quotes' && message.data) {
-                                    // Update quotes using direct property assignment for Alpine.js reactivity
-                                    const updatedSymbols = [];
-                                    for (const [symbol, quoteData] of Object.entries(message.data)) {
-                                        if (quoteData && typeof quoteData === 'object') {
-                                            this.underlyingQuotes[symbol] = quoteData;
-                                            updatedSymbols.push(symbol);
-                                            // Debug: Log option quotes specifically
-                                            if (symbol.includes('C') || symbol.includes('P')) {
-                                                console.log(`Option quote received for ${symbol}: mark=${quoteData.mark}, price=${quoteData.price}`);
-                                            }
-                                        }
-                                    }
-                                    // Increment counter to force re-render
-                                    this.quoteUpdateCounter++;
-                                    this.lastQuoteUpdate = new Date().toLocaleTimeString();
-                                    console.log('Updated quotes for:', updatedSymbols, '| Total quotes available:', Object.keys(this.underlyingQuotes).length, '| quoteUpdateCounter:', this.quoteUpdateCounter);
-                                } else if (message.error) {
-                                    console.error('WebSocket error from server:', message.error);
                                 }
-                                console.log('MESSAGE HANDLER: Finished processing message type:', message.type);
-                            } catch (error) {
-                                console.error('Failed to parse WebSocket message:', error);
+                                this.quoteUpdateCounter++;
+                                this.lastQuoteUpdate = new Date().toLocaleTimeString();
+                                console.log('[WS] Updated', Object.keys(message.data).length, 'quotes');
+                            }
+                            else if (message.error) {
+                                console.error('[WS] Error:', message.error);
                             }
                         };
                         
