@@ -296,11 +296,13 @@
                 },
 
                 initializeWebSocket() {
+                    console.log('>>> initializeWebSocket() called');
                     try {
                         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                         const wsUrl = `${protocol}//${location.host}/ws/quotes`;
-                        
+                        console.log('>>> Creating WebSocket to:', wsUrl);
                         this.ws = new WebSocket(wsUrl);
+                        console.log('>>> WebSocket created:', this.ws);
                         
                         this.ws.onopen = () => {
                             console.log('WebSocket connected successfully');
@@ -308,9 +310,10 @@
                             this.liveQuotesActive = true;
                         };
                         
+                        console.log('>>> Setting up onmessage handler');
                         this.ws.onmessage = (event) => {
                             const message = JSON.parse(event.data);
-                            console.log('[WS] Message:', message.type);
+                            console.log('[WS] Message received:', message.type);
 
                             if (message.type === 'connected') {
                                 console.log('[WS] Connected - requesting quotes in 100ms');
