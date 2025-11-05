@@ -349,7 +349,8 @@
                         };
                         
                     } catch (error) {
-                        console.error('WebSocket error:', error);
+                        console.error('!!! EXCEPTION IN initializeWebSocket:', error);
+                        console.error('!!! Stack:', error.stack);
                     }
                 },
                 
