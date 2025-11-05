@@ -532,7 +532,10 @@
 
                     // Calculate spread width (difference between highest and lowest strike)
                     const spreadWidth = strikes[strikes.length - 1] - strikes[0];
-                    const numContracts = Math.max(...positions.map(p => Math.abs(p.quantity || 0)));
+
+                    // For a spread, the number of contracts is the absolute quantity of one leg
+                    // (both long and short should have same quantity)
+                    const numContracts = Math.abs(positions[0].quantity || 0);
 
                     // Max profit = (spread width × 100 × num contracts) - absolute debit paid
                     const maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis);
