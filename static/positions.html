@@ -305,12 +305,16 @@
                         this.ws = new WebSocket(wsUrl);
                         console.log(`[${ts}] >>> WebSocket created, readyState=${this.ws.readyState}`);
                         console.log(`[${ts}] >>> BEFORE onopen setup`);
-                        console.log(`[${ts}] >>> About to set onopen handler`);
-
-                        this.ws.onopen = () => {
-                            console.log(`[${ts}] [ONOPEN] WebSocket connected, readyState=${this.ws.readyState}`);
-                            this.liveQuotesActive = true;
-                        };
+                        try {
+                            console.log(`[${ts}] >>> About to set onopen handler`);
+                            this.ws.onopen = () => {
+                                console.log(`[${ts}] [ONOPEN] WebSocket connected, readyState=${this.ws.readyState}`);
+                                this.liveQuotesActive = true;
+                            };
+                            console.log(`[${ts}] >>> onopen handler SET successfully`);
+                        } catch (err) {
+                            console.error(`[${ts}] !!! ERROR setting onopen:`, err);
+                        }
 
                         console.log(`[${ts}] >>> onopen handler set, now setting onmessage handler`);
                         this.ws.onmessage = (event) => {
