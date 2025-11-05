@@ -303,14 +303,15 @@
                         console.log('>>> Creating WebSocket to:', wsUrl);
                         this.ws = new WebSocket(wsUrl);
                         console.log('>>> WebSocket created:', this.ws);
-                        
+                        console.log('>>> About to set onopen handler');
+
                         this.ws.onopen = () => {
                             console.log('WebSocket connected successfully');
                             console.log('WebSocket readyState:', this.ws.readyState);
                             this.liveQuotesActive = true;
                         };
-                        
-                        console.log('>>> Setting up onmessage handler');
+
+                        console.log('>>> onopen handler set, now setting onmessage handler');
                         this.ws.onmessage = (event) => {
                             const message = JSON.parse(event.data);
                             console.log('[WS] Message received:', message.type);
