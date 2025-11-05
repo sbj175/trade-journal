@@ -399,16 +399,22 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            # Check if we have cached chains for THIS account
-            if account_number:
+            # Check if we have cached chains for THIS account or "All Accounts"
+            if account_number == '':
+                # Empty string = "All Accounts" → check if we have any cached chains at all
+                cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
+            elif account_number:
+                # Specific account number → check for chains in that account
                 cursor.execute("SELECT COUNT(*) FROM order_chains WHERE account_number = ? LIMIT 1", (account_number,))
             else:
-                # If no account specified, check if we have any cached chains
+                # None (no parameter passed) → check if we have any cached chains
+                # This shouldn't happen in normal operation but handle it for backward compatibility
                 cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
             count = cursor.fetchone()[0]
             has_cache = count > 0
             if has_cache:
-                logger.debug(f"Using cached chains for account {account_number} (V2 primary path temporarily disabled)")
+                account_display = account_number if account_number is not None else "unspecified"
+                logger.debug(f"Using cached chains for account {account_display} (V2 primary path temporarily disabled)")
             return has_cache
     except Exception as e:
         logger.error(f"Error checking cache: {e}")
@@ -424,18 +430,21 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
             
             # Build query with filters
             query = """
-                SELECT oc.chain_id, oc.underlying, oc.strategy_type, oc.opening_date, 
+                SELECT oc.chain_id, oc.underlying, oc.strategy_type, oc.opening_date,
                        oc.closing_date, oc.chain_status, oc.order_count, oc.total_pnl,
                        oc.realized_pnl, oc.unrealized_pnl, oc.account_number
                 FROM order_chains oc
             """
             params = []
             where_conditions = []
-            
-            if account_number:
+
+            # Only filter by account if it's a non-empty string (specific account)
+            # Empty string = "All Accounts" → no account filter
+            # None = backward compatibility → no account filter
+            if account_number and account_number != '':
                 where_conditions.append("oc.account_number = ?")
                 params.append(account_number)
-            
+
             if underlying:
                 where_conditions.append("oc.underlying = ?")
                 params.append(underlying)

@@ -535,7 +535,8 @@ function tradeJournal() {
             try {
                 console.log('🕐 TIMING: Starting loadChains()');
                 const params = new URLSearchParams();
-                if (this.selectedAccount) params.append('account_number', this.selectedAccount);
+                // Always pass account_number - empty string for "All Accounts", specific value for single account
+                params.append('account_number', this.selectedAccount || '');
                 if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
 
                 const fetchStart = performance.now();
