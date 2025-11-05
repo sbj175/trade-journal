@@ -348,12 +348,10 @@ function tradeJournal() {
             );
 
             if (closingPositions.length > 0) {
-                // Sum quantities of closing positions to get total contracts being closed
-                const closingQuantity = closingPositions.reduce((sum, pos) => {
-                    return sum + Math.abs(pos.quantity || 0);
-                }, 0);
+                // Use the quantity from the first closing position (all legs in a spread have the same quantity)
+                const closingQuantity = Math.abs(closingPositions[0].quantity || 0);
                 if (closingQuantity > 0) {
-                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${closingPositions.length} closing positions with closing_action, total qty=${closingQuantity}`);
+                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${closingPositions.length} closing positions with closing_action, qty per spread=${closingQuantity}`);
                     return closingQuantity;
                 }
             }
@@ -368,11 +366,10 @@ function tradeJournal() {
             });
 
             if (closingByAction.length > 0) {
-                const closingQuantity = closingByAction.reduce((sum, pos) => {
-                    return sum + Math.abs(pos.quantity || 0);
-                }, 0);
+                // Use the quantity from the first closing position (all legs in a spread have the same quantity)
+                const closingQuantity = Math.abs(closingByAction[0].quantity || 0);
                 if (closingQuantity > 0) {
-                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${closingByAction.length} positions with closing actions, total qty=${closingQuantity}`);
+                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${closingByAction.length} positions with closing actions, qty per spread=${closingQuantity}`);
                     return closingQuantity;
                 }
             }
@@ -386,11 +383,10 @@ function tradeJournal() {
             });
 
             if (openingPositions.length > 0) {
-                const openingQuantity = openingPositions.reduce((sum, pos) => {
-                    return sum + Math.abs(pos.quantity || 0);
-                }, 0);
+                // Use the quantity from the first opening position (all legs in a spread have the same quantity)
+                const openingQuantity = Math.abs(openingPositions[0].quantity || 0);
                 if (openingQuantity > 0) {
-                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${openingPositions.length} opening positions, total qty=${openingQuantity}`);
+                    console.log(`getCreditDebitDivisor(${order.order_id}): Found ${openingPositions.length} opening positions, qty per spread=${openingQuantity}`);
                     return openingQuantity;
                 }
             }
