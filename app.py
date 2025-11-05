@@ -2541,6 +2541,8 @@ async def run_screener(request_data: ScreenerRequest, request: Request):
             "timestamp": datetime.now().isoformat()
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error running screener: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
