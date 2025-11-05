@@ -299,6 +299,7 @@
                     const ts = Date.now();
                     console.log(`[${ts}] >>> initializeWebSocket() called`);
                     try {
+                        console.log(`[${ts}] >>> ENTERED try block`);
                         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                         const wsUrl = `${protocol}//${location.host}/ws/quotes`;
                         console.log(`[${ts}] >>> Creating WebSocket to: ${wsUrl}`);
