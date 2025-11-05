@@ -240,8 +240,16 @@
 
                         if (data.success) {
                             this.termStructureData = data.data;
+                            console.log('Term structure data loaded:', this.termStructureData);
+
+                            // Use a longer delay and multiple nextTick to ensure DOM is ready
                             this.$nextTick(() => {
-                                this.renderChart();
+                                this.$nextTick(() => {
+                                    setTimeout(() => {
+                                        console.log('Attempting to render chart...');
+                                        this.renderChart();
+                                    }, 100);
+                                });
                             });
                         } else {
                             console.error('Failed to load term structure:', data);
@@ -263,9 +271,19 @@
                 },
 
                 renderChart() {
-                    if (!this.termStructureData || !this.termStructureData.term_structure) return;
+                    if (!this.termStructureData || !this.termStructureData.term_structure) {
+                        console.warn('renderChart: No term structure data available');
+                        return;
+                    }
 
-                    const ctx = document.getElementById('termStructureChart').getContext('2d');
+                    const canvas = document.getElementById('termStructureChart');
+                    if (!canvas) {
+                        console.error('renderChart: Canvas element not found in DOM');
+                        return;
+                    }
+
+                    console.log('renderChart: Canvas found, dimensions:', canvas.width, 'x', canvas.height);
+                    const ctx = canvas.getContext('2d');
 
                     // Destroy existing chart
                     if (this.chart) {
@@ -273,6 +291,7 @@
                     }
 
                     const termStructure = this.termStructureData.term_structure;
+                    console.log('renderChart: Rendering chart with', termStructure.length, 'data points');
 
                     this.chart = new Chart(ctx, {
                         type: 'line',
@@ -334,6 +353,8 @@
                             }
                         }
                     });
+
+                    console.log('renderChart: Chart created successfully!');
                 }
             }
         }
