@@ -392,19 +392,23 @@ async def verify_auth(request: Request):
 
 
 async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
-    """Check if cached chain data is fresh enough to use"""
-    # TEMPORARY: Always use cache due to issues with V2 primary path
+    """Check if cached chain data exists for the requested account"""
+    # TEMPORARY: Use cache when available per-account
     # The V2 path has compatibility issues with order.transactions that need refactoring
     # For now, cached path works correctly and is performant
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            # Just check if we have any cached chains
-            cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
+            # Check if we have cached chains for THIS account
+            if account_number:
+                cursor.execute("SELECT COUNT(*) FROM order_chains WHERE account_number = ? LIMIT 1", (account_number,))
+            else:
+                # If no account specified, check if we have any cached chains
+                cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
             count = cursor.fetchone()[0]
             has_cache = count > 0
             if has_cache:
-                logger.debug("Using cached chains (V2 primary path temporarily disabled)")
+                logger.debug(f"Using cached chains for account {account_number} (V2 primary path temporarily disabled)")
             return has_cache
     except Exception as e:
         logger.error(f"Error checking cache: {e}")
