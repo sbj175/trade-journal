@@ -314,20 +314,15 @@
                                 console.log('WebSocket message received:', message);
 
                                 if (message.type === 'connected') {
+                                    console.log('CONNECTED MESSAGE DETECTED');
                                     try {
-                                        console.log('✓ WebSocket connection confirmed - message.type check passed');
-                                        console.log('  About to schedule requestLiveQuotes...');
-                                        // Use arrow function to preserve 'this' context
-                                        // setTimeout to ensure WebSocket readyState is actually OPEN
-                                        const self = this;
-                                        console.log('  self assigned, calling setTimeout...');
-                                        const timeoutId = setTimeout(() => {
-                                            console.log('✓✓✓ setTimeout callback executed! Now calling requestLiveQuotes...');
-                                            self.requestLiveQuotes();
-                                        }, 100);
-                                        console.log('  setTimeout called with ID:', timeoutId);
+                                        console.log('INSIDE TRY BLOCK');
+                                        setTimeout(() => {
+                                            console.log('SETTIMEOUT CALLBACK FIRED');
+                                            this.requestLiveQuotes();
+                                        }, 50);
                                     } catch (e) {
-                                        console.error('ERROR in connected message handler:', e, e.stack);
+                                        console.error('CAUGHT ERROR:', e);
                                     }
                                 } else if (message.type === 'quotes' && message.data) {
                                     // Update quotes using direct property assignment for Alpine.js reactivity
