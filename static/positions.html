@@ -559,11 +559,17 @@
                     return 'Stock';
                 },
                 shouldShowMaxPercent(positions) {
-                    if (!Array.isArray(positions)) return false;
-                    // Show max percent for spreads and similar limited-risk strategies
-                    const hasCall = positions.some(p => p.option_type === 'Call' || p.symbol.includes('C'));
-                    const hasPut = positions.some(p => p.option_type === 'Put' || p.symbol.includes('P'));
-                    return hasCall && hasPut;
+                    if (!Array.isArray(positions) || positions.length <= 1) return false;
+                    // Show max percent for multi-leg strategies (spreads, covered calls, etc.)
+                    // Check if this is a multi-leg option strategy
+                    const hasOptions = positions.some(p => {
+                        const isOption = p.instrument_type && p.instrument_type.includes('OPTION');
+                        const symbolHasOption = (p.symbol || '').match(/[CP]\d+/);
+                        return isOption || symbolHasOption;
+                    });
+
+                    // If we have multiple positions with options, show max percent
+                    return hasOptions && positions.length > 1;
                 },
                 calculateLiveMarketValue(position) {
                     // Force reactivity by accessing quoteUpdateCounter
