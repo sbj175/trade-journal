@@ -390,21 +390,13 @@
                             <!-- Secondary Metrics Row -->
                             <div class="border-t border-slate-700 px-4 py-3 bg-slate-800/50 text-xs">
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <!-- Cost Basis / P&L per Share -->
+                                    <!-- Running Cost Basis -->
                                     <div>
-                                        <div class="text-slate-400 font-medium mb-1" x-show="chain.status === 'OPEN'">Cost Basis</div>
-                                        <div class="text-slate-400 font-medium mb-1" x-show="chain.status === 'CLOSED'">P&L Per Share</div>
-                                        <!-- Show cost basis for open chains -->
-                                        <div x-show="chain.status === 'OPEN' && chain.cost_basis_per_share !== null && chain.cost_basis_per_share !== undefined">
+                                        <div class="text-slate-400 font-medium mb-1">Cost Basis</div>
+                                        <div x-show="chain.cost_basis_per_share !== null && chain.cost_basis_per_share !== undefined">
                                             <span class="text-xs font-medium px-2 py-1 rounded inline-block"
                                                   :class="chain.cost_basis_per_share >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
                                                   x-text="Math.abs(chain.cost_basis_per_share).toFixed(2) + ' ' + (chain.cost_basis_per_share >= 0 ? 'credit' : 'debit')"></span>
-                                        </div>
-                                        <!-- Show P&L per share for closed chains -->
-                                        <div x-show="chain.status === 'CLOSED' && chain.pnl_per_share !== null && chain.pnl_per_share !== undefined">
-                                            <span class="text-xs font-medium px-2 py-1 rounded inline-block"
-                                                  :class="chain.pnl_per_share >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
-                                                  x-text="Math.abs(chain.pnl_per_share).toFixed(2) + ' ' + (chain.pnl_per_share >= 0 ? 'credit' : 'debit')"></span>
                                         </div>
                                     </div>
 

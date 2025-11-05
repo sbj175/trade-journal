@@ -509,22 +509,47 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                             if opening_quantity_total > 0:
                                 break
 
-                    # Cost basis from total credit/debit if available
+                    # Cost basis from total credit/debit - including ALL orders in the chain
+                    # This is the running cost basis across opening, rolls, and closing orders
                     total_credit = 0.0
                     total_debit = 0.0
                     for order in orders:
+                        order_type = order.get('order_type', 'UNKNOWN')
                         for pos in order.get('positions', []):
-                            # Estimate from position info (this is approximate for cached data)
-                            if pos.get('opening_price'):
-                                qty = abs(pos.get('quantity', 0))
-                                amount = pos['opening_price'] * qty * 100 if pos.get('instrument_type') == 'EQUITY_OPTION' else pos['opening_price'] * qty
-                                opening_action = str(pos.get('opening_action', ''))
-                                # Check for both string abbreviations and OrderAction enum names
-                                # SELL actions (STO, STC) are credits, BUY actions (BTO, BTC) are debits
-                                if 'BUY_TO_' in opening_action or opening_action in ['BTO', 'BUY']:
-                                    total_debit += amount
-                                elif 'SELL_TO_' in opening_action or opening_action in ['STO', 'STC', 'SELL']:
-                                    total_credit += amount
+                            qty = abs(pos.get('quantity', 0))
+
+                            # For cached data, closing orders store the closing action in opening_action field
+                            if order_type == 'CLOSING':
+                                # This position's opening_action is actually the closing action
+                                action = str(pos.get('opening_action', ''))
+                                price = pos.get('opening_price', 0)  # Opening price field holds the closing price
+
+                                if price and qty > 0:
+                                    amount = price * qty * 100 if pos.get('instrument_type') == 'EQUITY_OPTION' else price * qty
+                                    # For closing: BTC (buy to close) a short = debit, STC (sell to close) a long = credit
+                                    if 'BTC' in action or 'BUY_TO_CLOSE' in action:
+                                        total_debit += amount
+                                    elif 'STC' in action or 'SELL_TO_CLOSE' in action:
+                                        total_credit += amount
+                            else:
+                                # For opening orders, use opening_action and opening_price
+                                if pos.get('opening_price') and qty > 0:
+                                    amount = pos['opening_price'] * qty * 100 if pos.get('instrument_type') == 'EQUITY_OPTION' else pos['opening_price'] * qty
+                                    action = str(pos.get('opening_action', ''))
+                                    # SELL actions (STO) are credits, BUY actions (BTO) are debits
+                                    if 'BUY_TO_' in action or 'BTO' in action or action == 'BUY':
+                                        total_debit += amount
+                                    elif 'SELL_TO_' in action or 'STO' in action or action == 'SELL':
+                                        total_credit += amount
+
+                                # Include closing transactions if they exist in opening orders
+                                if pos.get('closing_price') and pos.get('closing_action') and qty > 0:
+                                    amount = pos['closing_price'] * qty * 100 if pos.get('instrument_type') == 'EQUITY_OPTION' else pos['closing_price'] * qty
+                                    closing_action = str(pos.get('closing_action', ''))
+                                    if 'BTC' in closing_action or 'BUY' in closing_action:
+                                        total_debit += amount
+                                    elif 'STC' in closing_action or 'SELL' in closing_action:
+                                        total_credit += amount
 
                     if total_debit > 0 or total_credit > 0:
                         # Preserve sign: negative = money spent (long), positive = money received (short)
@@ -885,26 +910,36 @@ async def get_order_chains(
 
         formatted_chains = []
         for chain in paginated_chains:
-            # Calculate totals
+            # Calculate totals - including ALL orders in the chain
+            # This is the running cost basis across opening, rolls, and closing orders
             total_credit = 0.0
             total_debit = 0.0
             total_quantity = 0
 
             for order in chain.orders:
                 for position in order.transactions:  # Use .transactions alias for compatibility
-                    # Get opening price and quantity
-                    opening_price = position.opening_price
                     quantity = abs(position.quantity)
 
-                    if opening_price > 0 and quantity > 0:
+                    # Include opening transactions
+                    if position.opening_price > 0 and quantity > 0:
                         # Calculate amount based on instrument type
-                        amount = opening_price * quantity * 100 if position.is_option else opening_price * quantity
+                        amount = position.opening_price * quantity * 100 if position.is_option else position.opening_price * quantity
 
                         # Determine if opening action is a buy or sell
                         opening_action = str(position.opening_action)
                         if 'BUY_TO_' in opening_action or opening_action in ['BTO', 'BUY']:
                             total_debit += amount
                         elif 'SELL_TO_' in opening_action or opening_action in ['STO', 'STC', 'SELL']:
+                            total_credit += amount
+
+                    # Include closing transactions (rolls and actual closings)
+                    if position.closing_price and position.closing_price > 0 and position.closing_action and quantity > 0:
+                        amount = position.closing_price * quantity * 100 if position.is_option else position.closing_price * quantity
+                        closing_action = str(position.closing_action)
+                        # For closing: BTC (buy to close) a short = debit, STC (sell to close) a long = credit
+                        if closing_action in ['BTC', 'BUY']:  # Closing a short position (buying back)
+                            total_debit += amount
+                        elif closing_action in ['STC', 'SELL']:  # Closing a long position (selling)
                             total_credit += amount
 
                     total_quantity += quantity
