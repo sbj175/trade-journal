@@ -547,6 +547,9 @@
                     // Use the same calculation as getGroupPnLWithLiveQuotes for consistency
                     const currentPnL = this.getGroupPnLWithLiveQuotes(positions);
 
+                    // Only show % Max if we have a profit (positive P&L)
+                    if (currentPnL <= 0) return '—';
+
                     // % Max = (Current P&L / Max Profit) × 100
                     const maxPercent = ((currentPnL / maxProfit) * 100).toFixed(1);
 
