@@ -15,6 +15,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Inline positions app -->
+    <!-- Cache bust: 2025-11-05-16-30 -->
     <script>
         function positionsApp() {
             return {
@@ -310,6 +311,11 @@
                             this.ws.onopen = () => {
                                 console.log(">> [ONOPEN] WebSocket connected, readyState=" + this.ws.readyState);
                                 this.liveQuotesActive = true;
+                                // Call requestLiveQuotes immediately when connection opens
+                                console.log(">> [ONOPEN] Calling requestLiveQuotes from onopen");
+                                console.log(">> [ONOPEN] About to call requestLiveQuotes, filteredPositions.length=" + this.filteredPositions.length);
+                                this.requestLiveQuotes();
+                                console.log(">> [ONOPEN] requestLiveQuotes call completed");
                             };
                             console.log(">> STEP 7: onopen handler SET successfully");
                         } catch (err) {
@@ -318,25 +324,32 @@
 
                         console.log(">> STEP 8: onopen handler set, now setting onmessage handler");
                         this.ws.onmessage = (event) => {
+                            console.log(">> [ONMESSAGE] Raw event received:", event);
+                            console.log(">> [ONMESSAGE] event.data:", event.data);
                             const message = JSON.parse(event.data);
+                            console.log(">> [ONMESSAGE] Parsed message:", message);
                             console.log(">> [ONMESSAGE] Received: " + message.type);
 
                             if (message.type === 'connected') {
-                                console.log('[WS] Connected - requesting quotes in 100ms');
-                                setTimeout(() => {
-                                    console.log('[WS] Timeout fired - calling requestLiveQuotes');
-                                    this.requestLiveQuotes();
-                                }, 100);
+                                console.log('[WS] Received connected message from server');
+                                // Note: requestLiveQuotes is now called from onopen handler instead
                             }
-                            else if (message.type === 'quotes' && message.data) {
+                            else if (message.type === 'quotes') {
+                                console.log('>> [QUOTES] Checking message.data:', typeof message.data, message.data ? 'PRESENT' : 'MISSING');
+                                if (!message.data) {
+                                    console.error('>> [QUOTES] ERROR: message.data is missing!');
+                                    return;
+                                }
+                                console.log('>> [QUOTES] Processing quote update with', Object.keys(message.data).length, 'symbols');
                                 for (const [symbol, quoteData] of Object.entries(message.data)) {
                                     if (quoteData && typeof quoteData === 'object') {
                                         this.underlyingQuotes[symbol] = quoteData;
+                                        console.log('>>   Updated quote for', symbol, ':', quoteData.bid, '-', quoteData.ask);
                                     }
                                 }
                                 this.quoteUpdateCounter++;
                                 this.lastQuoteUpdate = new Date().toLocaleTimeString();
-                                console.log('[WS] Updated', Object.keys(message.data).length, 'quotes');
+                                console.log('>> [QUOTES] Updated counter to', this.quoteUpdateCounter, 'at', this.lastQuoteUpdate);
                             }
                             else if (message.error) {
                                 console.error('[WS] Error:', message.error);
@@ -374,29 +387,35 @@
                 },
 
                 requestLiveQuotes() {
-                    console.log('requestLiveQuotes() called');
-                    console.log('  this.ws:', this.ws);
-                    console.log('  this.ws.readyState:', this.ws ? this.ws.readyState : 'NO WS');
-                    console.log('  WebSocket.OPEN:', WebSocket.OPEN);
+                    console.log('>>> requestLiveQuotes() called at', new Date().toLocaleTimeString());
+                    console.log('>>>   this.ws:', this.ws);
+                    console.log('>>>   this.ws.readyState:', this.ws ? this.ws.readyState : 'NO WS');
+                    console.log('>>>   WebSocket.OPEN constant:', WebSocket.OPEN);
 
-                    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                        console.log('  Skipping - WebSocket not ready');
+                    if (!this.ws) {
+                        console.log('>>>   ERROR: this.ws is null!');
+                        return;
+                    }
+
+                    if (this.ws.readyState !== WebSocket.OPEN) {
+                        console.log('>>>   ERROR: WebSocket readyState is', this.ws.readyState, 'not OPEN (' + WebSocket.OPEN + ')');
                         return;
                     }
 
                     // Subscribe to all position symbols (both equities and options)
                     const symbols = [...new Set(this.filteredPositions.map(p => this.getPositionSymbol(p)).filter(s => s && s !== 'Unknown'))];
 
-                    console.log('  filteredPositions.length:', this.filteredPositions.length);
-                    console.log('  symbols to subscribe to:', symbols);
+                    console.log('>>>   filteredPositions.length:', this.filteredPositions.length);
+                    console.log('>>>   unique symbols to subscribe to:', symbols);
 
                     if (symbols.length > 0) {
-                        console.log('  Sending subscribe message for:', symbols);
+                        console.log('>>>   SENDING subscribe message for symbols:', symbols);
                         this.ws.send(JSON.stringify({
                             subscribe: symbols
                         }));
+                        console.log('>>>   Subscribe message SENT');
                     } else {
-                        console.log('  No symbols to subscribe to');
+                        console.log('>>>   No symbols to subscribe to');
                     }
                 },
                 
