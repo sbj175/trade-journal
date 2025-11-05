@@ -304,6 +304,7 @@
                         console.log(`[${ts}] >>> Creating WebSocket to: ${wsUrl}`);
                         this.ws = new WebSocket(wsUrl);
                         console.log(`[${ts}] >>> WebSocket created, readyState=${this.ws.readyState}`);
+                        console.log(`[${ts}] >>> BEFORE onopen setup`);
                         console.log(`[${ts}] >>> About to set onopen handler`);
 
                         this.ws.onopen = () => {
