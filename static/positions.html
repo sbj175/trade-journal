@@ -344,6 +344,7 @@
                                 } else if (message.error) {
                                     console.error('WebSocket error from server:', message.error);
                                 }
+                                console.log('MESSAGE HANDLER: Finished processing message type:', message.type);
                             } catch (error) {
                                 console.error('Failed to parse WebSocket message:', error);
                             }
