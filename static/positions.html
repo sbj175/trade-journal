@@ -314,14 +314,17 @@
                                 console.log('WebSocket message received:', message);
 
                                 if (message.type === 'connected') {
-                                    console.log('✓ WebSocket connection confirmed');
-                                    console.log('  Scheduling requestLiveQuotes with delay to ensure readyState is ready...');
-                                    // Use setTimeout to ensure WebSocket readyState is actually OPEN
-                                    // The onopen callback may fire before readyState is set to OPEN
-                                    setTimeout(() => {
-                                        console.log('  Now calling requestLiveQuotes...');
-                                        this.requestLiveQuotes();
+                                    console.log('✓ WebSocket connection confirmed - message.type check passed');
+                                    console.log('  About to schedule requestLiveQuotes...');
+                                    // Use arrow function to preserve 'this' context
+                                    // setTimeout to ensure WebSocket readyState is actually OPEN
+                                    const self = this;
+                                    console.log('  self assigned, calling setTimeout...');
+                                    const timeoutId = setTimeout(() => {
+                                        console.log('✓✓✓ setTimeout callback executed! Now calling requestLiveQuotes...');
+                                        self.requestLiveQuotes();
                                     }, 100);
+                                    console.log('  setTimeout called with ID:', timeoutId);
                                 } else if (message.type === 'quotes' && message.data) {
                                     // Update quotes using direct property assignment for Alpine.js reactivity
                                     const updatedSymbols = [];
