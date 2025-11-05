@@ -585,9 +585,12 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                         cost_basis_total = total_debit - total_credit
                         cost_basis_per_unit = 0.0
                         cost_basis_per_share = 0.0
+                        pnl_per_share = 0.0
                         if opening_quantity_total > 0:
                             cost_basis_per_unit = cost_basis_total / opening_quantity_total
                             cost_basis_per_share = cost_basis_per_unit / 100  # Convert to per-share
+                            # For closed chains, calculate P&L per share
+                            pnl_per_share = realized_pnl / opening_quantity_total / 100
 
                 # Get net liquidity for open chains
                 if chain_status == 'OPEN':
@@ -612,6 +615,7 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                     'cost_basis_total': cost_basis_total,
                     'cost_basis_per_unit': cost_basis_per_unit,
                     'cost_basis_per_share': cost_basis_per_share,
+                    'pnl_per_share': pnl_per_share,
                     'total_pnl': total_pnl or 0.0,
                     'realized_pnl': realized_pnl or 0.0,
                     'unrealized_pnl': unrealized_pnl or 0.0,
@@ -1011,9 +1015,12 @@ async def get_order_chains(
             # Also calculate per-share basis (divide by 100 for options, as prices are in cents)
             cost_basis_per_unit = 0.0
             cost_basis_per_share = 0.0
+            pnl_per_share = 0.0
             if opening_quantity_total > 0:
                 cost_basis_per_unit = cost_basis_total / opening_quantity_total
                 cost_basis_per_share = cost_basis_per_unit / 100  # Convert to per-share
+                # For closed chains, also calculate P&L per share (realized_pnl is in dollars, convert to per-share)
+                pnl_per_share = realized_pnl / opening_quantity_total / 100  # Divide by contracts then by 100
 
             # Debug logging
             logger.debug(f"Chain {chain.chain_id} ({chain.underlying}): debit={total_debit:.2f}, credit={total_credit:.2f}, cost_basis_total={cost_basis_total:.2f}, opening_qty={opening_quantity_total}, per_unit={cost_basis_per_unit:.2f}")
@@ -1036,6 +1043,7 @@ async def get_order_chains(
                 'cost_basis_total': cost_basis_total,
                 'cost_basis_per_unit': cost_basis_per_unit,
                 'cost_basis_per_share': cost_basis_per_share,
+                'pnl_per_share': pnl_per_share,
                 'realized_pnl': realized_pnl,
                 'unrealized_pnl': unrealized_pnl,
                 'total_pnl': 0,  # Will be calculated after orders are processed
