@@ -544,8 +544,8 @@
                     if (maxProfit <= 0) return '—';
 
                     // Current P&L using live market values
-                    const currentNetLiq = positions.reduce((sum, pos) => sum + this.calculateLiveMarketValue(pos), 0);
-                    const currentPnL = currentNetLiq - totalCostBasis;
+                    // Use the same calculation as getGroupPnLWithLiveQuotes for consistency
+                    const currentPnL = this.getGroupPnLWithLiveQuotes(positions);
 
                     // % Max = (Current P&L / Max Profit) × 100
                     const maxPercent = ((currentPnL / maxProfit) * 100).toFixed(1);
