@@ -448,7 +448,34 @@
                         console.log('Restored account selection from localStorage:', savedAccount);
                     }
                 },
-                
+
+                onAccountChange() {
+                    // Handle account filter change with proper quote refresh
+                    console.log('=== onAccountChange triggered ===');
+
+                    // Step 1: Clear old quotes
+                    console.log('Clearing old quotes');
+                    this.underlyingQuotes = {};
+
+                    // Step 2: Apply filters
+                    console.log('Applying filters for account:', this.selectedAccount);
+                    this.applyFilters();
+
+                    // Step 3: Save preferences
+                    this.saveFilterPreferences();
+
+                    // Step 4: Load cached quotes for new filtered positions
+                    // Use a small timeout to ensure filteredPositions is updated in Alpine.js reactivity
+                    setTimeout(async () => {
+                        console.log('Loading cached quotes for new filtered positions');
+                        await this.loadCachedQuotes();
+
+                        // Step 5: Request live quotes via WebSocket
+                        console.log('Requesting live quotes via WebSocket');
+                        this.requestLiveQuotes();
+                    }, 50);
+                },
+
                 // Utility methods
                 getUnderlyingSymbol(position) {
                     if (position.underlying) {
@@ -1082,7 +1109,7 @@
                             <select
                                 id="account-select"
                                 x-model="selectedAccount"
-                                @change="filterPositions(); saveFilterPreferences(); requestLiveQuotes()"
+                                @change="onAccountChange()"
                                 class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2"
                             >
                                 <option value="">All Accounts</option>
