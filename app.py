@@ -2570,7 +2570,7 @@ async def get_screener_presets():
 
 
 @app.get("/api/screener/term-structure/{ticker}")
-async def get_term_structure(ticker: str):
+async def get_term_structure(ticker: str, request: Request):
     """
     Get the full implied volatility term structure for a ticker.
 
@@ -2579,10 +2579,21 @@ async def get_term_structure(ticker: str):
     try:
         from src.models.options_screener import OptionsScreener
 
-        # Authenticate
-        client = TastytradeClient()
+        # Check authentication and get credentials from session
+        try:
+            session_id = request.cookies.get("session_id")
+            if not session_id:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            username, password = auth_manager.get_session_credentials(session_id)
+            if not username or not password:
+                raise HTTPException(status_code=401, detail="Session invalid or expired")
+        except HTTPException:
+            raise
+
+        # Authenticate with Tastytrade using session credentials
+        client = TastytradeClient(username=username, password=password)
         if not client.authenticate():
-            raise HTTPException(status_code=401, detail="Authentication failed")
+            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
 
         # Create screener
         screener = OptionsScreener(client.session)
