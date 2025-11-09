@@ -72,16 +72,14 @@ auth_manager = AuthManager()
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
     """Calculate opening dates for positions based on transaction history - HIGHLY OPTIMIZED"""
-    
+
     if not positions:
         return positions
-    
-    # Skip the debug logging to reduce overhead
-    
+
     # Single optimized query to get all opening dates for this account's symbols
     position_symbols = [pos['symbol'] for pos in positions]
     opening_dates = {}
-    
+
     if position_symbols:
         with db.get_connection() as conn:
             cursor = conn.cursor()
@@ -92,18 +90,18 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
                 FROM raw_transactions
                 WHERE account_number = ?
                 AND symbol IN ({placeholders})
-                AND action IN ('BUY_TO_OPEN', 'SELL_TO_OPEN')
+                AND action IN ('OrderAction.BUY_TO_OPEN', 'OrderAction.SELL_TO_OPEN')
                 GROUP BY symbol
             """, [account_number] + position_symbols)
-            
+
             for row in cursor.fetchall():
                 opening_dates[row['symbol']] = row['earliest_date']
-    
+
     # Apply opening dates to positions
     for position in positions:
         symbol = position.get('symbol')
         position['opened_at'] = opening_dates.get(symbol)
-    
+
     return positions
 
 
@@ -943,60 +941,28 @@ async def get_order_chains(
             total_quantity = 0
 
             for order in chain.orders:
-                for position in order.transactions:  # Use .transactions alias for compatibility
+                for position in order.transactions:  # Using Transaction object
                     quantity = abs(position.quantity)
 
-                    # Include opening transactions
-                    if position.opening_price > 0 and quantity > 0:
-                        # Calculate amount based on instrument type
-                        amount = position.opening_price * quantity * 100 if position.is_option else position.opening_price * quantity
+                    # Include all transactions (opening and closing)
+                    if position.price > 0 and quantity > 0:
+                        # Calculate amount (options are always 100x multiplier)
+                        amount = position.price * quantity * 100
 
-                        # Determine if opening action is a buy or sell
-                        opening_action = str(position.opening_action)
-                        if 'BUY_TO_' in opening_action or opening_action in ['BTO', 'BUY']:
+                        # Determine if transaction is a buy or sell
+                        action = str(position.action)
+                        if position.is_buy or 'BUY' in action:
                             total_debit += amount
-                        elif 'SELL_TO_' in opening_action or opening_action in ['STO', 'STC', 'SELL']:
-                            total_credit += amount
-
-                    # Include closing transactions (rolls and actual closings)
-                    if position.closing_price and position.closing_price > 0 and position.closing_action and quantity > 0:
-                        amount = position.closing_price * quantity * 100 if position.is_option else position.closing_price * quantity
-                        closing_action = str(position.closing_action)
-                        # For closing: BTC (buy to close) a short = debit, STC (sell to close) a long = credit
-                        if closing_action in ['BTC', 'BUY']:  # Closing a short position (buying back)
-                            total_debit += amount
-                        elif closing_action in ['STC', 'SELL']:  # Closing a long position (selling)
+                        elif position.is_sell or 'SELL' in action:
                             total_credit += amount
 
                     total_quantity += quantity
             
             # Calculate realized P&L from closed positions
+            # Note: Transaction objects don't have separate opening/closing prices
+            # The P&L will be calculated at the order level instead, which handles this correctly
             realized_pnl = 0.0
             unrealized_pnl = 0.0
-
-            for order in chain.orders:
-                for position in order.transactions:  # Use .transactions alias for compatibility
-                    # Only process closed or system-closed positions
-                    if position.closing_action:
-                        quantity = abs(position.quantity)
-
-                        if position.closing_action in ['ASSIGNED', 'EXERCISE', 'EXPIRATION']:
-                            # For system closures, use closing amount or strike price
-                            if position.closing_action == 'ASSIGNED' and position.strike:
-                                realized_pnl += position.strike * 100 * quantity
-                            elif position.closing_action == 'EXERCISE' and position.strike:
-                                realized_pnl -= position.strike * 100 * quantity
-                            # For expiration, P&L is 0 (options expire worthless)
-                        elif position.closing_price and position.closing_price > 0:
-                            # Regular closing - calculate P&L
-                            opening_price = position.opening_price
-                            closing_price = position.closing_price
-
-                            if 'SELL' in position.opening_action:  # Short position (STO -> BTC)
-                                pnl = (opening_price - closing_price) * quantity * 100
-                            else:  # Long position (BTO -> STC)
-                                pnl = (closing_price - opening_price) * quantity * 100
-                            realized_pnl += pnl
             
             # Calculate cost basis per contract/share (total amount paid/received for opening transactions)
             # Sign matters: negative = money spent (long), positive = money received (short)
@@ -1009,8 +975,8 @@ async def get_order_chains(
             # (don't sum all legs, which would count each leg separately)
             opening_quantity_total = 0
             for order in chain.orders:
-                for position in order.transactions:  # Use .transactions alias for compatibility
-                    if position.opening_price > 0:  # Has opening price means it was opened in this order
+                for position in order.transactions:  # Using Transaction object
+                    if position.is_opening:  # Is an opening transaction
                         opening_quantity_total = abs(position.quantity)  # Use first opening quantity, don't sum
                         break
                 if opening_quantity_total > 0:
@@ -1676,13 +1642,17 @@ async def get_positions(account_number: Optional[str] = None):
         #     logger.info("Triggering background incremental sync to update chain data")
         #     asyncio.create_task(background_incremental_sync())
 
-        # Group positions by account (matching the expected frontend format)
+        # Group positions by account and add opening dates (matching the expected frontend format)
         positions_by_account = {}
         for position in enriched_positions:
             account = position.get('account_number', 'unknown')
             if account not in positions_by_account:
                 positions_by_account[account] = []
             positions_by_account[account].append(position)
+
+        # Calculate opening dates for each account's positions
+        for account, positions in positions_by_account.items():
+            positions_by_account[account] = calculate_position_opening_dates(positions, account)
 
         logger.info(f"/api/positions: Returning positions grouped by {len(positions_by_account)} accounts")
         return positions_by_account

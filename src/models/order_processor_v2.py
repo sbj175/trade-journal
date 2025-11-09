@@ -37,6 +37,10 @@ class Transaction:
     option_type: Optional[str] = None
     strike: Optional[float] = None
     expiration: Optional[date] = None
+    commission: float = 0.0
+    regulatory_fees: float = 0.0
+    clearing_fees: float = 0.0
+    net_value: float = 0.0
     
     @property
     def is_opening(self) -> bool:
@@ -249,7 +253,11 @@ class OrderProcessorV2:
                 description=raw_tx.get('description', ''),
                 option_type=option_type,
                 strike=strike,
-                expiration=expiration
+                expiration=expiration,
+                commission=float(raw_tx.get('commission', 0)),
+                regulatory_fees=float(raw_tx.get('regulatory_fees', 0)),
+                clearing_fees=float(raw_tx.get('clearing_fees', 0)),
+                net_value=float(raw_tx.get('net_value', 0))
             )
             
             transactions.append(tx)
@@ -334,7 +342,11 @@ class OrderProcessorV2:
                     description=f"Aggregated {len(group)} fills",
                     option_type=first_tx.option_type,
                     strike=first_tx.strike,
-                    expiration=first_tx.expiration
+                    expiration=first_tx.expiration,
+                    commission=sum(tx.commission for tx in group),
+                    regulatory_fees=sum(tx.regulatory_fees for tx in group),
+                    clearing_fees=sum(tx.clearing_fees for tx in group),
+                    net_value=sum(tx.net_value for tx in group)
                 )
                 normalized.append(aggregated)
         

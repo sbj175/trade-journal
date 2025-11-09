@@ -1291,7 +1291,7 @@
 
             <!-- Grouped Positions -->
             <div x-show="!isLoading && !error && filteredPositions.length > 0 && allPositions.length > 0" class="space-y-3">
-                <template x-for="group in groupedPositions" :key="`${group.underlying}|${group.chainId}|${group.positions[0]?.expires_at || group.positions[0]?.opened_at}|${quoteUpdateCounter}`">
+                <template x-for="group in groupedPositions" :key="`${group.underlying}|${group.chainId}|${group.positions[0]?.expires_at || group.positions[0]?.opened_at}`">
                     <div class="bg-slate-800 rounded-lg overflow-hidden" x-data="{ expanded: false }">
                         <!-- Group Header (Clickable) -->
                         <div class="bg-slate-700 px-6 py-2 border-b border-slate-600 cursor-pointer hover:bg-slate-600 transition-colors" 
