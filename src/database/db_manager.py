@@ -245,6 +245,54 @@ class DatabaseManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Position lots table for V3 lot-based tracking
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS position_lots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transaction_id TEXT NOT NULL,
+                    account_number TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    underlying TEXT,
+                    instrument_type TEXT,
+                    option_type TEXT,
+                    strike REAL,
+                    expiration DATE,
+                    quantity INTEGER NOT NULL,
+                    entry_price REAL NOT NULL,
+                    entry_date TIMESTAMP NOT NULL,
+                    remaining_quantity INTEGER NOT NULL,
+                    original_quantity INTEGER,
+                    chain_id TEXT,
+                    leg_index INTEGER DEFAULT 0,
+                    opening_order_id TEXT,
+                    derived_from_lot_id INTEGER,
+                    derivation_type TEXT,
+                    status TEXT DEFAULT 'OPEN',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(transaction_id),
+                    FOREIGN KEY (derived_from_lot_id) REFERENCES position_lots(id)
+                )
+            """)
+
+            # Lot closings table for tracking partial/full closures
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS lot_closings (
+                    closing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lot_id INTEGER NOT NULL,
+                    closing_order_id TEXT NOT NULL,
+                    closing_transaction_id TEXT,
+                    quantity_closed INTEGER NOT NULL,
+                    closing_price REAL NOT NULL,
+                    closing_date TIMESTAMP NOT NULL,
+                    closing_type TEXT NOT NULL,
+                    realized_pnl REAL NOT NULL,
+                    resulting_lot_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (lot_id) REFERENCES position_lots(id),
+                    FOREIGN KEY (resulting_lot_id) REFERENCES position_lots(id)
+                )
+            """)
             
             # Create strategic indexes for performance
             # Core position and account queries
@@ -287,6 +335,9 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(is_active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_account ON account_balances(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_timestamp ON account_balances(timestamp)")
+
+            # Note: Position lots indexes are created in _add_transaction_columns()
+            # after ensuring all V3 columns exist
             
             # Add transaction action and timestamp columns if they don't exist
             self._add_transaction_columns()
@@ -356,7 +407,107 @@ class DatabaseManager:
                 if 'closing_amount' not in position_columns:
                     cursor.execute("ALTER TABLE order_positions ADD COLUMN closing_amount REAL")
                     logger.info("Added closing_amount column to order_positions")
-                    
+
+                # Check order_chains table for V3 lot-based columns
+                cursor.execute("PRAGMA table_info(order_chains)")
+                chain_columns = [column[1] for column in cursor.fetchall()]
+
+                if 'leg_count' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN leg_count INTEGER DEFAULT 1")
+                    logger.info("Added leg_count column to order_chains")
+
+                if 'original_quantity' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN original_quantity INTEGER")
+                    logger.info("Added original_quantity column to order_chains")
+
+                if 'remaining_quantity' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN remaining_quantity INTEGER")
+                    logger.info("Added remaining_quantity column to order_chains")
+
+                if 'has_assignment' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN has_assignment BOOLEAN DEFAULT 0")
+                    logger.info("Added has_assignment column to order_chains")
+
+                if 'assignment_date' not in chain_columns:
+                    cursor.execute("ALTER TABLE order_chains ADD COLUMN assignment_date DATE")
+                    logger.info("Added assignment_date column to order_chains")
+
+                # Check position_lots table for V3 columns (in case old table exists)
+                cursor.execute("PRAGMA table_info(position_lots)")
+                lot_columns = [column[1] for column in cursor.fetchall()]
+
+                if lot_columns:  # Table exists
+                    if 'chain_id' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN chain_id TEXT")
+                        logger.info("Added chain_id column to position_lots")
+
+                    if 'leg_index' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN leg_index INTEGER DEFAULT 0")
+                        logger.info("Added leg_index column to position_lots")
+
+                    if 'original_quantity' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN original_quantity INTEGER")
+                        logger.info("Added original_quantity column to position_lots")
+
+                    if 'derived_from_lot_id' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN derived_from_lot_id INTEGER")
+                        logger.info("Added derived_from_lot_id column to position_lots")
+
+                    if 'derivation_type' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN derivation_type TEXT")
+                        logger.info("Added derivation_type column to position_lots")
+
+                    if 'status' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN status TEXT DEFAULT 'OPEN'")
+                        logger.info("Added status column to position_lots")
+
+                    if 'underlying' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN underlying TEXT")
+                        logger.info("Added underlying column to position_lots")
+
+                    if 'option_type' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN option_type TEXT")
+                        logger.info("Added option_type column to position_lots")
+
+                    if 'strike' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN strike REAL")
+                        logger.info("Added strike column to position_lots")
+
+                    if 'expiration' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN expiration DATE")
+                        logger.info("Added expiration column to position_lots")
+
+                    if 'opening_order_id' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN opening_order_id TEXT")
+                        logger.info("Added opening_order_id column to position_lots")
+
+                    if 'instrument_type' not in lot_columns:
+                        cursor.execute("ALTER TABLE position_lots ADD COLUMN instrument_type TEXT")
+                        logger.info("Added instrument_type column to position_lots")
+
+                    # Create V3 indexes after ensuring columns exist (inside if lot_columns block)
+                    # Position lots indexes - basic ones that always exist
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_account_symbol ON position_lots(account_number, symbol)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_entry_date ON position_lots(entry_date)")
+
+                    # Re-check columns after additions and create V3 indexes
+                    cursor.execute("PRAGMA table_info(position_lots)")
+                    lot_cols_after = [column[1] for column in cursor.fetchall()]
+
+                    if 'chain_id' in lot_cols_after:
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_chain ON position_lots(chain_id)")
+                    if 'status' in lot_cols_after:
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_status ON position_lots(status)")
+                    if 'derived_from_lot_id' in lot_cols_after:
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_derived ON position_lots(derived_from_lot_id)")
+                    if 'underlying' in lot_cols_after:
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_underlying ON position_lots(underlying)")
+
+                # Lot closings indexes (table created fresh in initialize_database, so columns always exist)
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_lot ON lot_closings(lot_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_order ON lot_closings(closing_order_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_date ON lot_closings(closing_date)")
+
             except Exception as e:
                 logger.error(f"Error adding transaction columns: {e}")
     

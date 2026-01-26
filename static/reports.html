@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Reports - Trade Journal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen" x-data="reportsApp()" x-init="init()">
+    <!-- Navigation -->
+    <nav class="bg-slate-800 border-b border-slate-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-xl font-bold text-blue-400">
+                        <i class="fas fa-chart-line mr-2"></i>Trade Journal
+                    </span>
+                    <span class="ml-4 text-slate-400 text-sm">Performance Reports</span>
+
+                    <div class="hidden sm:flex space-x-4 ml-8">
+                        <a href="/"
+                           class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <i class="fas fa-layer-group mr-1"></i>
+                            Open Positions
+                        </a>
+                        <a href="/chains"
+                           class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <i class="fas fa-link mr-1"></i>
+                            Order Chains
+                        </a>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <span x-show="username" class="text-slate-400 text-sm">
+                        <i class="fas fa-user mr-1"></i>
+                        <span x-text="username"></span>
+                    </span>
+                    <a href="/login" class="text-slate-400 hover:text-white text-sm">
+                        <i class="fas fa-sign-out-alt mr-1"></i>
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Filters Section -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">Report Filters</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <!-- Account Selector -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-400 mb-2">Account</label>
+                    <select x-model="selectedAccount" @change="saveAccountSelection(); fetchReport()"
+                            class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Accounts</option>
+                        <template x-for="account in accounts" :key="account.account_number">
+                            <option :value="account.account_number" x-text="account.account_name || account.account_number"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Time Period -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-400 mb-2">Time Period</label>
+                    <select x-model="timePeriod" @change="saveTimePeriod(); fetchReport()"
+                            class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="30">Last 30 Days</option>
+                        <option value="60">Last 60 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Strategy Filters -->
+            <div>
+                <label class="block text-sm font-medium text-slate-400 mb-2">Include Strategies</label>
+                <div class="flex flex-wrap gap-3">
+                    <template x-for="strategy in availableStrategies" :key="strategy">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox"
+                                   :value="strategy"
+                                   x-model="selectedStrategies"
+                                   @change="saveStrategySelections(); fetchReport()"
+                                   class="form-checkbox h-4 w-4 text-blue-500 bg-slate-700 border-slate-600 rounded focus:ring-blue-500">
+                            <span class="ml-2 text-sm text-slate-300" x-text="strategy"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loading" class="text-center py-12">
+            <div class="spinner mx-auto mb-4" style="width: 40px; height: 40px; border-width: 4px;"></div>
+            <p class="text-slate-400">Loading report data...</p>
+        </div>
+
+        <!-- Report Content -->
+        <div x-show="!loading" x-cloak>
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <!-- Total P&L -->
+                <div class="bg-slate-800 rounded-lg p-6">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Total Realized P&L</div>
+                    <div class="text-3xl font-bold" :class="summary.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                        $<span x-text="formatNumber(summary.totalPnl)"></span>
+                    </div>
+                    <div class="text-slate-500 text-sm mt-1">
+                        <span x-text="summary.totalTrades"></span> closed trades
+                    </div>
+                </div>
+
+                <!-- Win Rate -->
+                <div class="bg-slate-800 rounded-lg p-6">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Win Rate</div>
+                    <div class="text-3xl font-bold text-blue-400">
+                        <span x-text="formatPercent(summary.winRate)"></span>%
+                    </div>
+                    <div class="text-slate-500 text-sm mt-1">
+                        <span class="text-green-400" x-text="summary.wins"></span> wins /
+                        <span class="text-red-400" x-text="summary.losses"></span> losses
+                    </div>
+                </div>
+
+                <!-- Avg P&L per Trade -->
+                <div class="bg-slate-800 rounded-lg p-6">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Avg P&L per Trade</div>
+                    <div class="text-3xl font-bold" :class="summary.avgPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                        $<span x-text="formatNumber(summary.avgPnl)"></span>
+                    </div>
+                    <div class="text-slate-500 text-sm mt-1">
+                        Avg Win: <span class="text-green-400">$<span x-text="formatNumber(summary.avgWin)"></span></span> |
+                        Avg Loss: <span class="text-red-400">$<span x-text="formatNumber(summary.avgLoss)"></span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Summary Row -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <!-- Largest Win -->
+                <div class="bg-slate-800 rounded-lg p-4">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Largest Win</div>
+                    <div class="text-xl font-bold text-green-400">
+                        $<span x-text="formatNumber(summary.largestWin)"></span>
+                    </div>
+                </div>
+
+                <!-- Largest Loss -->
+                <div class="bg-slate-800 rounded-lg p-4">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Largest Loss</div>
+                    <div class="text-xl font-bold text-red-400">
+                        $<span x-text="formatNumber(summary.largestLoss)"></span>
+                    </div>
+                </div>
+
+                <!-- Avg Max Risk -->
+                <div class="bg-slate-800 rounded-lg p-4">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Avg Max Risk</div>
+                    <div class="text-xl font-bold text-amber-400">
+                        $<span x-text="formatNumber(summary.avgMaxRisk)"></span>
+                    </div>
+                </div>
+
+                <!-- Avg Max Reward -->
+                <div class="bg-slate-800 rounded-lg p-4">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Avg Max Reward</div>
+                    <div class="text-xl font-bold text-cyan-400">
+                        $<span x-text="formatNumber(summary.avgMaxReward)"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strategy Breakdown Table -->
+            <div class="bg-slate-800 rounded-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700">
+                    <h3 class="text-lg font-semibold">Performance by Strategy</h3>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-700/50">
+                            <tr class="text-left text-sm text-slate-400">
+                                <th class="px-6 py-3 font-medium">Strategy</th>
+                                <th class="px-6 py-3 font-medium text-right">Trades</th>
+                                <th class="px-6 py-3 font-medium text-right">Win Rate</th>
+                                <th class="px-6 py-3 font-medium text-right">Total P&L</th>
+                                <th class="px-6 py-3 font-medium text-right">Avg P&L</th>
+                                <th class="px-6 py-3 font-medium text-right">Avg Win</th>
+                                <th class="px-6 py-3 font-medium text-right">Avg Loss</th>
+                                <th class="px-6 py-3 font-medium text-right">Best</th>
+                                <th class="px-6 py-3 font-medium text-right">Worst</th>
+                                <th class="px-6 py-3 font-medium text-right">Avg Risk</th>
+                                <th class="px-6 py-3 font-medium text-right">Avg Reward</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700">
+                            <template x-for="row in strategyBreakdown" :key="row.strategy">
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-6 py-4">
+                                        <span class="font-medium text-white" x-text="row.strategy"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <span x-text="row.totalTrades"></span>
+                                        <span class="text-slate-500 text-sm">
+                                            (<span class="text-green-400" x-text="row.wins"></span>/<span class="text-red-400" x-text="row.losses"></span>)
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <span :class="row.winRate >= 50 ? 'text-green-400' : 'text-red-400'"
+                                              x-text="formatPercent(row.winRate) + '%'"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-medium"
+                                        :class="row.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        $<span x-text="formatNumber(row.totalPnl)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right"
+                                        :class="row.avgPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        $<span x-text="formatNumber(row.avgPnl)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-green-400">
+                                        $<span x-text="formatNumber(row.avgWin)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-red-400">
+                                        $<span x-text="formatNumber(row.avgLoss)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-green-400">
+                                        $<span x-text="formatNumber(row.largestWin)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-red-400">
+                                        $<span x-text="formatNumber(row.largestLoss)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-amber-400">
+                                        <span x-show="row.avgMaxRisk > 0">$<span x-text="formatNumber(row.avgMaxRisk)"></span></span>
+                                        <span x-show="row.avgMaxRisk === 0" class="text-slate-500">-</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right text-cyan-400">
+                                        <span x-show="row.avgMaxReward > 0">$<span x-text="formatNumber(row.avgMaxReward)"></span></span>
+                                        <span x-show="row.avgMaxReward === 0" class="text-slate-500">-</span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty State -->
+                <div x-show="strategyBreakdown.length === 0" class="px-6 py-12 text-center text-slate-400">
+                    <i class="fas fa-chart-bar text-4xl mb-4"></i>
+                    <p>No closed trades found for the selected filters.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function reportsApp() {
+            return {
+                // State
+                username: null,
+                accounts: [],
+                selectedAccount: '',
+                timePeriod: '90',
+                availableStrategies: [],
+                selectedStrategies: [],
+                loading: true,
+
+                // Report Data
+                summary: {
+                    totalPnl: 0,
+                    totalTrades: 0,
+                    wins: 0,
+                    losses: 0,
+                    winRate: 0,
+                    avgPnl: 0,
+                    avgWin: 0,
+                    avgLoss: 0,
+                    largestWin: 0,
+                    largestLoss: 0,
+                    avgMaxRisk: 0,
+                    avgMaxReward: 0
+                },
+                strategyBreakdown: [],
+
+                async init() {
+                    // Check authentication
+                    try {
+                        const authResponse = await fetch('/api/auth/verify');
+                        if (!authResponse.ok) {
+                            window.location.href = '/login';
+                            return;
+                        }
+                        const authData = await authResponse.json();
+                        this.username = authData.username;
+                    } catch (error) {
+                        console.error('Auth check failed:', error);
+                        window.location.href = '/login';
+                        return;
+                    }
+
+                    // Load saved filters from localStorage
+                    this.loadSavedFilters();
+
+                    // Load accounts
+                    await this.loadAccounts();
+
+                    // Load available strategies
+                    await this.loadStrategies();
+
+                    // Fetch initial report
+                    await this.fetchReport();
+                },
+
+                loadSavedFilters() {
+                    // Load saved account selection
+                    const savedAccount = localStorage.getItem('reports_selected_account');
+                    if (savedAccount) {
+                        this.selectedAccount = savedAccount;
+                    }
+
+                    // Load saved time period
+                    const savedTimePeriod = localStorage.getItem('reports_time_period');
+                    if (savedTimePeriod) {
+                        this.timePeriod = savedTimePeriod;
+                    }
+                },
+
+                saveAccountSelection() {
+                    localStorage.setItem('reports_selected_account', this.selectedAccount);
+                },
+
+                saveTimePeriod() {
+                    localStorage.setItem('reports_time_period', this.timePeriod);
+                },
+
+                async loadAccounts() {
+                    try {
+                        const response = await fetch('/api/accounts');
+                        const data = await response.json();
+                        this.accounts = data.accounts || [];
+
+                        // Validate saved account still exists
+                        if (this.selectedAccount && !this.accounts.some(a => a.account_number === this.selectedAccount)) {
+                            this.selectedAccount = '';
+                        }
+                    } catch (error) {
+                        console.error('Error loading accounts:', error);
+                    }
+                },
+
+                async loadStrategies() {
+                    try {
+                        const response = await fetch('/api/reports/strategies');
+                        const data = await response.json();
+                        this.availableStrategies = data.strategies || [];
+                    } catch (error) {
+                        console.error('Error loading strategies:', error);
+                        // Default strategies if API fails
+                        this.availableStrategies = [
+                            'Bull Put Spread', 'Bear Call Spread', 'Bull Call Spread', 'Bear Put Spread',
+                            'Iron Condor', 'Covered Call', 'Cash Secured Put', 'Naked Put', 'Naked Call',
+                            'Long Call', 'Long Put', 'Short Call', 'Short Put', 'Unknown'
+                        ];
+                    }
+
+                    // Load saved selections from localStorage
+                    const savedStrategies = localStorage.getItem('reports_selected_strategies');
+                    if (savedStrategies) {
+                        try {
+                            const parsed = JSON.parse(savedStrategies);
+                            // Filter to only include strategies that still exist
+                            this.selectedStrategies = parsed.filter(s => this.availableStrategies.includes(s));
+                        } catch (e) {
+                            // If parsing fails, select all
+                            this.selectedStrategies = [...this.availableStrategies];
+                        }
+                    } else {
+                        // No saved selections, select all by default
+                        this.selectedStrategies = [...this.availableStrategies];
+                    }
+                },
+
+                saveStrategySelections() {
+                    localStorage.setItem('reports_selected_strategies', JSON.stringify(this.selectedStrategies));
+                },
+
+                async fetchReport() {
+                    this.loading = true;
+
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.selectedAccount) {
+                            params.append('account_number', this.selectedAccount);
+                        }
+                        params.append('days', this.timePeriod);
+                        params.append('strategies', this.selectedStrategies.join(','));
+
+                        const response = await fetch(`/api/reports/performance?${params}`);
+                        const data = await response.json();
+
+                        if (data.error) {
+                            console.error('Report error:', data.error);
+                            return;
+                        }
+
+                        this.summary = data.summary || this.summary;
+                        this.strategyBreakdown = data.breakdown || [];
+
+                        // Sort breakdown by total P&L descending
+                        this.strategyBreakdown.sort((a, b) => b.totalPnl - a.totalPnl);
+
+                    } catch (error) {
+                        console.error('Error fetching report:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                formatNumber(value, preserveSign = false) {
+                    if (value === null || value === undefined) return '0.00';
+                    const absValue = Math.abs(value).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                    // Show negative sign for negative values
+                    if (value < 0) {
+                        return '-' + absValue;
+                    }
+                    return absValue;
+                },
+
+                formatPercent(value) {
+                    if (value === null || value === undefined) return '0.0';
+                    return value.toFixed(1);
+                }
+            };
+        }
+    </script>
+</body>
+</html>

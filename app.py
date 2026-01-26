@@ -30,6 +30,7 @@ from src.models.order_processor_v2 import OrderProcessorV2
 from src.models.strategy_detector import StrategyDetector
 from src.models.pnl_calculator_v2 import PnLCalculatorV2
 from src.models.position_enricher import PositionEnricher
+from src.models.lot_manager import LotManager
 from src.utils.auth_manager import AuthManager
 
 # Configure logging
@@ -62,9 +63,14 @@ order_manager = OrderManager(db)
 
 # V2 System Components
 position_manager = PositionInventoryManager(db)
-order_processor_v2 = OrderProcessorV2(db, position_manager)
+
+# V3 Lot-based position tracking
+lot_manager = LotManager(db)
+
+# Initialize V2 processors with V3 lot_manager
+order_processor_v2 = OrderProcessorV2(db, position_manager, lot_manager)
 strategy_detector = StrategyDetector(db)
-pnl_calculator_v2 = PnLCalculatorV2(db, position_manager)
+pnl_calculator_v2 = PnLCalculatorV2(db, position_manager, lot_manager)
 
 # Initialize authentication manager
 auth_manager = AuthManager()
@@ -291,6 +297,22 @@ async def order_chains(request: Request):
         return HTMLResponse(content=f.read())
 
 
+@app.get("/reports", response_class=HTMLResponse)
+async def reports_page(request: Request):
+    """Serve the Performance Reports page"""
+    # Check authentication
+    try:
+        await require_auth(request)
+    except HTTPException:
+        # Redirect to login page if not authenticated
+        return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
+
+    # Use absolute path to work in bundled Tauri app and development
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    reports_file = os.path.join(app_dir, "static", "reports.html")
+    with open(reports_file, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
 
 @app.get("/test_websocket.html", response_class=HTMLResponse)
 async def test_websocket():
@@ -419,8 +441,8 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
         return False
 
 
-async def get_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None, 
-                          limit: int = 100, offset: int = 0):
+async def get_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None,
+                          limit: int = 10000, offset: int = 0):
     """Get chains from cached data in order_chains table"""
     try:
         with db.get_connection() as conn:
@@ -693,7 +715,11 @@ async def update_chain_cache(chains):
                     # Calculate order P&L from transactions since V2 Order doesn't have total_pnl
                     order_pnl = 0.0
                     for tx in order.transactions:
-                        if tx.is_closing:
+                        # For cash settlements, use net_value directly (price contains strike, not premium)
+                        if tx.is_cash_settlement:
+                            # net_value is already signed correctly (negative for loss, positive for gain)
+                            order_pnl += tx.net_value
+                        elif tx.is_closing:
                             # For closing transactions, calculate P&L vs opening price
                             # This is simplified - the V2 frontend does more complex P&L calc
                             value = tx.price * abs(tx.quantity) * 100
@@ -708,7 +734,7 @@ async def update_chain_cache(chains):
                                 order_pnl += value
                             else:
                                 order_pnl -= value
-                    
+
                     total_pnl += order_pnl
                     
                     if order.order_type.value == 'CLOSING':
@@ -719,19 +745,51 @@ async def update_chain_cache(chains):
                 # Debug: Log what we're about to insert
                 if chain.underlying in ["CSX", "GOOG", "USO"]:
                     logger.warning(f"[INSERT] About to insert chain {chain.chain_id} with strategy_type = {repr(detected_strategy)}")
-                
-                # Insert chain data
+
+                # V3: Calculate lot-based chain metadata
+                has_assignment = any(
+                    any(tx.is_assignment for tx in order.transactions)
+                    for order in chain.orders
+                )
+
+                assignment_date = None
+                if has_assignment:
+                    for order in chain.orders:
+                        for tx in order.transactions:
+                            if tx.is_assignment:
+                                assignment_date = tx.executed_at.date() if tx.executed_at else None
+                                break
+                        if assignment_date:
+                            break
+
+                # Get leg count and quantity info from lots
+                leg_count = 1
+                original_quantity = None
+                remaining_quantity = None
+
+                try:
+                    lots = lot_manager.get_lots_for_chain(chain.chain_id, include_derived=False)
+                    if lots:
+                        leg_count = max(lot.leg_index + 1 for lot in lots)
+                        original_quantity = sum(lot.original_quantity for lot in lots)
+                        remaining_quantity = sum(abs(lot.remaining_quantity) for lot in lots if lot.status != 'CLOSED')
+                except Exception as lot_err:
+                    logger.debug(f"Could not get lot metadata for chain {chain.chain_id}: {lot_err}")
+
+                # Insert chain data with V3 columns
                 cursor.execute("""
                     INSERT OR REPLACE INTO order_chains (
                         chain_id, underlying, account_number, opening_order_id,
                         strategy_type, opening_date, closing_date, chain_status,
                         order_count, total_pnl, realized_pnl, unrealized_pnl,
+                        leg_count, original_quantity, remaining_quantity,
+                        has_assignment, assignment_date,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     chain.chain_id,
                     chain.underlying,
-                    chain.account_number, 
+                    chain.account_number,
                     chain.orders[0].order_id if chain.orders else None,
                     detected_strategy,
                     chain.opening_date,
@@ -741,6 +799,11 @@ async def update_chain_cache(chains):
                     total_pnl,
                     realized_pnl,
                     unrealized_pnl,
+                    leg_count,
+                    original_quantity,
+                    remaining_quantity,
+                    has_assignment,
+                    assignment_date,
                     current_time,
                     current_time
                 ))
@@ -751,21 +814,25 @@ async def update_chain_cache(chains):
                         INSERT OR REPLACE INTO order_chain_members (chain_id, order_id)
                         VALUES (?, ?)
                     """, (chain.chain_id, order.order_id))
-                    
+
                     # Store complete order data as JSON
                     import json
                     # Calculate total P&L for this order
                     order_pnl = 0.0
                     for tx in order.transactions:
-                        # Check if option by looking for strike price
-                        multiplier = 100 if tx.strike is not None else 1
-                        amount = tx.price * abs(tx.quantity) * multiplier
-                        if tx.is_opening:
-                            # Opening: sells are positive (credit), buys are negative (debit)
-                            order_pnl += amount if 'SELL' in tx.action else -amount
+                        # For cash settlements, use net_value directly (price contains strike, not premium)
+                        if tx.is_cash_settlement:
+                            order_pnl += tx.net_value
                         else:
-                            # Closing: sells are positive, buys are negative  
-                            order_pnl += amount if 'SELL' in tx.action else -amount
+                            # Check if option by looking for strike price
+                            multiplier = 100 if tx.strike is not None else 1
+                            amount = tx.price * abs(tx.quantity) * multiplier
+                            if tx.is_opening:
+                                # Opening: sells are positive (credit), buys are negative (debit)
+                                order_pnl += amount if 'SELL' in tx.action else -amount
+                            else:
+                                # Closing: sells are positive, buys are negative
+                                order_pnl += amount if 'SELL' in tx.action else -amount
                     
                     order_data = {
                         "order_id": order.order_id,
@@ -777,12 +844,61 @@ async def update_chain_cache(chains):
                         "positions": []
                     }
                     
-                    # Add positions from transactions
-                    for tx in order.transactions:
-                        multiplier = 100 if tx.strike is not None else 1
-                        tx_amount = tx.price * abs(tx.quantity) * multiplier
-                        tx_pnl = tx_amount if 'SELL' in tx.action else -tx_amount
-                        
+                    # Add positions from transactions with lot data (V3)
+                    for idx, tx in enumerate(order.transactions):
+                        # For cash settlements, use net_value directly
+                        if tx.is_cash_settlement:
+                            tx_pnl = tx.net_value
+                        else:
+                            multiplier = 100 if tx.strike is not None else 1
+                            tx_amount = tx.price * abs(tx.quantity) * multiplier
+                            tx_pnl = tx_amount if 'SELL' in tx.action else -tx_amount
+
+                        # V3: Try to find lot data for this transaction
+                        lot_data = None
+                        derived_positions = []
+
+                        if tx.is_opening:
+                            # Look up the lot created for this transaction
+                            with db.get_connection() as lot_conn:
+                                lot_cursor = lot_conn.cursor()
+                                lot_cursor.execute("""
+                                    SELECT id, remaining_quantity, original_quantity, status, leg_index
+                                    FROM position_lots
+                                    WHERE transaction_id = ?
+                                """, (tx.id,))
+                                lot_row = lot_cursor.fetchone()
+
+                                if lot_row:
+                                    lot_id = lot_row[0]
+                                    lot_data = {
+                                        "lot_id": lot_id,
+                                        "leg_index": lot_row[4] or idx,
+                                        "original_quantity": lot_row[2] or abs(tx.quantity),
+                                        "remaining_quantity": lot_row[1] or abs(tx.quantity),
+                                        "status": lot_row[3] or "OPEN"
+                                    }
+
+                                    # Check for derived positions (from assignment/exercise)
+                                    lot_cursor.execute("""
+                                        SELECT id, symbol, underlying, quantity, entry_price,
+                                               remaining_quantity, status, derivation_type
+                                        FROM position_lots
+                                        WHERE derived_from_lot_id = ?
+                                    """, (lot_id,))
+
+                                    for derived_row in lot_cursor.fetchall():
+                                        derived_positions.append({
+                                            "lot_id": derived_row[0],
+                                            "symbol": derived_row[1],
+                                            "underlying": derived_row[2],
+                                            "derivation_type": derived_row[7],
+                                            "quantity": derived_row[3],
+                                            "entry_price": derived_row[4],
+                                            "remaining_quantity": derived_row[5],
+                                            "status": derived_row[6]
+                                        })
+
                         position_data = {
                             "position_id": f"{order.order_id}_{len(order_data['positions']) + 1}",
                             "symbol": tx.symbol,
@@ -801,6 +917,23 @@ async def update_chain_cache(chains):
                             "closing_transaction_id": None,
                             "pnl": tx_pnl
                         }
+
+                        # V3: Add lot data if available
+                        if lot_data:
+                            position_data["lot_id"] = lot_data["lot_id"]
+                            position_data["leg_index"] = lot_data["leg_index"]
+                            position_data["original_quantity"] = lot_data["original_quantity"]
+                            position_data["remaining_quantity"] = lot_data["remaining_quantity"]
+
+                            # Update status from lot
+                            if lot_data["status"] == "CLOSED":
+                                position_data["status"] = "CLOSED"
+                            elif lot_data["status"] == "PARTIAL":
+                                position_data["status"] = "PARTIAL"
+
+                        if derived_positions:
+                            position_data["derived_positions"] = derived_positions
+
                         order_data["positions"].append(position_data)
                     
                     cursor.execute("""
@@ -821,7 +954,7 @@ async def update_chain_cache(chains):
 async def get_order_chains(
     account_number: Optional[str] = None,
     underlying: Optional[str] = None,
-    limit: int = 100,
+    limit: int = 10000,
     offset: int = 0
 ):
     """Get order chains with intelligent caching for optimal performance"""
@@ -861,11 +994,12 @@ async def get_order_chains(
             logger.info(f"🕐 TIMING: Total request time (no data): {total_time:.2f}s")
             return {"chains": [], "total": 0}
 
-        # Clear and rebuild position inventory for accurate chain status
+        # Clear and rebuild position inventory and lots for accurate chain status
         inventory_start = time.time()
         position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()  # V3: Also clear lots for reprocessing
         inventory_time = time.time() - inventory_start
-        logger.info(f"🕐 TIMING: Position inventory clear took {inventory_time:.2f}s")
+        logger.info(f"🕐 TIMING: Position inventory and lots clear took {inventory_time:.2f}s")
 
         # Process through V2 system to get derived chains
         v2_start = time.time()
@@ -2238,11 +2372,16 @@ async def reprocess_chains(request: Request):
             raise
 
         logger.info(f"Starting V2 chain reprocessing from database for user: {username}")
-        
-        # Get all raw transactions from database  
+
+        # Get all raw transactions from database
         raw_transactions = db.get_raw_transactions()
         logger.info(f"Loaded {len(raw_transactions)} raw transactions from database")
-        
+
+        # Clear existing position inventory and lots before reprocessing
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        logger.info("Cleared position inventory and lots for reprocessing")
+
         # Use V2 processor to create chains
         chains_by_account = order_processor_v2.process_transactions(raw_transactions)
         
@@ -2288,11 +2427,346 @@ async def get_monthly_performance(year: int = None):
     try:
         if year is None:
             year = date.today().year
-        
+
         monthly_data = db.get_monthly_performance(year)
         return {"year": year, "months": monthly_data}
     except Exception as e:
         logger.error(f"Error fetching monthly performance: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/reports/strategies")
+async def get_available_strategies(request: Request):
+    """Get list of strategies that have been used in closed trades"""
+    try:
+        await require_auth(request)
+
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT strategy_type
+                FROM order_chains
+                WHERE chain_status = 'CLOSED' AND strategy_type IS NOT NULL
+                ORDER BY strategy_type
+            """)
+            strategies = [row['strategy_type'] for row in cursor.fetchall()]
+
+        return {"strategies": strategies}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching strategies: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def calculate_max_risk_reward(cursor, chain_id: str, strategy_type: str) -> tuple:
+    """
+    Calculate max risk and max reward for a chain based on its opening positions.
+    Returns (max_risk, max_reward) as positive numbers, or (None, None) if cannot calculate.
+    """
+    # Get the opening order for this chain (first order)
+    cursor.execute("""
+        SELECT ocm.order_id
+        FROM order_chain_members ocm
+        JOIN orders o ON o.order_id = ocm.order_id
+        WHERE ocm.chain_id = ?
+        ORDER BY o.order_date ASC
+        LIMIT 1
+    """, (chain_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None, None
+
+    opening_order_id = row['order_id']
+
+    # Get positions for the opening order
+    cursor.execute("""
+        SELECT symbol, instrument_type, option_type, strike, quantity,
+               opening_price, opening_action
+        FROM order_positions
+        WHERE order_id = ?
+    """, (opening_order_id,))
+    positions = cursor.fetchall()
+
+    if not positions:
+        return None, None
+
+    # Separate by instrument type
+    options = [p for p in positions if 'OPTION' in (p['instrument_type'] or '').upper()]
+    stocks = [p for p in positions if 'EQUITY' in (p['instrument_type'] or '').upper() and 'OPTION' not in (p['instrument_type'] or '').upper()]
+
+    if not options and not stocks:
+        return None, None
+
+    # Calculate based on strategy type
+    strategy = (strategy_type or '').lower()
+
+    try:
+        if 'bull put spread' in strategy or 'bear call spread' in strategy:
+            # Credit spread: max risk = width - premium, max reward = premium
+            if len(options) >= 2:
+                strikes = sorted([p['strike'] for p in options])
+                width = (strikes[-1] - strikes[0]) * 100
+                # Sum premiums (positive for sells, negative for buys)
+                premium = sum(
+                    abs(p['opening_price'] or 0) * abs(p['quantity']) * 100 *
+                    (1 if 'SELL' in (p['opening_action'] or '').upper() else -1)
+                    for p in options
+                )
+                max_risk = abs(width * abs(options[0]['quantity']) - premium)
+                max_reward = abs(premium)
+                return max_risk, max_reward
+
+        elif 'bull call spread' in strategy or 'bear put spread' in strategy:
+            # Debit spread: max risk = premium paid, max reward = width - premium
+            if len(options) >= 2:
+                strikes = sorted([p['strike'] for p in options])
+                width = (strikes[-1] - strikes[0]) * 100
+                # Sum premiums (negative for buys, positive for sells)
+                premium = sum(
+                    abs(p['opening_price'] or 0) * abs(p['quantity']) * 100 *
+                    (-1 if 'BUY' in (p['opening_action'] or '').upper() else 1)
+                    for p in options
+                )
+                max_risk = abs(premium)
+                max_reward = abs(width * abs(options[0]['quantity']) + premium)
+                return max_risk, max_reward
+
+        elif 'iron condor' in strategy:
+            # Iron condor: max risk = wider wing width - total premium
+            if len(options) >= 4:
+                calls = [p for p in options if p['option_type'] == 'Call']
+                puts = [p for p in options if p['option_type'] == 'Put']
+                if len(calls) >= 2 and len(puts) >= 2:
+                    call_strikes = sorted([p['strike'] for p in calls])
+                    put_strikes = sorted([p['strike'] for p in puts])
+                    call_width = (call_strikes[-1] - call_strikes[0]) * 100
+                    put_width = (put_strikes[-1] - put_strikes[0]) * 100
+                    wider_width = max(call_width, put_width)
+                    premium = sum(
+                        abs(p['opening_price'] or 0) * abs(p['quantity']) * 100 *
+                        (1 if 'SELL' in (p['opening_action'] or '').upper() else -1)
+                        for p in options
+                    )
+                    qty = abs(options[0]['quantity'])
+                    max_risk = abs(wider_width * qty - premium)
+                    max_reward = abs(premium)
+                    return max_risk, max_reward
+
+        elif 'covered call' in strategy:
+            # Covered call: need stock cost and call premium
+            if stocks and options:
+                stock_cost = sum(abs(p['opening_price'] or 0) * abs(p['quantity']) for p in stocks)
+                call_premium = sum(
+                    abs(p['opening_price'] or 0) * abs(p['quantity']) * 100
+                    for p in options if p['option_type'] == 'Call'
+                )
+                call_strike = options[0]['strike'] if options else 0
+                stock_qty = abs(stocks[0]['quantity']) if stocks else 0
+                max_risk = stock_cost - call_premium  # Stock goes to 0
+                max_reward = (call_strike * stock_qty) - stock_cost + call_premium  # Called away at strike
+                return abs(max_risk), abs(max_reward) if max_reward > 0 else 0
+
+        elif 'cash secured put' in strategy or 'short put' in strategy or 'naked put' in strategy:
+            # CSP: max risk = strike * 100 - premium, max reward = premium
+            if options:
+                put = next((p for p in options if p['option_type'] == 'Put'), options[0])
+                premium = abs(put['opening_price'] or 0) * abs(put['quantity']) * 100
+                max_risk = (put['strike'] * 100 * abs(put['quantity'])) - premium
+                max_reward = premium
+                return abs(max_risk), abs(max_reward)
+
+        elif 'long call' in strategy or 'long put' in strategy:
+            # Long options: max risk = premium paid
+            if options:
+                premium = sum(abs(p['opening_price'] or 0) * abs(p['quantity']) * 100 for p in options)
+                max_risk = premium
+                max_reward = None  # Unlimited for calls, large for puts
+                return max_risk, max_reward
+
+        elif 'short call' in strategy or 'naked call' in strategy:
+            # Naked call: unlimited risk
+            if options:
+                premium = sum(abs(p['opening_price'] or 0) * abs(p['quantity']) * 100 for p in options)
+                max_risk = None  # Unlimited
+                max_reward = premium
+                return max_risk, max_reward
+
+    except Exception as e:
+        logger.warning(f"Error calculating risk/reward for chain {chain_id}: {e}")
+        return None, None
+
+    return None, None
+
+
+@app.get("/api/reports/performance")
+async def get_performance_report(
+    request: Request,
+    account_number: Optional[str] = None,
+    days: str = "90",
+    strategies: str = ""
+):
+    """Get performance report data for closed trades"""
+    try:
+        await require_auth(request)
+
+        # Parse parameters
+        strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
+
+        # Build query for closed chains
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Base query for closed chains with closing date
+            query = """
+                SELECT
+                    chain_id,
+                    strategy_type,
+                    total_pnl,
+                    account_number,
+                    closing_date
+                FROM order_chains
+                WHERE chain_status = 'CLOSED'
+            """
+            params = []
+
+            # Account filter
+            if account_number:
+                query += " AND account_number = ?"
+                params.append(account_number)
+
+            # Time period filter (based on closing date)
+            if days != 'all':
+                try:
+                    days_int = int(days)
+                    cutoff_date = (datetime.now() - timedelta(days=days_int)).strftime('%Y-%m-%d')
+                    query += " AND closing_date >= ?"
+                    params.append(cutoff_date)
+                except ValueError:
+                    pass
+
+            cursor.execute(query, params)
+            chains = cursor.fetchall()
+
+            # Calculate max risk/reward for each chain
+            chain_risk_reward = {}
+            for chain in chains:
+                max_risk, max_reward = calculate_max_risk_reward(
+                    cursor, chain['chain_id'], chain['strategy_type']
+                )
+                chain_risk_reward[chain['chain_id']] = (max_risk, max_reward)
+
+        # Filter by strategies if specified
+        if strategy_list:
+            chains = [c for c in chains if c['strategy_type'] in strategy_list]
+
+        # Calculate summary metrics
+        total_pnl = 0.0
+        wins = 0
+        losses = 0
+        win_pnls = []
+        loss_pnls = []
+        max_risks = []
+        max_rewards = []
+
+        # Strategy breakdown
+        strategy_stats = {}
+
+        for chain in chains:
+            pnl = chain['total_pnl'] or 0.0
+            strategy = chain['strategy_type'] or 'Unknown'
+            chain_id = chain['chain_id']
+
+            # Get pre-calculated risk/reward
+            max_risk, max_reward = chain_risk_reward.get(chain_id, (None, None))
+
+            total_pnl += pnl
+
+            if max_risk is not None:
+                max_risks.append(max_risk)
+            if max_reward is not None:
+                max_rewards.append(max_reward)
+
+            if pnl >= 0:
+                wins += 1
+                win_pnls.append(pnl)
+            else:
+                losses += 1
+                loss_pnls.append(pnl)
+
+            # Initialize strategy stats
+            if strategy not in strategy_stats:
+                strategy_stats[strategy] = {
+                    'strategy': strategy,
+                    'totalPnl': 0.0,
+                    'wins': 0,
+                    'losses': 0,
+                    'winPnls': [],
+                    'lossPnls': [],
+                    'maxRisks': [],
+                    'maxRewards': []
+                }
+
+            strategy_stats[strategy]['totalPnl'] += pnl
+            if max_risk is not None:
+                strategy_stats[strategy]['maxRisks'].append(max_risk)
+            if max_reward is not None:
+                strategy_stats[strategy]['maxRewards'].append(max_reward)
+
+            if pnl >= 0:
+                strategy_stats[strategy]['wins'] += 1
+                strategy_stats[strategy]['winPnls'].append(pnl)
+            else:
+                strategy_stats[strategy]['losses'] += 1
+                strategy_stats[strategy]['lossPnls'].append(pnl)
+
+        total_trades = len(chains)
+
+        # Build summary
+        summary = {
+            'totalPnl': total_pnl,
+            'totalTrades': total_trades,
+            'wins': wins,
+            'losses': losses,
+            'winRate': (wins / total_trades * 100) if total_trades > 0 else 0,
+            'avgPnl': (total_pnl / total_trades) if total_trades > 0 else 0,
+            'avgWin': (sum(win_pnls) / len(win_pnls)) if win_pnls else 0,
+            'avgLoss': (sum(loss_pnls) / len(loss_pnls)) if loss_pnls else 0,
+            'largestWin': max(win_pnls) if win_pnls else 0,
+            'largestLoss': min(loss_pnls) if loss_pnls else 0,
+            'avgMaxRisk': (sum(max_risks) / len(max_risks)) if max_risks else 0,
+            'avgMaxReward': (sum(max_rewards) / len(max_rewards)) if max_rewards else 0
+        }
+
+        # Build strategy breakdown
+        breakdown = []
+        for strategy, stats in strategy_stats.items():
+            total = stats['wins'] + stats['losses']
+            breakdown.append({
+                'strategy': strategy,
+                'totalTrades': total,
+                'wins': stats['wins'],
+                'losses': stats['losses'],
+                'winRate': (stats['wins'] / total * 100) if total > 0 else 0,
+                'totalPnl': stats['totalPnl'],
+                'avgPnl': (stats['totalPnl'] / total) if total > 0 else 0,
+                'avgWin': (sum(stats['winPnls']) / len(stats['winPnls'])) if stats['winPnls'] else 0,
+                'avgLoss': (sum(stats['lossPnls']) / len(stats['lossPnls'])) if stats['lossPnls'] else 0,
+                'largestWin': max(stats['winPnls']) if stats['winPnls'] else 0,
+                'largestLoss': min(stats['lossPnls']) if stats['lossPnls'] else 0,
+                'avgMaxRisk': (sum(stats['maxRisks']) / len(stats['maxRisks'])) if stats['maxRisks'] else 0,
+                'avgMaxReward': (sum(stats['maxRewards']) / len(stats['maxRewards'])) if stats['maxRewards'] else 0
+            })
+
+        return {
+            'summary': summary,
+            'breakdown': breakdown
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating performance report: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2459,165 +2933,6 @@ async def debug_cache_update(chain_id: str):
     except Exception as e:
         import traceback
         return {"error": str(e), "traceback": traceback.format_exc()}
-
-
-@app.get("/screener", response_class=HTMLResponse)
-async def screener_page():
-    """Serve the options screener page"""
-    screener_html = Path("static/screener.html")
-    if screener_html.exists():
-        return screener_html.read_text()
-    else:
-        return "<h1>Screener page not found</h1>"
-
-
-# Pydantic models for screener
-class ScreenerRequest(BaseModel):
-    """Request model for options screener"""
-    tickers: List[str]
-    near_dte_min: int = 30
-    near_dte_max: int = 45
-    leaps_dte_min: int = 365
-    leaps_delta_min: float = 0.70
-    leaps_delta_max: float = 0.80
-    min_iv_spread: float = 10.0
-    min_near_iv: float = 30.0
-    min_volume: int = 100
-    min_open_interest: int = 100
-
-
-@app.post("/api/screener/run")
-async def run_screener(request_data: ScreenerRequest, request: Request):
-    """
-    Run the options term structure screener.
-
-    Analyzes options chains to find PMCC candidates based on term structure.
-    """
-    try:
-        # Check authentication and get credentials from session
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
-
-        logger.info(f"Running screener for user: {username}")
-
-        # Import here to avoid circular imports
-        from src.models.options_screener import OptionsScreener
-
-        # Authenticate with Tastytrade using session credentials
-        client = TastytradeClient(username=username, password=password)
-        if not client.authenticate():
-            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
-
-        # Create screener
-        screener = OptionsScreener(client.session)
-
-        # Run screening
-        logger.info(f"Running screener for {len(request_data.tickers)} tickers...")
-        candidates = screener.screen_tickers(
-            tickers=request_data.tickers,
-            near_dte_range=(request_data.near_dte_min, request_data.near_dte_max),
-            leaps_dte_min=request_data.leaps_dte_min,
-            leaps_delta_range=(request_data.leaps_delta_min, request_data.leaps_delta_max),
-            min_iv_spread=request_data.min_iv_spread,
-            min_near_iv=request_data.min_near_iv,
-            min_volume=request_data.min_volume,
-            min_open_interest=request_data.min_open_interest
-        )
-
-        logger.info(f"Screener found {len(candidates)} candidates")
-
-        return {
-            "success": True,
-            "candidates": candidates,
-            "total_screened": len(request_data.tickers),
-            "total_candidates": len(candidates),
-            "timestamp": datetime.now().isoformat()
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error running screener: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/screener/presets")
-async def get_screener_presets():
-    """Get preset ticker lists for the screener"""
-    return {
-        "high_iv_tech": {
-            "name": "High IV Tech Stocks",
-            "tickers": ["NVDA", "TSLA", "AMD", "PLTR", "COIN", "MSTR", "SMCI", "AVGO"]
-        },
-        "popular_underlyings": {
-            "name": "Popular Options Underlyings",
-            "tickers": ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "GOOGL", "AMD"]
-        },
-        "high_vol_stocks": {
-            "name": "High Volatility Stocks",
-            "tickers": ["OKLO", "MSTR", "TSLA", "COIN", "RIVN", "LCID", "NIO", "PLTR"]
-        },
-        "etfs": {
-            "name": "Popular ETFs",
-            "tickers": ["SPY", "QQQ", "IWM", "TLT", "GLD", "SLV", "XLE", "XLF", "XLK"]
-        }
-    }
-
-
-@app.get("/api/screener/term-structure/{ticker}")
-async def get_term_structure(ticker: str, request: Request):
-    """
-    Get the full implied volatility term structure for a ticker.
-
-    Returns IV at all available expiration dates for visualization.
-    """
-    try:
-        from src.models.options_screener import OptionsScreener
-
-        # Check authentication and get credentials from session
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
-
-        # Authenticate with Tastytrade using session credentials
-        client = TastytradeClient(username=username, password=password)
-        if not client.authenticate():
-            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
-
-        # Create screener
-        screener = OptionsScreener(client.session)
-
-        # Get term structure
-        logger.info(f"Fetching term structure for {ticker}...")
-        result = screener.get_term_structure(ticker.upper())
-
-        if not result:
-            raise HTTPException(status_code=404, detail=f"Could not fetch term structure for {ticker}")
-
-        return {
-            "success": True,
-            "data": result,
-            "timestamp": datetime.now().isoformat()
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting term structure: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.websocket("/ws/quotes")

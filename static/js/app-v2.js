@@ -677,11 +677,19 @@ function tradeJournal() {
                 }
             });
 
-            // Calculate win rate from ALL closed chains (not filtered by status checkbox)
-            // Win rate should be consistent regardless of what's displayed
-            const allClosedChains = this.chains.filter(chain => chain.status === 'CLOSED');
-            const profitableClosedChains = allClosedChains.filter(chain => chain.total_pnl > 0);
-            const winRate = allClosedChains.length > 0 ? (profitableClosedChains.length / allClosedChains.length) * 100 : 0;
+            // Calculate win rate from closed chains in the filtered set
+            // This respects account, underlying, and strategy filters but not open/closed toggle
+            // First apply account/underlying/strategy filters (same as filteredChains but without status filter)
+            let chainsForWinRate = this.chains;
+            if (this.filterStrategy) {
+                chainsForWinRate = chainsForWinRate.filter(chain => {
+                    const strategy = chain.strategy_type || 'Unknown';
+                    return strategy === this.filterStrategy;
+                });
+            }
+            const closedChainsForWinRate = chainsForWinRate.filter(chain => chain.status === 'CLOSED');
+            const profitableClosedChains = closedChainsForWinRate.filter(chain => chain.total_pnl >= 0);  // >= 0 to count scratch trades as wins
+            const winRate = closedChainsForWinRate.length > 0 ? (profitableClosedChains.length / closedChainsForWinRate.length) * 100 : 0;
             
             // Update filtered summary
             this.dashboard.filteredSummary = {

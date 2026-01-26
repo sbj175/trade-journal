@@ -1,14 +1,18 @@
 """
 Order Processing Engine V2
 Implements the new order chain processing rules
+Enhanced with V3 lot-based position tracking
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime, date
-from typing import List, Dict, Optional, Set, Tuple
+from typing import List, Dict, Optional, Set, Tuple, TYPE_CHECKING
 from enum import Enum
 import logging
 from collections import defaultdict
+
+if TYPE_CHECKING:
+    from src.models.lot_manager import LotManager
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +80,11 @@ class Transaction:
     def is_sell(self) -> bool:
         return 'SELL' in (self.action or '')
 
+    @property
+    def is_cash_settlement(self) -> bool:
+        desc = (self.description or '').lower()
+        return 'cash settlement' in desc
+
 
 @dataclass
 class Order:
@@ -123,11 +132,20 @@ class Chain:
 
 
 class OrderProcessorV2:
-    """New order processing engine based on simplified rules"""
-    
-    def __init__(self, db_manager, position_manager):
+    """New order processing engine based on simplified rules
+
+    Enhanced with V3 lot-based position tracking for:
+    - Overlapping positions (multiple trades on same symbol)
+    - Vertical spread leg linking
+    - Early assignment with stock lineage tracking
+    - Partial closures with FIFO matching
+    """
+
+    def __init__(self, db_manager, position_manager, lot_manager: Optional['LotManager'] = None):
         self.db = db_manager
         self.position_manager = position_manager
+        self.lot_manager = lot_manager
+        self._use_lots = lot_manager is not None
     
     def process_transactions(self, raw_transactions: List[Dict]) -> Dict[str, List[Chain]]:
         """
@@ -369,28 +387,156 @@ class OrderProcessorV2:
             return OrderType.CLOSING
     
     def _update_positions(self, orders: List[Order]):
-        """Update position inventory based on orders"""
+        """Update position inventory based on orders
+
+        If lot_manager is available, also creates/closes lots for V3 tracking.
+        """
+        # Track temporary chain assignments for lot creation
+        # Will be finalized in _derive_chains
+        order_to_temp_chain = {}
+
+        # V3: Track which chains are affected by closing orders BEFORE closing the lots
+        # This is critical for linking closing orders to their opening chains
+        closing_order_to_chains = {}
+
         for order in orders:
-            for tx in order.transactions:
+            # Generate temporary chain ID for opening orders
+            temp_chain_id = None
+            if order.order_type == OrderType.OPENING:
+                temp_chain_id = f"{order.underlying}_OPENING_{order.executed_at.strftime('%Y%m%d')}_{order.order_id[:8]}"
+                order_to_temp_chain[order.order_id] = temp_chain_id
+
+            # V3: For closing/rolling orders, find affected chains BEFORE closing lots
+            if order.order_type in [OrderType.CLOSING, OrderType.ROLLING] and self._use_lots and self.lot_manager:
+                affected_chains = set()
+                for tx in order.closing_transactions:
+                    # Find open lots for this symbol to get their chain_ids
+                    open_lots = self.lot_manager.get_open_lots(
+                        account_number=tx.account_number,
+                        symbol=tx.symbol
+                    )
+                    for lot in open_lots:
+                        if lot.chain_id:
+                            affected_chains.add(lot.chain_id)
+                if affected_chains:
+                    closing_order_to_chains[order.order_id] = affected_chains
+                    logger.debug(f"Order {order.order_id} will close lots in chains: {affected_chains}")
+
+            for idx, tx in enumerate(order.transactions):
                 # Convert Transaction to dict format expected by position manager
                 tx_dict = {
+                    'id': tx.id,
                     'account_number': tx.account_number,
                     'symbol': tx.symbol,
                     'underlying_symbol': tx.underlying_symbol,
                     'action': tx.action,
                     'quantity': tx.quantity,
                     'price': tx.price,
+                    'executed_at': tx.executed_at.isoformat() if tx.executed_at else '',
                     'instrument_type': 'EQUITY_OPTION' if tx.option_type else 'EQUITY',
                     'transaction_sub_type': tx.transaction_sub_type
                 }
-                
+
+                # Update position inventory (legacy system)
                 self.position_manager.update_position_from_transaction(tx_dict)
+
+                # V3 Lot-based tracking
+                if self._use_lots and self.lot_manager:
+                    if tx.is_opening:
+                        # Create lot for opening transaction
+                        self.lot_manager.create_lot(
+                            transaction=tx_dict,
+                            chain_id=temp_chain_id or '',
+                            leg_index=idx,
+                            opening_order_id=order.order_id
+                        )
+                    elif tx.is_closing:
+                        # Determine closing type
+                        if tx.is_assignment:
+                            closing_type = 'ASSIGNMENT'
+                        elif tx.is_exercise:
+                            closing_type = 'EXERCISE'
+                        elif tx.is_expiration:
+                            closing_type = 'EXPIRATION'
+                        else:
+                            closing_type = 'MANUAL'
+
+                        # Close lots using FIFO
+                        self.lot_manager.close_lot_fifo(
+                            account_number=tx.account_number,
+                            symbol=tx.symbol,
+                            quantity_to_close=abs(tx.quantity),
+                            closing_price=tx.price,
+                            closing_order_id=order.order_id,
+                            closing_transaction_id=tx.id,
+                            closing_date=tx.executed_at,
+                            closing_type=closing_type
+                        )
+
+        # Store for use in _derive_chains
+        self._order_to_temp_chain = order_to_temp_chain
+        self._closing_order_to_chains = closing_order_to_chains
     
+    def _detect_assignment_pairs(self, transactions: List[Transaction]) -> List[Tuple[Transaction, Transaction]]:
+        """
+        Match assignment option removal with corresponding stock creation.
+
+        When an option is assigned, two transactions typically occur:
+        1. Option removal (ASSIGNMENT sub-type)
+        2. Stock receive/deliver (no order_id, near-simultaneous)
+
+        Returns:
+            List of (option_transaction, stock_transaction) pairs
+        """
+        pairs = []
+
+        # Group transactions by timestamp (within ~1 second) and underlying
+        # where we have both an option assignment and a stock transaction
+        from collections import defaultdict
+
+        # Find assignment transactions
+        assignments = [tx for tx in transactions
+                      if tx.is_assignment and tx.option_type is not None]
+
+        # Find stock transactions that might be from assignment (no order_id)
+        stock_txs = [tx for tx in transactions
+                    if not tx.order_id.startswith('SYSTEM_') and
+                    tx.option_type is None and
+                    'EQUITY' in (tx.transaction_type or '').upper()]
+
+        for assignment in assignments:
+            underlying = assignment.underlying_symbol
+
+            # Look for matching stock transaction within 1 minute
+            for stock_tx in stock_txs:
+                if stock_tx.underlying_symbol != underlying:
+                    continue
+
+                time_diff = abs((assignment.executed_at - stock_tx.executed_at).total_seconds())
+                if time_diff > 60:  # 1 minute window
+                    continue
+
+                # Check quantity alignment (100 shares per option contract)
+                expected_shares = abs(assignment.quantity) * 100
+                if abs(stock_tx.quantity) != expected_shares:
+                    continue
+
+                # Match found
+                pairs.append((assignment, stock_tx))
+                logger.info(f"Found assignment pair: option {assignment.symbol} -> stock {stock_tx.symbol}")
+                break
+
+        return pairs
+
     def _derive_chains(self, orders: List[Order]) -> List[Chain]:
-        """Derive chains from orders based on the rules"""
+        """Derive chains from orders based on the rules
+
+        When lot_manager is available, uses lot-based chain matching for
+        more accurate tracking of overlapping positions and assignments.
+        """
         chains = {}  # chain_id -> Chain
         order_to_chain = {}  # Track which chain each order belongs to
-        
+
         for order in orders:
             if order.order_type == OrderType.OPENING:
                 # OPENING orders always start a new chain
@@ -403,59 +549,119 @@ class OrderProcessorV2:
                 )
                 chains[chain_id] = chain
                 order_to_chain[order.order_id] = chain_id
-                
+
+                # V3: Update lot chain_ids if needed (they may have been created with temp chain_id)
+                if self._use_lots and self.lot_manager:
+                    # Lots were already created in _update_positions with the same chain_id
+                    pass
+
             elif order.order_type in [OrderType.ROLLING, OrderType.CLOSING]:
                 # Check if this is a system-generated assignment/exercise/expiration order
-                is_system_closing = any(tx.is_assignment or tx.is_exercise or tx.is_expiration 
+                is_system_closing = any(tx.is_assignment or tx.is_exercise or tx.is_expiration
                                       for tx in order.transactions)
-                
+
                 if is_system_closing:
                     # Assignment/Exercise/Expiration: Add to existing chains but don't create separate chains
                     logger.info(f"Processing system closing event: {order.order_id}")
-                    
+
                     # Find chains that contain positions affected by this system closing
                     affected_chain_ids = set()
-                    
-                    for tx in order.transactions:
-                        # Find which chain contains orders that opened this position
-                        for chain_id, chain in chains.items():
-                            if (chain.underlying == order.underlying and 
-                                chain.account_number == order.account_number):
-                                
-                                # Check if this chain has any orders that opened this position
-                                for chain_order in chain.orders:
-                                    if any(t.symbol == tx.symbol for t in chain_order.opening_transactions):
-                                        affected_chain_ids.add(chain_id)
-                                        break
-                    
+
+                    # V3: First check the pre-computed chain mapping
+                    if hasattr(self, '_closing_order_to_chains') and order.order_id in self._closing_order_to_chains:
+                        precomputed_chains = self._closing_order_to_chains[order.order_id]
+                        for chain_id in precomputed_chains:
+                            if chain_id in chains:
+                                affected_chain_ids.add(chain_id)
+
+                    # Fallback: Try other matching methods
+                    if not affected_chain_ids:
+                        for tx in order.transactions:
+                            # V3: Use lot-based matching if available
+                            if self._use_lots and self.lot_manager:
+                                # Find lots for this symbol
+                                lots = self.lot_manager.get_open_lots(
+                                    account_number=tx.account_number,
+                                    symbol=tx.symbol
+                                )
+                                for lot in lots:
+                                    if lot.chain_id:
+                                        affected_chain_ids.add(lot.chain_id)
+
+                            # Legacy: Find which chain contains orders that opened this position
+                            if not affected_chain_ids:
+                                for chain_id, chain in chains.items():
+                                    if (chain.underlying == order.underlying and
+                                        chain.account_number == order.account_number):
+
+                                        # Check if this chain has any orders that opened this position
+                                        for chain_order in chain.orders:
+                                            if any(t.symbol == tx.symbol for t in chain_order.opening_transactions):
+                                                affected_chain_ids.add(chain_id)
+                                                break
+
                     # Add this order to all affected chains
                     for chain_id in affected_chain_ids:
-                        chains[chain_id].orders.append(order)
-                        order_to_chain[order.order_id] = chain_id
-                        logger.info(f"Added system closing order {order.order_id} to chain {chain_id}")
-                    
+                        if chain_id in chains:
+                            chains[chain_id].orders.append(order)
+                            order_to_chain[order.order_id] = chain_id
+                            logger.info(f"Added system closing order {order.order_id} to chain {chain_id}")
+
                     continue
-                
+
                 # Find chains to update based on closing transactions
                 affected_chain_ids = set()
-                
-                for tx in order.closing_transactions:
-                    # Find which positions this transaction closes
-                    position = self.position_manager.get_position(tx.account_number, tx.symbol)
-                    
-                    if position:
-                        # Find which chain contains orders that opened this position
-                        # For now, use FIFO - find the earliest chain with this underlying
-                        for chain_id, chain in chains.items():
-                            if (chain.underlying == order.underlying and 
-                                chain.account_number == order.account_number and
-                                chain.status == "OPEN"):
-                                
-                                # Check if this chain has any orders that could have opened this position
-                                for chain_order in chain.orders:
-                                    if any(t.symbol == tx.symbol for t in chain_order.opening_transactions):
-                                        affected_chain_ids.add(chain_id)
-                                        break
+
+                # V3: First check the pre-computed chain mapping (captured BEFORE lots were closed)
+                if hasattr(self, '_closing_order_to_chains') and order.order_id in self._closing_order_to_chains:
+                    precomputed_chains = self._closing_order_to_chains[order.order_id]
+                    # Only use chains that still exist
+                    for chain_id in precomputed_chains:
+                        if chain_id in chains:
+                            affected_chain_ids.add(chain_id)
+                    if affected_chain_ids:
+                        logger.debug(f"Using pre-computed chain mapping for order {order.order_id}: {affected_chain_ids}")
+
+                # Fallback: Try to find chains by other means if pre-computed mapping didn't work
+                if not affected_chain_ids:
+                    for tx in order.closing_transactions:
+                        # V3: Use lot-based matching if available (may not work if lots already closed)
+                        if self._use_lots and self.lot_manager:
+                            # Find lots for this symbol that are open
+                            lots = self.lot_manager.get_open_lots(
+                                account_number=tx.account_number,
+                                symbol=tx.symbol
+                            )
+                            for lot in lots:
+                                if lot.chain_id and lot.chain_id in chains:
+                                    affected_chain_ids.add(lot.chain_id)
+
+                        # Also try legacy position-based matching
+                        if not affected_chain_ids:
+                            position = self.position_manager.get_position(tx.account_number, tx.symbol)
+
+                            if position:
+                                # Find which chain contains orders that opened this position
+                                for chain_id, chain in chains.items():
+                                    if (chain.underlying == order.underlying and
+                                        chain.account_number == order.account_number and
+                                        chain.status == "OPEN"):
+
+                                        # Check if this chain has any orders that could have opened this position
+                                        for chain_order in chain.orders:
+                                            if any(t.symbol == tx.symbol for t in chain_order.opening_transactions):
+                                                affected_chain_ids.add(chain_id)
+                                                break
+
+                        # Last resort: Find chain by symbol match in existing chains
+                        if not affected_chain_ids:
+                            for chain_id, chain in chains.items():
+                                if (chain.underlying == order.underlying and
+                                    chain.account_number == order.account_number):
+                                    for chain_order in chain.orders:
+                                        if any(t.symbol == tx.symbol for t in chain_order.opening_transactions):
+                                            affected_chain_ids.add(chain_id)
+                                            break
                 
                 if not affected_chain_ids:
                     # No matching chain found - this shouldn't happen in normal flow
@@ -496,41 +702,83 @@ class OrderProcessorV2:
         return list(chains.values())
     
     def _merge_chains(self, chains_to_merge: List[Chain], new_order: Order) -> Chain:
-        """Merge multiple chains into one"""
+        """Merge multiple chains into one
+
+        When lot_manager is available, also updates lot chain_ids to point
+        to the new merged chain.
+        """
         # Use the earliest chain's ID as base
         chains_to_merge.sort(key=lambda c: c.opening_date or date.min)
         base_chain = chains_to_merge[0]
-        
+
         # Collect all orders
         all_orders = []
         for chain in chains_to_merge:
             all_orders.extend(chain.orders)
         all_orders.append(new_order)
-        
+
         # Sort chronologically
         all_orders.sort(key=lambda o: o.executed_at)
-        
+
         # Create merged chain
+        merged_chain_id = f"{base_chain.chain_id}_MERGED"
         merged_chain = Chain(
-            chain_id=f"{base_chain.chain_id}_MERGED",
+            chain_id=merged_chain_id,
             underlying=base_chain.underlying,
             account_number=base_chain.account_number,
             orders=all_orders
         )
-        
+
+        # V3: Update lot chain_ids to point to merged chain
+        if self._use_lots and self.lot_manager:
+            for chain in chains_to_merge:
+                lots = self.lot_manager.get_lots_for_chain(chain.chain_id)
+                for lot in lots:
+                    self.lot_manager.update_lot_chain(lot.id, merged_chain_id)
+                logger.debug(f"Updated {len(lots)} lots from chain {chain.chain_id} to {merged_chain_id}")
+
         return merged_chain
     
     def _determine_chain_status(self, chain: Chain) -> str:
-        """Determine if chain is OPEN or CLOSED based on positions"""
-        # Get all symbols traded in this chain
+        """Determine if chain is OPEN or CLOSED based on positions
+
+        When lot_manager is available, also checks for open lots and
+        can return 'ASSIGNED' status when chain has assignment but open lots.
+        """
+        # Check for assignments in chain
+        has_assignment = any(
+            any(tx.is_assignment for tx in order.transactions)
+            for order in chain.orders
+        )
+
+        # V3: Check lots if lot_manager is available
+        if self._use_lots and self.lot_manager:
+            open_lots = self.lot_manager.get_open_lots(
+                account_number=chain.account_number,
+                chain_id=chain.chain_id
+            )
+
+            if open_lots:
+                # Has open lots
+                if has_assignment:
+                    # Has assignment and open lots (e.g., stock from assignment)
+                    return "ASSIGNED"
+                return "OPEN"
+            else:
+                # No open lots in this chain
+                return "CLOSED"
+
+        # Fallback: Check position inventory (legacy)
         all_symbols = set()
         for order in chain.orders:
             all_symbols.update(order.symbols)
-        
+
         # Check if any positions are still open
         for symbol in all_symbols:
             position = self.position_manager.get_position(chain.account_number, symbol)
             if position and not position.is_closed:
+                if has_assignment:
+                    return "ASSIGNED"
                 return "OPEN"
-        
+
         return "CLOSED"
