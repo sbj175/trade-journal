@@ -174,6 +174,19 @@
                         const response = await fetch('/api/accounts');
                         const data = await response.json();
                         this.accounts = data.accounts || [];
+
+                        // Sort accounts in desired order: Roth, Individual, Traditional
+                        this.accounts.sort((a, b) => {
+                            const getAccountTypeOrder = (name) => {
+                                const nameUpper = (name || '').toUpperCase();
+                                if (nameUpper.includes('ROTH')) return 1;
+                                if (nameUpper.includes('INDIVIDUAL')) return 2;
+                                if (nameUpper.includes('TRADITIONAL')) return 3;
+                                return 4; // Other account types go last
+                            };
+                            return getAccountTypeOrder(a.account_name) - getAccountTypeOrder(b.account_name);
+                        });
+
                         console.log('Loaded accounts:', this.accounts);
                     } catch (error) {
                         console.error('Failed to load accounts:', error);
@@ -502,14 +515,14 @@
                 },
                 
                 saveFilterPreferences() {
-                    // Save account selection to localStorage
-                    localStorage.setItem('positionsSelectedAccount', this.selectedAccount || '');
+                    // Save account selection to shared localStorage (synced across all pages)
+                    localStorage.setItem('trade_journal_selected_account', this.selectedAccount || '');
                 },
 
                 loadFilterPreferences() {
-                    // Load account selection from localStorage
-                    const savedAccount = localStorage.getItem('positionsSelectedAccount');
-                    if (savedAccount) {
+                    // Load account selection from shared localStorage
+                    const savedAccount = localStorage.getItem('trade_journal_selected_account');
+                    if (savedAccount !== null) {
                         this.selectedAccount = savedAccount;
                         console.log('Restored account selection from localStorage:', savedAccount);
                     }
@@ -1116,6 +1129,7 @@
         <nav class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
+                    <!-- Logo and Nav Links -->
                     <div class="flex items-center space-x-8">
                         <div class="flex-shrink-0">
                             <h1 class="text-xl font-bold text-blue-400">
@@ -1123,8 +1137,13 @@
                                 Trade Journal
                             </h1>
                         </div>
-                        
+
                         <div class="hidden sm:flex space-x-4">
+                            <a href="/"
+                               class="text-white bg-slate-700 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                <i class="fas fa-layer-group mr-1"></i>
+                                Open Positions
+                            </a>
                             <a href="/chains"
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-link mr-1"></i>
@@ -1137,38 +1156,9 @@
                             </a>
                         </div>
                     </div>
-                    
+
+                    <!-- Right side: Account Selector and User Menu -->
                     <div class="flex items-center space-x-4">
-                        <button @click="fetchPositions(true)" 
-                                :disabled="isLoading"
-                                class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
-                            <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': isLoading}"></i>
-                            <span x-text="isLoading ? 'Syncing...' : 'Sync Positions'"></span>
-                        </button>
-                        
-                        <!-- Last Synced Timestamp -->
-                        <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
-                            <i class="fas fa-clock mr-1"></i>
-                            Last synced: <span x-text="lastSyncTimestamp"></span>
-                        </div>
-                        
-                        <!-- Cache Freshness Indicator -->
-                        <div class="text-xs" x-show="cacheInfo && cacheInfo.cached">
-                            <div class="flex items-center gap-2">
-                                <i class="fas fa-database" 
-                                   :class="cacheInfo && cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo && cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')"></i>
-                                <span :class="cacheInfo && cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo && cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')">
-                                    <span x-show="cacheInfo && cacheInfo.is_fresh">Fresh data</span>
-                                    <span x-show="cacheInfo && !cacheInfo.is_fresh && cacheInfo.data_age_minutes < 360">
-                                        <span x-text="cacheInfo ? Math.round(cacheInfo.data_age_minutes) : ''"></span>m old
-                                    </span>
-                                    <span x-show="cacheInfo && !cacheInfo.is_fresh && cacheInfo.data_age_minutes >= 360">
-                                        <span x-text="cacheInfo ? Math.round(cacheInfo.data_age_minutes / 60) : ''"></span>h old
-                                    </span>
-                                </span>
-                            </div>
-                        </div>
-                        
                         <!-- Account Selector -->
                         <div class="flex items-center space-x-2">
                             <label for="account-select" class="text-sm font-medium text-slate-300">Account:</label>
@@ -1188,17 +1178,16 @@
                             </select>
                         </div>
 
-                        <!-- User Menu with Logout -->
+                        <!-- User Menu -->
                         <div class="flex items-center space-x-4 ml-4 pl-4 border-l border-slate-600">
-                            <div class="text-sm text-slate-300">
+                            <span class="text-slate-400 text-sm">
                                 <i class="fas fa-user mr-1"></i>
                                 <span x-text="username || 'User'"></span>
-                            </div>
-                            <button @click="logout()"
-                                    class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                            </span>
+                            <a @click="logout()" class="text-slate-400 hover:text-white text-sm cursor-pointer">
                                 <i class="fas fa-sign-out-alt mr-1"></i>
                                 Logout
-                            </button>
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -1207,10 +1196,46 @@
 
         <!-- Main Content -->
         <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <!-- Header Section -->
+            <!-- Header Section with Action Buttons -->
             <div class="mb-8">
-                <h2 class="text-3xl font-bold text-slate-100 mb-2">Open Positions</h2>
-                <p class="text-slate-400">Current positions from your Tastytrade accounts</p>
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-slate-100 mb-2">Open Positions</h2>
+                        <p class="text-slate-400">Current positions from your Tastytrade accounts</p>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <!-- Sync Button -->
+                        <button @click="fetchPositions(true)"
+                                :disabled="isLoading"
+                                class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
+                            <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': isLoading}"></i>
+                            <span x-text="isLoading ? 'Syncing...' : 'Sync Positions'"></span>
+                        </button>
+
+                        <!-- Last Synced Timestamp -->
+                        <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
+                            <i class="fas fa-clock mr-1"></i>
+                            Last synced: <span x-text="lastSyncTimestamp"></span>
+                        </div>
+
+                        <!-- Cache Freshness Indicator -->
+                        <div class="text-xs" x-show="cacheInfo && cacheInfo.cached">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-database"
+                                   :class="cacheInfo && cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo && cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')"></i>
+                                <span :class="cacheInfo && cacheInfo.is_fresh ? 'text-green-400' : (cacheInfo && cacheInfo.data_age_minutes < 360 ? 'text-yellow-400' : 'text-red-400')">
+                                    <span x-show="cacheInfo && cacheInfo.is_fresh">Fresh data</span>
+                                    <span x-show="cacheInfo && !cacheInfo.is_fresh && cacheInfo.data_age_minutes < 360">
+                                        <span x-text="cacheInfo ? Math.round(cacheInfo.data_age_minutes) : ''"></span>m old
+                                    </span>
+                                    <span x-show="cacheInfo && !cacheInfo.is_fresh && cacheInfo.data_age_minutes >= 360">
+                                        <span x-text="cacheInfo ? Math.round(cacheInfo.data_age_minutes / 60) : ''"></span>h old
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Filters and Summary -->

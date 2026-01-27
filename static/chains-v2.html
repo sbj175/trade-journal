@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     
     <!-- Load the V2 app JavaScript -->
-    <script src="/static/js/app-v2.js"></script>
+    <script src="/static/js/app-v2.js?v=20260127b"></script>
     
     <!-- Alpine.js Collapse Plugin -->
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
@@ -39,6 +39,7 @@
         <nav class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
+                    <!-- Logo and Nav Links -->
                     <div class="flex items-center space-x-8">
                         <div class="flex-shrink-0">
                             <h1 class="text-xl font-bold text-blue-400">
@@ -46,12 +47,17 @@
                                 Trade Journal
                             </h1>
                         </div>
-                        
+
                         <div class="hidden sm:flex space-x-4">
                             <a href="/"
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-layer-group mr-1"></i>
                                 Open Positions
+                            </a>
+                            <a href="/chains"
+                               class="text-white bg-slate-700 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                <i class="fas fa-link mr-1"></i>
+                                Order Chains
                             </a>
                             <a href="/reports"
                                class="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
@@ -60,44 +66,9 @@
                             </a>
                         </div>
                     </div>
-                    
+
+                    <!-- Right side: Account Selector and User Menu -->
                     <div class="flex items-center space-x-4">
-                        <!-- Sync Button -->
-                        <button 
-                            @click="syncTrades()"
-                            :disabled="syncing || initialSyncing || reprocessing"
-                            class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
-                        >
-                            <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': syncing}"></i>
-                            <span x-text="syncing ? 'Syncing...' : 'Sync Orders'"></span>
-                        </button>
-                        
-                        <!-- Initial Sync Button -->
-                        <button 
-                            @click="initialSync()"
-                            :disabled="syncing || initialSyncing || reprocessing"
-                            class="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
-                        >
-                            <i class="fas fa-database mr-2" :class="{'loading-spinner': initialSyncing}"></i>
-                            <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial Sync'"></span>
-                        </button>
-                        
-                        <!-- Re-process Chains Button -->
-                        <button 
-                            @click="reprocessChains()"
-                            :disabled="syncing || initialSyncing || reprocessing"
-                            class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
-                        >
-                            <i class="fas fa-link mr-2" :class="{'loading-spinner': reprocessing}"></i>
-                            <span x-text="reprocessing ? 'Re-processing...' : 'Re-process Chains'"></span>
-                        </button>
-                        
-                        <!-- Last Synced Timestamp -->
-                        <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
-                            <i class="fas fa-clock mr-1"></i>
-                            Last synced: <span x-text="lastSyncTimestamp"></span>
-                        </div>
-                        
                         <!-- Account Selector -->
                         <div class="flex items-center space-x-2">
                             <label for="account-select" class="text-sm font-medium text-slate-300">Account:</label>
@@ -117,31 +88,130 @@
                             </select>
                         </div>
 
-                        <!-- User Menu with Logout -->
+                        <!-- User Menu -->
                         <div class="flex items-center space-x-4 ml-4 pl-4 border-l border-slate-600">
-                            <div class="text-sm text-slate-300">
+                            <span class="text-slate-400 text-sm">
                                 <i class="fas fa-user mr-1"></i>
                                 <span x-text="username || 'User'"></span>
-                            </div>
-                            <button @click="logout()"
-                                    class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                            </span>
+                            <a @click="logout()" class="text-slate-400 hover:text-white text-sm cursor-pointer">
                                 <i class="fas fa-sign-out-alt mr-1"></i>
                                 Logout
-                            </button>
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
         </nav>
-        
+
         <!-- Main Content -->
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <!-- Header Section -->
+            <!-- Header Section with Action Buttons -->
             <div class="mb-4">
-                <h2 class="text-3xl font-bold text-slate-100 mb-2">Order Chains</h2>
-                <p class="text-slate-400">Trade history and order chains from your Tastytrade accounts</p>
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-slate-100 mb-2">Order Chains</h2>
+                        <p class="text-slate-400">Trade history and order chains from your Tastytrade accounts</p>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <!-- Sync Button -->
+                        <button
+                            @click="syncTrades()"
+                            :disabled="syncing || initialSyncing || reprocessing"
+                            class="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                        >
+                            <i class="fas fa-sync-alt mr-2" :class="{'loading-spinner': syncing}"></i>
+                            <span x-text="syncing ? 'Syncing...' : 'Sync Orders'"></span>
+                        </button>
+
+                        <!-- Initial Sync Button -->
+                        <button
+                            @click="initialSync()"
+                            :disabled="syncing || initialSyncing || reprocessing"
+                            class="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                        >
+                            <i class="fas fa-database mr-2" :class="{'loading-spinner': initialSyncing}"></i>
+                            <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial Sync'"></span>
+                        </button>
+
+                        <!-- Re-process Chains Button -->
+                        <button
+                            @click="reprocessChains()"
+                            :disabled="syncing || initialSyncing || reprocessing"
+                            class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                        >
+                            <i class="fas fa-link mr-2" :class="{'loading-spinner': reprocessing}"></i>
+                            <span x-text="reprocessing ? 'Re-processing...' : 'Re-process Chains'"></span>
+                        </button>
+
+                        <!-- Last Synced Timestamp -->
+                        <div class="text-xs text-slate-400" x-show="lastSyncTimestamp">
+                            <i class="fas fa-clock mr-1"></i>
+                            Last synced: <span x-text="lastSyncTimestamp"></span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            
+
+            <!-- Filters Section -->
+            <div class="bg-slate-800 rounded-lg p-6 mb-6">
+                <h3 class="text-lg font-semibold mb-4">Filters</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Time Period -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Time Period</label>
+                        <select x-model="timePeriod" @change="onTimePeriodChange()"
+                                class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="30">Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </div>
+
+                    <!-- Underlying Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Underlying</label>
+                        <select x-model="filterUnderlying" @change="onUnderlyingChange()"
+                                class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Underlyings</option>
+                            <template x-for="underlying in availableUnderlyings" :key="underlying">
+                                <option :value="underlying" x-text="underlying"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Strategy Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Strategy</label>
+                        <select x-model="filterStrategy" @change="onStrategyChange()"
+                                class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Strategies</option>
+                            <template x-for="strategy in availableStrategies" :key="strategy">
+                                <option :value="strategy" x-text="strategy"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Status Filter (Open/Closed) -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Status</label>
+                        <div class="flex items-center space-x-4 mt-2">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" x-model="showOpen" @change="applyStatusFilter(); saveState()"
+                                       class="form-checkbox h-4 w-4 text-green-500 bg-slate-700 border-slate-600 rounded focus:ring-green-500">
+                                <span class="ml-2 text-sm text-slate-300">Open</span>
+                            </label>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" x-model="showClosed" @change="applyStatusFilter(); saveState()"
+                                       class="form-checkbox h-4 w-4 text-blue-500 bg-slate-700 border-slate-600 rounded focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-slate-300">Closed</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Dashboard Stats -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
                 <!-- Total P&L Card -->
@@ -160,25 +230,11 @@
                                 <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
                             </div>
                             <p class="text-3xl font-bold mt-2"
-                               :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
-                                $<span x-text="formatNumber(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl)"></span>
+                               :class="dashboard.filteredSummary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                $<span x-text="formatNumber(dashboard.filteredSummary.total_pnl)"></span>
                             </p>
-                            <!-- P&L Breakdown -->
-                            <div x-show="!hasActiveFilters() && dashboard.summary.position_based_total" class="text-xs text-slate-400 mt-1">
-                                <div class="flex items-center gap-1">
-                                    <span>Realized:</span>
-                                    <span :class="dashboard.summary.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        $<span x-text="formatNumber(dashboard.summary.realized_pnl)"></span>
-                                    </span>
-                                    <span class="mx-1">|</span>
-                                    <span>Unrealized:</span>
-                                    <span :class="dashboard.summary.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        $<span x-text="formatNumber(dashboard.summary.unrealized_pnl)"></span>
-                                    </span>
-                                </div>
-                            </div>
-                            <!-- Filtered P&L Breakdown -->
-                            <div x-show="hasActiveFilters()" class="text-xs text-slate-400 mt-1">
+                            <!-- P&L Breakdown (always from chains) -->
+                            <div class="text-xs text-slate-400 mt-1">
                                 <div class="flex items-center gap-1">
                                     <span>Realized:</span>
                                     <span :class="dashboard.filteredSummary.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
@@ -189,12 +245,11 @@
                                     <span :class="dashboard.filteredSummary.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
                                         $<span x-text="formatNumber(dashboard.filteredSummary.unrealized_pnl)"></span>
                                     </span>
-                                    <span class="text-slate-500 ml-2 text-xs">(chains only)</span>
                                 </div>
                             </div>
                         </div>
-                        <div class="text-4xl" :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'">
-                            <i :class="(hasActiveFilters() ? dashboard.filteredSummary.total_pnl : dashboard.summary.total_pnl) >= 0 ? 'fas fa-chart-line' : 'fas fa-chart-line fa-rotate-180'"></i>
+                        <div class="text-4xl" :class="dashboard.filteredSummary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                            <i :class="dashboard.filteredSummary.total_pnl >= 0 ? 'fas fa-chart-line' : 'fas fa-chart-line fa-rotate-180'"></i>
                         </div>
                     </div>
                 </div>
@@ -215,8 +270,8 @@
                                 <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
                             </div>
                             <p class="text-3xl font-bold mt-2 text-blue-400">
-                                <!-- Win rate always shows overall win rate, not affected by status (open/closed) toggle -->
-                                <span x-text="(hasActiveFilters() ? dashboard.filteredSummary.win_rate : dashboard.summary.win_rate)?.toFixed(1) || '0.0'"></span>%
+                                <!-- Win rate calculated from loaded chains -->
+                                <span x-text="dashboard.filteredSummary.win_rate?.toFixed(1) || '0.0'"></span>%
                             </p>
                         </div>
                         <div class="text-4xl text-blue-400">
@@ -241,12 +296,12 @@
                                 <i x-show="hasActiveFilters()" class="fas fa-filter text-amber-400 text-xs"></i>
                             </div>
                             <p class="text-3xl font-bold mt-2 text-purple-400">
-                                <span x-text="hasActiveFilters() ? dashboard.filteredSummary.total_chains : dashboard.summary.total_trades"></span>
+                                <span x-text="dashboard.filteredSummary.total_chains"></span>
                             </p>
                             <div class="text-xs text-slate-500 mt-1">
-                                <span class="text-green-400" x-text="hasActiveFilters() ? dashboard.filteredSummary.open_chains : dashboard.summary.open_trades"></span>
-                                open • 
-                                <span class="text-blue-400" x-text="hasActiveFilters() ? dashboard.filteredSummary.closed_chains : dashboard.summary.closed_trades"></span>
+                                <span class="text-green-400" x-text="dashboard.filteredSummary.open_chains"></span>
+                                open •
+                                <span class="text-blue-400" x-text="dashboard.filteredSummary.closed_chains"></span>
                                 closed
                             </div>
                         </div>
@@ -256,65 +311,7 @@
                     </div>
                 </div>
             </div>
-            
-            
-            <!-- Filters -->
-            <div class="glass rounded-xl p-4 mb-4">
-                <div class="flex flex-wrap gap-4 items-center">
-                    <div class="min-w-[200px]">
-                        <select x-model="filterUnderlying" @change="loadChains(); saveState()" class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
-                            <option value="">All Underlyings</option>
-                            <template x-for="underlying in availableUnderlyings" :key="underlying">
-                                <option :value="underlying" x-text="underlying"></option>
-                            </template>
-                        </select>
-                    </div>
-                    
-                    <select x-model="filterStrategy" @change="applyStatusFilter(); saveState()" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
-                        <option value="">All Strategies</option>
-                        <optgroup label="Multi-leg Complex">
-                            <option value="Iron Condor">Iron Condor</option>
-                            <option value="Iron Butterfly">Iron Butterfly</option>
-                            <option value="Broken Wing Butterfly">Broken Wing Butterfly</option>
-                            <option value="Butterfly">Butterfly</option>
-                        </optgroup>
-                        <optgroup label="Vertical Spreads">
-                            <option value="Bull Put Spread">Bull Put Spread</option>
-                            <option value="Bear Call Spread">Bear Call Spread</option>
-                            <option value="Bull Call Spread">Bull Call Spread</option>
-                            <option value="Bear Put Spread">Bear Put Spread</option>
-                        </optgroup>
-                        <optgroup label="ZEBRA Strategies">
-                            <option value="Bull ZEBRA">Bull ZEBRA</option>
-                            <option value="Bear ZEBRA">Bear ZEBRA</option>
-                        </optgroup>
-                        <optgroup label="Volatility Plays">
-                            <option value="Straddle">Straddle</option>
-                            <option value="Strangle">Strangle</option>
-                        </optgroup>
-                        <optgroup label="Stock + Option">
-                            <option value="Covered Call">Covered Call</option>
-                            <option value="Cash Secured Put">Cash Secured Put</option>
-                        </optgroup>
-                    </select>
-                    
-                    <!-- Status Checkboxes -->
-                    <div class="flex items-center space-x-4 ml-4">
-                        <span class="text-slate-300 text-sm font-medium">Show:</span>
-                        <label class="flex items-center space-x-2 cursor-pointer">
-                            <input type="checkbox" x-model="showOpen" @change="applyStatusFilter(); saveState()" 
-                                   class="w-4 h-4 text-green-600 bg-slate-800 border-slate-600 rounded focus:ring-green-500 focus:ring-2">
-                            <span class="text-green-400 text-sm font-medium">OPEN</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer">
-                            <input type="checkbox" x-model="showClosed" @change="applyStatusFilter(); saveState()" 
-                                   class="w-4 h-4 text-blue-600 bg-slate-800 border-slate-600 rounded focus:ring-blue-500 focus:ring-2">
-                            <span class="text-blue-400 text-sm font-medium">CLOSED</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-            
+
             <!-- Section Header -->
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-2xl font-bold text-white">

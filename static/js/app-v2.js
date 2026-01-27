@@ -7,6 +7,7 @@ function tradeJournal() {
         accounts: [],
         selectedAccount: '',
         availableUnderlyings: [],
+        availableStrategies: [],
         username: null,
         dashboard: {
             summary: {
@@ -44,6 +45,7 @@ function tradeJournal() {
         filterStatus: '',
         filterStrategy: '',
         filterUnderlying: '',
+        timePeriod: 'all',  // 30, 60, 90, or 'all'
         showOpen: true,
         showClosed: true,
         filteredChains: [],
@@ -101,30 +103,46 @@ function tradeJournal() {
             const accountParam = urlParams.get('account');
 
             // Determine final account to use (URL param takes priority over saved state)
+            // Use null to indicate "not yet determined", empty string is valid for "All Accounts"
             let finalAccount = null;
+            let accountDetermined = false;
+
             if (accountParam) {
                 const accountExists = this.accounts.some(a => a.account_number === accountParam);
                 if (accountExists) {
                     finalAccount = accountParam;
+                    accountDetermined = true;
                     console.log('Applied URL parameter account filter:', accountParam);
                 } else {
                     console.log('URL account parameter not found:', accountParam);
                 }
             }
 
-            // Fall back to saved account if no URL param
-            if (!finalAccount && savedState && savedState.selectedAccount) {
-                const accountExists = this.accounts.some(a => a.account_number === savedState.selectedAccount);
-                if (accountExists) {
-                    finalAccount = savedState.selectedAccount;
-                    console.log('Restored account:', savedState.selectedAccount);
-                } else {
-                    console.log('Saved account not found:', savedState.selectedAccount);
+            // Fall back to shared account key first (synced across all pages)
+            // Note: empty string means "All Accounts" was selected, which is valid
+            if (!accountDetermined) {
+                const sharedAccount = localStorage.getItem('trade_journal_selected_account');
+                if (sharedAccount !== null) {
+                    if (sharedAccount === '') {
+                        // "All Accounts" was selected
+                        finalAccount = '';
+                        accountDetermined = true;
+                        console.log('Restored "All Accounts" from shared key');
+                    } else {
+                        const accountExists = this.accounts.some(a => a.account_number === sharedAccount);
+                        if (accountExists) {
+                            finalAccount = sharedAccount;
+                            accountDetermined = true;
+                            console.log('Restored account from shared key:', sharedAccount);
+                        } else {
+                            console.log('Shared account not found:', sharedAccount);
+                        }
+                    }
                 }
             }
 
-            // Set the final account
-            if (finalAccount) {
+            // Set the final account if determined
+            if (accountDetermined) {
                 this.selectedAccount = finalAccount;
             }
 
@@ -157,6 +175,7 @@ function tradeJournal() {
             if (savedState) {
                 this.filterStrategy = savedState.filterStrategy || '';
                 this.filterStatus = savedState.filterStatus || '';
+                this.timePeriod = savedState.timePeriod || 'all';
                 this.sortColumn = savedState.sortColumn || 'underlying';
                 this.sortDirection = savedState.sortDirection || 'asc';
                 this.showOpen = savedState.showOpen !== undefined ? savedState.showOpen : true;
@@ -164,6 +183,7 @@ function tradeJournal() {
                 console.log('Restored other filters:', {
                     strategy: this.filterStrategy,
                     status: this.filterStatus,
+                    timePeriod: this.timePeriod,
                     showOpen: this.showOpen,
                     showClosed: this.showClosed
                 });
@@ -252,18 +272,32 @@ function tradeJournal() {
             const chainsTime = performance.now() - chainsStartTime;
             console.log(`🕐 TIMING: Chains completed in ${chainsTime.toFixed(0)}ms`);
 
-            // Extract underlyings from loaded chains data (no additional API call needed)
-            const underlyingsStartTime = performance.now();
+            // Extract underlyings and strategies from loaded chains data (no additional API call needed)
+            const extractStartTime = performance.now();
             const underlyings = [...new Set(this.chains.map(chain => chain.underlying))];
             this.availableUnderlyings = underlyings.sort();
-            const underlyingsTime = performance.now() - underlyingsStartTime;
-            console.log(`🕐 TIMING: Underlyings extracted from chains in ${underlyingsTime.toFixed(0)}ms (no API call)`);
+            const strategies = [...new Set(this.chains.map(chain => chain.strategy_type || 'Unknown'))];
+            this.availableStrategies = strategies.sort();
+            const extractTime = performance.now() - extractStartTime;
+            console.log(`🕐 TIMING: Underlyings and strategies extracted from chains in ${extractTime.toFixed(0)}ms (no API call)`);
 
             const totalTime = performance.now() - totalStartTime;
             console.log(`🕐 TIMING: *** TOTAL ACCOUNT CHANGE: ${totalTime.toFixed(0)}ms (${(totalTime/1000).toFixed(1)}s) ***`);
-            console.log(`🕐 TIMING: Breakdown - Reset:${resetTime.toFixed(0)}ms, Dashboard:${dashboardTime.toFixed(0)}ms, Underlyings:${underlyingsTime.toFixed(0)}ms, Chains:${chainsTime.toFixed(0)}ms`);
+            console.log(`🕐 TIMING: Breakdown - Reset:${resetTime.toFixed(0)}ms, Dashboard:${dashboardTime.toFixed(0)}ms, Extract:${extractTime.toFixed(0)}ms, Chains:${chainsTime.toFixed(0)}ms`);
         },
-        
+
+        // Handle underlying filter change
+        onUnderlyingChange() {
+            this.saveState();
+            this.loadChains();
+        },
+
+        // Handle strategy filter change
+        onStrategyChange() {
+            this.saveState();
+            this.applyStatusFilter();
+        },
+
         // Format number with commas
         formatNumber(num) {
             if (num === null || num === undefined) return '0.00';
@@ -613,22 +647,39 @@ function tradeJournal() {
 
             let chains = this.chains;
 
+            // Apply time period filtering first
+            // Only applies to CLOSED chains (by closing_date). Open chains always shown.
+            if (this.timePeriod && this.timePeriod !== 'all') {
+                const days = parseInt(this.timePeriod);
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - days);
+                // Format as YYYY-MM-DD string for comparison (avoids timezone issues)
+                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                const beforeCount = chains.length;
+                chains = chains.filter(chain => {
+                    // Open chains: always show (they're current positions)
+                    if (chain.status === 'OPEN') return true;
+                    // Closed chains: filter by closing_date (string comparison)
+                    return chain.closing_date && chain.closing_date >= cutoffStr;
+                });
+                console.log('DEBUG: After time period filter (' + days + ' days, cutoff=' + cutoffStr + '), count =', chains.length, '(was', beforeCount, ')');
+            }
+
             // Apply status filtering
             if (!this.showOpen && !this.showClosed) {
                 // If both are unchecked, show nothing
                 chains = [];
                 console.log('DEBUG: Both showOpen and showClosed are false, chains set to []');
             } else if (this.showOpen && this.showClosed) {
-                // If both are checked, show all
-                chains = this.chains;
+                // If both are checked, show all (already filtered by time)
                 console.log('DEBUG: Both showOpen and showClosed are true, showing all');
             } else if (this.showOpen) {
                 // Show only open chains
-                chains = this.chains.filter(chain => chain.status === 'OPEN');
+                chains = chains.filter(chain => chain.status === 'OPEN');
                 console.log('DEBUG: Filtered to OPEN chains, count =', chains.length);
             } else if (this.showClosed) {
                 // Show only closed chains
-                chains = this.chains.filter(chain => chain.status === 'CLOSED');
+                chains = chains.filter(chain => chain.status === 'CLOSED');
                 console.log('DEBUG: Filtered to CLOSED chains, count =', chains.length);
             }
 
@@ -678,9 +729,26 @@ function tradeJournal() {
             });
 
             // Calculate win rate from closed chains in the filtered set
-            // This respects account, underlying, and strategy filters but not open/closed toggle
-            // First apply account/underlying/strategy filters (same as filteredChains but without status filter)
+            // This respects account, underlying, strategy, and time period filters but not open/closed toggle
             let chainsForWinRate = this.chains;
+
+            // Apply time period filter (same logic as applyStatusFilter)
+            // Only applies to closed chains (by closing_date). Open chains always included.
+            if (this.timePeriod && this.timePeriod !== 'all') {
+                const days = parseInt(this.timePeriod);
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - days);
+                // Format as YYYY-MM-DD string for comparison (avoids timezone issues)
+                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                chainsForWinRate = chainsForWinRate.filter(chain => {
+                    // Open chains: always include
+                    if (chain.status === 'OPEN') return true;
+                    // Closed chains: filter by closing_date (string comparison)
+                    return chain.closing_date && chain.closing_date >= cutoffStr;
+                });
+            }
+
+            // Apply strategy filter
             if (this.filterStrategy) {
                 chainsForWinRate = chainsForWinRate.filter(chain => {
                     const strategy = chain.strategy_type || 'Unknown';
@@ -707,7 +775,8 @@ function tradeJournal() {
         hasActiveFilters() {
             return this.filterUnderlying !== '' ||
                    this.filterStrategy !== '' ||
-                   this.selectedAccount !== '';
+                   this.selectedAccount !== '' ||
+                   (this.timePeriod && this.timePeriod !== 'all');
         },
 
         // Check if status filters (open/closed toggle) are active
@@ -733,9 +802,11 @@ function tradeJournal() {
                 const processingStart = performance.now();
                 const allChains = data.chains || [];
 
-                // Extract unique underlyings
+                // Extract unique underlyings and strategies
                 const underlyings = [...new Set(allChains.map(chain => chain.underlying))];
                 this.availableUnderlyings = underlyings.sort();
+                const strategies = [...new Set(allChains.map(chain => chain.strategy_type || 'Unknown'))];
+                this.availableStrategies = strategies.sort();
                 const processingTime = performance.now() - processingStart;
 
                 const totalTime = performance.now() - startTime;
@@ -980,6 +1051,7 @@ function tradeJournal() {
                 filterUnderlying: this.filterUnderlying,
                 filterStrategy: this.filterStrategy,
                 filterStatus: this.filterStatus,
+                timePeriod: this.timePeriod,
                 syncDays: this.syncDays,
                 sortColumn: this.sortColumn,
                 sortDirection: this.sortDirection,
@@ -987,6 +1059,14 @@ function tradeJournal() {
                 showClosed: this.showClosed
             };
             localStorage.setItem('tradeJournalState', JSON.stringify(state));
+            // Also save account to shared key (synced across all pages)
+            localStorage.setItem('trade_journal_selected_account', this.selectedAccount || '');
+        },
+
+        // Handle time period change
+        onTimePeriodChange() {
+            this.saveState();
+            this.applyStatusFilter();
         },
         
         // Get saved state from localStorage
