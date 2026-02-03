@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Trade Journal Web Application
-A beautiful, local web app for tracking and analyzing trades
+OptionEdge Web Application
+A beautiful, local web app for tracking and analyzing options trades
 """
 
 import os
@@ -43,8 +43,8 @@ logger.add(
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Trade Journal",
-    description="Personal Trading Journal and Analytics",
+    title="OptionEdge",
+    description="Personal Options Trading Analytics",
     version="1.0.0"
 )
 
@@ -146,7 +146,7 @@ class TradeFilter(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on startup"""
-    logger.info("Starting Trade Journal Web App")
+    logger.info("Starting OptionEdge Web App")
     db.initialize_database()
 
     # Note: Auto-sync disabled since credentials are not stored
@@ -264,6 +264,7 @@ async def require_auth(request: Request) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/positions", response_class=HTMLResponse)
 async def root(request: Request):
     """Serve the main application - Open Positions Page"""
     # Check authentication
@@ -275,7 +276,7 @@ async def root(request: Request):
 
     # Use absolute path to work in bundled Tauri app and development
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    positions_file = os.path.join(app_dir, "static", "positions.html")
+    positions_file = os.path.join(app_dir, "static", "positions-dense.html")
     with open(positions_file, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -292,7 +293,7 @@ async def order_chains(request: Request):
 
     # Use absolute path to work in bundled Tauri app and development
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    chains_file = os.path.join(app_dir, "static", "chains-v2.html")
+    chains_file = os.path.join(app_dir, "static", "chains-dense.html")
     with open(chains_file, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -309,7 +310,7 @@ async def reports_page(request: Request):
 
     # Use absolute path to work in bundled Tauri app and development
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    reports_file = os.path.join(app_dir, "static", "reports.html")
+    reports_file = os.path.join(app_dir, "static", "reports-dense.html")
     with open(reports_file, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -327,7 +328,7 @@ async def test_websocket():
 @app.get("/api/health")
 async def health_check():
     """Simple health check endpoint"""
-    return {"status": "ok", "service": "Trade Journal"}
+    return {"status": "ok", "service": "OptionEdge"}
 
 
 # ============================================================================
@@ -599,10 +600,19 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                 # Get net liquidity for open chains
                 if chain_status == 'OPEN':
                     try:
+                        # Collect all unique symbols from this chain's order positions
+                        chain_symbols = set()
+                        for order in (orders or []):
+                            for pos in order.get('positions', []):
+                                if pos.get('symbol'):
+                                    chain_symbols.add(pos['symbol'].strip())
+
+                        # Get all open positions and filter by specific symbols in this chain
                         positions = db.get_open_positions()
-                        if positions:
+                        if positions and chain_symbols:
                             for pos in positions:
-                                if (pos.get('underlying') == underlying and
+                                pos_symbol = (pos.get('symbol') or '').strip()
+                                if (pos_symbol in chain_symbols and
                                     pos.get('account_number') == account_number):
                                     net_liquidity += float(pos.get('market_value', 0))
                     except Exception as e:
@@ -644,26 +654,51 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
         return None
 
 
-async def update_chain_cache(chains):
-    """Update the order_chains table with fresh V2 derivation results"""
+async def update_chain_cache(chains, affected_underlyings: set = None):
+    """Update the order_chains table with fresh V2 derivation results
+
+    Args:
+        chains: List of Chain objects to cache
+        affected_underlyings: Optional set of underlyings to update incrementally.
+                             If None, clears and rebuilds entire cache.
+    """
+    if affected_underlyings:
+        logger.info(f"[CACHE UPDATE] Incremental update for {len(affected_underlyings)} underlyings: {affected_underlyings}")
     logger.info(f"[CACHE UPDATE] Starting update with {len(chains)} chains")
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            
+
             # Preserve existing working strategies before clearing cache
             cursor.execute("""
-                CREATE TEMP TABLE preserved_strategies AS 
-                SELECT chain_id, strategy_type 
-                FROM order_chains 
+                CREATE TEMP TABLE IF NOT EXISTS preserved_strategies AS
+                SELECT chain_id, strategy_type
+                FROM order_chains
                 WHERE strategy_type IS NOT NULL AND strategy_type != 'Unknown' AND strategy_type != 'None'
                 AND chain_id LIKE '%MERGED%'
             """)
-            
-            # Clear existing cache (could be more selective in the future)
-            cursor.execute("DELETE FROM order_chains")
-            cursor.execute("DELETE FROM order_chain_members")
-            cursor.execute("DELETE FROM order_chain_cache")
+
+            if affected_underlyings:
+                # Incremental update: only clear chains for affected underlyings
+                placeholders = ','.join('?' * len(affected_underlyings))
+                cursor.execute(f"""
+                    DELETE FROM order_chain_cache WHERE chain_id IN (
+                        SELECT chain_id FROM order_chains WHERE underlying IN ({placeholders})
+                    )
+                """, tuple(affected_underlyings))
+                cursor.execute(f"""
+                    DELETE FROM order_chain_members WHERE chain_id IN (
+                        SELECT chain_id FROM order_chains WHERE underlying IN ({placeholders})
+                    )
+                """, tuple(affected_underlyings))
+                cursor.execute(f"DELETE FROM order_chains WHERE underlying IN ({placeholders})",
+                              tuple(affected_underlyings))
+                logger.info(f"[CACHE UPDATE] Cleared cache for underlyings: {affected_underlyings}")
+            else:
+                # Full rebuild: clear entire cache
+                cursor.execute("DELETE FROM order_chains")
+                cursor.execute("DELETE FROM order_chain_members")
+                cursor.execute("DELETE FROM order_chain_cache")
             
             current_time = datetime.now()
             
@@ -1046,17 +1081,27 @@ async def get_order_chains(
                     if chain.status == 'OPEN':  # Only need for open chains
                         unique_accounts.add(chain.account_number)
 
-                # Fetch positions for each account once
-                for account_num in unique_accounts:
-                    try:
-                        live_positions_data = client.get_positions(account_number=account_num)
-                        live_positions_cache[account_num] = live_positions_data.get(account_num, [])
-                    except Exception as pos_err:
-                        logger.warning(f"Could not fetch positions for account {account_num}: {pos_err}")
-                        live_positions_cache[account_num] = []
+                # Fetch positions for all accounts in parallel for better performance
+                if unique_accounts:
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                    def fetch_positions_for_account(acct):
+                        try:
+                            data = client.get_positions(account_number=acct)
+                            return acct, data.get(acct, [])
+                        except Exception as e:
+                            logger.warning(f"Could not fetch positions for account {acct}: {e}")
+                            return acct, []
+
+                    with ThreadPoolExecutor(max_workers=min(5, len(unique_accounts))) as executor:
+                        futures = {executor.submit(fetch_positions_for_account, acct): acct
+                                   for acct in unique_accounts}
+                        for future in as_completed(futures):
+                            acct, positions = future.result()
+                            live_positions_cache[acct] = positions
 
                 api_fetch_time = time.time() - api_fetch_start
-                logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in {api_fetch_time:.2f}s")
+                logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in parallel in {api_fetch_time:.2f}s")
             else:
                 logger.warning("Could not authenticate for live position data - using cached data")
                 api_fetch_time = time.time() - api_fetch_start
@@ -1130,8 +1175,12 @@ async def get_order_chains(
             # Debug logging
             logger.debug(f"Chain {chain.chain_id} ({chain.underlying}): debit={total_debit:.2f}, credit={total_credit:.2f}, cost_basis_total={cost_basis_total:.2f}, opening_qty={opening_quantity_total}, per_unit={cost_basis_per_unit:.2f}")
 
-            # Detect strategy for this chain
-            detected_strategy = strategy_detector.detect_chain_strategy(chain)
+            # Use cached strategy from chain object (already detected in update_chain_cache)
+            # Avoid duplicate strategy detection which is expensive
+            detected_strategy = getattr(chain, 'strategy_type', None)
+            if not detected_strategy:
+                # Fallback: only detect if not cached (shouldn't happen with cache)
+                detected_strategy = strategy_detector.detect_chain_strategy(chain)
 
             formatted_chain = {
                 'chain_id': chain.chain_id,
@@ -1350,11 +1399,19 @@ async def get_order_chains(
             net_liquidity = 0.0
             if formatted_chain['status'] == 'OPEN':
                 try:
-                    # Get all open positions and filter for this chain's underlying + account
+                    # Collect all unique symbols from this chain's transactions
+                    chain_symbols = set()
+                    for order in chain.orders:
+                        for tx in order.transactions:
+                            if tx.symbol:
+                                chain_symbols.add(tx.symbol.strip())
+
+                    # Get all open positions and filter by specific symbols in this chain
                     positions = db.get_open_positions()
-                    if positions:
+                    if positions and chain_symbols:
                         for pos in positions:
-                            if (pos.get('underlying') == formatted_chain['underlying'] and
+                            pos_symbol = (pos.get('symbol') or '').strip()
+                            if (pos_symbol in chain_symbols and
                                 pos.get('account_number') == formatted_chain['account_number']):
                                 net_liquidity += float(pos.get('market_value', 0))
                 except Exception as e:
@@ -2086,36 +2143,71 @@ async def sync_unified(request: Request):
         db.update_last_sync_timestamp()
         logger.info("Updated last sync timestamp")
         
-        # Always reprocess chains after sync to ensure strategy detection and linking is up to date
-        logger.info(f"Auto-reprocessing chains after sync (processed {saved_count} transactions)...")
+        # Reprocess chains after sync - use incremental processing when possible
+        # Skip reprocessing entirely if no new transactions were saved
+        if raw_saved == 0:
+            logger.info("No new transactions saved, skipping chain reprocessing")
+            return {
+                "message": f"Sync completed: no new transactions",
+                "transactions_processed": 0,
+                "positions_updated": total_positions,
+                "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
+            }
+
+        # Extract affected underlyings from the fetched transactions
+        affected_underlyings = set()
+        for txn in transactions:
+            underlying = txn.get('underlying_symbol', '')
+            if underlying:
+                # Strip option suffix if present (e.g., "AAPL  240119C00150000" -> "AAPL")
+                underlying = underlying.split()[0] if ' ' in underlying else underlying
+                affected_underlyings.add(underlying)
+
+        # Determine if we should do incremental or full reprocessing
+        use_incremental = raw_saved < 50 and len(affected_underlyings) <= 10
+
+        if use_incremental:
+            logger.info(f"Incremental chain reprocessing for {len(affected_underlyings)} underlyings: {affected_underlyings}")
+        else:
+            logger.info(f"Full chain reprocessing (raw_saved={raw_saved}, underlyings={len(affected_underlyings)})")
+            affected_underlyings = None  # Signal full reprocessing
+
         try:
-            # Get raw transactions for reprocessing
-            raw_transactions = db.get_raw_transactions()
+            # Clear position inventory and lots (needed for V2 processing)
+            position_manager.clear_all_positions()
+            lot_manager.clear_all_lots()
+            logger.info("Cleared position inventory and lots for reprocessing")
 
-            # Process using V2 system which returns chains
-            chains_by_account = order_processor_v2.process_transactions(raw_transactions)
-
-            # Flatten chains from all accounts
-            all_chains = []
-            for account, chains in chains_by_account.items():
-                for chain in chains:
-                    all_chains.append(chain)
+            if use_incremental and affected_underlyings:
+                # Incremental: only process affected underlyings
+                all_chains = []
+                for underlying in affected_underlyings:
+                    underlying_txs = db.get_raw_transactions(underlying=underlying)
+                    if underlying_txs:
+                        chains_by_account = order_processor_v2.process_transactions(underlying_txs)
+                        for account, chains in chains_by_account.items():
+                            all_chains.extend(chains)
+                logger.info(f"Incremental reprocessing created {len(all_chains)} chains for affected underlyings")
+            else:
+                # Full reprocessing
+                raw_transactions = db.get_raw_transactions()
+                chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+                all_chains = []
+                for account, chains in chains_by_account.items():
+                    all_chains.extend(chains)
+                logger.info(f"Full reprocessing created {len(all_chains)} chains")
 
             if all_chains:
-                logger.info(f"Chain reprocessing created {len(all_chains)} chains")
-
-                # Now run strategy detection on the newly created chains
-                logger.info("Running strategy detection on newly created chains...")
+                logger.info("Running strategy detection on chains...")
                 try:
-                    # Update cache with strategy detection
-                    await update_chain_cache(all_chains)
-                    logger.info("Strategy detection completed")
+                    await update_chain_cache(all_chains, affected_underlyings)
+                    logger.info("Strategy detection and cache update completed")
                 except Exception as e:
                     logger.error(f"Error during strategy detection after sync: {str(e)}", exc_info=True)
             else:
                 logger.warning("No chains created during reprocessing")
         except Exception as e:
-            logger.error(f"Error during auto chain reprocessing: {str(e)}")
+            logger.error(f"Error during chain reprocessing: {str(e)}")
         
         return {
             "message": f"Sync completed: {saved_count} new transactions processed",
@@ -3087,7 +3179,7 @@ if __name__ == "__main__":
     create_initial_files()
     
     # Start the server
-    logger.info("Starting Trade Journal on http://localhost:8000")
+    logger.info("Starting OptionEdge on http://localhost:8000")
     logger.info("From Windows, also try: http://127.0.0.1:8000")
     uvicorn.run(
         "app:app",  # Use string import to enable reload
