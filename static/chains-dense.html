@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionEdge - Order Chains</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tv: {
+                            bg: '#131722',
+                            panel: '#1e222d',
+                            border: '#2a2e39',
+                            text: '#d1d4dc',
+                            muted: '#787b86',
+                            green: '#26a69a',
+                            red: '#ef5350',
+                            blue: '#2962ff',
+                        }
+                    },
+                    fontSize: {
+                        '2xs': ['10px', '14px'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Load the V2 app JavaScript -->
+    <script src="/static/js/app-v2.js?v=20260203j"></script>
+
+    <!-- Alpine.js Collapse Plugin -->
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
+        body { background: #131722; color: #d1d4dc; font-size: 16px; }
+        .tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tv-scrollbar::-webkit-scrollbar-track { background: #1e222d; }
+        .tv-scrollbar::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
+        .tv-scrollbar::-webkit-scrollbar-thumb:hover { background: #363a45; }
+        [x-cloak] { display: none !important; }
+        /* Larger font scale */
+        .text-dense-xs { font-size: 13px; line-height: 1.4; }
+        .text-dense-sm { font-size: 14px; line-height: 1.4; }
+        .text-dense-base { font-size: 16px; line-height: 1.4; }
+        .text-dense-lg { font-size: 18px; line-height: 1.4; }
+    </style>
+</head>
+<body class="min-h-screen tv-scrollbar">
+    <div x-data="tradeJournal()" x-init="init()" @keydown.escape.window="closeEditModal(); closeTradeDetailsModal()">
+
+        <!-- Compact Nav Bar -->
+        <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
+            <div class="flex items-center justify-between h-16 px-4">
+                <!-- Left: Logo & Nav -->
+                <div class="flex items-center gap-8">
+                    <span class="text-tv-blue font-semibold text-2xl">
+                        <i class="fas fa-chart-line mr-2"></i>OptionEdge
+                    </span>
+                    <div class="flex items-center border-l border-tv-border pl-8 gap-4">
+                        <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
+                        <a href="/chains" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">Chains</a>
+                        <a href="/reports" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Reports</a>
+                    </div>
+                </div>
+
+                <!-- Right: Account & User -->
+                <div class="flex items-center gap-6 text-base">
+                    <select x-model="selectedAccount" @change="onAccountChange()"
+                            class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
+                        <option value="">All Accounts</option>
+                        <template x-for="account in accounts" :key="account.account_number">
+                            <option :value="account.account_number" x-text="account.account_name || account.account_number"></option>
+                        </template>
+                    </select>
+                    <span class="text-tv-muted border-l border-tv-border pl-6">
+                        <span x-text="username || 'User'"></span>
+                    </span>
+                    <a @click="logout()" class="text-tv-muted hover:text-tv-text cursor-pointer">Logout</a>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Action Bar -->
+        <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <button @click="syncTrades()" :disabled="syncing || initialSyncing || reprocessing"
+                        class="bg-tv-green/20 hover:bg-tv-green/30 text-tv-green border border-tv-green/30 px-4 py-2 text-base disabled:opacity-50">
+                    <i class="fas fa-sync-alt mr-2" :class="{'animate-spin': syncing}"></i>
+                    <span x-text="syncing ? 'Syncing...' : 'Sync'"></span>
+                </button>
+                <button @click="initialSync()" :disabled="syncing || initialSyncing || reprocessing"
+                        class="bg-gray-500/20 hover:bg-gray-500/30 text-gray-400 border border-gray-500/30 px-4 py-2 text-base disabled:opacity-50">
+                    <i class="fas fa-database mr-2" :class="{'animate-spin': initialSyncing}"></i>
+                    <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial'"></span>
+                </button>
+                <button @click="reprocessChains()" :disabled="syncing || initialSyncing || reprocessing"
+                        class="bg-gray-500/20 hover:bg-gray-500/30 text-gray-400 border border-gray-500/30 px-4 py-2 text-base disabled:opacity-50">
+                    <i class="fas fa-link mr-2" :class="{'animate-spin': reprocessing}"></i>
+                    <span x-text="reprocessing ? 'Processing...' : 'Reprocess'"></span>
+                </button>
+                <span class="text-base text-tv-muted ml-4" x-show="lastSyncTimestamp">
+                    Last: <span x-text="lastSyncTimestamp"></span>
+                </span>
+            </div>
+
+            <!-- Filters inline -->
+            <div class="flex items-center gap-4 text-base">
+                <div class="relative">
+                    <input type="text"
+                           x-model="filterUnderlying"
+                           @keyup.enter="onUnderlyingChange()"
+                           @blur="onUnderlyingChange()"
+                           @input="filterUnderlying = filterUnderlying.toUpperCase()"
+                           placeholder="Symbol"
+                           class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+                           :class="filterUnderlying ? 'pr-8' : ''">
+                    <button x-show="filterUnderlying"
+                            @click="filterUnderlying = ''; onUnderlyingChange()"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text"
+                            title="Clear symbol filter">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+                <select x-model="timePeriod" @change="onTimePeriodChange()"
+                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2">
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="7">7D</option>
+                    <option value="30">30D</option>
+                    <option value="60">60D</option>
+                    <option value="90">90D</option>
+                    <option value="all">All</option>
+                </select>
+                <select x-model="filterStrategy" @change="onStrategyChange()"
+                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 max-w-[180px]">
+                    <option value="">Strategy</option>
+                    <template x-for="strategy in availableStrategies" :key="strategy">
+                        <option :value="strategy" x-text="strategy"></option>
+                    </template>
+                </select>
+                <label class="flex items-center gap-2 text-tv-muted">
+                    <input type="checkbox" x-model="showOpen" @change="applyStatusFilter(); saveState()" class="w-5 h-5">
+                    <span class="text-tv-green">Open</span>
+                </label>
+                <label class="flex items-center gap-2 text-tv-muted">
+                    <input type="checkbox" x-model="showClosed" @change="applyStatusFilter(); saveState()" class="w-5 h-5">
+                    <span class="text-tv-muted">Closed</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="bg-tv-bg border-b border-tv-border px-4 py-3 flex items-center gap-10 text-base">
+            <div class="flex items-center gap-3">
+                <span class="text-tv-muted">P&L:</span>
+                <span :class="dashboard.filteredSummary.total_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+                    $<span x-text="formatNumber(dashboard.filteredSummary.total_pnl)"></span>
+                </span>
+                <span class="text-tv-muted text-base">
+                    (<span :class="dashboard.filteredSummary.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" x-text="'$' + formatNumber(dashboard.filteredSummary.realized_pnl)"></span> real /
+                    <span :class="dashboard.filteredSummary.unrealized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" x-text="'$' + formatNumber(dashboard.filteredSummary.unrealized_pnl)"></span> unreal)
+                </span>
+            </div>
+            <div class="flex items-center gap-3 border-l border-tv-border pl-8">
+                <span class="text-tv-muted">Win:</span>
+                <span class="text-tv-blue font-medium"><span x-text="dashboard.filteredSummary.win_rate?.toFixed(1) || '0.0'"></span>%</span>
+            </div>
+            <div class="flex items-center gap-3 border-l border-tv-border pl-8">
+                <span class="text-tv-muted">Chains:</span>
+                <span class="text-tv-text font-medium" x-text="dashboard.filteredSummary.total_chains"></span>
+                <span class="text-base">
+                    (<span class="text-tv-green" x-text="dashboard.filteredSummary.open_chains"></span>/<span class="text-tv-muted" x-text="dashboard.filteredSummary.closed_chains"></span>)
+                </span>
+            </div>
+            <div class="flex items-center gap-3 border-l border-tv-border pl-8 ml-auto">
+                <span class="text-tv-muted" x-text="filteredChains.length + ' showing'"></span>
+            </div>
+        </div>
+
+        <!-- Main Content: Chains Table -->
+        <div class="tv-scrollbar" style="height: calc(100vh - 180px); overflow-y: auto;">
+            <!-- Loading -->
+            <div x-show="chainsLoading" class="flex items-center justify-center py-12">
+                <i class="fas fa-spinner animate-spin text-tv-blue mr-3 text-lg"></i>
+                <span class="text-tv-muted text-base">Loading chains...</span>
+            </div>
+
+            <!-- No Results -->
+            <div x-show="!chainsLoading && filteredChains.length === 0" class="text-center py-12 text-tv-muted text-base">
+                No chains found
+            </div>
+
+            <!-- Chains List -->
+            <div x-show="!chainsLoading && filteredChains.length > 0">
+                <!-- Column Headers -->
+                <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-0">
+                    <span class="w-8"></span>
+                    <span class="w-24">Symbol</span>
+                    <span class="w-48">Strategy</span>
+                    <span class="w-24">Status</span>
+                    <span class="w-32">Opened</span>
+                    <span class="w-8"></span>
+                    <span class="w-32">Closed</span>
+                    <span class="w-20 text-center">#Orders</span>
+                    <span class="w-28 text-right">Cost Basis</span>
+                    <span class="w-28 text-right">Net Liq</span>
+                    <span class="w-32 text-right">Realized</span>
+                    <span class="w-28 text-right">Total</span>
+                </div>
+                <template x-for="chain in filteredChains" :key="chain.chain_id">
+                    <div class="border-b border-tv-border">
+                        <!-- Chain Row -->
+                        <div class="flex items-center px-4 py-3 hover:bg-tv-panel cursor-pointer text-base"
+                             @click="chain.expanded = !chain.expanded">
+                            <!-- Expand Icon -->
+                            <i class="fas fa-caret-right text-tv-muted w-8 transition-transform text-lg"
+                               :class="{'rotate-90': chain.expanded}"></i>
+
+                            <!-- Symbol -->
+                            <span class="w-24 font-semibold text-base text-tv-text" x-text="chain.underlying"></span>
+
+                            <!-- Strategy -->
+                            <span class="w-48 text-tv-muted truncate" x-text="chain.strategy_type || '-'"></span>
+
+                            <!-- Status -->
+                            <span class="w-24">
+                                <span class="text-base px-3 py-1 rounded-sm"
+                                      :class="{
+                                          'bg-green-900/60 text-green-400 border border-green-700/50': chain.status === 'OPEN',
+                                          'bg-orange-500/20 text-orange-400': chain.status === 'ASSIGNED',
+                                          'bg-tv-border text-tv-muted': chain.status === 'CLOSED'
+                                      }"
+                                      x-text="chain.status"></span>
+                            </span>
+
+                            <!-- Date -->
+                            <span class="w-32 text-tv-muted" x-text="chain.opening_date"></span>
+                            <span class="w-8 text-tv-muted text-center" x-text="chain.closing_date ? '→' : ''"></span>
+                            <span class="w-32 text-tv-muted" x-text="chain.closing_date || ''"></span>
+
+                            <!-- Orders -->
+                            <span class="w-20 text-tv-muted text-center" x-text="chain.order_count"></span>
+
+                            <!-- Cost Basis -->
+                            <span class="w-28 text-right"
+                                  :class="chain.cost_basis_per_share >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                                <span x-show="chain.cost_basis_per_share !== null && chain.cost_basis_per_share < 0">-</span><span x-show="chain.cost_basis_per_share !== null" x-text="Math.abs(chain.cost_basis_per_share || 0).toFixed(2)"></span>
+                            </span>
+
+                            <!-- Net Liq (Open only) -->
+                            <span class="w-28 text-right text-tv-muted">
+                                <span x-show="chain.status === 'OPEN'" x-text="'$' + formatNumber(chain.net_liquidity)"></span>
+                            </span>
+
+                            <!-- Realized P&L -->
+                            <span class="w-32 text-right font-medium"
+                                  :class="chain.total_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                                $<span x-text="formatNumber(chain.total_pnl)"></span>
+                            </span>
+
+                            <!-- Total P&L (Open only): Net Liq + Realized -->
+                            <span class="w-28 text-right font-medium"
+                                  :class="chain.status === 'OPEN' ? ((chain.net_liquidity + chain.total_pnl) >= 0 ? 'text-tv-green' : 'text-tv-red') : ''">
+                                <span x-show="chain.status === 'OPEN'" x-text="'$' + formatNumber(chain.net_liquidity + chain.total_pnl)"></span>
+                            </span>
+                        </div>
+
+                        <!-- Expanded Orders -->
+                        <div x-show="chain.expanded" x-collapse class="bg-tv-bg border-t border-tv-border">
+                            <!-- Current Open Position (for OPEN chains only) -->
+                            <div x-show="chain.status === 'OPEN' && getCurrentOpenPositions(chain).length > 0"
+                                 class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border">
+                                <div class="text-sm text-amber-500 mb-2">Open Pos</div>
+                                <div class="space-y-1 font-mono">
+                                    <template x-for="pos in getCurrentOpenPositions(chain)" :key="`${chain.chain_id}_current_${pos.symbol}_${pos.strike}`">
+                                        <div class="flex items-center text-sm">
+                                            <!-- Quantity -->
+                                            <span class="w-10 text-right font-medium"
+                                                  :class="pos.quantity > 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                  x-text="pos.quantity"></span>
+                                            <!-- Expiration -->
+                                            <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-tv-text"
+                                                  x-text="formatExpirationShort(pos.expiration)"></span>
+                                            <!-- DTE -->
+                                            <span class="w-10 text-tv-muted"
+                                                  x-text="calculateDTE(pos.expiration) + 'd'"></span>
+                                            <!-- Strike -->
+                                            <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-amber-500"
+                                                  x-text="pos.strike"></span>
+                                            <!-- Option Type -->
+                                            <span class="w-6 text-tv-muted"
+                                                  x-text="pos.option_type === 'CALL' || pos.option_type === 'C' ? 'C' : 'P'"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <template x-for="(order, index) in (chain.orders || []).filter(o => o != null).sort((a, b) => new Date(b?.order_date || 0) - new Date(a?.order_date || 0))" :key="`${chain.chain_id}_order_${index}`">
+                                <div class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border">
+                                    <!-- Order Header -->
+                                    <div class="flex items-center text-base">
+                                        <span class="w-8 text-tv-muted" x-text="(chain.orders || []).length - index"></span>
+                                        <span class="w-32 text-tv-muted" x-text="formatOrderDate(order.order_date)"></span>
+                                        <span class="w-28"
+                                              :class="{
+                                                  'text-tv-blue': order.order_type === 'OPENING',
+                                                  'text-tv-red': order.order_type === 'CLOSING',
+                                                  'text-amber-400': order.order_type === 'ROLLING'
+                                              }"
+                                              x-text="order.order_type"></span>
+                                        <!-- Credit/Debit badges -->
+                                        <span x-show="order.order_type === 'ROLLING' && formatRollCreditDebit(order)"
+                                              class="text-base px-3 py-1 rounded-sm"
+                                              :class="calculateRollCreditDebit(order)?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'"
+                                              x-text="formatRollCreditDebit(order)"></span>
+                                        <span x-show="order.order_type === 'OPENING' && formatOpeningCreditDebit(order)"
+                                              class="text-base px-3 py-1 rounded-sm"
+                                              :class="calculateOpeningCreditDebit(order)?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'"
+                                              x-text="formatOpeningCreditDebit(order)"></span>
+                                        <span x-show="order.order_type === 'CLOSING' && formatClosingCreditDebit(order)"
+                                              class="text-base px-3 py-1 rounded-sm"
+                                              :class="calculateClosingCreditDebit(order)?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'"
+                                              x-text="formatClosingCreditDebit(order)"></span>
+                                        <!-- Clickable Order ID for drill-down -->
+                                        <button @click.stop="order.expanded = !order.expanded"
+                                                class="ml-4 text-tv-blue hover:text-blue-300 hover:underline cursor-pointer text-sm font-mono">
+                                            <span x-text="order.order_id"></span>
+                                            <i class="fas fa-chevron-down ml-1 text-sm transition-transform" :class="{'rotate-180': order.expanded}"></i>
+                                        </button>
+                                        <span class="ml-auto font-medium"
+                                              :class="order.total_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                                            $<span x-text="formatNumber(order.total_pnl)"></span>
+                                        </span>
+                                    </div>
+
+                                    <!-- Positions (TT-style) -->
+                                    <div x-show="order.positions && order.positions.length > 0" class="pt-3 space-y-1 font-mono">
+                                        <!-- Header row -->
+                                        <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
+                                            <span class="w-10 text-right">Qty</span>
+                                            <span class="w-16 text-center mx-2">Exp</span>
+                                            <span class="w-10">DTE</span>
+                                            <span class="w-16 text-center mx-2">Strike</span>
+                                            <span class="w-6">Type</span>
+                                            <span class="w-12 ml-4">Action</span>
+                                            <span class="w-20 text-right ml-auto">Price</span>
+                                            <span class="w-24 text-right">Realized</span>
+                                        </div>
+                                        <template x-for="position in (order.positions || []).sort((a, b) => (a.leg_index || 0) - (b.leg_index || 0) || (a.strike || 0) - (b.strike || 0))" :key="`pos_${position.position_id || Math.random()}`">
+                                            <div>
+                                                <div class="flex items-center text-sm">
+                                                    <!-- Qty -->
+                                                    <span class="w-10 text-right font-medium"
+                                                          :class="getDisplayQuantity(position) > 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="getDisplayQuantity(position)"></span>
+                                                    <!-- Expiration -->
+                                                    <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-tv-text"
+                                                          x-text="formatExpirationShort(position.expiration)"></span>
+                                                    <!-- DTE -->
+                                                    <span class="w-10 text-tv-muted"
+                                                          x-text="calculateDTE(position.expiration) + 'd'"></span>
+                                                    <!-- Strike -->
+                                                    <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-amber-500"
+                                                          x-text="position.strike"></span>
+                                                    <!-- Option Type -->
+                                                    <span class="w-6 text-tv-muted"
+                                                          x-text="position.option_type === 'CALL' || position.option_type === 'C' ? 'C' : 'P'"></span>
+                                                    <!-- Action -->
+                                                    <span class="w-12 text-tv-blue ml-4"
+                                                          x-text="formatAction(position.opening_action)"></span>
+                                                    <!-- Price (pushed to right) -->
+                                                    <span class="w-20 text-right text-tv-muted ml-auto"
+                                                          x-text="'$' + formatNumber(position.opening_price)"></span>
+                                                    <!-- Realized P&L -->
+                                                    <span class="w-24 text-right"
+                                                          :class="position.pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="'$' + formatNumber(position.pnl)"></span>
+                                                    <!-- Status indicators -->
+                                                    <span x-show="position.closing_action?.includes('EXPIRED')" class="text-amber-400 ml-2">EXP</span>
+                                                    <span x-show="position.closing_action?.includes('ASSIGNED')" class="text-orange-400 ml-2">ASN</span>
+                                                </div>
+                                                <!-- Derived positions (assignment/exercise stock) -->
+                                                <template x-if="position.derived_positions && position.derived_positions.length > 0">
+                                                    <template x-for="derived in position.derived_positions" :key="`derived_${derived.lot_id}`">
+                                                        <div class="flex items-center text-sm ml-6 mt-1">
+                                                            <span class="text-tv-muted mr-2">↳</span>
+                                                            <!-- Qty -->
+                                                            <span class="w-10 text-right font-medium"
+                                                                  :class="derived.quantity > 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                                  x-text="derived.quantity"></span>
+                                                            <!-- Symbol -->
+                                                            <span class="w-20 text-center text-tv-text mx-2"
+                                                                  x-text="derived.symbol"></span>
+                                                            <!-- Derivation type -->
+                                                            <span class="w-20 text-orange-400"
+                                                                  x-text="derived.derivation_type"></span>
+                                                            <!-- Price (pushed to right) -->
+                                                            <span class="w-20 text-right text-tv-muted ml-auto"
+                                                                  x-text="'$' + formatNumber(derived.entry_price)"></span>
+                                                            <!-- Status -->
+                                                            <span class="w-24 text-right text-tv-muted"
+                                                                  x-text="derived.status"></span>
+                                                        </div>
+                                                    </template>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- Expandable Order Details (Second Level) -->
+                                    <div x-show="order.expanded" x-collapse class="mt-3 border-t border-tv-border pt-3">
+                                        <div class="text-base font-medium text-tv-muted mb-3">Order Details</div>
+                                        <div class="bg-tv-panel/50 border border-tv-border p-4">
+                                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-base">
+                                                <div>
+                                                    <span class="text-tv-muted">Order ID:</span>
+                                                    <span class="block font-mono text-tv-blue" x-text="order.order_id"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-tv-muted">Order Type:</span>
+                                                    <span class="block font-medium"
+                                                          :class="{
+                                                              'text-tv-blue': order.order_type === 'OPENING',
+                                                              'text-tv-red': order.order_type === 'CLOSING',
+                                                              'text-amber-400': order.order_type === 'ROLLING'
+                                                          }" x-text="order.order_type"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-tv-muted">Date:</span>
+                                                    <span class="block text-tv-text" x-text="formatOrderDate(order.order_date)"></span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-tv-muted">Positions:</span>
+                                                    <span class="block text-tv-text" x-text="order.positions?.length || 0"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Edit Modal (simplified for dense UI) -->
+        <div id="editModal" class="fixed inset-0 z-50 hidden">
+            <div class="flex items-center justify-center min-h-screen p-6">
+                <div class="fixed inset-0 bg-black/80" @click="closeEditModal()"></div>
+                <div class="relative bg-tv-panel border border-tv-border p-8 w-full max-w-xl">
+                    <h3 class="text-lg font-medium text-tv-text mb-6">Edit Trade</h3>
+                    <form id="editTradeForm">
+                        <input type="hidden" id="editTradeId">
+                        <div class="mb-6 p-4 bg-tv-bg border border-tv-border text-base">
+                            <p class="text-tv-muted">Trade ID: <span id="displayTradeId" class="text-tv-blue font-mono"></span></p>
+                            <p class="text-tv-muted">Underlying: <span id="displayUnderlying" class="text-tv-text"></span></p>
+                            <p class="text-tv-muted">Strategy: <span id="displayStrategy" class="text-purple-400"></span></p>
+                        </div>
+                        <div class="mb-6">
+                            <label class="block text-base text-tv-muted mb-2">Status</label>
+                            <select id="editStatus" class="w-full bg-tv-bg border border-tv-border text-tv-text text-base p-3">
+                                <option value="Open">Open</option>
+                                <option value="Closed">Closed</option>
+                                <option value="Rolled">Rolled</option>
+                                <option value="Expired">Expired</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
+                        </div>
+                        <div class="mb-6">
+                            <label class="block text-base text-tv-muted mb-2">Comments</label>
+                            <textarea id="editComments" rows="3" class="w-full bg-tv-bg border border-tv-border text-tv-text text-base p-3" placeholder="Notes..."></textarea>
+                        </div>
+                        <div class="mb-6">
+                            <label class="block text-base text-tv-muted mb-2">Tags</label>
+                            <input type="text" id="editTags" class="w-full bg-tv-bg border border-tv-border text-tv-text text-base p-3" placeholder="comma-separated">
+                        </div>
+                    </form>
+                    <div class="flex gap-4">
+                        <button @click="closeEditModal()" class="flex-1 bg-tv-border text-tv-text text-base py-3 hover:bg-tv-panel">Cancel</button>
+                        <button @click="saveTradeChanges()" class="flex-1 bg-tv-blue text-white text-base py-3 hover:bg-tv-blue/80">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
