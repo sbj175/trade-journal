@@ -94,6 +94,7 @@ class DatabaseManager:
                     account_number TEXT,
                     cash_balance REAL,
                     net_liquidating_value REAL,
+                    margin_equity REAL,
                     equity_buying_power REAL,
                     derivative_buying_power REAL,
                     day_trading_buying_power REAL,
@@ -245,6 +246,22 @@ class DatabaseManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Strategy targets table for P&L targets per strategy
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS strategy_targets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    strategy_name TEXT UNIQUE NOT NULL,
+                    profit_target_pct REAL NOT NULL,
+                    loss_target_pct REAL NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Seed default strategy targets if table is empty
+            cursor.execute("SELECT COUNT(*) FROM strategy_targets")
+            if cursor.fetchone()[0] == 0:
+                self._seed_default_strategy_targets(cursor)
 
             # Position lots table for V3 lot-based tracking
             cursor.execute("""
@@ -508,6 +525,24 @@ class DatabaseManager:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_order ON lot_closings(closing_order_id)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_date ON lot_closings(closing_date)")
 
+                # Order comments table for persistent per-order notes
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS order_comments (
+                        order_id TEXT PRIMARY KEY,
+                        comment TEXT NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # Position notes table for persistent per-position notes
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS position_notes (
+                        note_key TEXT PRIMARY KEY,
+                        note TEXT NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
             except Exception as e:
                 logger.error(f"Error adding transaction columns: {e}")
     
@@ -717,13 +752,14 @@ class DatabaseManager:
                 cursor.execute("""
                     INSERT INTO account_balances (
                         account_number, cash_balance, net_liquidating_value,
-                        equity_buying_power, derivative_buying_power,
+                        margin_equity, equity_buying_power, derivative_buying_power,
                         day_trading_buying_power, maintenance_requirement
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     balance.get('account_number'),
                     balance.get('cash_balance'),
                     balance.get('net_liquidating_value'),
+                    balance.get('margin_equity'),
                     balance.get('equity_buying_power'),
                     balance.get('derivative_buying_power'),
                     balance.get('day_trading_buying_power'),
@@ -863,6 +899,130 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error clearing old quotes: {str(e)}")
             return False
+
+    def _seed_default_strategy_targets(self, cursor):
+        """Seed default strategy targets for all known strategies"""
+        defaults = [
+            # Credit strategies: 50% profit / 100% loss
+            ('Bull Put Spread', 50.0, 100.0),
+            ('Bear Call Spread', 50.0, 100.0),
+            ('Iron Condor', 50.0, 100.0),
+            ('Cash Secured Put', 50.0, 100.0),
+            ('Covered Call', 50.0, 100.0),
+            ('Short Put', 50.0, 100.0),
+            ('Short Call', 50.0, 100.0),
+            ('Short Strangle', 50.0, 100.0),
+            # Tighter credit strategies: 25% profit / 100% loss
+            ('Iron Butterfly', 25.0, 100.0),
+            ('Short Straddle', 25.0, 100.0),
+            # Debit strategies: 100% profit / 50% loss
+            ('Bull Call Spread', 100.0, 50.0),
+            ('Bear Put Spread', 100.0, 50.0),
+            ('Long Call', 100.0, 50.0),
+            ('Long Put', 100.0, 50.0),
+            ('Long Strangle', 100.0, 50.0),
+            ('Long Straddle', 100.0, 50.0),
+            # Equity: 20% profit / 10% loss
+            ('Shares', 20.0, 10.0),
+        ]
+        cursor.executemany("""
+            INSERT INTO strategy_targets (strategy_name, profit_target_pct, loss_target_pct)
+            VALUES (?, ?, ?)
+        """, defaults)
+
+    def get_strategy_targets(self) -> List[Dict[str, Any]]:
+        """Get all strategy P&L targets"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM strategy_targets ORDER BY id")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def save_strategy_targets(self, targets: List[Dict[str, Any]]) -> bool:
+        """Save strategy targets (upsert pattern)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                for target in targets:
+                    cursor.execute("""
+                        INSERT INTO strategy_targets (strategy_name, profit_target_pct, loss_target_pct, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(strategy_name) DO UPDATE SET
+                            profit_target_pct = excluded.profit_target_pct,
+                            loss_target_pct = excluded.loss_target_pct,
+                            updated_at = CURRENT_TIMESTAMP
+                    """, (target['strategy_name'], target['profit_target_pct'], target['loss_target_pct']))
+                return True
+        except Exception as e:
+            logger.error(f"Error saving strategy targets: {str(e)}")
+            return False
+
+    def reset_strategy_targets(self) -> bool:
+        """Reset strategy targets to defaults"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM strategy_targets")
+                self._seed_default_strategy_targets(cursor)
+                return True
+        except Exception as e:
+            logger.error(f"Error resetting strategy targets: {str(e)}")
+            return False
+
+    def save_order_comment(self, order_id: str, comment: str) -> bool:
+        """Save or delete a comment for an order"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if comment.strip():
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO order_comments (order_id, comment, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """, (order_id, comment))
+                else:
+                    cursor.execute("DELETE FROM order_comments WHERE order_id = ?", (order_id,))
+                return True
+        except Exception as e:
+            logger.error(f"Error saving order comment: {str(e)}")
+            return False
+
+    def get_all_order_comments(self) -> Dict[str, str]:
+        """Get all order comments as a dict of order_id -> comment"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT order_id, comment FROM order_comments")
+                return {row['order_id']: row['comment'] for row in cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Error getting order comments: {str(e)}")
+            return {}
+
+    def save_position_note(self, note_key: str, note: str) -> bool:
+        """Save or delete a note for a position"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if note.strip():
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO position_notes (note_key, note, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """, (note_key, note))
+                else:
+                    cursor.execute("DELETE FROM position_notes WHERE note_key = ?", (note_key,))
+                return True
+        except Exception as e:
+            logger.error(f"Error saving position note: {str(e)}")
+            return False
+
+    def get_all_position_notes(self) -> Dict[str, str]:
+        """Get all position notes as a dict of note_key -> note"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT note_key, note FROM position_notes")
+                return {row['note_key']: row['note'] for row in cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Error getting position notes: {str(e)}")
+            return {}
 
     def get_last_sync_timestamp(self) -> Optional[datetime]:
         """Get the timestamp of the last incremental sync"""

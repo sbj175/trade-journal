@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionEdge - Reports</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tv: {
+                            bg: '#131722',
+                            panel: '#1e222d',
+                            border: '#2a2e39',
+                            text: '#d1d4dc',
+                            muted: '#787b86',
+                            green: '#26a69a',
+                            red: '#ef5350',
+                            blue: '#2962ff',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
+        body { background: #131722; color: #d1d4dc; font-size: 16px; }
+        .tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tv-scrollbar::-webkit-scrollbar-track { background: #1e222d; }
+        .tv-scrollbar::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
+        .tv-scrollbar::-webkit-scrollbar-thumb:hover { background: #363a45; }
+        [x-cloak] { display: none !important; }
+        .spinner {
+            border: 2px solid #2a2e39;
+            border-top: 2px solid #2962ff;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen tv-scrollbar" x-data="reportsApp()" x-init="init()">
+
+    <!-- Compact Nav Bar -->
+    <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
+        <div class="flex items-center justify-between h-16 px-4">
+            <!-- Left: Logo & Nav -->
+            <div class="flex items-center gap-8">
+                <span class="text-tv-blue font-semibold text-2xl">
+                    <i class="fas fa-chart-line mr-2"></i>OptionEdge
+                </span>
+                <div class="flex items-center border-l border-tv-border pl-8 gap-4">
+                    <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
+                    <a href="/chains" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Chains</a>
+                    <a href="/reports" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">Reports</a>
+                    <a href="/risk" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Risk</a>
+                </div>
+            </div>
+
+            <!-- Right: Account & User -->
+            <div class="flex items-center gap-6 text-base">
+                <select x-model="selectedAccount" @change="saveAccountSelection(); fetchReport()"
+                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
+                    <option value="">All Accounts</option>
+                    <template x-for="account in accounts" :key="account.account_number">
+                        <option :value="account.account_number" x-text="account.account_name || account.account_number"></option>
+                    </template>
+                </select>
+                <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
+                    <i class="fas fa-cog"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Filters Bar -->
+    <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center gap-8">
+        <!-- Time Filter -->
+        <div class="flex items-center gap-3 text-base">
+            <span class="text-tv-muted">Time:</span>
+            <select x-model="timePeriod" @change="saveTimePeriod(); fetchReport()"
+                    class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2">
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="7">7D</option>
+                <option value="30">30D</option>
+                <option value="60">60D</option>
+                <option value="90">90D</option>
+                <option value="all">All</option>
+            </select>
+        </div>
+
+        <!-- Direction Filter -->
+        <div class="flex items-center gap-2 text-base">
+            <span class="text-tv-muted">Direction:</span>
+            <button @click="toggleFilter('direction', 'bullish')"
+                    :class="filterDirection.includes('bullish') ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                    class="px-3 py-1.5 text-sm border rounded transition-colors">
+                Bullish
+            </button>
+            <button @click="toggleFilter('direction', 'bearish')"
+                    :class="filterDirection.includes('bearish') ? 'bg-tv-red/20 text-tv-red border-tv-red/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                    class="px-3 py-1.5 text-sm border rounded transition-colors">
+                Bearish
+            </button>
+            <button @click="toggleFilter('direction', 'neutral')"
+                    :class="filterDirection.includes('neutral') ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                    class="px-3 py-1.5 text-sm border rounded transition-colors">
+                Neutral
+            </button>
+        </div>
+
+        <!-- Type Filter -->
+        <div class="flex items-center gap-2 text-base">
+            <span class="text-tv-muted">Type:</span>
+            <button @click="toggleFilter('type', 'credit')"
+                    :class="filterType.includes('credit') ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                    class="px-3 py-1.5 text-sm border rounded transition-colors">
+                Credit
+            </button>
+            <button @click="toggleFilter('type', 'debit')"
+                    :class="filterType.includes('debit') ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                    class="px-3 py-1.5 text-sm border rounded transition-colors">
+                Debit
+            </button>
+        </div>
+
+        <!-- Other Filter -->
+        <div class="flex items-center gap-2 text-base">
+            <button @click="filterShares = !filterShares; saveFilters(); fetchReport()"
+                    :class="filterShares ? 'bg-purple-500/20 text-purple-400 border-purple-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                    class="px-3 py-1.5 text-sm border rounded transition-colors">
+                Shares
+            </button>
+        </div>
+
+        <!-- Active filter summary -->
+        <div class="flex-1 text-right text-sm text-tv-muted" x-show="getActiveStrategies().length < Object.keys(strategyCategories).length">
+            <span x-text="getActiveStrategies().length"></span> strategies selected
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="text-center py-12">
+        <div class="spinner mx-auto mb-4" style="width: 40px; height: 40px; border-width: 4px;"></div>
+        <p class="text-tv-muted">Loading report data...</p>
+    </div>
+
+    <!-- Main Content -->
+    <main x-show="!loading" x-cloak class="p-4">
+        <!-- Summary Stats Row -->
+        <div class="grid grid-cols-6 gap-3 mb-4">
+            <!-- Total P&L -->
+            <div class="bg-tv-panel border border-tv-border p-4">
+                <div class="text-tv-muted text-sm mb-1">Total Realized P&L</div>
+                <div class="text-2xl font-bold" :class="summary.totalPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                    <span x-show="summary.totalPnl < 0">-</span>$<span x-text="formatNumber(Math.abs(summary.totalPnl))"></span>
+                </div>
+                <div class="text-tv-muted text-sm mt-1">
+                    <span x-text="summary.totalTrades"></span> closed trades
+                </div>
+            </div>
+
+            <!-- Win Rate -->
+            <div class="bg-tv-panel border border-tv-border p-4">
+                <div class="text-tv-muted text-sm mb-1">Win Rate</div>
+                <div class="text-2xl font-bold text-tv-blue">
+                    <span x-text="formatPercent(summary.winRate)"></span>%
+                </div>
+                <div class="text-tv-muted text-sm mt-1">
+                    <span class="text-tv-green" x-text="summary.wins"></span> W /
+                    <span class="text-tv-red" x-text="summary.losses"></span> L
+                </div>
+            </div>
+
+            <!-- Avg P&L -->
+            <div class="bg-tv-panel border border-tv-border p-4">
+                <div class="text-tv-muted text-sm mb-1">Avg P&L / Trade</div>
+                <div class="text-2xl font-bold" :class="summary.avgPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                    <span x-show="summary.avgPnl < 0">-</span>$<span x-text="formatNumber(Math.abs(summary.avgPnl))"></span>
+                </div>
+                <div class="text-tv-muted text-sm mt-1">
+                    W: $<span x-text="formatNumber(summary.avgWin)"></span> |
+                    L: $<span x-text="formatNumber(Math.abs(summary.avgLoss))"></span>
+                </div>
+            </div>
+
+            <!-- Largest Win -->
+            <div class="bg-tv-panel border border-tv-border p-4">
+                <div class="text-tv-muted text-sm mb-1">Largest Win</div>
+                <div class="text-2xl font-bold text-tv-green">
+                    $<span x-text="formatNumber(summary.largestWin)"></span>
+                </div>
+            </div>
+
+            <!-- Largest Loss -->
+            <div class="bg-tv-panel border border-tv-border p-4">
+                <div class="text-tv-muted text-sm mb-1">Largest Loss</div>
+                <div class="text-2xl font-bold text-tv-red">
+                    -$<span x-text="formatNumber(Math.abs(summary.largestLoss))"></span>
+                </div>
+            </div>
+
+            <!-- Risk/Reward -->
+            <div class="bg-tv-panel border border-tv-border p-4">
+                <div class="text-tv-muted text-sm mb-1">Avg Risk / Reward</div>
+                <div class="text-lg font-bold">
+                    <span class="text-amber-400">$<span x-text="formatNumber(summary.avgMaxRisk)"></span></span>
+                    <span class="text-tv-muted mx-1">/</span>
+                    <span class="text-cyan-400">$<span x-text="formatNumber(summary.avgMaxReward)"></span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Breakdown Table -->
+        <div class="bg-tv-panel border border-tv-border">
+            <!-- Table Header -->
+            <div class="flex items-center px-4 py-3 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50">
+                <span class="w-48 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortBreakdown('strategy')">
+                    Strategy
+                    <span x-show="sortColumn === 'strategy'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortBreakdown('totalTrades')">
+                    Trades
+                    <span x-show="sortColumn === 'totalTrades'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('winRate')">
+                    Win Rate
+                    <span x-show="sortColumn === 'winRate'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-32 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('totalPnl')">
+                    Total P&L
+                    <span x-show="sortColumn === 'totalPnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('avgPnl')">
+                    Avg P&L
+                    <span x-show="sortColumn === 'avgPnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('avgWin')">
+                    Avg Win
+                    <span x-show="sortColumn === 'avgWin'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('avgLoss')">
+                    Avg Loss
+                    <span x-show="sortColumn === 'avgLoss'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('largestWin')">
+                    Best
+                    <span x-show="sortColumn === 'largestWin'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortBreakdown('largestLoss')">
+                    Worst
+                    <span x-show="sortColumn === 'largestLoss'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+                </span>
+                <span class="w-28 text-right">Avg Risk</span>
+                <span class="w-28 text-right">Avg Reward</span>
+            </div>
+
+            <!-- Table Body -->
+            <div class="divide-y divide-tv-border">
+                <template x-for="row in strategyBreakdown" :key="row.strategy">
+                    <div class="flex items-center px-4 py-3 text-base hover:bg-tv-border/30 transition-colors">
+                        <span class="w-48 font-medium text-tv-text" x-text="row.strategy"></span>
+                        <span class="w-28 text-center">
+                            <span x-text="row.totalTrades"></span>
+                            <span class="text-tv-muted text-sm">
+                                (<span class="text-tv-green" x-text="row.wins"></span>/<span class="text-tv-red" x-text="row.losses"></span>)
+                            </span>
+                        </span>
+                        <span class="w-24 text-right" :class="row.winRate >= 50 ? 'text-tv-green' : 'text-tv-red'">
+                            <span x-text="formatPercent(row.winRate)"></span>%
+                        </span>
+                        <span class="w-32 text-right font-medium" :class="row.totalPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                            <span x-show="row.totalPnl < 0">-</span>$<span x-text="formatNumber(Math.abs(row.totalPnl))"></span>
+                        </span>
+                        <span class="w-28 text-right" :class="row.avgPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                            <span x-show="row.avgPnl < 0">-</span>$<span x-text="formatNumber(Math.abs(row.avgPnl))"></span>
+                        </span>
+                        <span class="w-28 text-right text-tv-green">
+                            $<span x-text="formatNumber(row.avgWin)"></span>
+                        </span>
+                        <span class="w-28 text-right text-tv-red">
+                            -$<span x-text="formatNumber(Math.abs(row.avgLoss))"></span>
+                        </span>
+                        <span class="w-28 text-right text-tv-green">
+                            $<span x-text="formatNumber(row.largestWin)"></span>
+                        </span>
+                        <span class="w-28 text-right text-tv-red">
+                            -$<span x-text="formatNumber(Math.abs(row.largestLoss))"></span>
+                        </span>
+                        <span class="w-28 text-right text-amber-400">
+                            <span x-show="row.avgMaxRisk > 0">$<span x-text="formatNumber(row.avgMaxRisk)"></span></span>
+                            <span x-show="row.avgMaxRisk === 0" class="text-tv-muted">-</span>
+                        </span>
+                        <span class="w-28 text-right text-cyan-400">
+                            <span x-show="row.avgMaxReward > 0">$<span x-text="formatNumber(row.avgMaxReward)"></span></span>
+                            <span x-show="row.avgMaxReward === 0" class="text-tv-muted">-</span>
+                        </span>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="strategyBreakdown.length === 0" class="px-4 py-12 text-center text-tv-muted">
+                <i class="fas fa-chart-bar text-4xl mb-4"></i>
+                <p>No closed trades found for the selected filters.</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function reportsApp() {
+            return {
+                // State
+                accounts: [],
+                selectedAccount: '',
+                timePeriod: '90',
+                loading: true,
+
+                // Category-based filtering
+                filterDirection: [],  // 'bullish', 'bearish', 'neutral'
+                filterType: [],       // 'credit', 'debit'
+                filterShares: false,
+
+                // Strategy to category mapping
+                strategyCategories: {
+                    'Bull Put Spread': { direction: 'bullish', type: 'credit' },
+                    'Bear Call Spread': { direction: 'bearish', type: 'credit' },
+                    'Iron Condor': { direction: 'neutral', type: 'credit' },
+                    'Iron Butterfly': { direction: 'neutral', type: 'credit' },
+                    'Cash Secured Put': { direction: 'bullish', type: 'credit' },
+                    'Covered Call': { direction: 'bullish', type: 'credit' },
+                    'Short Put': { direction: 'bullish', type: 'credit' },
+                    'Short Call': { direction: 'bearish', type: 'credit' },
+                    'Short Strangle': { direction: 'neutral', type: 'credit' },
+                    'Short Straddle': { direction: 'neutral', type: 'credit' },
+                    'Bull Call Spread': { direction: 'bullish', type: 'debit' },
+                    'Bear Put Spread': { direction: 'bearish', type: 'debit' },
+                    'Long Call': { direction: 'bullish', type: 'debit' },
+                    'Long Put': { direction: 'bearish', type: 'debit' },
+                    'Long Strangle': { direction: 'neutral', type: 'debit' },
+                    'Long Straddle': { direction: 'neutral', type: 'debit' },
+                    'Shares': { direction: null, type: null, isShares: true }
+                },
+
+                // Sorting
+                sortColumn: 'totalPnl',
+                sortDirection: 'desc',
+
+                // Report Data
+                summary: {
+                    totalPnl: 0,
+                    totalTrades: 0,
+                    wins: 0,
+                    losses: 0,
+                    winRate: 0,
+                    avgPnl: 0,
+                    avgWin: 0,
+                    avgLoss: 0,
+                    largestWin: 0,
+                    largestLoss: 0,
+                    avgMaxRisk: 0,
+                    avgMaxReward: 0
+                },
+                strategyBreakdown: [],
+
+                async init() {
+                    // Load accounts first
+                    await this.loadAccounts();
+
+                    // Then load saved filters (after accounts are loaded)
+                    this.loadSavedFilters();
+
+                    // Fetch initial report
+                    await this.fetchReport();
+                },
+
+                loadSavedFilters() {
+                    // Load saved account selection (shared across all pages)
+                    const savedAccount = localStorage.getItem('trade_journal_selected_account');
+                    if (savedAccount !== null) {
+                        this.selectedAccount = savedAccount;
+                    }
+
+                    // Load saved time period
+                    const savedTimePeriod = localStorage.getItem('reports_time_period');
+                    if (savedTimePeriod) {
+                        this.timePeriod = savedTimePeriod;
+                    }
+
+                    // Load saved category filters
+                    const savedFilters = localStorage.getItem('reports_category_filters');
+                    if (savedFilters) {
+                        try {
+                            const parsed = JSON.parse(savedFilters);
+                            this.filterDirection = parsed.direction || [];
+                            this.filterType = parsed.type || [];
+                            this.filterShares = parsed.shares || false;
+                        } catch (e) {
+                            // Default: no filters (show all)
+                        }
+                    }
+
+                    // Load saved sort preference
+                    const savedSort = localStorage.getItem('reports_sort');
+                    if (savedSort) {
+                        try {
+                            const parsed = JSON.parse(savedSort);
+                            this.sortColumn = parsed.column || 'totalPnl';
+                            this.sortDirection = parsed.direction || 'desc';
+                        } catch (e) {
+                            // Default sort
+                        }
+                    }
+                },
+
+                saveFilters() {
+                    localStorage.setItem('reports_category_filters', JSON.stringify({
+                        direction: this.filterDirection,
+                        type: this.filterType,
+                        shares: this.filterShares
+                    }));
+                },
+
+                saveAccountSelection() {
+                    // Save to shared localStorage (synced across all pages)
+                    localStorage.setItem('trade_journal_selected_account', this.selectedAccount);
+                },
+
+                saveTimePeriod() {
+                    localStorage.setItem('reports_time_period', this.timePeriod);
+                },
+
+                toggleFilter(category, value) {
+                    if (category === 'direction') {
+                        const idx = this.filterDirection.indexOf(value);
+                        if (idx >= 0) {
+                            this.filterDirection.splice(idx, 1);
+                        } else {
+                            this.filterDirection.push(value);
+                        }
+                    } else if (category === 'type') {
+                        // Credit and Debit are mutually exclusive
+                        const idx = this.filterType.indexOf(value);
+                        if (idx >= 0) {
+                            // Clicking an active button deselects it
+                            this.filterType.splice(idx, 1);
+                        } else {
+                            // Selecting one clears the other
+                            this.filterType = [value];
+                        }
+                    }
+                    this.saveFilters();
+                    this.fetchReport();
+                },
+
+                getActiveStrategies() {
+                    // Returns list of strategy names that match current filters
+                    const strategies = [];
+                    const noDirectionFilter = this.filterDirection.length === 0;
+                    const noTypeFilter = this.filterType.length === 0;
+
+                    for (const [strategy, cat] of Object.entries(this.strategyCategories)) {
+                        // Handle Shares separately
+                        if (cat.isShares) {
+                            if (this.filterShares) {
+                                strategies.push(strategy);
+                            }
+                            continue;
+                        }
+
+                        // Check if strategy matches filters
+                        const directionMatch = noDirectionFilter || this.filterDirection.includes(cat.direction);
+                        const typeMatch = noTypeFilter || this.filterType.includes(cat.type);
+
+                        if (directionMatch && typeMatch) {
+                            strategies.push(strategy);
+                        }
+                    }
+
+                    return strategies;
+                },
+
+                async loadAccounts() {
+                    try {
+                        const response = await fetch('/api/accounts');
+                        const data = await response.json();
+                        this.accounts = data.accounts || [];
+
+                        // Sort accounts in desired order: Roth, Individual, Traditional
+                        this.accounts.sort((a, b) => {
+                            const getAccountTypeOrder = (name) => {
+                                const nameUpper = (name || '').toUpperCase();
+                                if (nameUpper.includes('ROTH')) return 1;
+                                if (nameUpper.includes('INDIVIDUAL')) return 2;
+                                if (nameUpper.includes('TRADITIONAL')) return 3;
+                                return 4;
+                            };
+                            return getAccountTypeOrder(a.account_name) - getAccountTypeOrder(b.account_name);
+                        });
+                    } catch (error) {
+                        console.error('Error loading accounts:', error);
+                    }
+                },
+
+                async fetchReport() {
+                    this.loading = true;
+
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.selectedAccount) {
+                            params.append('account_number', this.selectedAccount);
+                        }
+                        params.append('days', this.timePeriod);
+
+                        // Get strategies based on category filters
+                        const activeStrategies = this.getActiveStrategies();
+                        params.append('strategies', activeStrategies.join(','));
+
+                        const response = await fetch(`/api/reports/performance?${params}`);
+                        const data = await response.json();
+
+                        if (data.error) {
+                            console.error('Report error:', data.error);
+                            return;
+                        }
+
+                        this.summary = data.summary || this.summary;
+                        this.strategyBreakdown = data.breakdown || [];
+
+                        // Apply current sort
+                        this.applySortToBreakdown();
+
+                    } catch (error) {
+                        console.error('Error fetching report:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                // Sort the strategy breakdown table
+                sortBreakdown(column) {
+                    // Toggle direction if same column
+                    if (this.sortColumn === column) {
+                        this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        this.sortColumn = column;
+                        // Default to descending for numeric columns, ascending for strategy name
+                        this.sortDirection = column === 'strategy' ? 'asc' : 'desc';
+                    }
+
+                    this.applySortToBreakdown();
+
+                    // Save sort preference
+                    localStorage.setItem('reports_sort', JSON.stringify({
+                        column: this.sortColumn,
+                        direction: this.sortDirection
+                    }));
+                },
+
+                // Apply current sort to breakdown array
+                applySortToBreakdown() {
+                    this.strategyBreakdown.sort((a, b) => {
+                        let aVal = a[this.sortColumn];
+                        let bVal = b[this.sortColumn];
+
+                        // Handle string columns
+                        if (this.sortColumn === 'strategy') {
+                            aVal = (aVal || '').toLowerCase();
+                            bVal = (bVal || '').toLowerCase();
+                        } else {
+                            // Numeric columns
+                            aVal = aVal || 0;
+                            bVal = bVal || 0;
+                        }
+
+                        // Compare
+                        if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
+                        if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
+                        return 0;
+                    });
+                },
+
+                formatNumber(value) {
+                    if (value === null || value === undefined) return '0.00';
+                    return Math.abs(value).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                },
+
+                formatPercent(value) {
+                    if (value === null || value === undefined) return '0.0';
+                    return value.toFixed(1);
+                },
+
+            };
+        }
+    </script>
+</body>
+</html>

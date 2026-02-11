@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionEdge - Settings</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tv: {
+                            bg: '#131722',
+                            panel: '#1e222d',
+                            border: '#2a2e39',
+                            text: '#d1d4dc',
+                            muted: '#787b86',
+                            green: '#26a69a',
+                            red: '#ef5350',
+                            blue: '#2962ff',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
+        body { background: #131722; color: #d1d4dc; font-size: 16px; }
+        .tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .tv-scrollbar::-webkit-scrollbar-track { background: #1e222d; }
+        .tv-scrollbar::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
+        .tv-scrollbar::-webkit-scrollbar-thumb:hover { background: #363a45; }
+        [x-cloak] { display: none !important; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+    </style>
+
+    <script>
+        function settingsApp() {
+            return {
+                targets: [],
+                saving: false,
+                notification: null,
+                _saveTimer: null,
+                saveStatus: null,
+
+                // Connection state
+                connectionStatus: null,
+                providerSecret: '',
+                refreshToken: '',
+                savingCredentials: false,
+
+                get creditStrategies() {
+                    const names = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
+                                   'Cash Secured Put', 'Covered Call', 'Short Put', 'Short Call',
+                                   'Short Strangle', 'Short Straddle'];
+                    return this.targets.filter(t => names.includes(t.strategy_name));
+                },
+
+                get debitStrategies() {
+                    const names = ['Bull Call Spread', 'Bear Put Spread', 'Long Call', 'Long Put',
+                                   'Long Strangle', 'Long Straddle'];
+                    return this.targets.filter(t => names.includes(t.strategy_name));
+                },
+
+                get equityStrategies() {
+                    const names = ['Shares'];
+                    return this.targets.filter(t => names.includes(t.strategy_name));
+                },
+
+                rollAlerts: { enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true },
+
+                async init() {
+                    await this.checkConnection();
+                    await this.loadTargets();
+                    this.loadRollAlerts();
+                },
+
+                async checkConnection() {
+                    try {
+                        const resp = await fetch('/api/connection/status');
+                        if (resp.ok) {
+                            this.connectionStatus = await resp.json();
+                        }
+                    } catch (e) {
+                        this.connectionStatus = { connected: false, configured: false, error: 'Could not check connection status' };
+                    }
+                },
+
+                async saveCredentials() {
+                    if (!this.providerSecret || !this.refreshToken) {
+                        this.showNotification('Please fill in both fields', 'error');
+                        return;
+                    }
+                    this.savingCredentials = true;
+                    try {
+                        // Save credentials to .env
+                        const saveResp = await fetch('/api/settings/credentials', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                provider_secret: this.providerSecret,
+                                refresh_token: this.refreshToken
+                            })
+                        });
+                        if (!saveResp.ok) {
+                            this.showNotification('Failed to save credentials', 'error');
+                            this.savingCredentials = false;
+                            return;
+                        }
+
+                        // Reconnect with new credentials
+                        const reconnResp = await fetch('/api/connection/reconnect', { method: 'POST' });
+                        if (reconnResp.ok) {
+                            this.connectionStatus = await reconnResp.json();
+                            if (this.connectionStatus.connected) {
+                                this.showNotification('Connected to Tastytrade successfully!', 'success');
+                                this.providerSecret = '';
+                                this.refreshToken = '';
+                            } else {
+                                this.showNotification('Credentials saved but connection failed: ' + (this.connectionStatus.error || 'Unknown error'), 'error');
+                            }
+                        } else {
+                            this.showNotification('Failed to reconnect', 'error');
+                        }
+                    } catch (e) {
+                        this.showNotification('Error saving credentials: ' + e.message, 'error');
+                    }
+                    this.savingCredentials = false;
+                },
+
+                async loadTargets() {
+                    try {
+                        const resp = await fetch('/api/settings/targets');
+                        if (resp.ok) {
+                            this.targets = await resp.json();
+                        }
+                    } catch (e) {
+                        this.showNotification('Failed to load targets', 'error');
+                    }
+                },
+
+                debouncedSaveTargets() {
+                    if (this._saveTimer) clearTimeout(this._saveTimer);
+                    this.saveStatus = 'pending';
+                    this._saveTimer = setTimeout(() => this.saveTargets(), 800);
+                },
+
+                async saveTargets() {
+                    this.saveStatus = 'saving';
+                    try {
+                        const payload = this.targets.map(t => ({
+                            strategy_name: t.strategy_name,
+                            profit_target_pct: parseFloat(t.profit_target_pct),
+                            loss_target_pct: parseFloat(t.loss_target_pct)
+                        }));
+                        const resp = await fetch('/api/settings/targets', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (resp.ok) {
+                            this.saveStatus = 'saved';
+                            setTimeout(() => { if (this.saveStatus === 'saved') this.saveStatus = null; }, 2000);
+                        } else {
+                            this.showNotification('Failed to save targets', 'error');
+                            this.saveStatus = null;
+                        }
+                    } catch (e) {
+                        this.showNotification('Failed to save targets', 'error');
+                        this.saveStatus = null;
+                    }
+                },
+
+                async resetToDefaults() {
+                    try {
+                        const resp = await fetch('/api/settings/targets/reset', { method: 'POST' });
+                        if (resp.ok) {
+                            await this.loadTargets();
+                            this.showNotification('Targets reset to defaults', 'success');
+                        } else {
+                            this.showNotification('Failed to reset targets', 'error');
+                        }
+                    } catch (e) {
+                        this.showNotification('Failed to reset targets', 'error');
+                    }
+                },
+
+                loadRollAlerts() {
+                    try {
+                        const saved = localStorage.getItem('rollAlertSettings');
+                        if (saved) this.rollAlerts = JSON.parse(saved);
+                    } catch (e) { /* use defaults */ }
+                },
+
+                saveRollAlerts() {
+                    localStorage.setItem('rollAlertSettings', JSON.stringify(this.rollAlerts));
+                    this.saveStatus = 'saved';
+                    setTimeout(() => { if (this.saveStatus === 'saved') this.saveStatus = null; }, 2000);
+                },
+
+                showNotification(message, type) {
+                    this.notification = { message, type };
+                    setTimeout(() => { this.notification = null; }, 3000);
+                }
+            };
+        }
+    </script>
+</head>
+<body class="min-h-screen tv-scrollbar" x-data="settingsApp()" x-init="init()">
+
+    <!-- Compact Nav Bar -->
+    <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
+        <div class="flex items-center justify-between h-16 px-4">
+            <!-- Left: Logo & Nav -->
+            <div class="flex items-center gap-8">
+                <span class="text-tv-blue font-semibold text-2xl">
+                    <i class="fas fa-chart-line mr-2"></i>OptionEdge
+                </span>
+                <div class="flex items-center border-l border-tv-border pl-8 gap-4">
+                    <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
+                    <a href="/chains" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Chains</a>
+                    <a href="/reports" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Reports</a>
+                    <a href="/risk" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Risk</a>
+                </div>
+            </div>
+
+            <!-- Right: Connection Status -->
+            <div class="flex items-center gap-4 text-base">
+                <div class="flex items-center gap-2 text-sm" x-show="connectionStatus">
+                    <template x-if="connectionStatus?.connected">
+                        <span class="text-tv-green"><i class="fas fa-circle text-[8px] mr-1"></i>Connected</span>
+                    </template>
+                    <template x-if="!connectionStatus?.connected">
+                        <span class="text-tv-red"><i class="fas fa-circle text-[8px] mr-1"></i>Disconnected</span>
+                    </template>
+                </div>
+                <a href="/settings" class="text-tv-blue hover:text-tv-text px-3 py-1 border border-tv-blue rounded text-sm">
+                    <i class="fas fa-cog mr-1"></i>Settings
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Notification -->
+    <div x-show="notification" x-cloak
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:leave="transition ease-in duration-150"
+         class="fixed top-20 right-4 z-50 px-4 py-3 rounded shadow-lg text-sm"
+         :class="notification?.type === 'success' ? 'bg-tv-green/20 border border-tv-green/30 text-tv-green' : 'bg-tv-red/20 border border-tv-red/30 text-tv-red'">
+        <span x-text="notification?.message"></span>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-2xl font-semibold text-tv-text">
+                    <i class="fas fa-cog mr-2 text-tv-blue"></i>Settings
+                </h1>
+                <p class="text-tv-muted text-sm mt-1">Manage your Tastytrade connection and configure strategy targets.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-xs text-tv-muted" x-show="saveStatus === 'pending'" x-cloak>
+                    <i class="fas fa-circle text-yellow-500 text-[8px] mr-1"></i>Unsaved
+                </span>
+                <span class="text-xs text-tv-muted" x-show="saveStatus === 'saving'" x-cloak>
+                    <i class="fas fa-spinner fa-spin mr-1"></i>Saving...
+                </span>
+                <span class="text-xs text-tv-green" x-show="saveStatus === 'saved'" x-cloak>
+                    <i class="fas fa-check mr-1"></i>Saved
+                </span>
+                <button @click="resetToDefaults()"
+                        class="bg-tv-bg hover:bg-tv-border text-tv-muted hover:text-tv-text border border-tv-border px-4 py-2 text-sm">
+                    <i class="fas fa-rotate-left mr-1"></i>Reset to Defaults
+                </button>
+            </div>
+        </div>
+
+        <!-- Tastytrade Connection -->
+        <div class="bg-tv-panel border border-tv-border rounded mb-6">
+            <div class="px-4 py-3 border-b border-tv-border flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-tv-text">
+                        <i class="fas fa-plug mr-2 text-tv-blue"></i>Tastytrade Connection
+                    </h2>
+                    <p class="text-tv-muted text-xs mt-1">Connect to Tastytrade using OAuth2 credentials</p>
+                </div>
+                <div class="flex items-center gap-2" x-show="connectionStatus">
+                    <template x-if="connectionStatus?.connected">
+                        <span class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-3 py-1 rounded text-xs font-medium">
+                            <i class="fas fa-check-circle mr-1"></i>Connected
+                        </span>
+                    </template>
+                    <template x-if="!connectionStatus?.connected && connectionStatus?.configured">
+                        <span class="bg-tv-red/20 text-tv-red border border-tv-red/30 px-3 py-1 rounded text-xs font-medium">
+                            <i class="fas fa-exclamation-circle mr-1"></i>Connection Failed
+                        </span>
+                    </template>
+                    <template x-if="!connectionStatus?.connected && !connectionStatus?.configured">
+                        <span class="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-3 py-1 rounded text-xs font-medium">
+                            <i class="fas fa-info-circle mr-1"></i>Not Configured
+                        </span>
+                    </template>
+                </div>
+            </div>
+            <div class="p-4 space-y-4">
+                <!-- Connection error message -->
+                <div x-show="connectionStatus?.error" x-cloak class="bg-tv-red/10 border border-tv-red/20 rounded p-3 text-sm text-tv-red">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    <span x-text="connectionStatus?.error"></span>
+                </div>
+
+                <!-- Connected accounts -->
+                <div x-show="connectionStatus?.connected && connectionStatus?.accounts?.length > 0" x-cloak class="text-sm flex flex-col items-start gap-1.5">
+                    <span class="text-tv-muted">Accounts:</span>
+                    <template x-for="acct in connectionStatus?.accounts || []" :key="acct.account_number">
+                        <div class="inline-flex items-center gap-2 bg-tv-bg border border-tv-border rounded px-3 py-1.5 ml-4">
+                            <span class="text-tv-text font-medium" x-text="acct.account_number"></span>
+                            <span class="text-tv-muted">&mdash;</span>
+                            <span class="text-tv-muted" x-text="acct.account_name"></span>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Credential inputs -->
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-tv-muted text-sm mb-1">Client Secret <span class="text-tv-muted/50">(saved as provider_secret)</span></label>
+                        <input type="password" x-model="providerSecret" placeholder="Enter your Client Secret from Tastytrade"
+                               class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                    </div>
+                    <div>
+                        <label class="block text-tv-muted text-sm mb-1">Refresh Token</label>
+                        <input type="password" x-model="refreshToken" placeholder="Enter your Refresh Token from Tastytrade"
+                               class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                    </div>
+                    <div class="flex items-center gap-3 ml-4">
+                        <button @click="saveCredentials()" :disabled="savingCredentials"
+                                class="bg-tv-blue hover:bg-tv-blue/80 text-white px-4 py-2 rounded text-sm disabled:opacity-50">
+                            <i class="fas fa-save mr-1" x-show="!savingCredentials"></i>
+                            <i class="fas fa-spinner fa-spin mr-1" x-show="savingCredentials"></i>
+                            <span x-text="savingCredentials ? 'Connecting...' : 'Save & Connect'"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Setup instructions -->
+                <div class="bg-tv-bg border border-tv-border rounded p-3 text-xs text-tv-muted space-y-2 ml-4">
+                    <p class="font-medium text-tv-text"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How to get OAuth credentials</p>
+                    <ol class="list-decimal list-inside space-y-1 ml-1">
+                        <li>Log in to <strong class="text-tv-text">my.tastytrade.com</strong></li>
+                        <li>Go to <strong class="text-tv-text">Manage &rarr; My Profile &rarr; API</strong></li>
+                        <li>Under <strong class="text-tv-text">OAuth Applications</strong>, create a new app (or view existing)</li>
+                        <li>Copy the <strong class="text-tv-text">Client Secret</strong> (this is the first field above)</li>
+                        <li>Create a <strong class="text-tv-text">Grant</strong> for the app to generate a <strong class="text-tv-text">Refresh Token</strong></li>
+                        <li>Copy the <strong class="text-tv-text">Refresh Token</strong> (this is the second field above)</li>
+                    </ol>
+                    <p class="text-tv-muted/70 italic">Note: The Client ID shown by Tastytrade is not needed. Only Client Secret and Refresh Token are required.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Credit Strategies -->
+        <div class="bg-tv-panel border border-tv-border rounded mb-6" @input="debouncedSaveTargets()">
+            <div class="px-4 py-3 border-b border-tv-border">
+                <h2 class="text-base font-semibold text-tv-text">
+                    <i class="fas fa-arrow-down mr-2 text-tv-green"></i>Credit Strategies
+                </h2>
+                <p class="text-tv-muted text-xs mt-1">Strategies where you collect premium upfront</p>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-tv-border text-tv-muted text-left">
+                        <th class="px-4 py-2 font-medium">Strategy</th>
+                        <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                        <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="target in creditStrategies" :key="target.strategy_name">
+                        <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                            <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                            <td class="px-4 py-2 text-center">
+                                <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                       class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                            </td>
+                            <td class="px-4 py-2 text-center">
+                                <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                       class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Debit Strategies -->
+        <div class="bg-tv-panel border border-tv-border rounded mb-6" @input="debouncedSaveTargets()">
+            <div class="px-4 py-3 border-b border-tv-border">
+                <h2 class="text-base font-semibold text-tv-text">
+                    <i class="fas fa-arrow-up mr-2 text-tv-blue"></i>Debit Strategies
+                </h2>
+                <p class="text-tv-muted text-xs mt-1">Strategies where you pay premium upfront</p>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-tv-border text-tv-muted text-left">
+                        <th class="px-4 py-2 font-medium">Strategy</th>
+                        <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                        <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="target in debitStrategies" :key="target.strategy_name">
+                        <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                            <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                            <td class="px-4 py-2 text-center">
+                                <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                       class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                            </td>
+                            <td class="px-4 py-2 text-center">
+                                <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                       class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Equity -->
+        <div class="bg-tv-panel border border-tv-border rounded mb-6" @input="debouncedSaveTargets()">
+            <div class="px-4 py-3 border-b border-tv-border">
+                <h2 class="text-base font-semibold text-tv-text">
+                    <i class="fas fa-chart-bar mr-2 text-tv-muted"></i>Equity
+                </h2>
+                <p class="text-tv-muted text-xs mt-1">Stock/share positions</p>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-tv-border text-tv-muted text-left">
+                        <th class="px-4 py-2 font-medium">Strategy</th>
+                        <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                        <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="target in equityStrategies" :key="target.strategy_name">
+                        <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                            <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                            <td class="px-4 py-2 text-center">
+                                <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                       class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                            </td>
+                            <td class="px-4 py-2 text-center">
+                                <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                       class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Roll Suggestion Alerts -->
+        <div class="bg-tv-panel border border-tv-border rounded mb-6" @change="saveRollAlerts()">
+            <div class="px-4 py-3 border-b border-tv-border">
+                <h2 class="text-base font-semibold text-tv-text">
+                    <i class="fas fa-bell mr-2 text-yellow-400"></i>Roll Suggestion Alerts
+                </h2>
+                <p class="text-tv-muted text-xs mt-1">Configure which roll/close suggestions appear on the Positions page for debit spreads</p>
+            </div>
+            <div class="p-4 space-y-3">
+                <!-- Master toggle -->
+                <label class="flex items-center justify-between py-2 border-b border-tv-border/50 cursor-pointer">
+                    <div>
+                        <span class="text-tv-text font-medium">Enable Roll Suggestions</span>
+                        <span class="text-tv-muted text-xs block">Master toggle for all roll analysis badges and panels</span>
+                    </div>
+                    <div class="relative">
+                        <input type="checkbox" x-model="rollAlerts.enabled" class="sr-only">
+                        <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.enabled ? 'bg-tv-blue' : 'bg-tv-border'"></div>
+                        <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.enabled ? 'translate-x-5' : ''"></div>
+                    </div>
+                </label>
+
+                <!-- Individual toggles -->
+                <div class="space-y-2 pl-2" :class="!rollAlerts.enabled ? 'opacity-40 pointer-events-none' : ''">
+                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                        <div>
+                            <span class="text-tv-text text-sm">Profit Target</span>
+                            <span class="text-tv-muted text-xs block">Alert when position reaches your configured profit target</span>
+                        </div>
+                        <div class="relative">
+                            <input type="checkbox" x-model="rollAlerts.profitTarget" class="sr-only">
+                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.profitTarget ? 'bg-tv-green' : 'bg-tv-border'"></div>
+                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.profitTarget ? 'translate-x-5' : ''"></div>
+                        </div>
+                    </label>
+                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                        <div>
+                            <span class="text-tv-text text-sm">Loss Limit</span>
+                            <span class="text-tv-muted text-xs block">Alert when position reaches your configured loss threshold</span>
+                        </div>
+                        <div class="relative">
+                            <input type="checkbox" x-model="rollAlerts.lossLimit" class="sr-only">
+                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lossLimit ? 'bg-tv-red' : 'bg-tv-border'"></div>
+                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lossLimit ? 'translate-x-5' : ''"></div>
+                        </div>
+                    </label>
+                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                        <div>
+                            <span class="text-tv-text text-sm">Late-Stage</span>
+                            <span class="text-tv-muted text-xs block">Alert when multiple maturing indicators converge (low DTE, high delta, etc.)</span>
+                        </div>
+                        <div class="relative">
+                            <input type="checkbox" x-model="rollAlerts.lateStage" class="sr-only">
+                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lateStage ? 'bg-yellow-500' : 'bg-tv-border'"></div>
+                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lateStage ? 'translate-x-5' : ''"></div>
+                        </div>
+                    </label>
+                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                        <div>
+                            <span class="text-tv-text text-sm">Delta Saturation</span>
+                            <span class="text-tv-muted text-xs block">Alert when spread delta exceeds 65% (diminishing convexity)</span>
+                        </div>
+                        <div class="relative">
+                            <input type="checkbox" x-model="rollAlerts.deltaSaturation" class="sr-only">
+                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.deltaSaturation ? 'bg-orange-500' : 'bg-tv-border'"></div>
+                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.deltaSaturation ? 'translate-x-5' : ''"></div>
+                        </div>
+                    </label>
+                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                        <div>
+                            <span class="text-tv-text text-sm">Low Reward-to-Risk</span>
+                            <span class="text-tv-muted text-xs block">Alert when remaining reward-to-risk ratio falls below 0.6</span>
+                        </div>
+                        <div class="relative">
+                            <input type="checkbox" x-model="rollAlerts.lowRewardToRisk" class="sr-only">
+                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lowRewardToRisk ? 'bg-orange-500' : 'bg-tv-border'"></div>
+                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lowRewardToRisk ? 'translate-x-5' : ''"></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Text -->
+        <div class="bg-tv-panel border border-tv-border rounded p-4 text-sm text-tv-muted">
+            <p class="font-medium text-tv-text mb-2"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How targets work</p>
+            <ul class="list-disc list-inside space-y-1">
+                <li><strong class="text-tv-green">Profit Target %</strong> — Percentage of max profit at which to consider closing for a win</li>
+                <li><strong class="text-tv-red">Loss Limit %</strong> — Percentage of max loss at which to consider closing to limit damage</li>
+                <li>For credit strategies, a 50% profit target means close when you've captured 50% of the premium collected</li>
+                <li>For debit strategies, a 100% profit target means close when the position has doubled in value</li>
+            </ul>
+        </div>
+    </div>
+
+</body>
+</html>

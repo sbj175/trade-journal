@@ -69,6 +69,14 @@ def migrate_database():
             logger.info("Adding account_number column to positions table...")
             cursor.execute("ALTER TABLE positions ADD COLUMN account_number TEXT DEFAULT 'LEGACY'")
         
+        # Add margin_equity column to account_balances if it doesn't exist
+        cursor.execute("PRAGMA table_info(account_balances)")
+        columns = [column[1] for column in cursor.fetchall()]
+
+        if 'margin_equity' not in columns:
+            logger.info("Adding margin_equity column to account_balances table...")
+            cursor.execute("ALTER TABLE account_balances ADD COLUMN margin_equity REAL")
+
         # Create indexes
         logger.info("Creating account indexes...")
         try:

@@ -44,6 +44,7 @@ class Transaction:
     commission: float = 0.0
     regulatory_fees: float = 0.0
     clearing_fees: float = 0.0
+    value: float = 0.0
     net_value: float = 0.0
     
     @property
@@ -146,6 +147,7 @@ class OrderProcessorV2:
         self.position_manager = position_manager
         self.lot_manager = lot_manager
         self._use_lots = lot_manager is not None
+        self._assignment_stock_transactions = []  # V3: Track stock txs from assignments
     
     def process_transactions(self, raw_transactions: List[Dict]) -> Dict[str, List[Chain]]:
         """
@@ -168,7 +170,10 @@ class OrderProcessorV2:
         
         # Step 5: Process orders to update positions
         self._update_positions(orders)
-        
+
+        # Step 5.5: V3 - Process assignments to create derived stock lots
+        self._process_assignments(orders)
+
         # Step 6: Derive chains from orders and positions
         chains = self._derive_chains(orders)
         
@@ -182,6 +187,7 @@ class OrderProcessorV2:
     def _preprocess_transactions(self, raw_transactions: List[Dict]) -> List[Transaction]:
         """Convert raw transactions to Transaction objects, generating order IDs as needed"""
         transactions = []
+        self._assignment_stock_transactions = []  # V3: Reset for each processing run
         
         for raw_tx in raw_transactions:
             # Skip non-trading transactions (no symbol)
@@ -199,11 +205,14 @@ class OrderProcessorV2:
             # Skip stock transactions that result from assignment/exercise (they have no order_id)
             # These are automatic stock transactions and shouldn't create chains
             # But keep expiration/assignment/exercise option transactions
+            # V3: Capture these for derived lot creation
             instrument_type = str(raw_tx.get('instrument_type', ''))
-            if ('EQUITY' in instrument_type and 
+            if ('EQUITY' in instrument_type and
                 'EQUITY_OPTION' not in instrument_type and  # Only skip pure stock transactions
-                not raw_tx.get('order_id') and 
+                not raw_tx.get('order_id') and
                 raw_tx.get('action')):
+                # V3: Save for assignment/exercise processing
+                self._assignment_stock_transactions.append(raw_tx)
                 continue
             
             # Only process options transactions for chain creation
@@ -275,6 +284,7 @@ class OrderProcessorV2:
                 commission=float(raw_tx.get('commission', 0)),
                 regulatory_fees=float(raw_tx.get('regulatory_fees', 0)),
                 clearing_fees=float(raw_tx.get('clearing_fees', 0)),
+                value=float(raw_tx.get('value', 0)),
                 net_value=float(raw_tx.get('net_value', 0))
             )
             
@@ -364,6 +374,7 @@ class OrderProcessorV2:
                     commission=sum(tx.commission for tx in group),
                     regulatory_fees=sum(tx.regulatory_fees for tx in group),
                     clearing_fees=sum(tx.clearing_fees for tx in group),
+                    value=sum(tx.value for tx in group),
                     net_value=sum(tx.net_value for tx in group)
                 )
                 normalized.append(aggregated)
@@ -421,6 +432,13 @@ class OrderProcessorV2:
                 if affected_chains:
                     closing_order_to_chains[order.order_id] = affected_chains
                     logger.debug(f"Order {order.order_id} will close lots in chains: {affected_chains}")
+
+                    # For ROLLING orders, new positions should inherit the chain from closed positions
+                    if order.order_type == OrderType.ROLLING:
+                        # Use the first affected chain as the chain for new lots
+                        temp_chain_id = list(affected_chains)[0]
+                        order_to_temp_chain[order.order_id] = temp_chain_id
+                        logger.debug(f"Rolling order {order.order_id} will create new lots in chain: {temp_chain_id}")
 
             for idx, tx in enumerate(order.transactions):
                 # Convert Transaction to dict format expected by position manager
@@ -527,6 +545,117 @@ class OrderProcessorV2:
                 break
 
         return pairs
+
+    def _process_assignments(self, orders: List[Order]):
+        """
+        V3: Process assignment pairs to create derived stock lots.
+
+        After option lots are closed with type='ASSIGNMENT', this method:
+        1. Matches assignment option transactions with corresponding stock transactions
+        2. Finds the closed option lot
+        3. Creates a derived stock lot linked to the same chain
+        """
+        if not self._use_lots or not self.lot_manager:
+            return
+
+        if not self._assignment_stock_transactions:
+            return
+
+        # Find all assignment transactions from processed orders
+        assignment_txs = []
+        for order in orders:
+            for tx in order.transactions:
+                if tx.is_assignment and tx.option_type is not None:
+                    assignment_txs.append(tx)
+
+        if not assignment_txs:
+            return
+
+        logger.info(f"Processing {len(assignment_txs)} assignments with {len(self._assignment_stock_transactions)} stock transactions")
+
+        for assignment_tx in assignment_txs:
+            underlying = assignment_tx.underlying_symbol
+
+            # Find matching stock transaction
+            matching_stock = None
+            for stock_raw in self._assignment_stock_transactions:
+                stock_underlying = stock_raw.get('underlying_symbol', stock_raw.get('symbol', ''))
+                if stock_underlying != underlying:
+                    continue
+
+                # Parse executed_at for comparison
+                stock_executed_str = stock_raw.get('executed_at', '')
+                try:
+                    stock_executed = datetime.fromisoformat(stock_executed_str.replace('Z', '+00:00'))
+                except:
+                    continue
+
+                time_diff = abs((assignment_tx.executed_at - stock_executed).total_seconds())
+                if time_diff > 60:  # 1 minute window
+                    continue
+
+                # Check quantity alignment (100 shares per option contract)
+                expected_shares = abs(assignment_tx.quantity) * 100
+                if abs(int(stock_raw.get('quantity', 0))) != expected_shares:
+                    continue
+
+                matching_stock = stock_raw
+                break
+
+            if not matching_stock:
+                logger.warning(f"No matching stock transaction found for assignment: {assignment_tx.symbol}")
+                continue
+
+            # Find the option lot that was closed by this assignment
+            # Query lot_closings for this symbol with type='ASSIGNMENT'
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT pl.id, pl.chain_id, pl.option_type, pl.strike
+                    FROM position_lots pl
+                    JOIN lot_closings lc ON pl.id = lc.lot_id
+                    WHERE pl.account_number = ?
+                    AND pl.symbol = ?
+                    AND lc.closing_type = 'ASSIGNMENT'
+                    AND lc.resulting_lot_id IS NULL
+                    ORDER BY lc.closing_date DESC
+                    LIMIT 1
+                """, (assignment_tx.account_number, assignment_tx.symbol))
+                result = cursor.fetchone()
+
+            if not result:
+                logger.warning(f"No closed option lot found for assignment: {assignment_tx.symbol}")
+                continue
+
+            option_lot_id, chain_id, option_type, strike = result
+
+            if not chain_id:
+                logger.warning(f"Option lot {option_lot_id} has no chain_id, skipping derived lot creation")
+                continue
+
+            # Create derived stock lot
+            stock_tx_dict = {
+                'id': str(matching_stock.get('id', '')),
+                'account_number': matching_stock.get('account_number', ''),
+                'symbol': matching_stock.get('symbol', ''),
+                'underlying_symbol': matching_stock.get('underlying_symbol', matching_stock.get('symbol', '')),
+                'quantity': int(matching_stock.get('quantity', 0)),
+                'price': float(matching_stock.get('price', 0)),
+                'executed_at': matching_stock.get('executed_at', ''),
+            }
+
+            derivation_type = 'ASSIGNMENT'
+            derived_lot_id = self.lot_manager.create_derived_lot(
+                source_lot_id=option_lot_id,
+                stock_transaction=stock_tx_dict,
+                derivation_type=derivation_type,
+                chain_id=chain_id
+            )
+
+            logger.info(f"Created derived stock lot {derived_lot_id} from option lot {option_lot_id} via {derivation_type}")
+
+            # Remove the matched stock transaction so it's not matched again
+            self._assignment_stock_transactions.remove(matching_stock)
 
     def _derive_chains(self, orders: List[Order]) -> List[Chain]:
         """Derive chains from orders based on the rules

@@ -3,6 +3,7 @@
 Main script to sync trades from Tastytrade to Google Sheets
 """
 
+import asyncio
 import os
 import sys
 from datetime import datetime
@@ -14,7 +15,6 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.api.tastytrade_client import TastytradeClient
-from src.api.google_sheets_client import GoogleSheetsClient
 from src.models.trade_manager import TradeManager
 
 # Configure logging
@@ -26,62 +26,62 @@ logger.add(
 )
 
 
-def sync_trades_to_sheets(days_back: int = 30) -> bool:
+async def sync_trades_to_sheets(days_back: int = 30) -> bool:
     """
     Sync trades from Tastytrade to Google Sheets
-    
+
     Args:
         days_back: Number of days of history to sync
-        
+
     Returns:
         bool: Success status
     """
     logger.info(f"Starting trade sync for the last {days_back} days")
-    
+
     # Initialize clients
     tastytrade = TastytradeClient()
     sheets = GoogleSheetsClient()
     trade_manager = TradeManager()
-    
-    # Authenticate Tastytrade
-    if not tastytrade.authenticate():
+
+    # Authenticate Tastytrade (OAuth2)
+    if not await tastytrade.authenticate():
         logger.error("Failed to authenticate with Tastytrade")
         return False
-    
+
     # Authenticate Google Sheets
     if not sheets.authenticate():
         logger.error("Failed to authenticate with Google Sheets")
         return False
-    
+
     # Create sheets if they don't exist
     if not sheets.create_sheets_if_not_exist():
         logger.error("Failed to create necessary sheets")
         return False
-    
+
     # Sync data
     success = True
-    
+
     # Get and sync transactions
     logger.info("Fetching transactions...")
-    transactions = tastytrade.get_transactions(days_back=days_back)
+    transactions = await tastytrade.get_transactions(days_back=days_back)
     if not sheets.write_transactions(transactions):
         logger.error("Failed to write transactions")
         success = False
-    
+
     # Get and sync positions
     logger.info("Fetching positions...")
-    positions = tastytrade.get_positions()
+    positions = await tastytrade.get_positions()
     if not sheets.write_positions(positions):
         logger.error("Failed to write positions")
         success = False
-    
+
     # Get and sync account balances
     logger.info("Fetching account balances...")
-    balances = tastytrade.get_account_balances()
+    balances = await tastytrade.get_account_balances()
     if balances and not sheets.write_account_summary(balances):
         logger.error("Failed to write account summary")
         success = False
-    
+
     # Process transactions into trades and sync
     logger.info("Processing transactions into trades...")
     trades = trade_manager.process_transactions(transactions)
@@ -91,18 +91,18 @@ def sync_trades_to_sheets(days_back: int = 30) -> bool:
         success = False
     else:
         logger.info(f"Processed {len(trades)} trades from transactions")
-    
+
     # Create dashboard
     logger.info("Creating dashboard...")
     if not sheets.create_dashboard_sheet():
         logger.error("Failed to create dashboard")
         success = False
-    
+
     if success:
         logger.info("Trade sync completed successfully")
     else:
         logger.warning("Trade sync completed with errors")
-    
+
     return success
 
 
@@ -148,18 +148,18 @@ def main():
         logger.error("Please copy .env.example to .env and fill in your Google Sheets ID")
         sys.exit(1)
     
-    # Check if Tastytrade credentials are available in environment
-    username = os.getenv('TASTYTRADE_USERNAME')
-    password = os.getenv('TASTYTRADE_PASSWORD')
+    # Check if Tastytrade OAuth credentials are available
+    provider_secret = os.getenv('TASTYTRADE_PROVIDER_SECRET')
+    refresh_token = os.getenv('TASTYTRADE_REFRESH_TOKEN')
 
-    if not username or not password:
-        logger.error("No Tastytrade credentials found!")
-        logger.error("Please add TASTYTRADE_USERNAME and TASTYTRADE_PASSWORD to your .env file")
+    if not provider_secret or not refresh_token:
+        logger.error("No Tastytrade OAuth credentials found!")
+        logger.error("Please add TASTYTRADE_PROVIDER_SECRET and TASTYTRADE_REFRESH_TOKEN to your .env file")
         sys.exit(1)
-    
+
     # Run sync
     try:
-        success = sync_trades_to_sheets(days_back=args.days)
+        success = asyncio.run(sync_trades_to_sheets(days_back=args.days))
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         logger.info("Sync interrupted by user")

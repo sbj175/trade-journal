@@ -8,7 +8,6 @@ function tradeJournal() {
         selectedAccount: '',
         availableUnderlyings: [],
         availableStrategies: [],
-        username: null,
         dashboard: {
             summary: {
                 total_pnl: 0,
@@ -39,16 +38,44 @@ function tradeJournal() {
         initialSyncing: false,
         reprocessing: false,
         lastSyncTimestamp: '',
+
+        // Sync notification
+        syncNotification: null,
+        syncNotificationTimeout: null,
         
         // Filters
         searchTerm: '',
         filterStatus: '',
-        filterStrategy: '',
         filterUnderlying: '',
-        timePeriod: 'all',  // 30, 60, 90, or 'all'
+        timePeriod: 'all',  // 'today', 'yesterday', 7, 30, 60, 90, or 'all'
         showOpen: true,
         showClosed: true,
         filteredChains: [],
+
+        // Category-based filtering (like Reports page)
+        filterDirection: [],  // 'bullish', 'bearish', 'neutral'
+        filterType: [],       // 'credit', 'debit'
+
+        // Strategy to category mapping
+        strategyCategories: {
+            'Bull Put Spread': { direction: 'bullish', type: 'credit' },
+            'Bear Call Spread': { direction: 'bearish', type: 'credit' },
+            'Iron Condor': { direction: 'neutral', type: 'credit' },
+            'Iron Butterfly': { direction: 'neutral', type: 'credit' },
+            'Cash Secured Put': { direction: 'bullish', type: 'credit' },
+            'Covered Call': { direction: 'bullish', type: 'credit' },
+            'Short Put': { direction: 'bullish', type: 'credit' },
+            'Short Call': { direction: 'bearish', type: 'credit' },
+            'Short Strangle': { direction: 'neutral', type: 'credit' },
+            'Short Straddle': { direction: 'neutral', type: 'credit' },
+            'Bull Call Spread': { direction: 'bullish', type: 'debit' },
+            'Bear Put Spread': { direction: 'bearish', type: 'debit' },
+            'Long Call': { direction: 'bullish', type: 'debit' },
+            'Long Put': { direction: 'bearish', type: 'debit' },
+            'Long Strangle': { direction: 'neutral', type: 'debit' },
+            'Long Straddle': { direction: 'neutral', type: 'debit' },
+            'Shares': { direction: null, type: null, isShares: true }
+        },
         
         // Sorting
         sortColumn: 'underlying',
@@ -67,6 +94,21 @@ function tradeJournal() {
         // Initialization guard
         _initialized: false,
 
+        // Order comments (server-persisted)
+        orderComments: {},
+        _commentSaveTimers: {},
+
+        // Position notes (server-persisted)
+        positionNotes: {},
+        _noteSaveTimers: {},
+
+        // Live quotes state for Chains page
+        underlyingQuotes: {},
+        quoteUpdateCounter: 0,
+        liveQuotesActive: false,
+        lastQuoteUpdate: null,
+        ws: null,
+
         // Initialize
         async init() {
             if (this._initialized) {
@@ -75,21 +117,6 @@ function tradeJournal() {
             }
             this._initialized = true;
             console.log('Initializing Trade Journal...');
-
-            // Check authentication first
-            try {
-                const authResponse = await fetch('/api/auth/verify');
-                if (!authResponse.ok) {
-                    window.location.href = '/login';
-                    return;
-                }
-                const authData = await authResponse.json();
-                this.username = authData.username;
-            } catch (error) {
-                console.error('Auth check failed:', error);
-                window.location.href = '/login';
-                return;
-            }
 
             // Get saved state before loading data
             const savedState = this.getSavedState();
@@ -101,6 +128,14 @@ function tradeJournal() {
             const urlParams = new URLSearchParams(window.location.search);
             const underlyingParam = urlParams.get('underlying');
             const accountParam = urlParams.get('account');
+            const statusParam = urlParams.get('status');
+
+            // Handle status parameter (e.g., from positions page linking to open chains)
+            if (statusParam === 'open') {
+                this.showOpen = true;
+                this.showClosed = false;
+                console.log('Applied URL parameter status filter: open only');
+            }
 
             // Determine final account to use (URL param takes priority over saved state)
             // Use null to indicate "not yet determined", empty string is valid for "All Accounts"
@@ -157,7 +192,7 @@ function tradeJournal() {
             }
             
             // Clear URL parameters after applying them
-            if (underlyingParam || accountParam) {
+            if (underlyingParam || accountParam || statusParam) {
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
             
@@ -173,15 +208,22 @@ function tradeJournal() {
             
             // Apply other saved filters
             if (savedState) {
-                this.filterStrategy = savedState.filterStrategy || '';
+                // Clear category filters when navigating via URL underlying param
+                // (user explicitly wants to see that symbol's chains regardless of category)
+                this.filterDirection = underlyingParam ? [] : (savedState.filterDirection || []);
+                this.filterType = underlyingParam ? [] : (savedState.filterType || []);
                 this.filterStatus = savedState.filterStatus || '';
                 this.timePeriod = savedState.timePeriod || 'all';
                 this.sortColumn = savedState.sortColumn || 'underlying';
                 this.sortDirection = savedState.sortDirection || 'asc';
-                this.showOpen = savedState.showOpen !== undefined ? savedState.showOpen : true;
-                this.showClosed = savedState.showClosed !== undefined ? savedState.showClosed : true;
+                // Only apply saved state for showOpen/showClosed if no URL status param was provided
+                if (!statusParam) {
+                    this.showOpen = savedState.showOpen !== undefined ? savedState.showOpen : true;
+                    this.showClosed = savedState.showClosed !== undefined ? savedState.showClosed : true;
+                }
                 console.log('Restored other filters:', {
-                    strategy: this.filterStrategy,
+                    direction: this.filterDirection,
+                    type: this.filterType,
                     status: this.filterStatus,
                     timePeriod: this.timePeriod,
                     showOpen: this.showOpen,
@@ -191,7 +233,15 @@ function tradeJournal() {
             
             // Load trades and chains with restored filters
             await this.loadChains();
-            
+
+            // Load order comments and position notes from server
+            await this.loadOrderComments();
+            await this.loadPositionNotes();
+
+            // Load cached quotes and initialize WebSocket for live data
+            await this.loadCachedQuotes();
+            this.initializeWebSocket();
+
             // Load last sync timestamp
             await this.loadLastSyncTimestamp();
             
@@ -249,13 +299,8 @@ function tradeJournal() {
             console.log('🕐 TIMING: Starting account change to:', this.selectedAccount);
             console.log('DEBUG: onAccountChange - this.selectedAccount is now:', this.selectedAccount);
 
-            // Reset underlying filter when account changes
-            const resetStartTime = performance.now();
-            this.filterUnderlying = '';
-            console.log('DEBUG: Reset underlying filter to All');
-            this.saveState(); // Save state after resetting underlying
-            const resetTime = performance.now() - resetStartTime;
-            console.log(`🕐 TIMING: Filter reset took ${resetTime.toFixed(0)}ms`);
+            // Preserve current underlying filter to check if it exists in new account
+            const previousUnderlying = this.filterUnderlying;
 
             const dashboardStartTime = performance.now();
             console.log('DEBUG: About to call loadDashboard()');
@@ -281,9 +326,16 @@ function tradeJournal() {
             const extractTime = performance.now() - extractStartTime;
             console.log(`🕐 TIMING: Underlyings and strategies extracted from chains in ${extractTime.toFixed(0)}ms (no API call)`);
 
+            // Only reset underlying filter if it doesn't exist in the new account
+            if (previousUnderlying && !this.availableUnderlyings.includes(previousUnderlying)) {
+                this.filterUnderlying = '';
+                console.log('DEBUG: Reset underlying filter - symbol not found in new account');
+            }
+            this.saveState();
+
             const totalTime = performance.now() - totalStartTime;
             console.log(`🕐 TIMING: *** TOTAL ACCOUNT CHANGE: ${totalTime.toFixed(0)}ms (${(totalTime/1000).toFixed(1)}s) ***`);
-            console.log(`🕐 TIMING: Breakdown - Reset:${resetTime.toFixed(0)}ms, Dashboard:${dashboardTime.toFixed(0)}ms, Extract:${extractTime.toFixed(0)}ms, Chains:${chainsTime.toFixed(0)}ms`);
+            console.log(`🕐 TIMING: Breakdown - Dashboard:${dashboardTime.toFixed(0)}ms, Chains:${chainsTime.toFixed(0)}ms, Extract:${extractTime.toFixed(0)}ms`);
         },
 
         // Handle underlying filter change
@@ -292,10 +344,86 @@ function tradeJournal() {
             this.loadChains();
         },
 
-        // Handle strategy filter change
-        onStrategyChange() {
+        // Toggle category filter (direction or type)
+        toggleFilter(category, value) {
+            if (category === 'direction') {
+                const idx = this.filterDirection.indexOf(value);
+                if (idx >= 0) {
+                    this.filterDirection.splice(idx, 1);
+                } else {
+                    this.filterDirection.push(value);
+                }
+            } else if (category === 'type') {
+                // Credit and Debit are mutually exclusive
+                const idx = this.filterType.indexOf(value);
+                if (idx >= 0) {
+                    // Clicking an active button deselects it
+                    this.filterType.splice(idx, 1);
+                } else {
+                    // Selecting one clears the other
+                    this.filterType = [value];
+                }
+            }
             this.saveState();
             this.applyStatusFilter();
+        },
+
+        // Get list of strategies that match current category filters
+        getActiveStrategies() {
+            const strategies = [];
+            const noDirectionFilter = this.filterDirection.length === 0;
+            const noTypeFilter = this.filterType.length === 0;
+
+            for (const [strategy, cat] of Object.entries(this.strategyCategories)) {
+                // Handle Shares separately (always include if no filters)
+                if (cat.isShares) {
+                    if (noDirectionFilter && noTypeFilter) {
+                        strategies.push(strategy);
+                    }
+                    continue;
+                }
+
+                // Check if strategy matches filters
+                const directionMatch = noDirectionFilter || this.filterDirection.includes(cat.direction);
+                const typeMatch = noTypeFilter || this.filterType.includes(cat.type);
+
+                if (directionMatch && typeMatch) {
+                    strategies.push(strategy);
+                }
+            }
+
+            return strategies;
+        },
+
+        // Check if a chain's strategy matches the current category filters
+        chainMatchesCategoryFilters(chain) {
+            const strategy = chain.strategy_type || 'Unknown';
+            const noDirectionFilter = this.filterDirection.length === 0;
+            const noTypeFilter = this.filterType.length === 0;
+
+            // If no filters are active, show all
+            if (noDirectionFilter && noTypeFilter) {
+                return true;
+            }
+
+            // Look up strategy category
+            const cat = this.strategyCategories[strategy];
+
+            // If strategy is not in our mapping, include it only if no filters are active
+            if (!cat) {
+                return noDirectionFilter && noTypeFilter;
+            }
+
+            // Handle Shares specially
+            if (cat.isShares) {
+                return noDirectionFilter && noTypeFilter;
+            }
+
+            // Check if strategy matches filters
+            const directionMatch = noDirectionFilter || this.filterDirection.includes(cat.direction);
+            const typeMatch = noTypeFilter || this.filterType.includes(cat.type);
+
+            return directionMatch && typeMatch;
         },
 
         // Format number with commas
@@ -303,9 +431,50 @@ function tradeJournal() {
             if (num === null || num === undefined) return '0.00';
             return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         },
-        
-        
-        
+
+        formatChainDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+        },
+
+        // Format order date as "1/23 2:11p"
+        formatOrderDate(isoString) {
+            if (!isoString) return '';
+            const d = new Date(isoString);
+            const month = d.getMonth() + 1;
+            const day = d.getDate();
+            let hours = d.getHours();
+            const minutes = d.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'p' : 'a';
+            hours = hours % 12 || 12;
+            return `${month}/${day} ${hours}:${minutes}${ampm}`;
+        },
+
+        // Get cutoff date string for time period filtering
+        getTimePeriodDates(timePeriod) {
+            const today = new Date();
+            let cutoffDate = new Date();
+            let exactDate = false;
+
+            if (timePeriod === 'today') {
+                // Match exact date for today
+                exactDate = true;
+            } else if (timePeriod === 'yesterday') {
+                // Match exact date for yesterday
+                cutoffDate.setDate(today.getDate() - 1);
+                exactDate = true;
+            } else {
+                // Numeric days: 7, 30, 60, 90
+                const days = parseInt(timePeriod);
+                cutoffDate.setDate(today.getDate() - days);
+            }
+
+            // Format as YYYY-MM-DD string for comparison (avoids timezone issues)
+            const cutoffStr = cutoffDate.toISOString().split('T')[0];
+            return { cutoffStr, exactDate };
+        },
+
         // Format order action to standard abbreviations
         formatAction(action) {
             if (!action) return '';
@@ -442,18 +611,34 @@ function tradeJournal() {
             if (!order || order.order_type !== 'ROLLING' || !order.positions || order.positions.length === 0) {
                 return null;
             }
-            
-            // Use helper function to get the correct divisor (handles ratio spreads)
-            const divisor = this.getCreditDebitDivisor(order);
-            
+
+            // For rolls, use OPENING quantity (the new position size)
+            // When a roll changes position size (e.g., closes 2, opens 1), the credit/debit
+            // per share should be normalized to the NEW position size, not the old.
+            // Example: ORCL roll collects $907, closes 2, opens 1 -> $907 ÷ 1 ÷ 100 = $9.07/share
+            const normalizeAction = (action) => {
+                if (!action) return '';
+                return action.replace('OrderAction.', '').toUpperCase();
+            };
+
+            const openingPositions = order.positions.filter(pos => {
+                const action = normalizeAction(pos.opening_action);
+                return action === 'BTO' || action === 'BUY_TO_OPEN' ||
+                       action === 'STO' || action === 'SELL_TO_OPEN';
+            });
+
+            const divisor = openingPositions.length > 0
+                ? Math.abs(openingPositions[0].quantity || 0)
+                : this.getCreditDebitDivisor(order); // fallback to original logic
+
             if (divisor === 0) {
                 return null;
             }
-            
+
             const orderPnL = order.total_pnl || 0;
             const perRatioAmount = Math.abs(orderPnL) / divisor / 100; // Divide by 100 to get per-share amount
             const isCredit = orderPnL > 0;
-            
+
             return {
                 amount: perRatioAmount,
                 type: isCredit ? 'credit' : 'debit'
@@ -528,6 +713,137 @@ function tradeJournal() {
             if (!closingData) return '';
 
             return `${closingData.amount.toFixed(2)} ${closingData.type}`;
+        },
+
+        // Get current open positions for a chain
+        // Aggregates across all orders to find positions that are still open
+        getCurrentOpenPositions(chain) {
+            if (!chain || !chain.orders || chain.status !== 'OPEN') {
+                return [];
+            }
+
+            // Track positions by a unique key (symbol + strike + expiration + option_type)
+            const positionMap = new Map();
+
+            // Process all orders chronologically (oldest first)
+            const sortedOrders = [...chain.orders].sort((a, b) =>
+                new Date(a.order_date || 0) - new Date(b.order_date || 0)
+            );
+
+            for (const order of sortedOrders) {
+                if (!order.positions) continue;
+
+                for (const pos of order.positions) {
+                    // Create a unique key for this position
+                    const key = `${pos.symbol || ''}_${pos.strike || ''}_${pos.expiration || ''}_${pos.option_type || ''}`;
+
+                    // Determine if this is opening or closing based on action
+                    const action = (pos.opening_action || '').toUpperCase().replace('ORDERACTION.', '');
+                    const isOpening = action.includes('BTO') || action.includes('STO') ||
+                                      action.includes('BUY_TO_OPEN') || action.includes('SELL_TO_OPEN');
+                    const isClosing = action.includes('BTC') || action.includes('STC') ||
+                                      action.includes('BUY_TO_CLOSE') || action.includes('SELL_TO_CLOSE');
+
+                    // Check for assignment/exercise/expiration closures
+                    const closingAction = (pos.closing_action || '').toUpperCase();
+                    const isAssignedOrExpired = closingAction.includes('ASSIGNED') ||
+                                                closingAction.includes('EXERCISED') ||
+                                                closingAction.includes('EXPIRED');
+
+                    if (isOpening) {
+                        // Opening: add to position or create new
+                        const qty = Math.abs(pos.quantity || 0);
+                        const isShort = action.includes('STO') || action.includes('SELL_TO_OPEN');
+
+                        if (positionMap.has(key)) {
+                            const existing = positionMap.get(key);
+                            existing.quantity += isShort ? -qty : qty;
+                            // Average the entry price (weighted)
+                            const totalQty = Math.abs(existing.quantity);
+                            if (totalQty > 0) {
+                                existing.entry_price = ((existing.entry_price * (totalQty - qty)) +
+                                                       (pos.opening_price * qty)) / totalQty;
+                            }
+                        } else {
+                            positionMap.set(key, {
+                                symbol: pos.symbol,
+                                underlying: pos.underlying,
+                                option_type: pos.option_type,
+                                strike: pos.strike,
+                                expiration: pos.expiration,
+                                quantity: isShort ? -qty : qty,
+                                entry_price: pos.opening_price || 0,
+                                instrument_type: pos.instrument_type
+                            });
+                        }
+
+                        // If this opening position was later closed (has closing_action), reduce it
+                        if (isAssignedOrExpired && positionMap.has(key)) {
+                            const existing = positionMap.get(key);
+                            if (existing.quantity > 0) {
+                                existing.quantity -= qty;
+                            } else {
+                                existing.quantity += qty;
+                            }
+                        }
+                    } else if (isClosing) {
+                        // Closing: reduce position
+                        const qty = Math.abs(pos.quantity || 0);
+                        if (positionMap.has(key)) {
+                            const existing = positionMap.get(key);
+                            // Closing reduces the absolute position
+                            if (existing.quantity > 0) {
+                                existing.quantity -= qty;
+                            } else {
+                                existing.quantity += qty;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Filter to only positions with non-zero quantity
+            const openPositions = [];
+            for (const [key, pos] of positionMap) {
+                if (pos.quantity !== 0) {
+                    openPositions.push(pos);
+                }
+            }
+
+            // Sort by strike price
+            openPositions.sort((a, b) => (a.strike || 0) - (b.strike || 0));
+
+            return openPositions;
+        },
+
+        // Format position description for display
+        formatPositionDescription(pos) {
+            if (!pos.option_type) {
+                return pos.symbol || 'Unknown';
+            }
+            const strike = pos.strike ? `$${pos.strike}` : '';
+            const exp = pos.expiration || '';
+            const type = pos.option_type || '';
+            return `${strike} ${type} ${exp}`.trim();
+        },
+
+        // Format expiration date in short format (e.g., "Feb 27")
+        formatExpirationShort(expiration) {
+            if (!expiration) return '';
+            const date = new Date(expiration + 'T00:00:00');
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${months[date.getMonth()]} ${date.getDate()}`;
+        },
+
+        // Calculate days to expiration
+        calculateDTE(expiration) {
+            if (!expiration) return 0;
+            const expDate = new Date(expiration + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const diffTime = expDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return Math.max(0, diffDays);
         },
 
         // Load dashboard data
@@ -650,19 +966,21 @@ function tradeJournal() {
             // Apply time period filtering first
             // Only applies to CLOSED chains (by closing_date). Open chains always shown.
             if (this.timePeriod && this.timePeriod !== 'all') {
-                const days = parseInt(this.timePeriod);
-                const cutoffDate = new Date();
-                cutoffDate.setDate(cutoffDate.getDate() - days);
-                // Format as YYYY-MM-DD string for comparison (avoids timezone issues)
-                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                const { cutoffStr, exactDate } = this.getTimePeriodDates(this.timePeriod);
                 const beforeCount = chains.length;
                 chains = chains.filter(chain => {
                     // Open chains: always show (they're current positions)
                     if (chain.status === 'OPEN') return true;
-                    // Closed chains: filter by closing_date (string comparison)
-                    return chain.closing_date && chain.closing_date >= cutoffStr;
+                    // Closed chains: filter by closing_date
+                    if (!chain.closing_date) return false;
+                    if (exactDate) {
+                        // For "today" and "yesterday", match exact date
+                        return chain.closing_date === cutoffStr;
+                    }
+                    // For day ranges, use >= comparison
+                    return chain.closing_date >= cutoffStr;
                 });
-                console.log('DEBUG: After time period filter (' + days + ' days, cutoff=' + cutoffStr + '), count =', chains.length, '(was', beforeCount, ')');
+                console.log('DEBUG: After time period filter (' + this.timePeriod + ', cutoff=' + cutoffStr + ', exact=' + exactDate + '), count =', chains.length, '(was', beforeCount, ')');
             }
 
             // Apply status filtering
@@ -683,20 +1001,21 @@ function tradeJournal() {
                 console.log('DEBUG: Filtered to CLOSED chains, count =', chains.length);
             }
 
-            // Apply strategy filtering if set
-            if (this.filterStrategy) {
+            // Apply category-based filtering (direction and type)
+            if (this.filterDirection.length > 0 || this.filterType.length > 0) {
                 const beforeCount = chains.length;
-                chains = chains.filter(chain => {
-                    const strategy = chain.strategy_type || 'Unknown';
-                    return strategy === this.filterStrategy;
-                });
-                console.log('DEBUG: After strategy filter, count =', chains.length, '(was', beforeCount, ')');
+                chains = chains.filter(chain => this.chainMatchesCategoryFilters(chain));
+                console.log('DEBUG: After category filter (direction=' + this.filterDirection.join(',') + ', type=' + this.filterType.join(',') + '), count =', chains.length, '(was', beforeCount, ')');
             }
 
             // Force reactivity by creating a new array reference
             // This ensures Alpine.js detects the change
             console.log('DEBUG: Setting this.filteredChains to array of length', chains.length);
             this.filteredChains = [...chains];
+
+            // Apply current sort order
+            this.applySortToChains();
+
             console.log('DEBUG: applyStatusFilter complete, this.filteredChains.length =', this.filteredChains.length);
 
             // Calculate filtered dashboard statistics
@@ -735,25 +1054,22 @@ function tradeJournal() {
             // Apply time period filter (same logic as applyStatusFilter)
             // Only applies to closed chains (by closing_date). Open chains always included.
             if (this.timePeriod && this.timePeriod !== 'all') {
-                const days = parseInt(this.timePeriod);
-                const cutoffDate = new Date();
-                cutoffDate.setDate(cutoffDate.getDate() - days);
-                // Format as YYYY-MM-DD string for comparison (avoids timezone issues)
-                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                const { cutoffStr, exactDate } = this.getTimePeriodDates(this.timePeriod);
                 chainsForWinRate = chainsForWinRate.filter(chain => {
                     // Open chains: always include
                     if (chain.status === 'OPEN') return true;
-                    // Closed chains: filter by closing_date (string comparison)
-                    return chain.closing_date && chain.closing_date >= cutoffStr;
+                    // Closed chains: filter by closing_date
+                    if (!chain.closing_date) return false;
+                    if (exactDate) {
+                        return chain.closing_date === cutoffStr;
+                    }
+                    return chain.closing_date >= cutoffStr;
                 });
             }
 
-            // Apply strategy filter
-            if (this.filterStrategy) {
-                chainsForWinRate = chainsForWinRate.filter(chain => {
-                    const strategy = chain.strategy_type || 'Unknown';
-                    return strategy === this.filterStrategy;
-                });
+            // Apply category filter
+            if (this.filterDirection.length > 0 || this.filterType.length > 0) {
+                chainsForWinRate = chainsForWinRate.filter(chain => this.chainMatchesCategoryFilters(chain));
             }
             const closedChainsForWinRate = chainsForWinRate.filter(chain => chain.status === 'CLOSED');
             const profitableClosedChains = closedChainsForWinRate.filter(chain => chain.total_pnl >= 0);  // >= 0 to count scratch trades as wins
@@ -774,7 +1090,8 @@ function tradeJournal() {
         // Check if any filters are active (excluding status/open-closed toggle)
         hasActiveFilters() {
             return this.filterUnderlying !== '' ||
-                   this.filterStrategy !== '' ||
+                   this.filterDirection.length > 0 ||
+                   this.filterType.length > 0 ||
                    this.selectedAccount !== '' ||
                    (this.timePeriod && this.timePeriod !== 'all');
         },
@@ -842,27 +1159,58 @@ function tradeJournal() {
                     },
                     body: JSON.stringify({})
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`Sync failed: ${response.statusText}`);
                 }
-                
+
                 const result = await response.json();
                 console.log('Sync completed:', result);
-                
+
                 // Reload data including accounts
                 await this.loadAccounts();
                 await this.loadDashboard();
                 await this.loadChains();
-                
+
                 // Update last sync timestamp
                 await this.loadLastSyncTimestamp();
-                
+
+                // Show sync notification
+                this.showSyncNotification(result);
+
             } catch (error) {
                 console.error('Error syncing trades:', error);
                 alert('Sync failed: ' + error.message);
             } finally {
                 this.syncing = false;
+            }
+        },
+
+        // Show sync result notification
+        showSyncNotification(result) {
+            // Clear any existing timeout
+            if (this.syncNotificationTimeout) {
+                clearTimeout(this.syncNotificationTimeout);
+            }
+
+            this.syncNotification = {
+                transactions: result.transactions_processed || 0,
+                positions: result.positions_updated || 0,
+                message: result.message || 'Sync completed'
+            };
+
+            // Auto-dismiss after 5 seconds
+            this.syncNotificationTimeout = setTimeout(() => {
+                this.dismissSyncNotification();
+            }, 5000);
+        },
+
+        // Dismiss sync notification
+        dismissSyncNotification() {
+            this.syncNotification = null;
+            if (this.syncNotificationTimeout) {
+                clearTimeout(this.syncNotificationTimeout);
+                this.syncNotificationTimeout = null;
             }
         },
         
@@ -974,7 +1322,7 @@ function tradeJournal() {
             this.renderTrades();
         },
         
-        // Sort table
+        // Sort table (legacy)
         sortTable(column) {
             // Toggle direction if same column
             if (this.sortColumn === column) {
@@ -983,34 +1331,173 @@ function tradeJournal() {
                 this.sortColumn = column;
                 this.sortDirection = 'asc';
             }
-            
+
             // Sort trades array
             this.trades.sort((a, b) => {
                 let aVal = a[column];
                 let bVal = b[column];
-                
+
                 // Handle numeric values
                 if (column === 'current_pnl') {
                     aVal = aVal || 0;
                     bVal = bVal || 0;
                 }
-                
+
                 // Handle dates
                 if (column === 'entry_date' || column === 'exit_date') {
                     aVal = new Date(aVal || '1900-01-01');
                     bVal = new Date(bVal || '1900-01-01');
                 }
-                
+
                 // Compare
                 if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
                 if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
                 return 0;
             });
-            
+
             // Re-render table
             this.renderTrades();
         },
-        
+
+        // Sort chains - used by chains-dense.html
+        sortChains(column) {
+            // Toggle direction if same column
+            if (this.sortColumn === column) {
+                this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortColumn = column;
+                // Default to descending for dates, P&L/value columns, and price/ivr
+                if (column === 'opening_date' || column === 'closing_date' || column === 'total_pnl' || column === 'net_liquidity' || column === 'total_value' || column === 'price' || column === 'ivr') {
+                    this.sortDirection = 'desc';
+                } else if (column === 'dte') {
+                    // DTE defaults to ascending (nearest expiration first)
+                    this.sortDirection = 'asc';
+                } else {
+                    this.sortDirection = 'asc';
+                }
+            }
+
+            // Sort filteredChains array
+            this.filteredChains.sort((a, b) => {
+                let aVal, bVal;
+
+                // Handle calculated total_value column (net_liq + realized for open chains)
+                if (column === 'total_value') {
+                    aVal = a.status === 'OPEN' ? ((a.net_liquidity || 0) + (a.total_pnl || 0)) : (a.total_pnl || 0);
+                    bVal = b.status === 'OPEN' ? ((b.net_liquidity || 0) + (b.total_pnl || 0)) : (b.total_pnl || 0);
+                } else if (column === 'price') {
+                    // Get price from quotes, closed chains get null (sort to end)
+                    const aQuote = a.status === 'OPEN' ? this.getUnderlyingQuote(a.underlying) : null;
+                    const bQuote = b.status === 'OPEN' ? this.getUnderlyingQuote(b.underlying) : null;
+                    aVal = aQuote ? aQuote.price : null;
+                    bVal = bQuote ? bQuote.price : null;
+                } else if (column === 'ivr') {
+                    // Get IVR from quotes, closed chains get null (sort to end)
+                    aVal = a.status === 'OPEN' ? this.getUnderlyingIVR(a.underlying) : null;
+                    bVal = b.status === 'OPEN' ? this.getUnderlyingIVR(b.underlying) : null;
+                } else if (column === 'dte') {
+                    // Get min DTE, closed chains get null (sort to end)
+                    aVal = this.getChainMinDTE(a);
+                    bVal = this.getChainMinDTE(b);
+                } else {
+                    aVal = a[column];
+                    bVal = b[column];
+                }
+
+                // Handle null values - push to end
+                if (aVal === null && bVal === null) return 0;
+                if (aVal === null) return 1;
+                if (bVal === null) return -1;
+
+                // Handle string columns
+                if (column === 'underlying' || column === 'strategy_type' || column === 'status') {
+                    aVal = (aVal || '').toLowerCase();
+                    bVal = (bVal || '').toLowerCase();
+                }
+
+                // Handle numeric columns
+                if (column === 'order_count' || column === 'cost_basis_per_share' || column === 'total_pnl' || column === 'net_liquidity' || column === 'total_value' || column === 'price' || column === 'ivr' || column === 'dte') {
+                    aVal = aVal || 0;
+                    bVal = bVal || 0;
+                }
+
+                // Handle date columns
+                if (column === 'opening_date' || column === 'closing_date') {
+                    aVal = aVal ? new Date(aVal) : new Date('1900-01-01');
+                    bVal = bVal ? new Date(bVal) : new Date('1900-01-01');
+                }
+
+                // Compare
+                if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            // Save state to persist sort preference
+            this.saveState();
+        },
+
+        // Apply current sort to chains without toggling direction
+        applySortToChains() {
+            const column = this.sortColumn;
+            const direction = this.sortDirection;
+
+            this.filteredChains.sort((a, b) => {
+                let aVal, bVal;
+
+                // Handle calculated total_value column (net_liq + realized for open chains)
+                if (column === 'total_value') {
+                    aVal = a.status === 'OPEN' ? ((a.net_liquidity || 0) + (a.total_pnl || 0)) : (a.total_pnl || 0);
+                    bVal = b.status === 'OPEN' ? ((b.net_liquidity || 0) + (b.total_pnl || 0)) : (b.total_pnl || 0);
+                } else if (column === 'price') {
+                    // Get price from quotes, closed chains get null (sort to end)
+                    const aQuote = a.status === 'OPEN' ? this.getUnderlyingQuote(a.underlying) : null;
+                    const bQuote = b.status === 'OPEN' ? this.getUnderlyingQuote(b.underlying) : null;
+                    aVal = aQuote ? aQuote.price : null;
+                    bVal = bQuote ? bQuote.price : null;
+                } else if (column === 'ivr') {
+                    // Get IVR from quotes, closed chains get null (sort to end)
+                    aVal = a.status === 'OPEN' ? this.getUnderlyingIVR(a.underlying) : null;
+                    bVal = b.status === 'OPEN' ? this.getUnderlyingIVR(b.underlying) : null;
+                } else if (column === 'dte') {
+                    // Get min DTE, closed chains get null (sort to end)
+                    aVal = this.getChainMinDTE(a);
+                    bVal = this.getChainMinDTE(b);
+                } else {
+                    aVal = a[column];
+                    bVal = b[column];
+                }
+
+                // Handle null values - push to end
+                if (aVal === null && bVal === null) return 0;
+                if (aVal === null) return 1;
+                if (bVal === null) return -1;
+
+                // Handle string columns
+                if (column === 'underlying' || column === 'strategy_type' || column === 'status') {
+                    aVal = (aVal || '').toLowerCase();
+                    bVal = (bVal || '').toLowerCase();
+                }
+
+                // Handle numeric columns
+                if (column === 'order_count' || column === 'cost_basis_per_share' || column === 'total_pnl' || column === 'net_liquidity' || column === 'total_value' || column === 'price' || column === 'ivr' || column === 'dte') {
+                    aVal = aVal || 0;
+                    bVal = bVal || 0;
+                }
+
+                // Handle date columns
+                if (column === 'opening_date' || column === 'closing_date') {
+                    aVal = aVal ? new Date(aVal) : new Date('1900-01-01');
+                    bVal = bVal ? new Date(bVal) : new Date('1900-01-01');
+                }
+
+                // Compare
+                if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        },
+
         // Open edit modal (disabled - legacy trade system)
         openEditModal(tradeId) {
             alert('Trade editing is temporarily disabled. Feature will be restored for the order-based system.');
@@ -1049,7 +1536,8 @@ function tradeJournal() {
             const state = {
                 selectedAccount: this.selectedAccount,
                 filterUnderlying: this.filterUnderlying,
-                filterStrategy: this.filterStrategy,
+                filterDirection: this.filterDirection,
+                filterType: this.filterType,
                 filterStatus: this.filterStatus,
                 timePeriod: this.timePeriod,
                 syncDays: this.syncDays,
@@ -1150,20 +1638,274 @@ function tradeJournal() {
             return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity);
         },
 
-        async logout() {
+        // Get single-letter account symbol (R=Roth, I=Individual, T=Traditional)
+        getAccountSymbol(accountNumber) {
+            const account = this.accounts.find(a => a.account_number === accountNumber);
+            if (!account) return '?';
+            const name = (account.account_name || '').toUpperCase();
+            if (name.includes('ROTH')) return 'R';
+            if (name.includes('INDIVIDUAL')) return 'I';
+            if (name.includes('TRADITIONAL')) return 'T';
+            return name.charAt(0) || '?';  // First letter fallback
+        },
+
+        // ===== Live Quotes for Chains Page =====
+
+        // Initialize WebSocket connection for live quotes
+        initializeWebSocket() {
+            if (this.ws) {
+                this.ws.close();
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/quotes`;
+
+            console.log('Connecting to WebSocket:', wsUrl);
+
+            this.ws = new WebSocket(wsUrl);
+
+            this.ws.onopen = () => {
+                console.log('WebSocket connected - LIVE');
+                this.liveQuotesActive = true;
+                this.requestLiveQuotes();
+            };
+
+            this.ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    // Handle bulk quotes update: { "type": "quotes", "data": { "AAPL": {...}, ... } }
+                    if (data.type === 'quotes' && data.data) {
+                        for (const [symbol, quote] of Object.entries(data.data)) {
+                            if (quote) {
+                                this.underlyingQuotes[symbol] = {
+                                    price: quote.price || quote.mark,
+                                    change: quote.change,
+                                    changePercent: quote.changePercent || quote.change_percent,
+                                    ivr: quote.ivr || quote.ivPercentile || quote.iv_percentile,
+                                    timestamp: Date.now()
+                                };
+                            }
+                        }
+                        this.quoteUpdateCounter++;
+                        this.lastQuoteUpdate = new Date();
+                        console.log('WebSocket received quotes for:', Object.keys(data.data).length, 'symbols');
+                    }
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e);
+                }
+            };
+
+            this.ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                this.liveQuotesActive = false;
+                // Attempt to reconnect after 5 seconds
+                setTimeout(() => {
+                    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+                        this.initializeWebSocket();
+                    }
+                }, 5000);
+            };
+
+            this.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.liveQuotesActive = false;
+            };
+        },
+
+        // Request live quotes for open chain underlyings
+        requestLiveQuotes() {
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+
+            // Get unique underlyings from open chains
+            const openChains = this.chains.filter(c => c.status === 'OPEN');
+            const symbols = [...new Set(openChains.map(c => c.underlying))];
+
+            if (symbols.length > 0) {
+                console.log('Requesting quotes for symbols:', symbols);
+                this.ws.send(JSON.stringify({
+                    subscribe: symbols
+                }));
+            }
+        },
+
+        // Load cached quotes via REST API
+        async loadCachedQuotes() {
             try {
-                const response = await fetch('/api/auth/logout', { method: 'POST' });
+                // Get unique underlyings from open chains
+                const openChains = this.chains.filter(c => c.status === 'OPEN');
+                const symbols = [...new Set(openChains.map(c => c.underlying))];
+
+                if (symbols.length === 0) {
+                    return;
+                }
+
+                console.log('Loading cached quotes for:', symbols);
+                const response = await fetch(`/api/quotes?symbols=${symbols.join(',')}`);
                 if (response.ok) {
-                    // Logout successful, redirect to login page
-                    window.location.href = '/login';
-                } else {
-                    console.error('Logout failed');
+                    const quotes = await response.json();
+                    // API returns quotes directly: { "AAPL": {...}, "MSFT": {...} }
+                    if (quotes && typeof quotes === 'object') {
+                        for (const [symbol, quote] of Object.entries(quotes)) {
+                            if (quote) {
+                                this.underlyingQuotes[symbol] = {
+                                    price: quote.price || quote.mark,
+                                    change: quote.change,
+                                    changePercent: quote.changePercent || quote.change_percent,
+                                    ivr: quote.ivr || quote.ivPercentile || quote.iv_percentile,
+                                    timestamp: Date.now()
+                                };
+                            }
+                        }
+                        this.quoteUpdateCounter++;
+                        console.log('Loaded cached quotes:', Object.keys(quotes).length);
+                    }
                 }
             } catch (error) {
-                console.error('Logout error:', error);
-                // Force redirect to login page even if request fails
-                window.location.href = '/login';
+                console.error('Error loading cached quotes:', error);
             }
+        },
+
+        // Get quote data for an underlying symbol
+        getUnderlyingQuote(underlying) {
+            // Force reactivity by reading the counter
+            const _ = this.quoteUpdateCounter;
+            return this.underlyingQuotes[underlying] || null;
+        },
+
+        // Get IVR as integer (0-100) for an underlying
+        getUnderlyingIVR(underlying) {
+            const quote = this.getUnderlyingQuote(underlying);
+            if (quote && quote.ivr !== undefined && quote.ivr !== null) {
+                // API returns IVR as decimal (0.0-1.0), convert to percentage (0-100)
+                const ivr = quote.ivr <= 1 ? quote.ivr * 100 : quote.ivr;
+                return Math.round(ivr);
+            }
+            return null;
+        },
+
+        // Load order comments from server
+        async loadOrderComments() {
+            try {
+                const response = await fetch('/api/order-comments');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.orderComments = data.comments || {};
+                } else {
+                    this.orderComments = {};
+                }
+            } catch (error) {
+                console.error('Error loading order comments:', error);
+                this.orderComments = {};
+            }
+        },
+
+        // Get comment for a specific order
+        getOrderComment(order) {
+            return this.orderComments[order.order_id] || '';
+        },
+
+        // Update comment for a specific order (debounced save to server)
+        updateOrderComment(order, value) {
+            const key = order.order_id;
+            this.orderComments[key] = value;
+
+            // Clear existing timer for this order
+            if (this._commentSaveTimers[key]) {
+                clearTimeout(this._commentSaveTimers[key]);
+            }
+
+            // Debounce: save after 500ms of no typing
+            this._commentSaveTimers[key] = setTimeout(() => {
+                fetch(`/api/order-comments/${encodeURIComponent(order.order_id)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: value })
+                }).catch(err => console.error('Error saving order comment:', err));
+                delete this._commentSaveTimers[key];
+            }, 500);
+        },
+
+        // Position notes (server-persisted)
+        async loadPositionNotes() {
+            try {
+                const response = await fetch('/api/position-notes');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.positionNotes = data.notes || {};
+                } else {
+                    this.positionNotes = {};
+                }
+            } catch (error) {
+                console.error('Error loading position notes:', error);
+                this.positionNotes = {};
+            }
+        },
+
+        getPositionNote(chain) {
+            const chainKey = 'chain_' + chain.chain_id;
+            if (this.positionNotes[chainKey]) return this.positionNotes[chainKey];
+            // Fallback: match pos_<underlying>_*_<account> keys from positions page
+            const prefix = 'pos_' + chain.underlying + '_';
+            const suffix = '_' + chain.account_number;
+            for (const [key, value] of Object.entries(this.positionNotes)) {
+                if (key.startsWith(prefix) && key.endsWith(suffix)) return value;
+            }
+            return '';
+        },
+
+        updatePositionNote(chain, value) {
+            const key = 'chain_' + chain.chain_id;
+            this.positionNotes[key] = value;
+            if (this._noteSaveTimers[key]) {
+                clearTimeout(this._noteSaveTimers[key]);
+            }
+            this._noteSaveTimers[key] = setTimeout(() => {
+                fetch(`/api/position-notes/${encodeURIComponent(key)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note: value })
+                }).catch(err => console.error('Error saving position note:', err));
+                // Clean up any fallback pos_* key for this underlying+account
+                const prefix = 'pos_' + chain.underlying + '_';
+                const suffix = '_' + chain.account_number;
+                for (const k of Object.keys(this.positionNotes)) {
+                    if (k.startsWith(prefix) && k.endsWith(suffix)) {
+                        delete this.positionNotes[k];
+                        fetch(`/api/position-notes/${encodeURIComponent(k)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ note: '' })
+                        }).catch(() => {});
+                    }
+                }
+                delete this._noteSaveTimers[key];
+            }, 500);
+        },
+
+        // Calculate minimum DTE across all open positions in a chain
+        getChainMinDTE(chain) {
+            if (!chain || chain.status !== 'OPEN') {
+                return null;
+            }
+
+            const openPositions = this.getCurrentOpenPositions(chain);
+            if (openPositions.length === 0) {
+                return null;
+            }
+
+            let minDTE = Infinity;
+            for (const pos of openPositions) {
+                if (pos.expiration) {
+                    const dte = this.calculateDTE(pos.expiration);
+                    if (dte < minDTE) {
+                        minDTE = dte;
+                    }
+                }
+            }
+
+            return minDTE === Infinity ? null : minDTE;
         }
     };
 }

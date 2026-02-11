@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## High-Level Application Overview
 
-### What is Trade Journal?
+### What is OptionEdge?
 
-Trade Journal is a comprehensive local web application designed for options traders who use Tastytrade. It automatically imports, organizes, and analyzes your trading data to provide insights into your trading performance and current positions.
+OptionEdge is a comprehensive local web application designed for options traders who use Tastytrade. It automatically imports, organizes, and analyzes your trading data to provide insights into your trading performance and current positions.
 
 ### Core Purpose
 
@@ -19,11 +19,12 @@ The application solves several key problems for options traders:
 
 ### How It Works (User Perspective)
 
-1. **Login**: User logs in with Tastytrade credentials via secure web login page
-2. **Data Sync**: One-click sync imports all transactions from Tastytrade accounts
-3. **Automatic Processing**: System intelligently groups transactions into trades and identifies strategies
-4. **Live Tracking**: Open positions update with real-time market data via WebSocket
-5. **Analysis**: View trade chains, P&L progression, and performance metrics through web interface
+1. **Setup**: User configures OAuth2 credentials (provider_secret + refresh_token) in `.env` or via Settings page
+2. **Auto-Connect**: App authenticates with Tastytrade on startup using OAuth2
+3. **Data Sync**: One-click sync imports all transactions from Tastytrade accounts
+4. **Automatic Processing**: System intelligently groups transactions into trades and identifies strategies
+5. **Live Tracking**: Open positions update with real-time market data via WebSocket
+6. **Analysis**: View trade chains, P&L progression, and performance metrics through web interface
 
 ### Key Features
 
@@ -41,8 +42,8 @@ The application solves several key problems for options traders:
 
 **Data Security & Privacy**:
 - 100% local application - no cloud storage or external data sharing
-- Credentials never stored on disk - authenticated per session only
-- Session-based authentication with HTTP-only cookies
+- OAuth2 credentials stored in local `.env` file (never committed to git)
+- No login page or session cookies - app auto-connects on startup
 - SQLite database stored locally on user's machine
 
 ### Technical Architecture
@@ -52,7 +53,7 @@ The application follows a modern web architecture:
 - **Frontend**: Single-page applications using Alpine.js for reactivity
 - **Database**: SQLite for local data persistence
 - **Real-time Data**: WebSocket integration for live market quotes
-- **Security**: Session-based authentication with HTTP-only cookies (no persistent credential storage)
+- **Authentication**: OAuth2 via tastytrade SDK v12 (provider_secret + refresh_token in `.env`)
 
 ### Data Flow Summary
 
@@ -68,7 +69,7 @@ The system maintains two main views:
 
 ## Project Overview
 
-Trade Journal is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLite for local data storage.
+OptionEdge is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLite for local data storage.
 
 ## Common Development Commands
 
@@ -84,13 +85,15 @@ start.bat
 python app.py
 ```
 
-The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains. Users log in at `/login` with their Tastytrade credentials.
+The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains.
 
-### Authentication
-- Users log in at the `/login` page with their Tastytrade username and password
-- Credentials are validated against Tastytrade API and never stored on disk
-- Session tokens are stored in HTTP-only cookies and expire after 1 hour
-- All protected endpoints require valid session authentication
+### Authentication (OAuth2)
+- Uses Tastytrade SDK v12 with OAuth2 authentication (async-only)
+- Credentials (`TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`) stored in `.env` file
+- App auto-connects on startup via `ConnectionManager` singleton — no login page needed
+- OAuth credentials can also be configured via the Settings page (`/settings`)
+- Get credentials from: my.tastytrade.com → Manage → My Profile → API → OAuth Applications
+- Token refresh is handled automatically by the SDK
 
 ### Database Operations
 ```bash
@@ -145,16 +148,26 @@ python test_v2_expiration.py
    - Still used alongside V2 for backward compatibility
 
 5. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
-   - Authenticates and fetches transaction data
+   - OAuth2 authentication via `Session(provider_secret, refresh_token)`
+   - All methods are async (tastytrade SDK v12 is async-only)
    - Supports multiple accounts
-   - Uses unofficial tastytrade SDK (tastytrade package)
    - Quote caching with 30-second TTL
+
+6. **Connection Manager** (`src/utils/auth_manager.py`):
+   - `ConnectionManager` singleton holds a shared `TastytradeClient` instance
+   - Auto-connects on startup, reused across all API requests
+   - Provides `get_client()`, `is_configured()`, `get_status()` methods
+   - Reconnect endpoint available for credential updates
 
 ### Frontend Structure
 
-- **Open Positions Page** (default): `static/positions.html` with live quotes and position management
-- **Order Chains Dashboard**: `static/chains-v2.html` at `/chains` with `static/js/app-v2.js` (V2 system with advanced strategy detection)
+- **Open Positions Page** (default): `static/positions-dense.html` with live quotes and position management
+- **Order Chains Dashboard**: `static/chains-dense.html` at `/chains` with `static/js/app-v2.js` (V2 system with advanced strategy detection)
+- **Performance Reports**: `static/reports-dense.html` at `/reports` with strategy breakdown and historical performance
+- **Portfolio Risk X-Ray**: `static/risk-dashboard.html` at `/risk` with real-time portfolio Greeks, Black-Scholes engine, and ApexCharts visualizations (delta exposure, theta projection, treemap, scenario analysis)
+- **Settings**: `static/settings.html` at `/settings` for OAuth credential management, connection status, and app configuration
 - **Alpine.js** for reactivity (loaded from CDN)
+- **ApexCharts** for advanced visualizations on Risk page (loaded from CDN)
 - **Chart.js** for visualizations (loaded from CDN)
 - **Tailwind CSS** for styling (loaded from CDN)
 - **WebSocket integration** for real-time price streaming
@@ -174,6 +187,27 @@ python test_v2_expiration.py
 2. **Position Tracking**: Current positions fetched from Tastytrade API with live P&L
 3. **Cross-page State**: Account selection synced between Order Chains and Positions pages
 4. **Persistent Comments**: User notes stored in localStorage, scoped by underlying + account
+
+### Sync Behavior by Page
+
+The Sync button behaves differently depending on which page you're on:
+
+**Chains Page Sync** (`/api/sync`):
+- Fetches transactions from Tastytrade → saves to database
+- Fetches current positions → saves to database
+- Fetches account balances → saves to database
+- Reprocesses order chains with strategy detection
+- Shows notification popup with transaction/position counts
+
+**Positions Page Sync** (`/api/sync-positions-only`):
+- Fetches current positions → saves to database
+- Fetches account balances → saves to database
+- Does NOT fetch transactions or reprocess chains (fast mode)
+
+**Implications**:
+- Syncing on Chains page updates both chains AND positions data
+- Syncing on Positions page only updates positions (faster, but new trades won't appear on Chains until you sync there)
+- The Positions page uses fast mode by default for better responsiveness
 
 ## Key Implementation Details
 
@@ -222,19 +256,18 @@ Key V2 tables:
 
 ## Security Considerations
 
-- Credentials are never stored on disk - only held in memory during authenticated session
-- Session tokens stored in HTTP-only cookies to prevent XSS attacks
+- OAuth2 credentials stored in local `.env` file (gitignored)
+- No login page, session cookies, or per-request authentication
+- A shared `ConnectionManager` singleton holds the authenticated client
 - Never commit: `.env`, `*.db`
 - All data stored locally - no external API calls except to Tastytrade
-- Session authentication required for all protected endpoints
-- In production, set `secure=True` on cookies and use HTTPS
 
 ## Common Issues and Solutions
 
 1. **Trades showing wrong dates**: Fixed by timezone conversion in `trade_strategy.py`
 2. **Multi-leg trades split up**: Fixed by improved transaction grouping in V2 OrderProcessor
 3. **Database locked errors**: Use context managers, avoid long-running transactions
-4. **Authentication failures**: Run `python setup_credentials.py` to reset credentials
+4. **Authentication failures**: Check `.env` has valid `TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`, or update via Settings page
 5. **Missing quotes**: Check market hours and ensure symbols are valid
 6. **Incorrect P&L for rolls**: V2 system properly tracks roll chains and calculates cumulative P&L
 7. **Expired positions showing as open**: V2 handles expirations, assignments, and exercises as closing events

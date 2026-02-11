@@ -1,4 +1,4 @@
-# Trade Journal
+# OptionEdge
 
 A beautiful, local web application for tracking and analyzing options trades from Tastytrade.
 
@@ -8,7 +8,7 @@ A beautiful, local web application for tracking and analyzing options trades fro
 - 📊 **Performance Analytics** - Track P&L, win rate, and strategy performance
 - 🔄 **Automatic Trade Recognition** - Intelligently groups multi-leg option strategies
 - 📝 **Trade Management** - Add notes, update status, track your trading ideas
-- 🔒 **Secure & Private** - All data stored locally with encrypted credentials
+- 🔒 **Secure & Private** - All data stored locally, OAuth2 authentication
 - 📈 **Beautiful Charts** - Visualize monthly performance and strategy breakdown
 
 ## Tech Stack
@@ -37,15 +37,14 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up your credentials:
-```bash
-python setup_credentials.py
-```
-
-5. Configure environment variables:
+4. Configure OAuth2 credentials:
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your Tastytrade OAuth credentials:
+# TASTYTRADE_PROVIDER_SECRET=your_provider_secret
+# TASTYTRADE_REFRESH_TOKEN=your_refresh_token
+#
+# Get these from: my.tastytrade.com → Manage → My Profile → API → OAuth Applications
 ```
 
 ## Usage
@@ -72,22 +71,16 @@ Open your browser to: http://localhost:8000
 Create a `.env` file with:
 
 ```env
-# Optional: Direct credentials (if not using encrypted)
-TASTYTRADE_USERNAME=your_username
-TASTYTRADE_PASSWORD=your_password
+# Tastytrade OAuth credentials
+# Get from: my.tastytrade.com → Manage → My Profile → API → OAuth Applications
+TASTYTRADE_PROVIDER_SECRET=your_provider_secret
+TASTYTRADE_REFRESH_TOKEN=your_refresh_token
+
+# Optional: Timezone for trade timestamps
+TIMEZONE=America/New_York
 ```
 
-### Encrypted Credentials
-
-For better security, use encrypted credentials:
-
-```bash
-python setup_credentials.py
-```
-
-This creates:
-- `crypto.key` - Encryption key
-- `encrypted_credentials.py` - Encrypted credentials
+Credentials can also be configured via the Settings page (`/settings`) in the web UI.
 
 ## Trade Recognition
 
@@ -109,9 +102,10 @@ python app.py  # Auto-reloads on file changes
 
 ## Security Notes
 
-- Never commit your `.env`, `crypto.key`, or `encrypted_credentials.py` files
+- Never commit your `.env` file (contains OAuth credentials)
 - All sensitive files are excluded via `.gitignore`
 - Database is stored locally in `trade_journal.db`
+- No login page — app auto-connects using OAuth2 on startup
 
 ## Contributing
 

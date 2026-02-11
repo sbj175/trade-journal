@@ -1,7 +1,7 @@
 @echo off
-REM Start Trade Journal Web Application
+REM Start OptionEdge Web Application
 
-echo Starting Trade Journal...
+echo Starting OptionEdge...
 
 REM Activate virtual environment if it exists
 if exist venv\Scripts\activate.bat (
@@ -20,7 +20,7 @@ if errorlevel 1 (
 )
 
 REM Start the application
-echo Opening Trade Journal in your browser...
+echo Opening OptionEdge in your browser...
 echo Dashboard: http://localhost:8000
 echo.
 echo Press Ctrl+C to stop the server

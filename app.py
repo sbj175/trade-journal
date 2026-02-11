@@ -23,7 +23,6 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.database.db_manager import DatabaseManager
-from src.api.tastytrade_client import TastytradeClient
 from src.models.order_models import OrderManager
 from src.models.position_inventory import PositionInventoryManager
 from src.models.order_processor_v2 import OrderProcessorV2
@@ -31,7 +30,7 @@ from src.models.strategy_detector import StrategyDetector
 from src.models.pnl_calculator_v2 import PnLCalculatorV2
 from src.models.position_enricher import PositionEnricher
 from src.models.lot_manager import LotManager
-from src.utils.auth_manager import AuthManager
+from src.utils.auth_manager import ConnectionManager
 
 # Configure logging
 logger.add(
@@ -72,8 +71,8 @@ order_processor_v2 = OrderProcessorV2(db, position_manager, lot_manager)
 strategy_detector = StrategyDetector(db)
 pnl_calculator_v2 = PnLCalculatorV2(db, position_manager, lot_manager)
 
-# Initialize authentication manager
-auth_manager = AuthManager()
+# Initialize connection manager (shared app-level client)
+connection_manager = ConnectionManager()
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
@@ -124,12 +123,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # Pydantic models for API
-class LoginRequest(BaseModel):
-    """Request model for user login"""
-    username: str
-    password: str
-
-
 class SyncRequest(BaseModel):
     days_back: int = 30
 
@@ -143,36 +136,49 @@ class TradeFilter(BaseModel):
     search_term: Optional[str] = None
 
 
+class StrategyTarget(BaseModel):
+    strategy_name: str
+    profit_target_pct: float
+    loss_target_pct: float
+
+
+class OrderCommentUpdate(BaseModel):
+    comment: str
+
+
+class PositionNoteUpdate(BaseModel):
+    note: str
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup"""
+    """Initialize database and connect to Tastytrade on startup"""
     logger.info("Starting OptionEdge Web App")
     db.initialize_database()
 
-    # Note: Auto-sync disabled since credentials are not stored
-    # Sync must be triggered manually by authenticated users via the web UI
-    # If you want auto-sync, configure TASTYTRADE_USERNAME and TASTYTRADE_PASSWORD
-    # environment variables and uncomment the code below
+    # Auto-connect to Tastytrade using OAuth credentials from .env
+    if connection_manager.is_configured():
+        logger.info("OAuth credentials found, connecting to Tastytrade...")
+        await connection_manager.connect()
 
-    # # Check if we need to automatically sync on startup
-    # try:
-    #     last_sync = db.get_last_sync_timestamp()
-    #     if last_sync:
-    #         # Calculate time since last sync
-    #         time_since_sync = datetime.now() - last_sync
-    #         hours_since_sync = time_since_sync.total_seconds() / 3600
-    #
-    #         # Auto-sync if it's been more than 6 hours since last sync and it's market hours
-    #         if hours_since_sync > 6:
-    #             logger.info(f"Auto-sync triggered: {hours_since_sync:.1f} hours since last sync")
-    #             # Note: Auto-sync runs in background, don't await to avoid blocking startup
-    #             asyncio.create_task(background_auto_sync())
-    #         else:
-    #             logger.info(f"No auto-sync needed: {hours_since_sync:.1f} hours since last sync")
-    #     else:
-    #         logger.info("No previous sync found - auto-sync will be triggered on first manual sync")
-    # except Exception as e:
-    #     logger.warning(f"Error checking auto-sync: {e}")
+        # Auto-sync if connected and it's been a while since last sync
+        if connection_manager.connected:
+            try:
+                last_sync = db.get_last_sync_timestamp()
+                if last_sync:
+                    time_since_sync = datetime.now() - last_sync
+                    hours_since_sync = time_since_sync.total_seconds() / 3600
+                    if hours_since_sync > 6:
+                        logger.info(f"Auto-sync triggered: {hours_since_sync:.1f} hours since last sync")
+                        asyncio.create_task(background_auto_sync())
+                    else:
+                        logger.info(f"No auto-sync needed: {hours_since_sync:.1f} hours since last sync")
+                else:
+                    logger.info("No previous sync found - sync will be triggered on first manual sync")
+            except Exception as e:
+                logger.warning(f"Error checking auto-sync: {e}")
+    else:
+        logger.warning("No OAuth credentials configured - visit /settings to set up Tastytrade connection")
 
 
 async def background_auto_sync():
@@ -189,10 +195,15 @@ async def background_auto_sync():
 async def sync_unified_internal():
     """Internal sync function that can be called without HTTP context"""
     from datetime import datetime, timedelta
-    
+
+    tastytrade = connection_manager.get_client()
+    if not tastytrade:
+        logger.error("Auto-sync: Not connected to Tastytrade")
+        return
+
     # Check last sync timestamp to determine date range
     last_sync = db.get_last_sync_timestamp()
-    
+
     if last_sync:
         # Calculate days back from last sync + 1 day buffer
         days_back = (datetime.now() - last_sync).days + 1
@@ -203,31 +214,23 @@ async def sync_unified_internal():
         # No previous sync, fetch last 30 days for auto-sync (conservative)
         days_back = 30
         logger.info(f"Auto-sync: first sync detected, fetching {days_back} days")
-    
-    # Initialize clients
-    tastytrade = TastytradeClient()
-    
-    # Authenticate
-    if not tastytrade.authenticate():
-        logger.error("Auto-sync: Failed to authenticate with Tastytrade")
-        return
-    
+
     # Save all accounts to database
     logger.info("Auto-sync: Saving account information...")
     accounts = tastytrade.get_all_accounts()
     for account in accounts:
         db.save_account(
-            account['account_number'], 
-            account['account_name'], 
+            account['account_number'],
+            account['account_name'],
             account['account_type']
         )
     logger.info(f"Auto-sync: Saved {len(accounts)} accounts")
-    
+
     # Fetch and save current positions for all accounts
     logger.info("Auto-sync: Fetching current positions from all accounts...")
-    all_positions = tastytrade.get_positions()
+    all_positions = await tastytrade.get_positions()
     total_positions = 0
-    
+
     for account_number, positions in all_positions.items():
         if positions:
             # Calculate opening dates for positions
@@ -238,81 +241,121 @@ async def sync_unified_internal():
                 total_positions += len(positions)
             else:
                 logger.error(f"Auto-sync: Failed to save positions for account {account_number}")
-    
+
     # Update last sync timestamp
     db.update_last_sync_timestamp()
     logger.info(f"Auto-sync completed: {total_positions} positions updated")
 
 
-async def require_auth(request: Request) -> str:
-    """
-    Verify that the request has valid authentication.
-
-    Returns the username if authenticated.
-    Raises HTTPException with 401 status if not authenticated.
-    """
-    session_id = request.cookies.get("session_id")
-
-    if not session_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    username = auth_manager.get_session_username(session_id)
-    if not username:
-        raise HTTPException(status_code=401, detail="Session invalid or expired")
-
-    return username
+def _serve_static_page(filename: str) -> HTMLResponse:
+    """Helper to serve a static HTML page"""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(app_dir, "static", filename)
+    with open(filepath, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
 
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/positions", response_class=HTMLResponse)
-async def root(request: Request):
+async def root():
     """Serve the main application - Open Positions Page"""
-    # Check authentication
-    try:
-        await require_auth(request)
-    except HTTPException:
-        # Redirect to login page if not authenticated
-        return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
-
-    # Use absolute path to work in bundled Tauri app and development
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    positions_file = os.path.join(app_dir, "static", "positions-dense.html")
-    with open(positions_file, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    return _serve_static_page("positions-dense.html")
 
 
 @app.get("/chains", response_class=HTMLResponse)
-async def order_chains(request: Request):
+async def order_chains():
     """Serve the Order Chains page"""
-    # Check authentication
-    try:
-        await require_auth(request)
-    except HTTPException:
-        # Redirect to login page if not authenticated
-        return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
-
-    # Use absolute path to work in bundled Tauri app and development
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    chains_file = os.path.join(app_dir, "static", "chains-dense.html")
-    with open(chains_file, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    return _serve_static_page("chains-dense.html")
 
 
 @app.get("/reports", response_class=HTMLResponse)
-async def reports_page(request: Request):
+async def reports_page():
     """Serve the Performance Reports page"""
-    # Check authentication
-    try:
-        await require_auth(request)
-    except HTTPException:
-        # Redirect to login page if not authenticated
-        return HTMLResponse(content="<script>window.location.href = '/login';</script>", status_code=401)
+    return _serve_static_page("reports-dense.html")
 
-    # Use absolute path to work in bundled Tauri app and development
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    reports_file = os.path.join(app_dir, "static", "reports-dense.html")
-    with open(reports_file, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+
+@app.get("/risk", response_class=HTMLResponse)
+async def risk_dashboard():
+    """Serve the Portfolio Risk X-Ray page"""
+    return _serve_static_page("risk-dashboard.html")
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page():
+    """Serve the Settings page"""
+    return _serve_static_page("settings.html")
+
+
+@app.get("/api/settings/targets")
+async def get_strategy_targets():
+    """Get all strategy P&L targets"""
+    targets = db.get_strategy_targets()
+    return targets
+
+
+@app.post("/api/settings/targets")
+async def save_strategy_targets(targets: List[StrategyTarget]):
+    """Save strategy P&L targets"""
+    target_dicts = [t.model_dump() for t in targets]
+    success = db.save_strategy_targets(target_dicts)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save targets")
+    return {"message": "Targets saved successfully"}
+
+
+@app.post("/api/settings/targets/reset")
+async def reset_strategy_targets():
+    """Reset strategy targets to defaults"""
+    success = db.reset_strategy_targets()
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to reset targets")
+    return {"message": "Targets reset to defaults"}
+
+
+@app.get("/api/order-comments")
+async def get_order_comments():
+    """Get all order comments"""
+    comments = db.get_all_order_comments()
+    return {"comments": comments}
+
+
+@app.put("/api/order-comments/{order_id}")
+async def save_order_comment(order_id: str, body: OrderCommentUpdate):
+    """Save or delete a comment for an order"""
+    success = db.save_order_comment(order_id, body.comment)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save comment")
+    return {"message": "Comment saved"}
+
+
+@app.get("/api/position-notes")
+async def get_position_notes():
+    """Get all position notes with chain→underlying mapping for cross-page resolution"""
+    notes = db.get_all_position_notes()
+    # Build chain_id → underlying/account mapping so Positions page
+    # can find chain-keyed notes even when position enrichment fails
+    chain_map = {}
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT chain_id, underlying, account_number FROM order_chains")
+            for row in cursor.fetchall():
+                chain_map[str(row['chain_id'])] = {
+                    'underlying': row['underlying'],
+                    'account': row['account_number']
+                }
+    except Exception as e:
+        logger.warning(f"Could not build chain map for notes: {e}")
+    return {"notes": notes, "chain_map": chain_map}
+
+
+@app.put("/api/position-notes/{note_key:path}")
+async def save_position_note(note_key: str, body: PositionNoteUpdate):
+    """Save or delete a note for a position"""
+    success = db.save_position_note(note_key, body.note)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save note")
+    return {"message": "Note saved"}
 
 
 @app.get("/test_websocket.html", response_class=HTMLResponse)
@@ -332,84 +375,75 @@ async def health_check():
 
 
 # ============================================================================
-# Authentication Endpoints
+# Connection / Credential Endpoints
 # ============================================================================
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page():
-    """Serve the login page"""
-    # Use absolute path to work in bundled Tauri app and development
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    login_file = os.path.join(app_dir, "static", "login.html")
-    with open(login_file, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+@app.get("/api/connection/status")
+async def get_connection_status():
+    """Get Tastytrade connection status"""
+    return connection_manager.get_status()
 
 
-@app.post("/api/auth/login")
-async def login(request: LoginRequest):
-    """
-    Authenticate user with Tastytrade credentials.
-
-    Returns session cookie on successful authentication.
-    """
-    success, session_id = auth_manager.authenticate(request.username, request.password)
-
-    if success:
-        # Create response with session cookie
-        response = JSONResponse(
-            {"message": "Login successful"},
-            status_code=200
-        )
-        # Set session cookie (HttpOnly for security, expires on browser close)
-        response.set_cookie(
-            key="session_id",
-            value=session_id,
-            httponly=True,
-            secure=False,  # Set to True in production with HTTPS
-            samesite="lax",
-            max_age=3600  # 1 hour
-        )
-        logger.info(f"User authenticated: {request.username}")
-        return response
-    else:
-        logger.warning(f"Failed login attempt for user: {request.username}")
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+@app.post("/api/connection/reconnect")
+async def reconnect():
+    """Force reconnection to Tastytrade (after .env update)"""
+    from dotenv import load_dotenv
+    load_dotenv(override=True)  # Reload .env to pick up new values
+    success = await connection_manager.connect()
+    return connection_manager.get_status()
 
 
-@app.post("/api/auth/logout")
-async def logout(request: Request):
-    """
-    Logout the current user by invalidating their session.
-    """
-    session_id = request.cookies.get("session_id")
-
-    if session_id:
-        auth_manager.logout(session_id)
-        logger.info("User logged out")
-
-    # Clear session cookie
-    response = JSONResponse({"message": "Logged out successfully"})
-    response.delete_cookie("session_id")
-    return response
+class CredentialUpdate(BaseModel):
+    provider_secret: str
+    refresh_token: str
 
 
-@app.get("/api/auth/verify")
-async def verify_auth(request: Request):
-    """
-    Verify if the current session is valid.
+@app.get("/api/settings/credentials")
+async def get_credentials_status():
+    """Check if OAuth credentials are configured (never expose actual secrets)"""
+    return {"configured": connection_manager.is_configured()}
 
-    Used by frontend to check authentication status.
-    """
-    session_id = request.cookies.get("session_id")
 
-    if not session_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+@app.post("/api/settings/credentials")
+async def save_credentials(creds: CredentialUpdate):
+    """Save OAuth credentials to .env file"""
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 
-    username = auth_manager.get_session_username(session_id)
-    if not username:
-        raise HTTPException(status_code=401, detail="Session invalid or expired")
+        # Read existing .env content
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
 
-    return {"authenticated": True, "username": username}
+        # Update or add credential lines
+        new_lines = []
+        found_secret = False
+        found_token = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('TASTYTRADE_PROVIDER_SECRET'):
+                new_lines.append(f'TASTYTRADE_PROVIDER_SECRET={creds.provider_secret}\n')
+                found_secret = True
+            elif stripped.startswith('TASTYTRADE_REFRESH_TOKEN'):
+                new_lines.append(f'TASTYTRADE_REFRESH_TOKEN={creds.refresh_token}\n')
+                found_token = True
+            else:
+                new_lines.append(line)
+
+        if not found_secret:
+            new_lines.append(f'TASTYTRADE_PROVIDER_SECRET={creds.provider_secret}\n')
+        if not found_token:
+            new_lines.append(f'TASTYTRADE_REFRESH_TOKEN={creds.refresh_token}\n')
+
+        with open(env_path, 'w') as f:
+            f.writelines(new_lines)
+
+        logger.info("OAuth credentials saved to .env")
+        return {"message": "Credentials saved successfully"}
+    except Exception as e:
+        logger.error(f"Failed to save credentials: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
@@ -420,19 +454,19 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            # Check if we have cached chains for THIS account or "All Accounts"
-            if account_number == '':
-                # Empty string = "All Accounts" → check if we have any cached chains at all
-                cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
+            if account_number == '' or account_number is None:
+                # "All Accounts" → verify cache covers all accounts that have transactions
+                cursor.execute("SELECT COUNT(DISTINCT account_number) FROM order_chains")
+                cached_accounts = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(DISTINCT account_number) FROM raw_transactions")
+                total_accounts = cursor.fetchone()[0]
+                has_cache = cached_accounts > 0 and cached_accounts >= total_accounts
             elif account_number:
                 # Specific account number → check for chains in that account
                 cursor.execute("SELECT COUNT(*) FROM order_chains WHERE account_number = ? LIMIT 1", (account_number,))
+                has_cache = cursor.fetchone()[0] > 0
             else:
-                # None (no parameter passed) → check if we have any cached chains
-                # This shouldn't happen in normal operation but handle it for backward compatibility
-                cursor.execute("SELECT COUNT(*) FROM order_chains LIMIT 1")
-            count = cursor.fetchone()[0]
-            has_cache = count > 0
+                has_cache = False
             if has_cache:
                 account_display = account_number if account_number is not None else "unspecified"
                 logger.debug(f"Using cached chains for account {account_display} (V2 primary path temporarily disabled)")
@@ -512,6 +546,36 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                 for order_row in order_rows:
                     try:
                         order_data = json.loads(order_row[0])
+
+                        # Clean up system-generated order IDs and types for display
+                        order_id = order_data.get('order_id', '')
+                        if order_id.startswith('SYSTEM_'):
+                            if 'Expiration' in order_id:
+                                order_data['display_type'] = 'EXPIRATION'
+                                # Extract date from order_date if available
+                                order_date = order_data.get('order_date', '')
+                                if order_date:
+                                    date_part = order_date[:10].replace('-', '')
+                                    order_data['order_id'] = f"EXPIRATION_{date_part}"
+                            elif 'Assignment' in order_id:
+                                order_data['display_type'] = 'ASSIGNMENT'
+                                order_date = order_data.get('order_date', '')
+                                if order_date:
+                                    date_part = order_date[:10].replace('-', '')
+                                    order_data['order_id'] = f"ASSIGNMENT_{date_part}"
+                            elif 'Exercise' in order_id:
+                                order_data['display_type'] = 'EXERCISE'
+                                order_date = order_data.get('order_date', '')
+                                if order_date:
+                                    date_part = order_date[:10].replace('-', '')
+                                    order_data['order_id'] = f"EXERCISE_{date_part}"
+                            else:
+                                order_data['display_type'] = order_data.get('order_type', 'CLOSING')
+                        else:
+                            # For regular orders, display_type is the same as order_type
+                            if 'display_type' not in order_data:
+                                order_data['display_type'] = order_data.get('order_type', 'UNKNOWN')
+
                         orders.append(order_data)
                     except (json.JSONDecodeError, IndexError) as e:
                         logger.warning(f"Failed to parse cached order data for chain {chain_id}: {e}")
@@ -654,16 +718,20 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
         return None
 
 
-async def update_chain_cache(chains, affected_underlyings: set = None):
+async def update_chain_cache(chains, affected_underlyings: set = None, affected_account: str = None):
     """Update the order_chains table with fresh V2 derivation results
 
     Args:
         chains: List of Chain objects to cache
         affected_underlyings: Optional set of underlyings to update incrementally.
-                             If None, clears and rebuilds entire cache.
+                             If None and no affected_account, clears and rebuilds entire cache.
+        affected_account: Optional account number to scope the cache update.
+                         Only clears/rebuilds chains for this account.
     """
     if affected_underlyings:
         logger.info(f"[CACHE UPDATE] Incremental update for {len(affected_underlyings)} underlyings: {affected_underlyings}")
+    if affected_account:
+        logger.info(f"[CACHE UPDATE] Account-scoped update for account: {affected_account}")
     logger.info(f"[CACHE UPDATE] Starting update with {len(chains)} chains")
     try:
         with db.get_connection() as conn:
@@ -694,6 +762,21 @@ async def update_chain_cache(chains, affected_underlyings: set = None):
                 cursor.execute(f"DELETE FROM order_chains WHERE underlying IN ({placeholders})",
                               tuple(affected_underlyings))
                 logger.info(f"[CACHE UPDATE] Cleared cache for underlyings: {affected_underlyings}")
+            elif affected_account:
+                # Account-scoped update: only clear chains for this account
+                cursor.execute("""
+                    DELETE FROM order_chain_cache WHERE chain_id IN (
+                        SELECT chain_id FROM order_chains WHERE account_number = ?
+                    )
+                """, (affected_account,))
+                cursor.execute("""
+                    DELETE FROM order_chain_members WHERE chain_id IN (
+                        SELECT chain_id FROM order_chains WHERE account_number = ?
+                    )
+                """, (affected_account,))
+                cursor.execute("DELETE FROM order_chains WHERE account_number = ?",
+                              (affected_account,))
+                logger.info(f"[CACHE UPDATE] Cleared cache for account: {affected_account}")
             else:
                 # Full rebuild: clear entire cache
                 cursor.execute("DELETE FROM order_chains")
@@ -750,10 +833,10 @@ async def update_chain_cache(chains, affected_underlyings: set = None):
                     # Calculate order P&L from transactions since V2 Order doesn't have total_pnl
                     order_pnl = 0.0
                     for tx in order.transactions:
-                        # For cash settlements, use net_value directly (price contains strike, not premium)
+                        # For cash settlements, use value directly (price contains strike, not premium)
                         if tx.is_cash_settlement:
-                            # net_value is already signed correctly (negative for loss, positive for gain)
-                            order_pnl += tx.net_value
+                            # value is already signed correctly (negative for loss, positive for gain)
+                            order_pnl += tx.value
                         elif tx.is_closing:
                             # For closing transactions, calculate P&L vs opening price
                             # This is simplified - the V2 frontend does more complex P&L calc
@@ -855,9 +938,9 @@ async def update_chain_cache(chains, affected_underlyings: set = None):
                     # Calculate total P&L for this order
                     order_pnl = 0.0
                     for tx in order.transactions:
-                        # For cash settlements, use net_value directly (price contains strike, not premium)
+                        # For cash settlements, use value directly (price contains strike, not premium)
                         if tx.is_cash_settlement:
-                            order_pnl += tx.net_value
+                            order_pnl += tx.value
                         else:
                             # Check if option by looking for strike price
                             multiplier = 100 if tx.strike is not None else 1
@@ -872,7 +955,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None):
                     order_data = {
                         "order_id": order.order_id,
                         "order_type": order.order_type.value,
-                        "order_date": order.executed_at.date().isoformat() if order.executed_at else None,
+                        "order_date": order.executed_at.isoformat() if order.executed_at else None,
                         "strategy_type": detected_strategy,
                         "status": "FILLED",
                         "total_pnl": order_pnl,
@@ -881,9 +964,9 @@ async def update_chain_cache(chains, affected_underlyings: set = None):
                     
                     # Add positions from transactions with lot data (V3)
                     for idx, tx in enumerate(order.transactions):
-                        # For cash settlements, use net_value directly
+                        # For cash settlements, use value directly
                         if tx.is_cash_settlement:
-                            tx_pnl = tx.net_value
+                            tx_pnl = tx.value
                         else:
                             multiplier = 100 if tx.strike is not None else 1
                             tx_amount = tx.price * abs(tx.quantity) * multiplier
@@ -1049,9 +1132,11 @@ async def get_order_chains(
                 all_chains.append(chain)
 
         # Update cache with fresh V2 data
-        logger.info(f"About to update cache with {len(all_chains)} chains...")
+        # Scope cache update to the requested account so other accounts' cached data is preserved
+        cache_account = account_number if account_number and account_number != '' else None
+        logger.info(f"About to update cache with {len(all_chains)} chains (account scope: {cache_account or 'all'})...")
         try:
-            await update_chain_cache(all_chains)
+            await update_chain_cache(all_chains, affected_account=cache_account)
             logger.info("Cache update completed")
         except Exception as cache_err:
             logger.warning(f"Could not update cache: {cache_err}")
@@ -1073,37 +1158,28 @@ async def get_order_chains(
         live_positions_cache = {}
         api_fetch_start = time.time()
         try:
-            client = TastytradeClient()
-            if client.authenticate():
+            client = connection_manager.get_client()
+            if client:
                 # Get unique account numbers from chains
                 unique_accounts = set()
                 for chain in paginated_chains:
                     if chain.status == 'OPEN':  # Only need for open chains
                         unique_accounts.add(chain.account_number)
 
-                # Fetch positions for all accounts in parallel for better performance
+                # Fetch positions for all accounts
                 if unique_accounts:
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-                    def fetch_positions_for_account(acct):
+                    for acct in unique_accounts:
                         try:
-                            data = client.get_positions(account_number=acct)
-                            return acct, data.get(acct, [])
+                            data = await client.get_positions(account_number=acct)
+                            live_positions_cache[acct] = data.get(acct, [])
                         except Exception as e:
                             logger.warning(f"Could not fetch positions for account {acct}: {e}")
-                            return acct, []
-
-                    with ThreadPoolExecutor(max_workers=min(5, len(unique_accounts))) as executor:
-                        futures = {executor.submit(fetch_positions_for_account, acct): acct
-                                   for acct in unique_accounts}
-                        for future in as_completed(futures):
-                            acct, positions = future.result()
-                            live_positions_cache[acct] = positions
+                            live_positions_cache[acct] = []
 
                 api_fetch_time = time.time() - api_fetch_start
-                logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in parallel in {api_fetch_time:.2f}s")
+                logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in {api_fetch_time:.2f}s")
             else:
-                logger.warning("Could not authenticate for live position data - using cached data")
+                logger.warning("Not connected to Tastytrade - using cached data")
                 api_fetch_time = time.time() - api_fetch_start
         except Exception as e:
             logger.warning(f"Could not pre-fetch live positions: {e}")
@@ -1219,10 +1295,21 @@ async def get_order_chains(
                     else:
                         display_order_id = f"SYSTEM_{order.executed_at.strftime('%Y%m%d')}"
                 
+                # Determine display type (EXPIRATION, ASSIGNMENT, etc. for system orders)
+                display_type = order.order_type.value
+                if order.order_id.startswith('SYSTEM_'):
+                    if 'Expiration' in order.order_id:
+                        display_type = 'EXPIRATION'
+                    elif 'Assignment' in order.order_id:
+                        display_type = 'ASSIGNMENT'
+                    elif 'Exercise' in order.order_id:
+                        display_type = 'EXERCISE'
+
                 order_info = {
                     'order_id': display_order_id,
                     'order_type': order.order_type.value,
-                    'order_date': order.executed_at.date().isoformat(),
+                    'display_type': display_type,
+                    'order_date': order.executed_at.isoformat(),
                     'strategy_type': None,
                     'status': 'CLOSED' if order.order_type.value == 'CLOSING' else 'FILLED',
                     'positions': [],
@@ -1508,28 +1595,13 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
             # If cache miss and no refresh requested, still try fresh quotes
             logger.info(f"Cache miss for symbols: {symbol_list}, attempting fresh quotes")
 
-        # Get session credentials from request for fresh quotes
-        session_id = None
-        username = None
-        password = None
-
-        if request:
-            session_id = request.cookies.get("session_id")
-            if session_id:
-                username, password = auth_manager.get_session_credentials(session_id)
-
-        # Initialize Tastytrade client with session credentials if available, otherwise use env vars
-        if username and password:
-            client = TastytradeClient(username=username, password=password)
-        else:
-            client = TastytradeClient()
-
-        # Authenticate with Tastytrade
-        if not client.authenticate():
-            # If we can't authenticate for fresh quotes, return cached as fallback
+        # Use shared client
+        client = connection_manager.get_client()
+        if not client:
+            # If not connected, return cached as fallback
             cached_quotes = db.get_cached_quotes(symbol_list)
             if cached_quotes:
-                logger.info(f"Auth failed, returning fallback cached quotes: {list(cached_quotes.keys())}")
+                logger.info(f"Not connected, returning fallback cached quotes: {list(cached_quotes.keys())}")
                 for symbol, quote_data in cached_quotes.items():
                     if 'mark' in quote_data and quote_data['mark'] is not None:
                         quote_data['price'] = quote_data['mark']
@@ -1538,15 +1610,15 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
                     if 'iv_percentile' in quote_data:
                         quote_data['ivPercentile'] = quote_data['iv_percentile']
                 return cached_quotes
-            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
-        
+            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
+
         # Clear cache if refresh requested
         if refresh:
             client.clear_quote_cache()
             logger.info("Cache cleared due to refresh parameter")
-        
+
         # Get quotes from Tastytrade API
-        quotes = client.get_quotes(symbol_list)
+        quotes = await client.get_quotes(symbol_list)
         
         logger.info(f"API endpoint returning quotes for {len(quotes)} symbols")
         
@@ -1612,6 +1684,42 @@ async def get_account_balances(account_number: Optional[str] = None):
             return {"balances": balances}
     except Exception as e:
         logger.error(f"Error getting account balances: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/debug/balances")
+async def debug_balances():
+    """Debug endpoint to see all balance fields from Tastytrade API"""
+    try:
+        tastytrade = connection_manager.get_client()
+        if not tastytrade:
+            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
+
+        all_balances = []
+        for account in tastytrade.accounts:
+            balance = await account.get_balances(tastytrade.session)
+
+            # Get all numeric fields
+            balance_data = {
+                'account_number': account.account_number,
+            }
+            for field in dir(balance):
+                if not field.startswith('_'):
+                    try:
+                        value = getattr(balance, field)
+                        if not callable(value) and value is not None:
+                            # Convert Decimal to float for JSON
+                            if hasattr(value, '__float__'):
+                                balance_data[field] = float(value)
+                            else:
+                                balance_data[field] = str(value)
+                    except:
+                        pass
+            all_balances.append(balance_data)
+
+        return {"balances": all_balances}
+    except Exception as e:
+        logger.error(f"Debug balance error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1710,28 +1818,15 @@ async def background_incremental_sync():
             days_back = 30
             logger.info(f"Background sync: no previous sync, fetching {days_back} days")
 
-        # Try to get authenticated client from auth manager
-        try:
-            # Get first available session to use for sync
-            session_credentials = auth_manager.get_any_session_credentials()
-            if not session_credentials:
-                logger.warning("Background sync: no authenticated sessions available, skipping sync")
-                return
-
-            username, password = session_credentials
-            tastytrade = TastytradeClient(username=username, password=password)
-
-            if not tastytrade.authenticate():
-                logger.error("Background sync: failed to authenticate")
-                return
-
-        except Exception as e:
-            logger.warning(f"Background sync: could not get authenticated client: {e}")
+        # Use shared client
+        tastytrade = connection_manager.get_client()
+        if not tastytrade:
+            logger.warning("Background sync: not connected to Tastytrade, skipping")
             return
 
         try:
             # Fetch transactions from all accounts
-            transactions = tastytrade.get_transactions(days_back=days_back)
+            transactions = await tastytrade.get_transactions(days_back=days_back)
             logger.info(f"Background sync: fetched {len(transactions)} transactions")
 
             # Save raw transactions
@@ -1739,7 +1834,7 @@ async def background_incremental_sync():
             logger.info(f"Background sync: saved {raw_saved} raw transactions")
 
             # Fetch and save current positions
-            all_positions = tastytrade.get_positions()
+            all_positions = await tastytrade.get_positions()
             total_positions = 0
 
             for account_number, positions in all_positions.items():
@@ -1982,35 +2077,20 @@ async def get_dashboard_data(account_number: Optional[str] = None):
 
 
 @app.post("/api/sync-positions-only")
-async def sync_positions_only(request: Request):
+async def sync_positions_only():
     """Fast sync that only updates current positions without reprocessing orders"""
     try:
-        # Check authentication
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
+        tastytrade = connection_manager.get_client()
+        if not tastytrade:
+            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
 
-        logger.info(f"Starting positions-only sync (fast mode) for user: {username}...")
+        logger.info("Starting positions-only sync (fast mode)...")
 
-        # Initialize client with credentials from session
-        tastytrade = TastytradeClient(username=username, password=password)
-
-        # Authenticate
-        if not tastytrade.authenticate():
-            logger.error(f"Failed to authenticate with Tastytrade for user: {username}")
-            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
-        
         # Fetch and save current positions for all accounts
         logger.info("Fetching current positions from all accounts...")
-        all_positions = tastytrade.get_positions()
+        all_positions = await tastytrade.get_positions()
         total_positions = 0
-        
+
         for account_number, positions in all_positions.items():
             if positions:
                 # Calculate opening dates for positions
@@ -2021,10 +2101,10 @@ async def sync_positions_only(request: Request):
                     total_positions += len(positions)
                 else:
                     logger.error(f"Failed to save positions for account {account_number}")
-        
+
         # Fetch and save account balances
         logger.info("Fetching account balances...")
-        balances = tastytrade.get_account_balances()
+        balances = await tastytrade.get_account_balances()
         if balances:
             for balance in balances:
                 db.save_account_balance(balance)
@@ -2042,23 +2122,16 @@ async def sync_positions_only(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/sync")
-async def sync_unified(request: Request):
+async def sync_unified():
     """Unified sync endpoint with smart date range calculation"""
     try:
         from datetime import datetime, timedelta
 
-        # Check authentication and get credentials from session
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
+        tastytrade = connection_manager.get_client()
+        if not tastytrade:
+            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
 
-        logger.info(f"Sync requested by user: {username}")
+        logger.info("Sync requested")
 
         # Check last sync timestamp to determine date range
         last_sync = db.get_last_sync_timestamp()
@@ -2074,28 +2147,20 @@ async def sync_unified(request: Request):
             days_back = 90
             logger.info(f"First sync detected, fetching {days_back} days")
 
-        # Initialize client with credentials from session
-        tastytrade = TastytradeClient(username=username, password=password)
-
-        # Authenticate
-        if not tastytrade.authenticate():
-            logger.error(f"Failed to authenticate with Tastytrade for user: {username}")
-            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
-        
         # Save all accounts to database
         logger.info("Saving account information...")
         accounts = tastytrade.get_all_accounts()
         for account in accounts:
             db.save_account(
-                account['account_number'], 
-                account['account_name'], 
+                account['account_number'],
+                account['account_name'],
                 account['account_type']
             )
         logger.info(f"Saved {len(accounts)} accounts")
-        
+
         # Fetch transactions from all accounts
         logger.info("Fetching transactions from all accounts...")
-        transactions = tastytrade.get_transactions(days_back=days_back)
+        transactions = await tastytrade.get_transactions(days_back=days_back)
         logger.info(f"Fetched {len(transactions)} transactions")
         
         # Save raw transactions first (for order ID support)
@@ -2112,9 +2177,9 @@ async def sync_unified(request: Request):
         
         # Also fetch and save current positions for all accounts
         logger.info("Fetching current positions from all accounts...")
-        all_positions = tastytrade.get_positions()
+        all_positions = await tastytrade.get_positions()
         total_positions = 0
-        
+
         for account_number, positions in all_positions.items():
             if positions:
                 # Calculate opening dates for positions
@@ -2125,10 +2190,10 @@ async def sync_unified(request: Request):
                     total_positions += len(positions)
                 else:
                     logger.error(f"Failed to save positions for account {account_number}")
-        
+
         # Fetch and save account balances for all accounts
         logger.info("Fetching account balances...")
-        balances = tastytrade.get_account_balances()
+        balances = await tastytrade.get_account_balances()
         if balances:
             for balance in balances:
                 success = db.save_account_balance(balance)
@@ -2235,21 +2300,10 @@ async def get_sync_status():
 
 
 @app.post("/api/migrate-realized-pnl")
-async def migrate_realized_pnl(request: Request):
+async def migrate_realized_pnl():
     """One-time migration to populate realized_pnl for existing chains"""
     try:
-        # Check authentication
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
-
-        logger.info(f"Starting realized P&L migration for user: {username}...")
+        logger.info("Starting realized P&L migration...")
         
         # Get all chains for complete recalculation
         with db.get_connection() as conn:
@@ -2298,27 +2352,19 @@ async def debug_chains():
 
 
 @app.post("/api/sync/initial")
-async def initial_sync(request: Request):
+async def initial_sync():
     """Complete initial sync - clears database and rebuilds from scratch"""
     try:
-        # Check authentication and get credentials from session
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
+        tastytrade = connection_manager.get_client()
+        if not tastytrade:
+            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
 
-        logger.info(f"Starting INITIAL SYNC for user: {username} - this will rebuild the entire database")
+        logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
 
         # Reset sync metadata
         logger.info("Resetting sync metadata...")
         db.reset_sync_metadata()
 
-        # Note: User data preservation removed since we're moving away from trades model
         logger.info("Skipping user data preservation (moving to order-based system)")
 
         # Clear and recreate database tables with latest schema
@@ -2333,9 +2379,9 @@ async def initial_sync(request: Request):
             cursor.execute("DROP TABLE IF EXISTS orders")
 
             # Clear data tables but keep structure
-            cursor.execute("DELETE FROM positions")  # Keep for current positions
+            cursor.execute("DELETE FROM positions")
             cursor.execute("DELETE FROM account_balances")
-            cursor.execute("DELETE FROM raw_transactions")  # Clear raw transactions too
+            cursor.execute("DELETE FROM raw_transactions")
 
             logger.info("Database cleared successfully")
 
@@ -2343,28 +2389,20 @@ async def initial_sync(request: Request):
         logger.info("Recreating database tables with latest schema...")
         db.initialize_database()
 
-        # Initialize client with credentials from session
-        tastytrade = TastytradeClient(username=username, password=password)
-
-        # Authenticate
-        if not tastytrade.authenticate():
-            logger.error(f"Failed to authenticate with Tastytrade for user: {username}")
-            raise HTTPException(status_code=401, detail="Failed to authenticate with Tastytrade")
-        
         # Save all accounts to database
         logger.info("Saving account information...")
         accounts = tastytrade.get_all_accounts()
         for account in accounts:
             db.save_account(
-                account['account_number'], 
-                account['account_name'], 
+                account['account_number'],
+                account['account_name'],
                 account['account_type']
             )
         logger.info(f"Saved {len(accounts)} accounts")
-        
+
         # Fetch ALL transactions (longer period for initial sync)
         logger.info("Fetching ALL transactions (last 365 days)...")
-        transactions = tastytrade.get_transactions(days_back=365)
+        transactions = await tastytrade.get_transactions(days_back=365)
         logger.info(f"Fetched {len(transactions)} transactions")
         
         # Save raw transactions first (for order ID support)
@@ -2390,12 +2428,11 @@ async def initial_sync(request: Request):
         
         # Fetch and save current positions for all accounts
         logger.info("Fetching current positions from all accounts...")
-        all_positions = tastytrade.get_positions()
+        all_positions = await tastytrade.get_positions()
         total_positions = 0
-        
+
         for account_number, positions in all_positions.items():
             if positions:
-                # Calculate opening dates for positions
                 positions_with_dates = calculate_position_opening_dates(positions, account_number)
                 success = db.save_positions(positions_with_dates, account_number)
                 if success:
@@ -2403,10 +2440,10 @@ async def initial_sync(request: Request):
                     total_positions += len(positions)
                 else:
                     logger.error(f"Failed to save positions for account {account_number}")
-        
+
         # Fetch and save account balances for all accounts
         logger.info("Fetching account balances...")
-        balances = tastytrade.get_account_balances()
+        balances = await tastytrade.get_account_balances()
         if balances:
             for balance in balances:
                 success = db.save_account_balance(balance)
@@ -2414,7 +2451,7 @@ async def initial_sync(request: Request):
                     logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
                 else:
                     logger.error(f"Failed to save balance for account {balance.get('account_number')}")
-        
+
         logger.info(f"INITIAL SYNC completed: {result['orders_saved']} orders saved, {result['chains_saved']} chains created, {total_positions} positions updated")
         
         # Update last sync timestamp and mark initial sync completed
@@ -2449,21 +2486,10 @@ async def initial_sync(request: Request):
 
 
 @app.post("/api/reprocess-chains")
-async def reprocess_chains(request: Request):
+async def reprocess_chains():
     """Reprocess orders and chains from existing raw transactions using V2 system"""
     try:
-        # Check authentication
-        try:
-            session_id = request.cookies.get("session_id")
-            if not session_id:
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            username, password = auth_manager.get_session_credentials(session_id)
-            if not username or not password:
-                raise HTTPException(status_code=401, detail="Session invalid or expired")
-        except HTTPException:
-            raise
-
-        logger.info(f"Starting V2 chain reprocessing from database for user: {username}")
+        logger.info("Starting V2 chain reprocessing from database")
 
         # Get all raw transactions from database
         raw_transactions = db.get_raw_transactions()
@@ -2528,11 +2554,9 @@ async def get_monthly_performance(year: int = None):
 
 
 @app.get("/api/reports/strategies")
-async def get_available_strategies(request: Request):
+async def get_available_strategies():
     """Get list of strategies that have been used in closed trades"""
     try:
-        await require_auth(request)
-
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -2693,15 +2717,12 @@ def calculate_max_risk_reward(cursor, chain_id: str, strategy_type: str) -> tupl
 
 @app.get("/api/reports/performance")
 async def get_performance_report(
-    request: Request,
     account_number: Optional[str] = None,
     days: str = "90",
     strategies: str = ""
 ):
     """Get performance report data for closed trades"""
     try:
-        await require_auth(request)
-
         # Parse parameters
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
@@ -3033,39 +3054,21 @@ async def websocket_quotes(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection accepted")
 
-    client = None
     subscribed_symbols = []
 
     try:
         # Send a connection confirmation
         await websocket.send_json({"type": "connected", "message": "WebSocket connected"})
 
-        # Get session credentials from cookies
-        session_id = websocket.cookies.get("session_id")
-        if not session_id:
-            logger.error("WebSocket connection rejected: No session")
-            await websocket.send_json({"error": "Not authenticated - please login first"})
+        # Use shared client
+        client = connection_manager.get_client()
+        if not client:
+            logger.error("WebSocket connection rejected: Not connected to Tastytrade")
+            await websocket.send_json({"error": "Not connected to Tastytrade - check settings"})
             await websocket.close()
             return
 
-        username, password = auth_manager.get_session_credentials(session_id)
-        if not username or not password:
-            logger.error("WebSocket connection rejected: Invalid session")
-            await websocket.send_json({"error": "Session invalid or expired"})
-            await websocket.close()
-            return
-
-        # Initialize Tastytrade client with session credentials
-        client = TastytradeClient(username=username, password=password)
-
-        # Authenticate with Tastytrade
-        if not client.authenticate():
-            logger.error(f"Tastytrade authentication failed for WebSocket user: {username}")
-            await websocket.send_json({"error": "Failed to authenticate with Tastytrade"})
-            await websocket.close()
-            return
-
-        logger.info(f"WebSocket client connected and Tastytrade authenticated for user: {username}")
+        logger.info("WebSocket client connected using shared Tastytrade session")
         
         # Create tasks for receiving messages and sending updates
         async def receive_messages():
@@ -3083,7 +3086,7 @@ async def websocket_quotes(websocket: WebSocket):
                             # Send initial quotes (force fresh to populate cache)
                             if subscribed_symbols:
                                 client.clear_quote_cache()  # Clear on first subscription to get fresh data
-                                quotes = client.get_quotes(subscribed_symbols)
+                                quotes = await client.get_quotes(subscribed_symbols)
                                 await websocket.send_json({
                                     "type": "quotes",
                                     "data": quotes
@@ -3115,7 +3118,7 @@ async def websocket_quotes(websocket: WebSocket):
                     if subscribed_symbols:
                         # Don't clear cache - let the 30-second TTL work naturally
                         # This ensures we use cached quotes when available and only fetch fresh data when cache expires
-                        quotes = client.get_quotes(subscribed_symbols)
+                        quotes = await client.get_quotes(subscribed_symbols)
                         
                         # Cache quotes in database for persistence
                         for symbol, quote_data in quotes.items():
