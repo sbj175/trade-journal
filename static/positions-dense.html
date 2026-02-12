@@ -57,10 +57,8 @@
                 underlyingQuotes: {},
                 quoteUpdateCounter: 0,
                 positionComments: {},
-                chainNoteMap: {},
                 _noteSaveTimers: {},
                 selectedAccount: '',
-                selectedInstrumentType: '',
                 selectedUnderlying: '',
                 isLoading: false,
                 error: null,
@@ -106,7 +104,7 @@
 
                             let groupKey, displayKey;
                             if (chainId) {
-                                groupKey = `${accountNumber}|${underlying}|${chainId}|${strategyType}`;
+                                groupKey = `${accountNumber}|${chainId}`;
                                 displayKey = underlying;
                             } else {
                                 const expiration = position.expires_at || position.expiration || 'Unknown';
@@ -126,6 +124,9 @@
                             }
                             groups.get(groupKey).positions.push(position);
                         });
+
+                        // Merge share + short-call groups into Covered Call groups
+                        this.mergeCoveredCallGroups(groups);
 
                         // Apply sorting based on sortColumn and sortDirection
                         this.quoteUpdateCounter; // ensure recompute on quote changes
@@ -294,7 +295,10 @@
                             const quotes = await response.json();
                             for (const [symbol, quoteData] of Object.entries(quotes)) {
                                 if (quoteData && typeof quoteData === 'object') {
-                                    this.underlyingQuotes[symbol] = quoteData;
+                                    this.underlyingQuotes[symbol] = {
+                                        ...this.underlyingQuotes[symbol],
+                                        ...quoteData
+                                    };
                                 }
                             }
                             this.lastQuoteUpdate = new Date().toLocaleTimeString();
@@ -320,7 +324,12 @@
                                 let quotesUpdated = false;
                                 for (const [symbol, quoteData] of Object.entries(message.data)) {
                                     if (quoteData && typeof quoteData === 'object') {
-                                        this.underlyingQuotes[symbol] = quoteData;
+                                        // Merge with existing data so IVR/IV fields survive
+                                        // when a quote refresh omits them temporarily
+                                        this.underlyingQuotes[symbol] = {
+                                            ...this.underlyingQuotes[symbol],
+                                            ...quoteData
+                                        };
                                         quotesUpdated = true;
                                     }
                                 }
@@ -367,7 +376,6 @@
                 applyFilters() {
                     this.filteredPositions = this.allPositions.filter(position => {
                         if (this.selectedAccount && position.account_number !== this.selectedAccount) return false;
-                        if (this.selectedInstrumentType && position.instrument_type !== this.selectedInstrumentType) return false;
                         if (this.selectedUnderlying) {
                             const underlying = this.getUnderlyingSymbol(position);
                             if (underlying !== this.selectedUnderlying) return false;
@@ -378,7 +386,6 @@
                     if (this.selectedAccount && this.filteredPositions.length === 0 && this.allPositions.length > 0) {
                         this.selectedAccount = '';
                         this.filteredPositions = this.allPositions.filter(position => {
-                            if (this.selectedInstrumentType && position.instrument_type !== this.selectedInstrumentType) return false;
                             if (this.selectedUnderlying) {
                                 const underlying = this.getUnderlyingSymbol(position);
                                 if (underlying !== this.selectedUnderlying) return false;
@@ -392,11 +399,15 @@
 
                 saveFilterPreferences() {
                     localStorage.setItem('trade_journal_selected_account', this.selectedAccount || '');
+                    localStorage.setItem('trade_journal_selected_underlying', this.selectedUnderlying || '');
                 },
 
                 loadFilterPreferences() {
                     const savedAccount = localStorage.getItem('trade_journal_selected_account');
                     if (savedAccount !== null) this.selectedAccount = savedAccount;
+
+                    const savedUnderlying = localStorage.getItem('trade_journal_selected_underlying');
+                    if (savedUnderlying) this.selectedUnderlying = savedUnderlying;
 
                     // Load saved sort preference
                     const savedSort = localStorage.getItem('positions_sort');
@@ -411,14 +422,11 @@
                     }
                 },
 
-                onAccountChange() {
-                    this.underlyingQuotes = {};
+                async onAccountChange() {
                     this.applyFilters();
                     this.saveFilterPreferences();
-                    setTimeout(async () => {
-                        await this.loadCachedQuotes();
-                        this.requestLiveQuotes();
-                    }, 50);
+                    await this.loadCachedQuotes();
+                    this.requestLiveQuotes();
                 },
 
                 // Utility methods
@@ -573,123 +581,120 @@
                 },
 
                 getGroupStrategyLabel(group) {
-                    // First try group-level strategy from chain enrichment
+                    // Trust chain-persisted strategy (single source of truth from StrategyDetector)
                     if (group.strategyType && group.strategyType !== 'Unknown') return group.strategyType;
-                    // Try to find strategy_type from any position in the group
                     for (const pos of group.positions) {
-                        if (pos.strategy_type && pos.strategy_type !== 'Unknown') {
-                            return pos.strategy_type;
-                        }
+                        if (pos.strategy_type && pos.strategy_type !== 'Unknown') return pos.strategy_type;
                     }
-                    // Fallback to detection based on position structure
-                    return this.detectStrategy(group.positions);
+                    // Minimal fallback for unenriched positions (equity-only, no chain)
+                    const hasOptions = group.positions.some(p =>
+                        p.instrument_type && p.instrument_type.includes('OPTION'));
+                    return hasOptions ? 'Unknown' : 'Shares';
                 },
-                detectStrategy(positions) {
-                    if (!Array.isArray(positions) || positions.length === 0) return 'Unknown';
-
-                    // Check for option vs non-option positions
-                    const optionPositions = positions.filter(p =>
-                        (p.instrument_type && p.instrument_type.includes('OPTION')) ||
-                        (p.symbol && p.symbol.match(/\d{6}[CP]\d/))  // OCC option symbol format
-                    );
-                    const stockPositions = positions.filter(p => !optionPositions.includes(p));
-
-                    // Pure stock/ETF position (no options)
-                    if (optionPositions.length === 0 && stockPositions.length > 0) return 'Shares';
-
-                    // Helper to get strike from position
-                    const getStrike = (p) => {
-                        if (p.strike_price && p.strike_price > 0) return p.strike_price;
-                        const match = (p.symbol || '').match(/([CP])(\d+)/);
-                        if (match && match[2].length >= 3) {
-                            return parseFloat(match[2].slice(0, -3) + '.' + match[2].slice(-3));
-                        }
-                        return null;
-                    };
-
-                    // Helper to determine if position is long or short
-                    const isShort = (p) => p.quantity_direction === 'Short' || (p.quantity || 0) < 0;
-
-                    // Helper to determine option type from symbol (OCC format: SYMBOL + YYMMDD + C/P + STRIKE)
-                    const getOptionType = (p) => {
-                        if (p.option_type === 'Call') return 'C';
-                        if (p.option_type === 'Put') return 'P';
-                        // Look for C or P after 6-digit date in OCC symbol format
-                        const match = (p.symbol || '').match(/\d{6}([CP])/);
-                        return match ? match[1] : null;
-                    };
-
-                    // Categorize options by type
-                    const calls = optionPositions.filter(p => getOptionType(p) === 'C');
-                    const puts = optionPositions.filter(p => getOptionType(p) === 'P');
-
-                    // Iron Condor: 4 legs - 2 calls, 2 puts
-                    if (calls.length === 2 && puts.length === 2) return 'Iron Condor';
-
-                    // Call spread: 2 calls at different strikes
-                    if (calls.length === 2 && puts.length === 0) {
-                        const strikes = calls.map(getStrike).filter(s => s).sort((a, b) => a - b);
-                        const shortCall = calls.find(c => isShort(c));
-                        if (strikes.length === 2 && shortCall) {
-                            const shortStrike = getStrike(shortCall);
-                            // Bull Call: long lower strike, short higher strike
-                            // Bear Call: short lower strike, long higher strike
-                            return shortStrike === strikes[1] ? 'Bull Call Spread' : 'Bear Call Spread';
-                        }
-                        return 'Call Spread';
-                    }
-
-                    // Put spread: 2 puts at different strikes
-                    if (puts.length === 2 && calls.length === 0) {
-                        const strikes = puts.map(getStrike).filter(s => s).sort((a, b) => a - b);
-                        const shortPut = puts.find(p => isShort(p));
-                        if (strikes.length === 2 && shortPut) {
-                            const shortStrike = getStrike(shortPut);
-                            // Bull Put: short higher strike, long lower strike
-                            // Bear Put: short lower strike, long higher strike
-                            return shortStrike === strikes[1] ? 'Bull Put Spread' : 'Bear Put Spread';
-                        }
-                        return 'Put Spread';
-                    }
-
-                    // Covered call: stock + short call
-                    if (stockPositions.length > 0 && calls.length === 1 && isShort(calls[0])) {
-                        return 'Covered Call';
-                    }
-
-                    // Cash secured put: single short put
-                    if (puts.length === 1 && isShort(puts[0]) && calls.length === 0) {
-                        return 'Cash Secured Put';
-                    }
-
-                    // Single long call
-                    if (calls.length === 1 && !isShort(calls[0]) && puts.length === 0) {
-                        return 'Long Call';
-                    }
-
-                    // Single long put
-                    if (puts.length === 1 && !isShort(puts[0]) && calls.length === 0) {
-                        return 'Long Put';
-                    }
-
-                    // Straddle/Strangle: 1 call + 1 put
-                    if (calls.length === 1 && puts.length === 1) {
-                        const callStrike = getStrike(calls[0]);
-                        const putStrike = getStrike(puts[0]);
-                        if (callStrike && putStrike) {
-                            return callStrike === putStrike ? 'Straddle' : 'Strangle';
-                        }
-                    }
-
-                    // Complex multi-leg
-                    if (optionPositions.length > 2) return 'Complex';
-
-                    // Generic fallback
-                    if (calls.length > 0 && puts.length > 0) return 'Combo';
-                    if (calls.length > 0) return 'Call';
-                    if (puts.length > 0) return 'Put';
-                    return 'Unknown';
+                _getOptionTypeChar(p) {
+                    if (p.option_type === 'Call') return 'C';
+                    if (p.option_type === 'Put') return 'P';
+                    const match = (p.symbol || '').match(/\d{6}([CP])/);
+                    return match ? match[1] : null;
                 },
+
+                _splitSharePositions(sharePositions, targetQuantity) {
+                    const totalShares = sharePositions.reduce((sum, p) => sum + Math.abs(p.quantity || 0), 0);
+                    if (totalShares === 0) return [];
+                    const ratio = targetQuantity / totalShares;
+                    return sharePositions.map(p => {
+                        const clone = { ...p };
+                        const origQty = Math.abs(p.quantity || 0);
+                        const splitQty = Math.round(origQty * ratio);
+                        clone.quantity = p.quantity >= 0 ? splitQty : -splitQty;
+                        clone.cost_basis = (p.cost_basis || 0) * ratio;
+                        clone.market_value = (p.market_value || 0) * ratio;
+                        clone.unrealized_pnl = (p.unrealized_pnl || 0) * ratio;
+                        // average_open_price stays the same (per-share metric)
+                        clone._isSplitClone = true;
+                        return clone;
+                    });
+                },
+
+                mergeCoveredCallGroups(groups) {
+                    // Index groups by account|underlying
+                    const byKey = new Map();
+                    for (const [groupKey, group] of groups) {
+                        const k = `${group.accountNumber}|${group.underlying}`;
+                        if (!byKey.has(k)) byKey.set(k, []);
+                        byKey.get(k).push({ groupKey, group });
+                    }
+
+                    for (const [, entries] of byKey) {
+                        const shareGroups = [];
+                        const shortCallGroups = [];
+
+                        for (const { groupKey, group } of entries) {
+                            const positions = group.positions;
+                            const allEquity = positions.length > 0 && positions.every(p => !(p.instrument_type && p.instrument_type.includes('OPTION')));
+                            if (allEquity) {
+                                shareGroups.push({ groupKey, group });
+                                continue;
+                            }
+                            const allShortCalls = positions.length > 0 && positions.every(p => {
+                                const otype = this._getOptionTypeChar(p);
+                                const isShort = p.quantity_direction === 'Short' || (p.quantity || 0) < 0;
+                                return otype === 'C' && isShort;
+                            });
+                            if (allShortCalls) {
+                                shortCallGroups.push({ groupKey, group });
+                            }
+                        }
+
+                        if (shareGroups.length === 0 || shortCallGroups.length === 0) continue;
+
+                        const allSharePositions = shareGroups.flatMap(sg => sg.group.positions);
+                        const allCallPositions = shortCallGroups.flatMap(cg => cg.group.positions);
+                        const totalShares = allSharePositions.reduce((sum, p) => sum + Math.abs(p.quantity || 0), 0);
+                        const totalContracts = allCallPositions.reduce((sum, p) => sum + Math.abs(p.quantity || 0), 0);
+                        const coveredShares = Math.min(totalShares, totalContracts * 100);
+                        const uncoveredShares = totalShares - coveredShares;
+
+                        const baseGroup = shareGroups[0].group;
+                        const coveredSharePositions = this._splitSharePositions(allSharePositions, coveredShares);
+
+                        // Build merged group
+                        const mergedKey = `${baseGroup.accountNumber}|${baseGroup.underlying}|merged_cc`;
+                        const mergedGroup = {
+                            groupKey: mergedKey,
+                            displayKey: baseGroup.underlying,
+                            underlying: baseGroup.underlying,
+                            accountNumber: baseGroup.accountNumber,
+                            chainId: 'merged_cc',
+                            strategyType: 'Unknown',
+                            positions: [...coveredSharePositions, ...allCallPositions],
+                            _isMergedCoveredCall: true
+                        };
+
+                        // Delete original groups
+                        for (const sg of shareGroups) groups.delete(sg.groupKey);
+                        for (const cg of shortCallGroups) groups.delete(cg.groupKey);
+
+                        // Add merged group
+                        groups.set(mergedKey, mergedGroup);
+
+                        // Add residual shares group if any
+                        if (uncoveredShares > 0) {
+                            const residualPositions = this._splitSharePositions(allSharePositions, uncoveredShares);
+                            const residualKey = `${baseGroup.accountNumber}|${baseGroup.underlying}|residual_shares`;
+                            groups.set(residualKey, {
+                                groupKey: residualKey,
+                                displayKey: baseGroup.underlying,
+                                underlying: baseGroup.underlying,
+                                accountNumber: baseGroup.accountNumber,
+                                chainId: 'residual_shares',
+                                strategyType: 'Unknown',
+                                positions: residualPositions
+                            });
+                        }
+                    }
+                },
+
                 calculateLiveMarketValue(position) {
                     this.quoteUpdateCounter;
                     let marketValue = position.market_value || 0;
@@ -745,9 +750,11 @@
                     return Math.round(quote.ivr * 100);
                 },
                 getOptionType(position) {
+                    if (position.option_type === 'Call' || position.option_type === 'C') return 'C';
+                    if (position.option_type === 'Put' || position.option_type === 'P') return 'P';
                     if (position.option_type) return position.option_type.charAt(0).toUpperCase();
-                    if (position.symbol.includes('C')) return 'C';
-                    if (position.symbol.includes('P')) return 'P';
+                    const match = (position.symbol || '').match(/\d{6}([CP])/);
+                    if (match) return match[1];
                     return '—';
                 },
                 getSignedQuantity(position) {
@@ -879,13 +886,18 @@
                         deltaSaturation = Math.min(Math.max(theoreticalValue / spreadWidth * 100, 0), 100);
                     }
 
-                    // Convexity / Risk state
+                    // Convexity / Risk state — multi-factor for credit spreads
+                    // Delta saturation alone can mislead in high-IV environments;
+                    // require corroborating proximity or loss evidence to escalate.
                     let convexity;
                     if (isCredit) {
-                        // For credit spreads: high delta sat = bad (near max loss)
-                        if (deltaSaturation < 40) convexity = 'Low Risk';
-                        else if (deltaSaturation < 65) convexity = 'Elevated Risk';
-                        else convexity = 'High Risk';
+                        const proximityClose = proximityToShort < 5;
+                        const lossSignificant = pctMaxLoss > 30;
+                        const corroborating = proximityClose || lossSignificant;
+
+                        if (deltaSaturation >= 65 && corroborating) convexity = 'High Risk';
+                        else if ((deltaSaturation >= 65) || (deltaSaturation >= 40 && corroborating)) convexity = 'Elevated Risk';
+                        else convexity = 'Low Risk';
                     } else {
                         // For debit spreads: high delta sat = good (near max profit)
                         if (deltaSaturation < 40) convexity = 'High';
@@ -903,11 +915,12 @@
                         if (proximityToShort < 3) lateStageCount++;
                         if (rewardToRisk < 0.3) lateStageCount++;
                     } else {
-                        if (dte !== null && dte < 30) lateStageCount++;
+                        // For debit spreads, proximity and low R:R indicate success
+                        // (near short strike = near max profit), not decay.
+                        // Only DTE, delta saturation, and captured profit signal maturity.
+                        if (dte !== null && dte < 21) lateStageCount++;
                         if (pctMaxProfit >= 70) lateStageCount++;
                         if (deltaSaturation >= 65) lateStageCount++;
-                        if (proximityToShort < 3) lateStageCount++;
-                        if (rewardToRisk < 0.6) lateStageCount++;
                     }
                     const isLateStage = lateStageCount >= 2;
 
@@ -963,7 +976,7 @@
                         } else if (proximityToShort < 3) {
                             urgency = 'medium';
                             suggestion = `Short strike being tested (${proximityToShort.toFixed(1)}% away). Roll out in time or further OTM ${defensiveDirectionCredit} for a net credit.`;
-                        } else if (dte !== null && dte <= 21 && deltaSaturation > 40) {
+                        } else if (dte !== null && dte <= 21 && deltaSaturation > 40 && proximityToShort < 5) {
                             urgency = 'medium';
                             suggestion = `Gamma risk elevated at ${dte} DTE with spread near the money. Close or roll out in time for a credit.`;
                         } else if (dte !== null && dte <= 21 && deltaSaturation <= 40) {
@@ -974,20 +987,27 @@
                             suggestion = `Premium is ${pctMaxProfit.toFixed(0)}% captured with diminishing return. Close.`;
                         }
                     } else {
-                        // Debit spread suggestions (existing logic)
+                        // Debit spread suggestions
+                        // Roll direction depends on DTE: roll in-cycle (up/down) when time
+                        // remains, roll up-and-out / down-and-out near 21 DTE to escape theta decay.
+                        const thetaUrgent = dte !== null && dte <= 21;
+                        const rollDir = thetaUrgent ? profitDirectionOut : profitDirection;
+
                         if (lossHit) {
                             urgency = 'high';
                             suggestion = `Consider closing to limit loss. Down ${Math.abs(pctMaxProfit).toFixed(0)}% of debit paid with ${dte ?? '?'} DTE remaining. A defensive roll ${defensiveDirection} would reposition strikes near the current price but adds to cost basis.`;
-                        } else if (profitHit && (isLateStage || (dte !== null && dte < 21))) {
+                        } else if (profitHit && (isLateStage || thetaUrgent)) {
                             urgency = 'medium';
-                            suggestion = `Profit target reached with ${dte ?? '?'} DTE remaining. May consider closing to lock in ${pctMaxProfit.toFixed(0)}% of max profit.`;
+                            suggestion = thetaUrgent
+                                ? `Profit target reached with ${dte} DTE remaining. Close to lock in ${pctMaxProfit.toFixed(0)}% of max profit, or roll ${rollDir} to a later expiration.`
+                                : `Profit target reached with ${dte ?? '?'} DTE remaining. Roll ${rollDir} to capture additional upside, or close at ${pctMaxProfit.toFixed(0)}% of max profit.`;
                         } else if (profitHit) {
                             urgency = 'low';
-                            suggestion = `Could roll ${profitDirectionOut} to capture additional upside, or close at ${pctMaxProfit.toFixed(0)}% of max profit. Remaining reward-to-risk is ${rewardToRisk.toFixed(2)}.`;
+                            suggestion = `Roll ${rollDir} to capture additional upside, or close at ${pctMaxProfit.toFixed(0)}% of max profit.`;
                         } else if (isLateStage && pctMaxProfit >= 50) {
                             urgency = 'low';
-                            suggestion = `Structure is maturing with ${convexity.toLowerCase()} convexity. ${pctMaxProfit.toFixed(0)}% of max profit reached with ${dte ?? '?'} DTE. Consider closing or rolling ${profitDirectionOut}.`;
-                        } else if (dte !== null && dte <= 21) {
+                            suggestion = `Structure is maturing with ${convexity.toLowerCase()} convexity. ${pctMaxProfit.toFixed(0)}% of max profit reached with ${dte ?? '?'} DTE. Consider closing or rolling ${rollDir}.`;
+                        } else if (thetaUrgent) {
                             urgency = 'medium';
                             suggestion = `Approaching 21 DTE. Theta decay accelerates from here \u2014 consider rolling out to a later expiration to preserve time value, or closing to realize current P&L.`;
                         }
@@ -1011,7 +1031,8 @@
                         isCredit,
                         pctMaxProfit: pctMaxProfit.toFixed(1),
                         pctMaxLoss: pctMaxLoss.toFixed(1),
-                        rewardToRisk: rewardToRisk.toFixed(2),
+                        rewardToRiskRaw: rewardToRisk,
+                        rewardToRisk: rewardToRisk >= 99 ? '—' : rewardToRisk >= 1 ? `${rewardToRisk.toFixed(1)}:1` : `1:${(1 / rewardToRisk).toFixed(1)}`,
                         deltaSaturation: deltaSaturation.toFixed(0),
                         proximityToShort: proximityToShort.toFixed(1),
                         maxProfit: maxProfit.toFixed(0),
@@ -1087,7 +1108,6 @@
                         if (response.ok) {
                             const data = await response.json();
                             this.positionComments = data.notes || {};
-                            this.chainNoteMap = data.chain_map || {};
                         } else {
                             this.positionComments = {};
                         }
@@ -1118,7 +1138,10 @@
                     } catch (e) { /* ignore migration errors */ }
                 },
                 getCommentKey(group) {
-                    if (group.chainId && group.chainId !== 'unenriched') return `chain_${group.chainId}`;
+                    if (group._isMergedCoveredCall) {
+                        return `pos_${group.underlying}_coveredcall_${group.accountNumber || 'default'}`;
+                    }
+                    if (group.chainId && group.chainId !== 'unenriched' && group.chainId !== 'residual_shares') return `chain_${group.chainId}`;
                     const symbol = group.underlying;
                     const account = group.accountNumber || 'default';
                     const expiration = group.positions[0]?.expires_at || group.positions[0]?.expiration || 'noexp';
@@ -1126,20 +1149,7 @@
                 },
                 getPositionComment(group) {
                     const key = this.getCommentKey(group);
-                    if (this.positionComments[key]) return this.positionComments[key];
-                    // Fallback: search chain_* notes matching this underlying/account
-                    const underlying = group.underlying;
-                    const account = group.accountNumber || 'default';
-                    for (const [noteKey, noteValue] of Object.entries(this.positionComments)) {
-                        if (noteKey.startsWith('chain_') && noteValue) {
-                            const chainId = noteKey.substring(6);
-                            const info = this.chainNoteMap[chainId];
-                            if (info && info.underlying === underlying && info.account === account) {
-                                return noteValue;
-                            }
-                        }
-                    }
-                    return '';
+                    return this.positionComments[key] || '';
                 },
                 updatePositionComment(group, value) {
                     const key = this.getCommentKey(group);
@@ -1153,23 +1163,6 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ note: value })
                         }).catch(err => console.error('Error saving position note:', err));
-                        // Also save under matching chain_* key for cross-page sync
-                        if (key.startsWith('pos_')) {
-                            const underlying = group.underlying;
-                            const account = group.accountNumber || 'default';
-                            for (const [chainId, info] of Object.entries(this.chainNoteMap)) {
-                                if (info.underlying === underlying && info.account === account) {
-                                    const chainKey = `chain_${chainId}`;
-                                    this.positionComments[chainKey] = value;
-                                    fetch(`/api/position-notes/${encodeURIComponent(chainKey)}`, {
-                                        method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ note: value })
-                                    }).catch(() => {});
-                                    break;
-                                }
-                            }
-                        }
                         delete this._noteSaveTimers[key];
                     }, 500);
                 },
@@ -1232,6 +1225,25 @@
                 <span x-text="isLoading ? 'Syncing...' : 'Sync'"></span>
             </button>
 
+            <!-- Symbol Filter -->
+            <div class="relative">
+                <input type="text"
+                       x-model="selectedUnderlying"
+                       @focus="$event.target.select()"
+                       @keyup.enter="filterPositions(); requestLiveQuotes(); saveFilterPreferences()"
+                       @blur="filterPositions(); requestLiveQuotes(); saveFilterPreferences()"
+                       @input="selectedUnderlying = selectedUnderlying.toUpperCase()"
+                       placeholder="Symbol"
+                       class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+                       :class="selectedUnderlying ? 'pr-8' : ''">
+                <button x-show="selectedUnderlying"
+                        @click="selectedUnderlying = ''; filterPositions(); requestLiveQuotes(); saveFilterPreferences()"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text"
+                        title="Clear symbol filter">
+                    <i class="fas fa-times-circle"></i>
+                </button>
+            </div>
+
             <!-- Account Balances -->
             <template x-if="currentAccountBalance">
                 <div class="flex items-center gap-6 ml-6 text-base">
@@ -1259,23 +1271,6 @@
                 Quotes: <span x-text="lastQuoteUpdate"></span>
                 <span x-show="liveQuotesActive" class="text-tv-green ml-1">LIVE</span>
             </span>
-        </div>
-
-        <!-- Filters inline -->
-        <div class="flex items-center gap-4 text-base">
-            <select x-model="selectedInstrumentType" @change="filterPositions(); requestLiveQuotes()"
-                    class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2">
-                <option value="">All Types</option>
-                <option value="EQUITY">Stocks</option>
-                <option value="EQUITY_OPTION">Options</option>
-            </select>
-            <select x-model="selectedUnderlying" @change="filterPositions(); requestLiveQuotes()"
-                    class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 max-w-[140px]">
-                <option value="">All Symbols</option>
-                <template x-for="underlying in underlyings" :key="underlying">
-                    <option :value="underlying" x-text="underlying"></option>
-                </template>
-            </select>
         </div>
     </div>
 
@@ -1393,10 +1388,12 @@
 
                         <!-- Chain Link -->
                         <div class="w-12">
-                            <a :href="'/chains?underlying=' + encodeURIComponent(group.underlying) + '&status=open'"
+                            <a :href="group.chainId && group.chainId !== 'unenriched'
+                                   ? '/chains?chain_id=' + encodeURIComponent(group.chainId)
+                                   : '/chains?underlying=' + encodeURIComponent(group.underlying) + '&status=open'"
                                @click.stop
                                class="text-tv-blue hover:text-blue-400"
-                               title="View chains">
+                               title="View chain">
                                 <i class="fas fa-link"></i>
                             </a>
                         </div>
@@ -1577,7 +1574,7 @@
                                     </div>
                                     <div class="text-center">
                                         <div class="text-tv-muted">Reward:Risk</div>
-                                        <div class="font-medium" :class="parseFloat(group.rollAnalysis.rewardToRisk) < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'"
+                                        <div class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'"
                                              x-text="group.rollAnalysis.rewardToRisk"></div>
                                     </div>
                                     <div class="text-center">
