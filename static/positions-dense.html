@@ -69,6 +69,7 @@
                 // Roll analysis state
                 strategyTargets: {},
                 rollAlertSettings: { enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true },
+                privacyMode: 'off',
 
                 // Sorting state
                 sortColumn: 'underlying',
@@ -213,6 +214,7 @@
                 async init() {
                     await this.loadComments();
                     this.loadRollAlertSettings();
+                    this.privacyMode = localStorage.getItem('privacyMode') || 'off';
                     await this.fetchAccounts();
                     await this.loadStrategyTargets();
                     this.loadFilterPreferences();
@@ -1249,20 +1251,20 @@
                 <div class="flex items-center gap-6 ml-6 text-base">
                     <div>
                         <span class="text-tv-muted text-sm">Net Liq:</span>
-                        <span class="font-medium ml-1" x-text="'$' + formatNumber(currentAccountBalance.net_liquidating_value)"></span>
+                        <span class="font-medium ml-1" x-text="privacyMode !== 'off' ? '••••••' : '$' + formatNumber(currentAccountBalance.net_liquidating_value)"></span>
                     </div>
                     <div class="flex-grow"></div>
                     <div>
                         <span class="text-tv-muted text-sm">Cash:</span>
-                        <span class="font-medium ml-1" x-text="'$' + formatNumber(currentAccountBalance.cash_balance)"></span>
+                        <span class="font-medium ml-1" x-text="privacyMode === 'high' ? '••••••' : '$' + formatNumber(currentAccountBalance.cash_balance)"></span>
                     </div>
                     <div>
                         <span class="text-tv-muted text-sm">Option BP:</span>
-                        <span class="font-medium ml-1" x-text="'$' + formatNumber(currentAccountBalance.derivative_buying_power)"></span>
+                        <span class="font-medium ml-1" x-text="privacyMode === 'high' ? '••••••' : '$' + formatNumber(currentAccountBalance.derivative_buying_power)"></span>
                     </div>
                     <div>
                         <span class="text-tv-muted text-sm">Stock BP:</span>
-                        <span class="font-medium ml-1" x-text="'$' + formatNumber(currentAccountBalance.equity_buying_power)"></span>
+                        <span class="font-medium ml-1" x-text="privacyMode === 'high' ? '••••••' : '$' + formatNumber(currentAccountBalance.equity_buying_power)"></span>
                     </div>
                 </div>
             </template>

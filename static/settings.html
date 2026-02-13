@@ -81,11 +81,14 @@
                 },
 
                 rollAlerts: { enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true },
+                privacyMode: 'off',
+                activeTab: 'privacy',
 
                 async init() {
                     await this.checkConnection();
                     await this.loadTargets();
                     this.loadRollAlerts();
+                    this.privacyMode = localStorage.getItem('privacyMode') || 'off';
                 },
 
                 async checkConnection() {
@@ -211,6 +214,12 @@
                     setTimeout(() => { if (this.saveStatus === 'saved') this.saveStatus = null; }, 2000);
                 },
 
+                savePrivacyMode() {
+                    localStorage.setItem('privacyMode', this.privacyMode);
+                    this.saveStatus = 'saved';
+                    setTimeout(() => { if (this.saveStatus === 'saved') this.saveStatus = null; }, 2000);
+                },
+
                 showNotification(message, type) {
                     this.notification = { message, type };
                     setTimeout(() => { this.notification = null; }, 3000);
@@ -264,15 +273,50 @@
     </div>
 
     <!-- Main Content -->
-    <div class="max-w-4xl mx-auto px-4 py-8">
-        <div class="flex items-center justify-between mb-6">
-            <div>
-                <h1 class="text-2xl font-semibold text-tv-text">
+    <div class="flex" style="height: calc(100vh - 64px);">
+
+        <!-- Left Sidebar Tabs -->
+        <div class="w-56 flex-shrink-0 bg-tv-panel border-r border-tv-border py-4">
+            <div class="px-3 mb-4">
+                <h1 class="text-lg font-semibold text-tv-text">
                     <i class="fas fa-cog mr-2 text-tv-blue"></i>Settings
                 </h1>
-                <p class="text-tv-muted text-sm mt-1">Manage your Tastytrade connection and configure strategy targets.</p>
             </div>
-            <div class="flex items-center gap-3">
+            <nav class="space-y-0.5 px-2">
+                <button @click="activeTab = 'privacy'"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+                        :class="activeTab === 'privacy' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+                    <i class="fas fa-eye-slash w-4 text-center"></i>
+                    <span>Privacy</span>
+                </button>
+                <button @click="activeTab = 'connection'"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+                        :class="activeTab === 'connection' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+                    <i class="fas fa-plug w-4 text-center"></i>
+                    <span>Connection</span>
+                    <span class="ml-auto">
+                        <i class="fas fa-circle text-[6px]" :class="connectionStatus?.connected ? 'text-tv-green' : 'text-tv-red'"></i>
+                    </span>
+                </button>
+                <button @click="activeTab = 'targets'"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+                        :class="activeTab === 'targets' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+                    <i class="fas fa-bullseye w-4 text-center"></i>
+                    <span>Strategy Targets</span>
+                </button>
+                <button @click="activeTab = 'alerts'"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+                        :class="activeTab === 'alerts' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+                    <i class="fas fa-bell w-4 text-center"></i>
+                    <span>Roll Alerts</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Right Content Area -->
+        <div class="flex-1 overflow-y-auto tv-scrollbar p-6">
+            <!-- Save status indicator -->
+            <div class="flex items-center justify-end mb-4 h-5">
                 <span class="text-xs text-tv-muted" x-show="saveStatus === 'pending'" x-cloak>
                     <i class="fas fa-circle text-yellow-500 text-[8px] mr-1"></i>Unsaved
                 </span>
@@ -282,291 +326,335 @@
                 <span class="text-xs text-tv-green" x-show="saveStatus === 'saved'" x-cloak>
                     <i class="fas fa-check mr-1"></i>Saved
                 </span>
-                <button @click="resetToDefaults()"
-                        class="bg-tv-bg hover:bg-tv-border text-tv-muted hover:text-tv-text border border-tv-border px-4 py-2 text-sm">
-                    <i class="fas fa-rotate-left mr-1"></i>Reset to Defaults
-                </button>
             </div>
-        </div>
 
-        <!-- Tastytrade Connection -->
-        <div class="bg-tv-panel border border-tv-border rounded mb-6">
-            <div class="px-4 py-3 border-b border-tv-border flex items-center justify-between">
-                <div>
-                    <h2 class="text-base font-semibold text-tv-text">
-                        <i class="fas fa-plug mr-2 text-tv-blue"></i>Tastytrade Connection
+            <!-- Privacy Mode Tab -->
+            <div x-show="activeTab === 'privacy'">
+                <div class="mb-6">
+                    <h2 class="text-xl font-semibold text-tv-text mb-1">
+                        <i class="fas fa-eye-slash mr-2 text-tv-muted"></i>Privacy Mode
                     </h2>
-                    <p class="text-tv-muted text-xs mt-1">Connect to Tastytrade using OAuth2 credentials</p>
+                    <p class="text-tv-muted text-sm">Hide sensitive account balance information on the Positions page</p>
                 </div>
-                <div class="flex items-center gap-2" x-show="connectionStatus">
-                    <template x-if="connectionStatus?.connected">
-                        <span class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-3 py-1 rounded text-xs font-medium">
-                            <i class="fas fa-check-circle mr-1"></i>Connected
-                        </span>
-                    </template>
-                    <template x-if="!connectionStatus?.connected && connectionStatus?.configured">
-                        <span class="bg-tv-red/20 text-tv-red border border-tv-red/30 px-3 py-1 rounded text-xs font-medium">
-                            <i class="fas fa-exclamation-circle mr-1"></i>Connection Failed
-                        </span>
-                    </template>
-                    <template x-if="!connectionStatus?.connected && !connectionStatus?.configured">
-                        <span class="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-3 py-1 rounded text-xs font-medium">
-                            <i class="fas fa-info-circle mr-1"></i>Not Configured
-                        </span>
-                    </template>
+                <div class="bg-tv-panel border border-tv-border rounded">
+                    <div class="p-5">
+                        <div class="flex items-center gap-4">
+                            <template x-for="option in [{value: 'off', label: 'Off', icon: 'fa-eye', desc: 'All values visible'}, {value: 'medium', label: 'Medium', icon: 'fa-eye-low-vision', desc: 'Hides Net Liq'}, {value: 'high', label: 'High', icon: 'fa-eye-slash', desc: 'Hides all balances'}]" :key="option.value">
+                                <label class="flex-1 cursor-pointer">
+                                    <input type="radio" name="privacyMode" :value="option.value" x-model="privacyMode" @change="savePrivacyMode()" class="sr-only">
+                                    <div class="border rounded p-4 text-center transition-colors"
+                                         :class="privacyMode === option.value ? 'border-tv-blue bg-tv-blue/10 text-tv-text' : 'border-tv-border bg-tv-bg text-tv-muted hover:border-tv-muted'">
+                                        <i class="fas text-2xl mb-2" :class="option.icon"></i>
+                                        <div class="text-sm font-medium" x-text="option.label"></div>
+                                        <div class="text-xs mt-1 opacity-70" x-text="option.desc"></div>
+                                    </div>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="p-4 space-y-4">
-                <!-- Connection error message -->
-                <div x-show="connectionStatus?.error" x-cloak class="bg-tv-red/10 border border-tv-red/20 rounded p-3 text-sm text-tv-red">
-                    <i class="fas fa-exclamation-triangle mr-1"></i>
-                    <span x-text="connectionStatus?.error"></span>
-                </div>
 
-                <!-- Connected accounts -->
-                <div x-show="connectionStatus?.connected && connectionStatus?.accounts?.length > 0" x-cloak class="text-sm flex flex-col items-start gap-1.5">
-                    <span class="text-tv-muted">Accounts:</span>
-                    <template x-for="acct in connectionStatus?.accounts || []" :key="acct.account_number">
-                        <div class="inline-flex items-center gap-2 bg-tv-bg border border-tv-border rounded px-3 py-1.5 ml-4">
-                            <span class="text-tv-text font-medium" x-text="acct.account_number"></span>
-                            <span class="text-tv-muted">&mdash;</span>
-                            <span class="text-tv-muted" x-text="acct.account_name"></span>
-                        </div>
-                    </template>
-                </div>
-
-                <!-- Credential inputs -->
-                <div class="space-y-3">
+            <!-- Connection Tab -->
+            <div x-show="activeTab === 'connection'" x-cloak>
+                <div class="mb-6 flex items-start justify-between">
                     <div>
-                        <label class="block text-tv-muted text-sm mb-1">Client Secret <span class="text-tv-muted/50">(saved as provider_secret)</span></label>
-                        <input type="password" x-model="providerSecret" placeholder="Enter your Client Secret from Tastytrade"
-                               class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                        <h2 class="text-xl font-semibold text-tv-text mb-1">
+                            <i class="fas fa-plug mr-2 text-tv-blue"></i>Tastytrade Connection
+                        </h2>
+                        <p class="text-tv-muted text-sm">Connect to Tastytrade using OAuth2 credentials</p>
                     </div>
+                    <div class="flex items-center gap-2" x-show="connectionStatus">
+                        <template x-if="connectionStatus?.connected">
+                            <span class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-3 py-1 rounded text-xs font-medium">
+                                <i class="fas fa-check-circle mr-1"></i>Connected
+                            </span>
+                        </template>
+                        <template x-if="!connectionStatus?.connected && connectionStatus?.configured">
+                            <span class="bg-tv-red/20 text-tv-red border border-tv-red/30 px-3 py-1 rounded text-xs font-medium">
+                                <i class="fas fa-exclamation-circle mr-1"></i>Connection Failed
+                            </span>
+                        </template>
+                        <template x-if="!connectionStatus?.connected && !connectionStatus?.configured">
+                            <span class="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-3 py-1 rounded text-xs font-medium">
+                                <i class="fas fa-info-circle mr-1"></i>Not Configured
+                            </span>
+                        </template>
+                    </div>
+                </div>
+                <div class="bg-tv-panel border border-tv-border rounded">
+                    <div class="p-5 space-y-4">
+                        <!-- Connection error message -->
+                        <div x-show="connectionStatus?.error" x-cloak class="bg-tv-red/10 border border-tv-red/20 rounded p-3 text-sm text-tv-red">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                            <span x-text="connectionStatus?.error"></span>
+                        </div>
+
+                        <!-- Connected accounts -->
+                        <div x-show="connectionStatus?.connected && connectionStatus?.accounts?.length > 0" x-cloak class="text-sm flex flex-col items-start gap-1.5">
+                            <span class="text-tv-muted">Accounts:</span>
+                            <template x-for="acct in connectionStatus?.accounts || []" :key="acct.account_number">
+                                <div class="inline-flex items-center gap-2 bg-tv-bg border border-tv-border rounded px-3 py-1.5 ml-4">
+                                    <span class="text-tv-text font-medium" x-text="acct.account_number"></span>
+                                    <span class="text-tv-muted">&mdash;</span>
+                                    <span class="text-tv-muted" x-text="acct.account_name"></span>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Credential inputs -->
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-tv-muted text-sm mb-1">Client Secret <span class="text-tv-muted/50">(saved as provider_secret)</span></label>
+                                <input type="password" x-model="providerSecret" placeholder="Enter your Client Secret from Tastytrade"
+                                       class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                            </div>
+                            <div>
+                                <label class="block text-tv-muted text-sm mb-1">Refresh Token</label>
+                                <input type="password" x-model="refreshToken" placeholder="Enter your Refresh Token from Tastytrade"
+                                       class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                            </div>
+                            <div class="flex items-center gap-3 ml-4">
+                                <button @click="saveCredentials()" :disabled="savingCredentials"
+                                        class="bg-tv-blue hover:bg-tv-blue/80 text-white px-4 py-2 rounded text-sm disabled:opacity-50">
+                                    <i class="fas fa-save mr-1" x-show="!savingCredentials"></i>
+                                    <i class="fas fa-spinner fa-spin mr-1" x-show="savingCredentials"></i>
+                                    <span x-text="savingCredentials ? 'Connecting...' : 'Save & Connect'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Setup instructions -->
+                        <div class="bg-tv-bg border border-tv-border rounded p-3 text-xs text-tv-muted space-y-2 ml-4">
+                            <p class="font-medium text-tv-text"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How to get OAuth credentials</p>
+                            <ol class="list-decimal list-inside space-y-1 ml-1">
+                                <li>Log in to <strong class="text-tv-text">my.tastytrade.com</strong></li>
+                                <li>Go to <strong class="text-tv-text">Manage &rarr; My Profile &rarr; API</strong></li>
+                                <li>Under <strong class="text-tv-text">OAuth Applications</strong>, create a new app (or view existing)</li>
+                                <li>Copy the <strong class="text-tv-text">Client Secret</strong> (this is the first field above)</li>
+                                <li>Create a <strong class="text-tv-text">Grant</strong> for the app to generate a <strong class="text-tv-text">Refresh Token</strong></li>
+                                <li>Copy the <strong class="text-tv-text">Refresh Token</strong> (this is the second field above)</li>
+                            </ol>
+                            <p class="text-tv-muted/70 italic">Note: The Client ID shown by Tastytrade is not needed. Only Client Secret and Refresh Token are required.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strategy Targets Tab -->
+            <div x-show="activeTab === 'targets'" x-cloak>
+                <div class="mb-6 flex items-start justify-between">
                     <div>
-                        <label class="block text-tv-muted text-sm mb-1">Refresh Token</label>
-                        <input type="password" x-model="refreshToken" placeholder="Enter your Refresh Token from Tastytrade"
-                               class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                        <h2 class="text-xl font-semibold text-tv-text mb-1">
+                            <i class="fas fa-bullseye mr-2 text-tv-blue"></i>Strategy Targets
+                        </h2>
+                        <p class="text-tv-muted text-sm">Configure profit and loss targets for each strategy type</p>
                     </div>
-                    <div class="flex items-center gap-3 ml-4">
-                        <button @click="saveCredentials()" :disabled="savingCredentials"
-                                class="bg-tv-blue hover:bg-tv-blue/80 text-white px-4 py-2 rounded text-sm disabled:opacity-50">
-                            <i class="fas fa-save mr-1" x-show="!savingCredentials"></i>
-                            <i class="fas fa-spinner fa-spin mr-1" x-show="savingCredentials"></i>
-                            <span x-text="savingCredentials ? 'Connecting...' : 'Save & Connect'"></span>
-                        </button>
-                    </div>
+                    <button @click="resetToDefaults()"
+                            class="bg-tv-bg hover:bg-tv-border text-tv-muted hover:text-tv-text border border-tv-border px-4 py-2 text-sm rounded">
+                        <i class="fas fa-rotate-left mr-1"></i>Reset to Defaults
+                    </button>
                 </div>
 
-                <!-- Setup instructions -->
-                <div class="bg-tv-bg border border-tv-border rounded p-3 text-xs text-tv-muted space-y-2 ml-4">
-                    <p class="font-medium text-tv-text"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How to get OAuth credentials</p>
-                    <ol class="list-decimal list-inside space-y-1 ml-1">
-                        <li>Log in to <strong class="text-tv-text">my.tastytrade.com</strong></li>
-                        <li>Go to <strong class="text-tv-text">Manage &rarr; My Profile &rarr; API</strong></li>
-                        <li>Under <strong class="text-tv-text">OAuth Applications</strong>, create a new app (or view existing)</li>
-                        <li>Copy the <strong class="text-tv-text">Client Secret</strong> (this is the first field above)</li>
-                        <li>Create a <strong class="text-tv-text">Grant</strong> for the app to generate a <strong class="text-tv-text">Refresh Token</strong></li>
-                        <li>Copy the <strong class="text-tv-text">Refresh Token</strong> (this is the second field above)</li>
-                    </ol>
-                    <p class="text-tv-muted/70 italic">Note: The Client ID shown by Tastytrade is not needed. Only Client Secret and Refresh Token are required.</p>
+                <!-- Credit Strategies -->
+                <div class="bg-tv-panel border border-tv-border rounded mb-5" @input="debouncedSaveTargets()">
+                    <div class="px-4 py-3 border-b border-tv-border">
+                        <h3 class="text-sm font-semibold text-tv-text">
+                            <i class="fas fa-arrow-down mr-2 text-tv-green"></i>Credit Strategies
+                        </h3>
+                        <p class="text-tv-muted text-xs mt-0.5">Strategies where you collect premium upfront</p>
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-tv-border text-tv-muted text-left">
+                                <th class="px-4 py-2 font-medium">Strategy</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="target in creditStrategies" :key="target.strategy_name">
+                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                                    <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Debit Strategies -->
+                <div class="bg-tv-panel border border-tv-border rounded mb-5" @input="debouncedSaveTargets()">
+                    <div class="px-4 py-3 border-b border-tv-border">
+                        <h3 class="text-sm font-semibold text-tv-text">
+                            <i class="fas fa-arrow-up mr-2 text-tv-blue"></i>Debit Strategies
+                        </h3>
+                        <p class="text-tv-muted text-xs mt-0.5">Strategies where you pay premium upfront</p>
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-tv-border text-tv-muted text-left">
+                                <th class="px-4 py-2 font-medium">Strategy</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="target in debitStrategies" :key="target.strategy_name">
+                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                                    <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Equity -->
+                <div class="bg-tv-panel border border-tv-border rounded mb-5" @input="debouncedSaveTargets()">
+                    <div class="px-4 py-3 border-b border-tv-border">
+                        <h3 class="text-sm font-semibold text-tv-text">
+                            <i class="fas fa-chart-bar mr-2 text-tv-muted"></i>Equity
+                        </h3>
+                        <p class="text-tv-muted text-xs mt-0.5">Stock/share positions</p>
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-tv-border text-tv-muted text-left">
+                                <th class="px-4 py-2 font-medium">Strategy</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="target in equityStrategies" :key="target.strategy_name">
+                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                                    <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- How targets work -->
+                <div class="bg-tv-panel border border-tv-border rounded p-4 text-sm text-tv-muted">
+                    <p class="font-medium text-tv-text mb-2"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How targets work</p>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><strong class="text-tv-green">Profit Target %</strong> — Percentage of max profit at which to consider closing for a win</li>
+                        <li><strong class="text-tv-red">Loss Limit %</strong> — Percentage of max loss at which to consider closing to limit damage</li>
+                        <li>For credit strategies, a 50% profit target means close when you've captured 50% of the premium collected</li>
+                        <li>For debit strategies, a 100% profit target means close when the position has doubled in value</li>
+                    </ul>
                 </div>
             </div>
-        </div>
 
-        <!-- Credit Strategies -->
-        <div class="bg-tv-panel border border-tv-border rounded mb-6" @input="debouncedSaveTargets()">
-            <div class="px-4 py-3 border-b border-tv-border">
-                <h2 class="text-base font-semibold text-tv-text">
-                    <i class="fas fa-arrow-down mr-2 text-tv-green"></i>Credit Strategies
-                </h2>
-                <p class="text-tv-muted text-xs mt-1">Strategies where you collect premium upfront</p>
-            </div>
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-tv-border text-tv-muted text-left">
-                        <th class="px-4 py-2 font-medium">Strategy</th>
-                        <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
-                        <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template x-for="target in creditStrategies" :key="target.strategy_name">
-                        <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
-                            <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
-                            <td class="px-4 py-2 text-center">
-                                <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
-                                       class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
-                            </td>
-                            <td class="px-4 py-2 text-center">
-                                <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
-                                       class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
-        </div>
+            <!-- Roll Alerts Tab -->
+            <div x-show="activeTab === 'alerts'" x-cloak>
+                <div class="mb-6">
+                    <h2 class="text-xl font-semibold text-tv-text mb-1">
+                        <i class="fas fa-bell mr-2 text-yellow-400"></i>Roll Suggestion Alerts
+                    </h2>
+                    <p class="text-tv-muted text-sm">Configure which roll/close suggestions appear on the Positions page for debit spreads</p>
+                </div>
+                <div class="bg-tv-panel border border-tv-border rounded" @change="saveRollAlerts()">
+                    <div class="p-5 space-y-3">
+                        <!-- Master toggle -->
+                        <label class="flex items-center justify-between py-2 border-b border-tv-border/50 cursor-pointer">
+                            <div>
+                                <span class="text-tv-text font-medium">Enable Roll Suggestions</span>
+                                <span class="text-tv-muted text-xs block">Master toggle for all roll analysis badges and panels</span>
+                            </div>
+                            <div class="relative">
+                                <input type="checkbox" x-model="rollAlerts.enabled" class="sr-only">
+                                <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.enabled ? 'bg-tv-blue' : 'bg-tv-border'"></div>
+                                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.enabled ? 'translate-x-5' : ''"></div>
+                            </div>
+                        </label>
 
-        <!-- Debit Strategies -->
-        <div class="bg-tv-panel border border-tv-border rounded mb-6" @input="debouncedSaveTargets()">
-            <div class="px-4 py-3 border-b border-tv-border">
-                <h2 class="text-base font-semibold text-tv-text">
-                    <i class="fas fa-arrow-up mr-2 text-tv-blue"></i>Debit Strategies
-                </h2>
-                <p class="text-tv-muted text-xs mt-1">Strategies where you pay premium upfront</p>
-            </div>
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-tv-border text-tv-muted text-left">
-                        <th class="px-4 py-2 font-medium">Strategy</th>
-                        <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
-                        <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template x-for="target in debitStrategies" :key="target.strategy_name">
-                        <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
-                            <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
-                            <td class="px-4 py-2 text-center">
-                                <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
-                                       class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
-                            </td>
-                            <td class="px-4 py-2 text-center">
-                                <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
-                                       class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Equity -->
-        <div class="bg-tv-panel border border-tv-border rounded mb-6" @input="debouncedSaveTargets()">
-            <div class="px-4 py-3 border-b border-tv-border">
-                <h2 class="text-base font-semibold text-tv-text">
-                    <i class="fas fa-chart-bar mr-2 text-tv-muted"></i>Equity
-                </h2>
-                <p class="text-tv-muted text-xs mt-1">Stock/share positions</p>
-            </div>
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-tv-border text-tv-muted text-left">
-                        <th class="px-4 py-2 font-medium">Strategy</th>
-                        <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
-                        <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template x-for="target in equityStrategies" :key="target.strategy_name">
-                        <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
-                            <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
-                            <td class="px-4 py-2 text-center">
-                                <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
-                                       class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
-                            </td>
-                            <td class="px-4 py-2 text-center">
-                                <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
-                                       class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Roll Suggestion Alerts -->
-        <div class="bg-tv-panel border border-tv-border rounded mb-6" @change="saveRollAlerts()">
-            <div class="px-4 py-3 border-b border-tv-border">
-                <h2 class="text-base font-semibold text-tv-text">
-                    <i class="fas fa-bell mr-2 text-yellow-400"></i>Roll Suggestion Alerts
-                </h2>
-                <p class="text-tv-muted text-xs mt-1">Configure which roll/close suggestions appear on the Positions page for debit spreads</p>
-            </div>
-            <div class="p-4 space-y-3">
-                <!-- Master toggle -->
-                <label class="flex items-center justify-between py-2 border-b border-tv-border/50 cursor-pointer">
-                    <div>
-                        <span class="text-tv-text font-medium">Enable Roll Suggestions</span>
-                        <span class="text-tv-muted text-xs block">Master toggle for all roll analysis badges and panels</span>
+                        <!-- Individual toggles -->
+                        <div class="space-y-2 pl-2" :class="!rollAlerts.enabled ? 'opacity-40 pointer-events-none' : ''">
+                            <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                                <div>
+                                    <span class="text-tv-text text-sm">Profit Target</span>
+                                    <span class="text-tv-muted text-xs block">Alert when position reaches your configured profit target</span>
+                                </div>
+                                <div class="relative">
+                                    <input type="checkbox" x-model="rollAlerts.profitTarget" class="sr-only">
+                                    <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.profitTarget ? 'bg-tv-green' : 'bg-tv-border'"></div>
+                                    <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.profitTarget ? 'translate-x-5' : ''"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                                <div>
+                                    <span class="text-tv-text text-sm">Loss Limit</span>
+                                    <span class="text-tv-muted text-xs block">Alert when position reaches your configured loss threshold</span>
+                                </div>
+                                <div class="relative">
+                                    <input type="checkbox" x-model="rollAlerts.lossLimit" class="sr-only">
+                                    <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lossLimit ? 'bg-tv-red' : 'bg-tv-border'"></div>
+                                    <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lossLimit ? 'translate-x-5' : ''"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                                <div>
+                                    <span class="text-tv-text text-sm">Late-Stage</span>
+                                    <span class="text-tv-muted text-xs block">Alert when multiple maturing indicators converge (low DTE, high delta, etc.)</span>
+                                </div>
+                                <div class="relative">
+                                    <input type="checkbox" x-model="rollAlerts.lateStage" class="sr-only">
+                                    <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lateStage ? 'bg-yellow-500' : 'bg-tv-border'"></div>
+                                    <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lateStage ? 'translate-x-5' : ''"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                                <div>
+                                    <span class="text-tv-text text-sm">Delta Saturation</span>
+                                    <span class="text-tv-muted text-xs block">Alert when spread delta exceeds 65% (diminishing convexity)</span>
+                                </div>
+                                <div class="relative">
+                                    <input type="checkbox" x-model="rollAlerts.deltaSaturation" class="sr-only">
+                                    <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.deltaSaturation ? 'bg-orange-500' : 'bg-tv-border'"></div>
+                                    <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.deltaSaturation ? 'translate-x-5' : ''"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between py-1.5 cursor-pointer">
+                                <div>
+                                    <span class="text-tv-text text-sm">Low Reward-to-Risk</span>
+                                    <span class="text-tv-muted text-xs block">Alert when remaining reward-to-risk ratio falls below 0.6</span>
+                                </div>
+                                <div class="relative">
+                                    <input type="checkbox" x-model="rollAlerts.lowRewardToRisk" class="sr-only">
+                                    <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lowRewardToRisk ? 'bg-orange-500' : 'bg-tv-border'"></div>
+                                    <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lowRewardToRisk ? 'translate-x-5' : ''"></div>
+                                </div>
+                            </label>
+                        </div>
                     </div>
-                    <div class="relative">
-                        <input type="checkbox" x-model="rollAlerts.enabled" class="sr-only">
-                        <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.enabled ? 'bg-tv-blue' : 'bg-tv-border'"></div>
-                        <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.enabled ? 'translate-x-5' : ''"></div>
-                    </div>
-                </label>
-
-                <!-- Individual toggles -->
-                <div class="space-y-2 pl-2" :class="!rollAlerts.enabled ? 'opacity-40 pointer-events-none' : ''">
-                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
-                        <div>
-                            <span class="text-tv-text text-sm">Profit Target</span>
-                            <span class="text-tv-muted text-xs block">Alert when position reaches your configured profit target</span>
-                        </div>
-                        <div class="relative">
-                            <input type="checkbox" x-model="rollAlerts.profitTarget" class="sr-only">
-                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.profitTarget ? 'bg-tv-green' : 'bg-tv-border'"></div>
-                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.profitTarget ? 'translate-x-5' : ''"></div>
-                        </div>
-                    </label>
-                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
-                        <div>
-                            <span class="text-tv-text text-sm">Loss Limit</span>
-                            <span class="text-tv-muted text-xs block">Alert when position reaches your configured loss threshold</span>
-                        </div>
-                        <div class="relative">
-                            <input type="checkbox" x-model="rollAlerts.lossLimit" class="sr-only">
-                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lossLimit ? 'bg-tv-red' : 'bg-tv-border'"></div>
-                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lossLimit ? 'translate-x-5' : ''"></div>
-                        </div>
-                    </label>
-                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
-                        <div>
-                            <span class="text-tv-text text-sm">Late-Stage</span>
-                            <span class="text-tv-muted text-xs block">Alert when multiple maturing indicators converge (low DTE, high delta, etc.)</span>
-                        </div>
-                        <div class="relative">
-                            <input type="checkbox" x-model="rollAlerts.lateStage" class="sr-only">
-                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lateStage ? 'bg-yellow-500' : 'bg-tv-border'"></div>
-                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lateStage ? 'translate-x-5' : ''"></div>
-                        </div>
-                    </label>
-                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
-                        <div>
-                            <span class="text-tv-text text-sm">Delta Saturation</span>
-                            <span class="text-tv-muted text-xs block">Alert when spread delta exceeds 65% (diminishing convexity)</span>
-                        </div>
-                        <div class="relative">
-                            <input type="checkbox" x-model="rollAlerts.deltaSaturation" class="sr-only">
-                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.deltaSaturation ? 'bg-orange-500' : 'bg-tv-border'"></div>
-                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.deltaSaturation ? 'translate-x-5' : ''"></div>
-                        </div>
-                    </label>
-                    <label class="flex items-center justify-between py-1.5 cursor-pointer">
-                        <div>
-                            <span class="text-tv-text text-sm">Low Reward-to-Risk</span>
-                            <span class="text-tv-muted text-xs block">Alert when remaining reward-to-risk ratio falls below 0.6</span>
-                        </div>
-                        <div class="relative">
-                            <input type="checkbox" x-model="rollAlerts.lowRewardToRisk" class="sr-only">
-                            <div class="w-10 h-5 rounded-full transition-colors" :class="rollAlerts.lowRewardToRisk ? 'bg-orange-500' : 'bg-tv-border'"></div>
-                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" :class="rollAlerts.lowRewardToRisk ? 'translate-x-5' : ''"></div>
-                        </div>
-                    </label>
                 </div>
             </div>
-        </div>
 
-        <!-- Help Text -->
-        <div class="bg-tv-panel border border-tv-border rounded p-4 text-sm text-tv-muted">
-            <p class="font-medium text-tv-text mb-2"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How targets work</p>
-            <ul class="list-disc list-inside space-y-1">
-                <li><strong class="text-tv-green">Profit Target %</strong> — Percentage of max profit at which to consider closing for a win</li>
-                <li><strong class="text-tv-red">Loss Limit %</strong> — Percentage of max loss at which to consider closing to limit damage</li>
-                <li>For credit strategies, a 50% profit target means close when you've captured 50% of the premium collected</li>
-                <li>For debit strategies, a 100% profit target means close when the position has doubled in value</li>
-            </ul>
         </div>
     </div>
 
