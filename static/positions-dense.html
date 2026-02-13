@@ -934,7 +934,10 @@
                     // Build badges
                     const badges = [];
                     const profitHit = pctMaxProfit >= profitTargetPct;
-                    const lossHit = pctMaxProfit <= -lossTargetPct;
+                    // Credit spreads: loss measured as % of credit received (|pctMaxProfit|)
+                    // Debit spreads: loss measured as % of debit paid (pctMaxLoss, since maxLoss = debit)
+                    const lossMetric = isCredit ? Math.abs(pctMaxProfit) : pctMaxLoss;
+                    const lossHit = currentPnL < 0 && lossMetric >= lossTargetPct;
                     const lowRRThreshold = isCredit ? 0.3 : 0.6;
 
                     if (profitHit && this.rollAlertSettings.profitTarget) {
@@ -971,7 +974,7 @@
                         // Credit spread suggestions
                         if (lossHit) {
                             urgency = 'high';
-                            suggestion = `Close to limit loss. Down ${Math.abs(pctMaxProfit).toFixed(0)}% of credit received with ${dte ?? '?'} DTE remaining. Could roll out for a net credit at same or further OTM strikes ${defensiveDirectionCredit} \u2014 do not roll for a debit.`;
+                            suggestion = `Close to limit loss. Down ${lossMetric.toFixed(0)}% of credit received with ${dte ?? '?'} DTE remaining. Could roll out for a net credit at same or further OTM strikes ${defensiveDirectionCredit} \u2014 do not roll for a debit.`;
                         } else if (profitHit) {
                             urgency = 'medium';
                             suggestion = `Captured ${pctMaxProfit.toFixed(0)}% of max profit ($${maxProfit.toFixed(0)} credit). Close to lock in gains.`;
@@ -997,7 +1000,7 @@
 
                         if (lossHit) {
                             urgency = 'high';
-                            suggestion = `Consider closing to limit loss. Down ${Math.abs(pctMaxProfit).toFixed(0)}% of debit paid with ${dte ?? '?'} DTE remaining. A defensive roll ${defensiveDirection} would reposition strikes near the current price but adds to cost basis.`;
+                            suggestion = `Consider closing to limit loss. Down ${pctMaxLoss.toFixed(0)}% of debit paid with ${dte ?? '?'} DTE remaining. A defensive roll ${defensiveDirection} would reposition strikes near the current price but adds to cost basis.`;
                         } else if (profitHit && (isLateStage || thetaUrgent)) {
                             urgency = 'medium';
                             suggestion = thetaUrgent
