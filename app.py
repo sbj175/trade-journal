@@ -923,25 +923,16 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 total_pnl = 0.0
                 realized_pnl = 0.0
                 unrealized_pnl = 0.0
-                
+                has_rolls = False
+
                 for order in chain.orders:
                     # Calculate order P&L from transactions since Order doesn't have total_pnl
                     order_pnl = 0.0
                     for tx in order.transactions:
                         # For cash settlements, use value directly (price contains strike, not premium)
                         if tx.is_cash_settlement:
-                            # value is already signed correctly (negative for loss, positive for gain)
                             order_pnl += tx.value
-                        elif tx.is_closing:
-                            # For closing transactions, calculate P&L vs opening price
-                            # This is simplified - the frontend does more complex P&L calc
-                            value = tx.price * abs(tx.quantity) * 100
-                            if tx.is_sell:
-                                order_pnl += value
-                            else:
-                                order_pnl -= value
                         else:
-                            # For opening transactions, track as unrealized
                             value = tx.price * abs(tx.quantity) * 100
                             if tx.is_sell:
                                 order_pnl += value
@@ -949,11 +940,19 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                                 order_pnl -= value
 
                     total_pnl += order_pnl
-                    
+
                     if order.order_type.value == 'CLOSING':
                         realized_pnl += order_pnl
+                    elif order.order_type.value == 'ROLLING':
+                        has_rolls = True
                     else:
                         unrealized_pnl += order_pnl
+
+                # For chains with rolls, the total net premiums represent
+                # the realized cash flow from the chain
+                if has_rolls:
+                    realized_pnl = total_pnl
+                    unrealized_pnl = 0.0
                 
                 # Debug: Log what we're about to insert
                 if chain.underlying in ["CSX", "GOOG", "USO"]:

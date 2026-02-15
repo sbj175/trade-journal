@@ -172,6 +172,9 @@
 
                             if (aVal < bVal) return self.sortDirection === 'asc' ? -1 : 1;
                             if (aVal > bVal) return self.sortDirection === 'asc' ? 1 : -1;
+                            // Within same underlying, shares sort before options
+                            if (a._isShareRow && !b._isShareRow) return -1;
+                            if (!a._isShareRow && b._isShareRow) return 1;
                             return 0;
                         });
 
@@ -483,7 +486,7 @@
                     return legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
                 },
 
-                // Open P/L: unrealized P&L on current legs using live quotes
+                // Open P/L: unrealized P&L on current legs (net_liq - cost_basis)
                 getGroupOpenPnL(group) {
                     this.quoteUpdateCounter;
                     if (group._isSubtotal) return group._subtotalOpenPnL;
@@ -499,10 +502,16 @@
                     return group.realized_pnl || 0;
                 },
 
-                // Total P/L = Realized + Open
+                // Total P/L = Realized + Open (or Realized + Net Liq for rolled chains)
                 getGroupTotalPnL(group) {
                     if (group._isSubtotal) return group._subtotalTotalPnL;
-                    return this.getGroupRealizedPnL(group) + this.getGroupOpenPnL(group);
+                    const realized = this.getGroupRealizedPnL(group);
+                    if (group.roll_count > 0) {
+                        // For rolled chains, cost basis is already in realized,
+                        // so use net liq to avoid double-counting
+                        return realized + this.getGroupNetLiqWithLiveQuotes(group);
+                    }
+                    return realized + this.getGroupOpenPnL(group);
                 },
 
                 getGroupNetLiqWithLiveQuotes(group) {
@@ -676,15 +685,16 @@
                 },
                 getExpirationDate(leg) {
                     if (!leg.expiration) return '';
-                    const date = new Date(leg.expiration);
+                    const dateStr = leg.expiration.substring(0, 10);
+                    const date = new Date(dateStr + 'T00:00:00');
                     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 },
                 getStrikePrice(leg) {
-                    if (leg.strike && leg.strike > 0) return leg.strike.toFixed(2);
+                    if (leg.strike && leg.strike > 0) return parseFloat(leg.strike.toFixed(2)).toString();
                     const symbol = leg.symbol || '';
                     const match = symbol.match(/([CP])(\d+)/);
                     if (match && match[2].length >= 3) {
-                        return parseFloat(match[2].slice(0, -3) + '.' + match[2].slice(-3)).toFixed(2);
+                        return parseFloat(parseFloat(match[2].slice(0, -3) + '.' + match[2].slice(-3)).toFixed(2)).toString();
                     }
                     return '';
                 },
@@ -1167,6 +1177,18 @@
                 <span x-show="sortColumn === 'price'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
             <span class="w-12"></span>
+            <span class="w-36 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
+                Strategy
+                <span x-show="sortColumn === 'strategy'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            </span>
+            <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
+                DTE
+                <span x-show="sortColumn === 'dte'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            </span>
+            <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
+                Days
+                <span x-show="sortColumn === 'days'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            </span>
             <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
                 Cost Basis
                 <span x-show="sortColumn === 'cost_basis'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
@@ -1191,18 +1213,6 @@
                 % Max
                 <span x-show="sortColumn === 'max_percent'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
-                Days
-                <span x-show="sortColumn === 'days'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
-            </span>
-            <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
-                DTE
-                <span x-show="sortColumn === 'dte'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
-            </span>
-            <span class="w-36 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
-                Strategy
-                <span x-show="sortColumn === 'strategy'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
-            </span>
         </div>
 
         <!-- Position Groups -->
@@ -1219,6 +1229,12 @@
                             </div>
                             <div class="w-12"></div>
                             <div class="w-40"></div>
+                            <div class="w-12"></div>
+                            <!-- Strategy -->
+                            <div class="w-36 text-xs text-tv-muted" x-text="group._childCount + ' positions'"></div>
+                            <!-- DTE -->
+                            <div class="w-12"></div>
+                            <!-- Days -->
                             <div class="w-12"></div>
                             <!-- Cost Basis -->
                             <div class="w-24 text-right font-medium"
@@ -1247,10 +1263,8 @@
                                  :class="(group._subtotalTotalPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalTotalPnL)">
                                 <span x-show="group._subtotalTotalPnL < 0">-</span>$<span x-text="formatDollar(group._subtotalTotalPnL)"></span>
                             </div>
+                            <!-- % Max -->
                             <div class="w-14"></div>
-                            <div class="w-12"></div>
-                            <div class="w-12"></div>
-                            <div class="w-36 text-xs text-tv-muted" x-text="group._childCount + ' positions'"></div>
                         </div>
                     </template>
 
@@ -1277,7 +1291,7 @@
                                 <div class="w-24">
                                     <div class="font-semibold text-base text-tv-text">
                                         <span x-text="group.displayKey || group.underlying"></span>
-                                        <span x-show="group._isShareRow" class="text-xs text-tv-muted ml-1">stk</span>
+                                        <span x-show="group._isShareRow" class="text-xs text-tv-muted ml-1">shares</span>
                                     </div>
                                 </div>
 
@@ -1320,6 +1334,33 @@
                                     </template>
                                 </div>
 
+                                <!-- Strategy -->
+                                <div class="w-36">
+                                    <div class="text-sm text-tv-muted" x-text="getGroupStrategyLabel(group)"></div>
+                                    <template x-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
+                                        <div class="flex flex-wrap gap-1 mt-0.5">
+                                            <template x-for="badge in group.rollAnalysis.badges" :key="badge.label">
+                                                <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
+                                                      :class="{
+                                                          'bg-green-500/20 text-green-400 border-green-500/50': badge.color === 'green',
+                                                          'bg-red-500/20 text-red-400 border-red-500/50': badge.color === 'red',
+                                                          'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': badge.color === 'yellow',
+                                                          'bg-orange-500/20 text-orange-400 border-orange-500/50': badge.color === 'orange'
+                                                      }"
+                                                      x-text="badge.label"></span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- DTE -->
+                                <div class="w-12 text-center"
+                                     :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'"
+                                     x-text="getMinDTE(group) || ''"></div>
+
+                                <!-- Days -->
+                                <div class="w-12 text-center text-tv-text" x-text="getGroupDaysOpen(group) || ''"></div>
+
                                 <!-- Cost Basis -->
                                 <div class="w-24 text-right"
                                      :class="(getGroupCostBasis(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupCostBasis(group))">
@@ -1361,33 +1402,6 @@
                                 <div class="w-14 text-right"
                                      :class="getMaxPercentColor(getGroupMaxPercent(group))"
                                      x-text="shouldShowMaxPercent(group) ? getGroupMaxPercent(group) : '—'"></div>
-
-                                <!-- Days -->
-                                <div class="w-12 text-center text-tv-text" x-text="getGroupDaysOpen(group) || ''"></div>
-
-                                <!-- DTE -->
-                                <div class="w-12 text-center"
-                                     :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'"
-                                     x-text="getMinDTE(group) || ''"></div>
-
-                                <!-- Strategy -->
-                                <div class="w-36">
-                                    <div class="text-sm text-tv-muted" x-text="getGroupStrategyLabel(group)"></div>
-                                    <template x-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
-                                        <div class="flex flex-wrap gap-1 mt-0.5">
-                                            <template x-for="badge in group.rollAnalysis.badges" :key="badge.label">
-                                                <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
-                                                      :class="{
-                                                          'bg-green-500/20 text-green-400 border-green-500/50': badge.color === 'green',
-                                                          'bg-red-500/20 text-red-400 border-red-500/50': badge.color === 'red',
-                                                          'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': badge.color === 'yellow',
-                                                          'bg-orange-500/20 text-orange-400 border-orange-500/50': badge.color === 'orange'
-                                                      }"
-                                                      x-text="badge.label"></span>
-                                            </template>
-                                        </div>
-                                    </template>
-                                </div>
 
                                 <!-- Comment indicator -->
                                 <div class="flex-1 text-tv-muted text-sm truncate pl-2"
