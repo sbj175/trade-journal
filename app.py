@@ -25,9 +25,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.database.db_manager import DatabaseManager
 from src.models.order_models import OrderManager
 from src.models.position_inventory import PositionInventoryManager
-from src.models.order_processor_v2 import OrderProcessorV2
+from src.models.order_processor import OrderProcessor
 from src.models.strategy_detector import StrategyDetector
-from src.models.pnl_calculator_v2 import PnLCalculatorV2
+from src.models.pnl_calculator import PnLCalculator
 from src.models.position_enricher import PositionEnricher
 from src.models.lot_manager import LotManager
 from src.utils.auth_manager import ConnectionManager
@@ -60,16 +60,16 @@ app.add_middleware(
 db = DatabaseManager()
 order_manager = OrderManager(db)
 
-# V2 System Components
+# System Components
 position_manager = PositionInventoryManager(db)
 
-# V3 Lot-based position tracking
+# Lot-based position tracking
 lot_manager = LotManager(db)
 
-# Initialize V2 processors with V3 lot_manager
-order_processor_v2 = OrderProcessorV2(db, position_manager, lot_manager)
+# Initialize processors with lot_manager
+order_processor = OrderProcessor(db, position_manager, lot_manager)
 strategy_detector = StrategyDetector(db)
-pnl_calculator_v2 = PnLCalculatorV2(db, position_manager, lot_manager)
+pnl_calculator = PnLCalculator(db, position_manager, lot_manager)
 
 # Initialize connection manager (shared app-level client)
 connection_manager = ConnectionManager()
@@ -109,6 +109,115 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
 
     return positions
 
+
+def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: str) -> bool:
+    """Enrich positions with chain metadata and save to database.
+
+    This runs at sync-time so chain_id and strategy_type are persisted,
+    eliminating the need for runtime enrichment on every API call.
+    """
+    if not positions:
+        return True
+
+    # Calculate opening dates
+    positions_with_dates = calculate_position_opening_dates(positions, account_number)
+
+    # Get open chains for this account
+    open_chains = []
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT chain_id, underlying, account_number, strategy_type, chain_status
+                FROM order_chains
+                WHERE chain_status = 'OPEN' AND account_number = ?
+            """, (account_number,))
+            for row in cursor.fetchall():
+                open_chains.append(dict(row))
+    except Exception as e:
+        logger.warning(f"Could not fetch chains for position enrichment: {e}")
+
+    # Build symbol → chain lookup from order_chain_cache (the authoritative source)
+    # order_positions table may be empty for newer chains; cache always has the data
+    symbol_to_chain = {}
+    if open_chains:
+        try:
+            import json as _json
+            chain_ids = [c['chain_id'] for c in open_chains]
+            chain_map = {c['chain_id']: c for c in open_chains}
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                placeholders = ','.join('?' * len(chain_ids))
+                cursor.execute(f"""
+                    SELECT chain_id, order_data FROM order_chain_cache
+                    WHERE chain_id IN ({placeholders})
+                """, chain_ids)
+                for row in cursor.fetchall():
+                    cid = row[0]
+                    try:
+                        order_data = _json.loads(row[1])
+                        for pos in order_data.get('positions', []):
+                            sym = pos.get('symbol', '').strip()
+                            if sym and sym not in symbol_to_chain:
+                                chain_info = chain_map.get(cid, {})
+                                symbol_to_chain[sym] = {
+                                    'chain_id': cid,
+                                    'strategy_type': chain_info.get('strategy_type', 'Unknown')
+                                }
+                    except Exception:
+                        pass
+                # Also add underlying-level fallback entries
+                for chain in open_chains:
+                    underlying = chain.get('underlying', '').strip()
+                    if underlying and underlying not in symbol_to_chain:
+                        symbol_to_chain[underlying] = {
+                            'chain_id': chain['chain_id'],
+                            'strategy_type': chain.get('strategy_type', 'Unknown')
+                        }
+            logger.info(f"Built symbol lookup with {len(symbol_to_chain)} entries from {len(open_chains)} open chains")
+        except Exception as e:
+            logger.warning(f"Could not build symbol lookup for enrichment: {e}")
+
+    # Enrich each position with chain metadata
+    enriched_count = 0
+    for pos in positions_with_dates:
+        symbol = pos.get('symbol', '').strip()
+        underlying = pos.get('underlying_symbol', '') or pos.get('underlying', '')
+        underlying = underlying.strip() if underlying else ''
+
+        match = symbol_to_chain.get(symbol) or symbol_to_chain.get(underlying)
+        if match:
+            pos['chain_id'] = match['chain_id']
+            pos['strategy_type'] = match['strategy_type']
+            enriched_count += 1
+
+    logger.info(f"Enriched {enriched_count}/{len(positions_with_dates)} positions with chain_id for account {account_number}")
+
+    # One-time note key migration: move pos_* notes to chain_* keys
+    try:
+        all_notes = db.get_all_position_notes()
+        pos_notes = {k: v for k, v in all_notes.items() if k.startswith('pos_')}
+        if pos_notes:
+            for pos in positions_with_dates:
+                chain_id = pos.get('chain_id')
+                if not chain_id:
+                    continue
+                chain_key = f"chain_{chain_id}"
+                if chain_key in all_notes:
+                    continue  # chain note already exists
+                underlying = pos.get('underlying_symbol', '')
+                account = account_number
+                # Search for matching pos_* note
+                for pk, pv in pos_notes.items():
+                    if pk.startswith(f'pos_{underlying}_') and pk.endswith(f'_{account}'):
+                        db.save_position_note(chain_key, pv)
+                        db.save_position_note(pk, '')  # delete old key
+                        logger.info(f"Migrated note '{pk}' -> '{chain_key}'")
+                        break
+    except Exception as e:
+        logger.warning(f"Note migration error (non-fatal): {e}")
+
+    return db.save_positions(positions_with_dates, account_number)
 
 
 # Create static directory if it doesn't exist
@@ -211,8 +320,8 @@ async def sync_unified_internal():
         days_back = min(days_back, 90)  # Maximum 90 days for safety
         logger.info(f"Auto-sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
     else:
-        # No previous sync, fetch last 30 days for auto-sync (conservative)
-        days_back = 30
+        # No previous sync, fetch last 365 days for auto-sync
+        days_back = 365
         logger.info(f"Auto-sync: first sync detected, fetching {days_back} days")
 
     # Save all accounts to database
@@ -226,16 +335,14 @@ async def sync_unified_internal():
         )
     logger.info(f"Auto-sync: Saved {len(accounts)} accounts")
 
-    # Fetch and save current positions for all accounts
+    # Fetch and save current positions for all accounts (with chain enrichment)
     logger.info("Auto-sync: Fetching current positions from all accounts...")
     all_positions = await tastytrade.get_positions()
     total_positions = 0
 
     for account_number, positions in all_positions.items():
         if positions:
-            # Calculate opening dates for positions
-            positions_with_dates = calculate_position_opening_dates(positions, account_number)
-            success = db.save_positions(positions_with_dates, account_number)
+            success = enrich_and_save_positions(positions, account_number)
             if success:
                 logger.info(f"Auto-sync: Successfully saved {len(positions)} positions for account {account_number}")
                 total_positions += len(positions)
@@ -330,23 +437,9 @@ async def save_order_comment(order_id: str, body: OrderCommentUpdate):
 
 @app.get("/api/position-notes")
 async def get_position_notes():
-    """Get all position notes with chain→underlying mapping for cross-page resolution"""
+    """Get all position notes"""
     notes = db.get_all_position_notes()
-    # Build chain_id → underlying/account mapping so Positions page
-    # can find chain-keyed notes even when position enrichment fails
-    chain_map = {}
-    try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT chain_id, underlying, account_number FROM order_chains")
-            for row in cursor.fetchall():
-                chain_map[str(row['chain_id'])] = {
-                    'underlying': row['underlying'],
-                    'account': row['account_number']
-                }
-    except Exception as e:
-        logger.warning(f"Could not build chain map for notes: {e}")
-    return {"notes": notes, "chain_map": chain_map}
+    return {"notes": notes}
 
 
 @app.put("/api/position-notes/{note_key:path}")
@@ -449,7 +542,7 @@ async def save_credentials(creds: CredentialUpdate):
 async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
     """Check if cached chain data exists for the requested account"""
     # TEMPORARY: Use cache when available per-account
-    # The V2 path has compatibility issues with order.transactions that need refactoring
+    # The derivation path has compatibility issues with order.transactions that need refactoring
     # For now, cached path works correctly and is performant
     try:
         with db.get_connection() as conn:
@@ -469,7 +562,7 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
                 has_cache = False
             if has_cache:
                 account_display = account_number if account_number is not None else "unspecified"
-                logger.debug(f"Using cached chains for account {account_display} (V2 primary path temporarily disabled)")
+                logger.debug(f"Using cached chains for account {account_display} (derivation path temporarily disabled)")
             return has_cache
     except Exception as e:
         logger.error(f"Error checking cache: {e}")
@@ -477,12 +570,12 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
 
 
 async def get_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None,
-                          limit: int = 10000, offset: int = 0):
+                          limit: int = 10000, offset: int = 0, chain_id: Optional[str] = None):
     """Get chains from cached data in order_chains table"""
     try:
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            
+
             # Build query with filters
             query = """
                 SELECT oc.chain_id, oc.underlying, oc.strategy_type, oc.opening_date,
@@ -493,9 +586,11 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
             params = []
             where_conditions = []
 
+            if chain_id:
+                where_conditions.append("oc.chain_id = ?")
+                params.append(chain_id)
+
             # Only filter by account if it's a non-empty string (specific account)
-            # Empty string = "All Accounts" → no account filter
-            # None = backward compatibility → no account filter
             if account_number and account_number != '':
                 where_conditions.append("oc.account_number = ?")
                 params.append(account_number)
@@ -719,7 +814,7 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
 
 
 async def update_chain_cache(chains, affected_underlyings: set = None, affected_account: str = None):
-    """Update the order_chains table with fresh V2 derivation results
+    """Update the order_chains table with fresh derivation results
 
     Args:
         chains: List of Chain objects to cache
@@ -830,7 +925,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 unrealized_pnl = 0.0
                 
                 for order in chain.orders:
-                    # Calculate order P&L from transactions since V2 Order doesn't have total_pnl
+                    # Calculate order P&L from transactions since Order doesn't have total_pnl
                     order_pnl = 0.0
                     for tx in order.transactions:
                         # For cash settlements, use value directly (price contains strike, not premium)
@@ -839,7 +934,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                             order_pnl += tx.value
                         elif tx.is_closing:
                             # For closing transactions, calculate P&L vs opening price
-                            # This is simplified - the V2 frontend does more complex P&L calc
+                            # This is simplified - the frontend does more complex P&L calc
                             value = tx.price * abs(tx.quantity) * 100
                             if tx.is_sell:
                                 order_pnl += value
@@ -1072,30 +1167,31 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
 async def get_order_chains(
     account_number: Optional[str] = None,
     underlying: Optional[str] = None,
+    chain_id: Optional[str] = None,
     limit: int = 10000,
     offset: int = 0
 ):
     """Get order chains with intelligent caching for optimal performance"""
     import time
     start_time = time.time()
-    logger.info(f"🕐 TIMING: Starting chains API request for account={account_number}, underlying={underlying}")
+    logger.info(f"🕐 TIMING: Starting chains API request for account={account_number}, underlying={underlying}, chain_id={chain_id}")
 
     try:
         # Re-enable caching now that cache has been rebuilt with order details
         use_cache = await should_use_cached_chains(account_number, underlying)
-        
+
         if use_cache:
             # Fast path: return cached data
             cache_start = time.time()
-            cached_result = await get_cached_chains(account_number, underlying, limit, offset)
+            cached_result = await get_cached_chains(account_number, underlying, limit, offset, chain_id=chain_id)
             cache_time = time.time() - cache_start
             logger.info(f"🕐 TIMING: Cache lookup took {cache_time:.2f}s")
             if cached_result is not None:
                 total_time = time.time() - start_time
                 logger.info(f"🕐 TIMING: Total request time (cached): {total_time:.2f}s")
                 return cached_result
-            # If cache fails, fall through to V2 derivation
-            logger.info("🕐 TIMING: Cache miss, falling through to V2 derivation")
+            # If cache fails, fall through to fresh derivation
+            logger.info("🕐 TIMING: Cache miss, falling through to fresh derivation")
         
         # Slow path: derive fresh data and update cache
         # Get all raw transactions
@@ -1119,11 +1215,11 @@ async def get_order_chains(
         inventory_time = time.time() - inventory_start
         logger.info(f"🕐 TIMING: Position inventory and lots clear took {inventory_time:.2f}s")
 
-        # Process through V2 system to get derived chains
-        v2_start = time.time()
-        chains_by_account = order_processor_v2.process_transactions(raw_transactions)
-        v2_time = time.time() - v2_start
-        logger.info(f"🕐 TIMING: V2 processing took {v2_time:.2f}s")
+        # Process transactions to get derived chains
+        processor_start = time.time()
+        chains_by_account = order_processor.process_transactions(raw_transactions)
+        processor_time = time.time() - processor_start
+        logger.info(f"🕐 TIMING: Chain processing took {processor_time:.2f}s")
 
         # Flatten chains from all accounts
         all_chains = []
@@ -1131,7 +1227,7 @@ async def get_order_chains(
             for chain in chains:
                 all_chains.append(chain)
 
-        # Update cache with fresh V2 data
+        # Update cache with fresh data
         # Scope cache update to the requested account so other accounts' cached data is preserved
         cache_account = account_number if account_number and account_number != '' else None
         logger.info(f"About to update cache with {len(all_chains)} chains (account scope: {cache_account or 'all'})...")
@@ -1150,7 +1246,7 @@ async def get_order_chains(
         # Apply pagination
         paginated_chains = all_chains[offset:offset + limit]
         
-        # Format for frontend (similar to old system but with V2 data)
+        # Format for frontend
         format_start = time.time()
         logger.info(f"🕐 TIMING: Starting formatting of {len(paginated_chains)} chains")
 
@@ -1541,13 +1637,13 @@ async def get_order_chains(
             "timing": {
                 "total_time": round(total_time, 2),
                 "db_time": round(db_time, 2),
-                "v2_time": round(v2_time, 2),
+                "processor_time": round(processor_time, 2),
                 "format_time": round(format_time, 2)
             }
         }
         
     except Exception as e:
-        logger.error(f"Error fetching V2 order chains: {str(e)}")
+        logger.error(f"Error fetching order chains: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1725,53 +1821,22 @@ async def debug_balances():
 
 @app.get("/api/positions/cached")
 async def get_cached_positions(account_number: Optional[str] = None):
-    """Get cached positions immediately without sync - for fast loading"""
+    """Get cached positions immediately without sync - chain_id already persisted"""
     try:
         positions = db.get_open_positions()
 
         if account_number:
             positions = [p for p in positions if p.get('account_number') == account_number]
 
-        # Get all open chains for enrichment matching
-        open_chains = []
-        try:
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                query = """
-                    SELECT
-                        chain_id, underlying, account_number, strategy_type, chain_status
-                    FROM order_chains
-                    WHERE chain_status = 'OPEN'
-                """
-                params = []
-                if account_number:
-                    query += " AND account_number = ?"
-                    params.append(account_number)
-
-                cursor.execute(query, params)
-                for row in cursor.fetchall():
-                    open_chains.append(dict(row))
-        except Exception as e:
-            logger.warning(f"Could not fetch chains for cached positions enrichment: {e}")
-            open_chains = []
-
-        # Enrich positions with chain metadata for grouping
-        # Pass database connection for precise symbol-based matching
-        with db.get_connection() as conn:
-            enricher = PositionEnricher(db_connection=conn)
-            enriched_positions, unmatched = enricher.enrich_positions(positions, open_chains)
-
         # Get the last sync timestamp for freshness metadata
         last_sync = db.get_last_sync_timestamp()
-
-        # Calculate data age
         data_age_minutes = None
         if last_sync:
             data_age_minutes = (datetime.now() - last_sync).total_seconds() / 60
 
         # Group positions by account (matching the expected frontend format)
         positions_by_account = {}
-        for position in enriched_positions:
+        for position in positions:
             account = position.get('account_number', 'unknown')
             if account not in positions_by_account:
                 positions_by_account[account] = []
@@ -1814,8 +1879,8 @@ async def background_incremental_sync():
             days_back = min(days_back, 90)  # Maximum 90 days for safety
             logger.info(f"Background sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
         else:
-            # No previous sync, fetch last 30 days
-            days_back = 30
+            # No previous sync, fetch last 365 days
+            days_back = 365
             logger.info(f"Background sync: no previous sync, fetching {days_back} days")
 
         # Use shared client
@@ -1833,14 +1898,13 @@ async def background_incremental_sync():
             raw_saved = db.save_raw_transactions(transactions)
             logger.info(f"Background sync: saved {raw_saved} raw transactions")
 
-            # Fetch and save current positions
+            # Fetch and save current positions (with chain enrichment)
             all_positions = await tastytrade.get_positions()
             total_positions = 0
 
             for account_number, positions in all_positions.items():
                 if positions:
-                    positions_with_dates = calculate_position_opening_dates(positions, account_number)
-                    success = db.save_positions(positions_with_dates, account_number)
+                    success = enrich_and_save_positions(positions, account_number)
                     if success:
                         total_positions += len(positions)
 
@@ -1848,7 +1912,7 @@ async def background_incremental_sync():
 
             # Reprocess chains to update order processing
             raw_transactions = db.get_raw_transactions()
-            chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+            chains_by_account = order_processor.process_transactions(raw_transactions)
 
             all_chains = []
             for account, chains in chains_by_account.items():
@@ -1872,79 +1936,521 @@ async def background_incremental_sync():
 
 @app.get("/api/positions")
 async def get_positions(account_number: Optional[str] = None):
-    """Get current open positions with chain enrichment for intelligent grouping"""
+    """Get current open positions - chain_id/strategy_type already persisted at sync time"""
     try:
-        # Get live positions from database
-        live_positions = db.get_open_positions()
-        logger.info(f"/api/positions: Fetched {len(live_positions)} total live positions from database")
+        positions = db.get_open_positions()
 
         if account_number:
-            live_positions = [p for p in live_positions if p.get('account_number') == account_number]
-            logger.info(f"/api/positions: Filtered to {len(live_positions)} positions for account {account_number}")
+            positions = [p for p in positions if p.get('account_number') == account_number]
 
-        # Get all open chains directly from database for enrichment matching
-        # This bypasses order_manager which may apply filters or caching
-        import json
-        open_chains = []
-        try:
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                query = """
-                    SELECT
-                        chain_id, underlying, account_number, strategy_type, chain_status
-                    FROM order_chains
-                    WHERE chain_status = 'OPEN'
-                """
-                params = []
-                if account_number:
-                    query += " AND account_number = ?"
-                    params.append(account_number)
-
-                cursor.execute(query, params)
-                for row in cursor.fetchall():
-                    open_chains.append(dict(row))
-                logger.info(f"/api/positions: Fetched {len(open_chains)} open chains for enrichment")
-        except Exception as e:
-            logger.warning(f"Could not fetch chains for enrichment: {e}. Continuing without enrichment.")
-            open_chains = []
-
-        # Enrich positions with chain metadata
-        # Pass database connection for precise symbol-based matching
-        with db.get_connection() as conn:
-            enricher = PositionEnricher(db_connection=conn)
-            enriched_positions, unmatched_positions = enricher.enrich_positions(live_positions, open_chains)
-
-        # Log enrichment results
-        enriched_count = sum(1 for p in enriched_positions if 'chain_id' in p)
-        logger.info(
-            f"/api/positions: Enrichment result: {enriched_count}/{len(enriched_positions)} positions have chain_id. "
-            f"{len(unmatched_positions)} positions unmatched."
-        )
-
-        # If positions are unmatched, trigger background sync
-        # NOTE: Commenting out to improve responsiveness - background sync will happen on chains page
-        # if unmatched_positions:
-        #     logger.info(f"Found {len(unmatched_positions)} unmatched positions: {unmatched_positions}")
-        #     logger.info("Triggering background incremental sync to update chain data")
-        #     asyncio.create_task(background_incremental_sync())
-
-        # Group positions by account and add opening dates (matching the expected frontend format)
+        # Group positions by account (matching the expected frontend format)
         positions_by_account = {}
-        for position in enriched_positions:
+        for position in positions:
             account = position.get('account_number', 'unknown')
             if account not in positions_by_account:
                 positions_by_account[account] = []
             positions_by_account[account].append(position)
 
-        # Calculate opening dates for each account's positions
-        for account, positions in positions_by_account.items():
-            positions_by_account[account] = calculate_position_opening_dates(positions, account)
-
-        logger.info(f"/api/positions: Returning positions grouped by {len(positions_by_account)} accounts")
+        logger.info(f"/api/positions: Returning {len(positions)} positions grouped by {len(positions_by_account)} accounts")
         return positions_by_account
     except Exception as e:
         logger.error(f"Error fetching positions: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/open-chains")
+async def get_open_chains(account_number: Optional[str] = None):
+    """Get open chains formatted for the Positions page — chain-as-source-of-truth.
+
+    Returns chains grouped by account_number with:
+    - Each chain's realized_pnl, cost_basis_total, roll_count
+    - open_legs: currently open option legs (derived by netting across all orders)
+    - shares: equity positions separated out per underlying
+    """
+    import json as _json
+
+    try:
+        chain_summaries = db.get_open_chain_summaries(account_number)
+        if not chain_summaries:
+            return {}
+
+        result = {}  # account_number -> { chains: [...], shares: {...} }
+
+        for chain_summary in chain_summaries:
+            chain_id = chain_summary['chain_id']
+            acct = chain_summary['account_number']
+
+            if acct not in result:
+                result[acct] = {"chains": [], "shares": {}}
+
+            # Load cached order data for this chain
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT order_data FROM order_chain_cache
+                    WHERE chain_id = ? ORDER BY order_id
+                """, (chain_id,))
+                order_rows = cursor.fetchall()
+
+            orders = []
+            for row in order_rows:
+                try:
+                    orders.append(_json.loads(row[0]))
+                except (_json.JSONDecodeError, IndexError):
+                    continue
+
+            # --- Derive open legs by netting positions across all orders ---
+            # Track net signed quantity per option symbol: positive = long, negative = short
+            # Also track the metadata (strike, exp, price, etc.) for the most recent opening
+            option_net = {}   # symbol -> { signed_qty, metadata }
+            cost_basis_total = 0.0
+            roll_count = 0
+
+            for order in orders:
+                order_type = order.get('order_type', '')
+                if order_type == 'ROLLING':
+                    roll_count += 1
+
+                for pos in order.get('positions', []):
+                    qty = pos.get('quantity', 0)
+                    price = pos.get('opening_price', 0) or 0
+                    instrument = pos.get('instrument_type', '')
+                    action = str(pos.get('opening_action', ''))
+                    symbol = (pos.get('symbol') or '').strip()
+                    multiplier = 100 if instrument == 'EQUITY_OPTION' else 1
+
+                    # Accumulate cost basis across all orders
+                    if price and qty:
+                        amount = price * abs(qty) * multiplier
+                        if order_type == 'CLOSING':
+                            if 'BTC' in action or 'BUY_TO_CLOSE' in action or 'BUY' in action:
+                                cost_basis_total -= amount
+                            elif 'STC' in action or 'SELL_TO_CLOSE' in action or 'SELL' in action:
+                                cost_basis_total += amount
+                        else:
+                            if 'SELL_TO_' in action or 'STO' in action or action == 'SELL':
+                                cost_basis_total += amount
+                            elif 'BUY_TO_' in action or 'BTO' in action or action == 'BUY':
+                                cost_basis_total -= amount
+
+                    # Handle closing legs within opening/rolling orders
+                    closing_price = pos.get('closing_price')
+                    closing_action = str(pos.get('closing_action', ''))
+                    if closing_price and closing_action and qty:
+                        c_amount = closing_price * abs(qty) * multiplier
+                        if 'BTC' in closing_action or 'BUY' in closing_action:
+                            cost_basis_total -= c_amount
+                        elif 'STC' in closing_action or 'SELL' in closing_action:
+                            cost_basis_total += c_amount
+
+                    # Net option positions by symbol
+                    if instrument == 'EQUITY_OPTION' and symbol:
+                        is_sell = 'SELL' in action or 'STO' in action
+                        is_buy = 'BUY' in action or 'BTO' in action
+                        is_close = 'CLOSE' in action or order_type == 'CLOSING'
+
+                        if is_sell and is_close:
+                            # Sell to close: reduces long position
+                            signed_delta = -abs(qty)
+                        elif is_buy and is_close:
+                            # Buy to close: reduces short position
+                            signed_delta = abs(qty)
+                        elif is_sell:
+                            # Sell to open: creates short
+                            signed_delta = -abs(qty)
+                        elif is_buy:
+                            # Buy to open: creates long
+                            signed_delta = abs(qty)
+                        else:
+                            # Expiration/assignment closings with no action
+                            if order_type in ('CLOSING',) and not action:
+                                # System-generated closing — zero out this symbol
+                                if symbol in option_net:
+                                    option_net[symbol]['signed_qty'] = 0
+                                continue
+                            else:
+                                continue
+
+                        if symbol not in option_net:
+                            option_net[symbol] = {'signed_qty': 0, 'metadata': {}}
+
+                        option_net[symbol]['signed_qty'] += signed_delta
+
+                        # Update metadata for opening positions (latest wins)
+                        if not is_close:
+                            option_net[symbol]['metadata'] = {
+                                'symbol': symbol,
+                                'underlying': pos.get('underlying', chain_summary['underlying']),
+                                'instrument_type': instrument,
+                                'option_type': pos.get('option_type'),
+                                'strike': pos.get('strike'),
+                                'expiration': pos.get('expiration'),
+                                'opening_price': price,
+                                'lot_id': pos.get('lot_id'),
+                            }
+
+                    # (Equity positions are sourced from TT API positions table below)
+
+            # Convert net option positions to open_legs list
+            open_option_legs = []
+            for symbol, net_data in option_net.items():
+                net_qty = net_data['signed_qty']
+                if net_qty == 0:
+                    continue  # fully closed
+                meta = net_data['metadata']
+                if not meta:
+                    continue  # no opening data available
+
+                qty_direction = 'Short' if net_qty < 0 else 'Long'
+                abs_qty = abs(net_qty)
+                price = meta.get('opening_price', 0)
+                leg_amount = price * abs_qty * 100 if price else 0
+                leg_cost = leg_amount if qty_direction == 'Short' else -leg_amount
+
+                open_option_legs.append({
+                    "symbol": meta['symbol'],
+                    "underlying": meta.get('underlying', chain_summary['underlying']),
+                    "instrument_type": meta['instrument_type'],
+                    "option_type": meta.get('option_type'),
+                    "strike": meta.get('strike'),
+                    "expiration": meta.get('expiration'),
+                    "quantity": abs_qty,
+                    "quantity_direction": qty_direction,
+                    "opening_price": price,
+                    "cost_basis": leg_cost,
+                    "lot_id": meta.get('lot_id'),
+                })
+
+            # Build chain object for frontend
+            chain_obj = {
+                "chain_id": chain_id,
+                "underlying": chain_summary['underlying'],
+                "account_number": acct,
+                "strategy_type": chain_summary['strategy_type'] or 'Unknown',
+                "opening_date": chain_summary['opening_date'],
+                "chain_status": chain_summary['chain_status'],
+                "realized_pnl": chain_summary['realized_pnl'] or 0.0,
+                "cost_basis_total": cost_basis_total,
+                "roll_count": roll_count,
+                "order_count": chain_summary['order_count'] or 0,
+                "has_assignment": bool(chain_summary.get('has_assignment')),
+                "open_legs": open_option_legs,
+            }
+            # Only include chains that have open option legs
+            # Stock-only chains (like STRC) have no option legs — equity is shown via TT positions
+            if open_option_legs:
+                result[acct]["chains"].append(chain_obj)
+
+        # Source equity positions from TT API positions table (reliable for shares)
+        tt_positions = db.get_open_positions()
+        for pos in tt_positions:
+            instrument = pos.get('instrument_type', '')
+            # Match both enum-style and plain strings
+            if 'OPTION' in instrument.upper():
+                continue  # skip options, already handled by chains
+            if 'EQUITY' not in instrument.upper():
+                continue  # skip anything else
+
+            acct = pos.get('account_number', '')
+            if account_number and account_number != '' and acct != account_number:
+                continue
+
+            if acct not in result:
+                result[acct] = {"chains": [], "shares": {}}
+
+            sym = pos.get('underlying') or pos.get('symbol', '')
+            qty = pos.get('quantity', 0)
+            direction = pos.get('quantity_direction', 'Long')
+            signed_qty = qty if direction == 'Long' else -qty
+            avg_price = abs(pos.get('average_open_price', 0) or 0)
+            # TT stores equity cost_basis as negative for Long (cash outflow convention)
+            # Normalize to positive = amount invested
+            raw_cost = pos.get('cost_basis', 0) or 0
+            cost_basis = abs(raw_cost) if raw_cost else (avg_price * qty)
+
+            shares_map = result[acct]["shares"]
+            if sym not in shares_map:
+                shares_map[sym] = {
+                    "symbol": sym,
+                    "underlying": sym,
+                    "instrument_type": "EQUITY",
+                    "quantity": 0,
+                    "total_cost": 0.0,
+                    "average_open_price": 0.0,
+                    "positions": [],
+                }
+            shares_map[sym]["quantity"] += signed_qty
+            shares_map[sym]["total_cost"] += cost_basis
+            shares_map[sym]["positions"].append({
+                "symbol": pos.get('symbol', sym),
+                "underlying": sym,
+                "instrument_type": "EQUITY",
+                "quantity": signed_qty,
+                "quantity_direction": direction,
+                "average_open_price": avg_price,
+                "cost_basis": cost_basis,
+                "account_number": acct,
+            })
+
+        # Compute weighted average price for each share group
+        for acct_data in result.values():
+            for sym, share_data in acct_data["shares"].items():
+                if share_data["quantity"] != 0:
+                    share_data["average_open_price"] = share_data["total_cost"] / abs(share_data["quantity"])
+                share_data["cost_basis"] = share_data["total_cost"]
+
+        logger.info(f"/api/open-chains: Returning {sum(len(a['chains']) for a in result.values())} chains, {sum(len(a['shares']) for a in result.values())} equity groups across {len(result)} accounts")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in /api/open-chains: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def reconcile_positions_vs_chains():
+    """Compare TT API positions against chain-derived open legs.
+
+    Returns a summary with categories:
+    - MATCHED: symbol+account+quantity agree
+    - QUANTITY_MISMATCH: same symbol but different quantity
+    - UNLINKED: TT has position, chains don't
+    - STALE: chain says open but TT doesn't have it (auto-expires past-expiry options)
+    """
+    import json as _json
+    from datetime import date as _date
+
+    try:
+        # 1. Get TT API positions (from positions table)
+        tt_positions = db.get_open_positions()
+        # Build lookup: (account, symbol) -> position
+        tt_by_key = {}
+        for pos in tt_positions:
+            key = (pos.get('account_number', ''), (pos.get('symbol') or '').strip())
+            tt_by_key[key] = pos
+
+        # 2. Get chain-derived open option legs (equity is sourced from TT directly, not reconciled)
+        chain_summaries = db.get_open_chain_summaries()
+        chain_legs_by_key = {}  # (account, symbol) -> { quantity, chain_id, ... }
+
+        for chain_summary in chain_summaries:
+            chain_id = chain_summary['chain_id']
+            acct = chain_summary['account_number']
+
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT order_data FROM order_chain_cache WHERE chain_id = ? ORDER BY order_id", (chain_id,))
+                order_rows = cursor.fetchall()
+
+            orders = []
+            for row in order_rows:
+                try:
+                    orders.append(_json.loads(row[0]))
+                except:
+                    continue
+
+            # Net option positions by symbol (same logic as /api/open-chains)
+            option_net = {}
+            for order in orders:
+                order_type = order.get('order_type', '')
+                for pos in order.get('positions', []):
+                    qty = pos.get('quantity', 0)
+                    instrument = pos.get('instrument_type', '')
+                    action = str(pos.get('opening_action', ''))
+                    symbol = (pos.get('symbol') or '').strip()
+
+                    if instrument == 'EQUITY_OPTION' and symbol:
+                        is_sell = 'SELL' in action or 'STO' in action
+                        is_buy = 'BUY' in action or 'BTO' in action
+                        is_close = 'CLOSE' in action or order_type == 'CLOSING'
+
+                        if is_sell and is_close:
+                            signed_delta = -abs(qty)
+                        elif is_buy and is_close:
+                            signed_delta = abs(qty)
+                        elif is_sell:
+                            signed_delta = -abs(qty)
+                        elif is_buy:
+                            signed_delta = abs(qty)
+                        else:
+                            if order_type == 'CLOSING' and not action:
+                                if symbol in option_net:
+                                    option_net[symbol] = 0
+                                continue
+                            else:
+                                continue
+
+                        option_net[symbol] = option_net.get(symbol, 0) + signed_delta
+
+            for symbol, net_qty in option_net.items():
+                if net_qty != 0:
+                    key = (acct, symbol)
+                    chain_legs_by_key[key] = {
+                        'quantity': net_qty,
+                        'chain_id': chain_id,
+                        'underlying': chain_summary['underlying'],
+                        'expiration': None,  # would need to track per-symbol
+                    }
+
+        # 3. Reconcile
+        matched = 0
+        quantity_mismatch = []
+        unlinked = []
+        stale = []
+        today = _date.today()
+
+        all_chain_keys = set(chain_legs_by_key.keys())
+        all_tt_keys = set(tt_by_key.keys())
+
+        # Check TT positions against chains (options only — equity is sourced directly from TT)
+        for key in all_tt_keys:
+            acct, symbol = key
+            tt_pos = tt_by_key[key]
+            instrument = tt_pos.get('instrument_type', '').upper()
+            is_option = 'OPTION' in instrument
+
+            # Skip equity — it's always shown from TT positions directly, no chain reconciliation needed
+            if not is_option:
+                continue
+
+            tt_qty = tt_pos.get('quantity', 0)
+            if tt_pos.get('quantity_direction') == 'Short':
+                tt_signed = -abs(tt_qty)
+            else:
+                tt_signed = abs(tt_qty)
+
+            if key in chain_legs_by_key:
+                chain_data = chain_legs_by_key[key]
+                if chain_data['quantity'] == tt_signed:
+                    matched += 1
+                else:
+                    quantity_mismatch.append({
+                        'symbol': symbol,
+                        'account': acct,
+                        'tt_quantity': tt_signed,
+                        'chain_quantity': chain_data['quantity'],
+                        'chain_id': chain_data['chain_id'],
+                    })
+            else:
+                unlinked.append({
+                    'symbol': symbol,
+                    'account': acct,
+                    'quantity': tt_signed,
+                    'instrument_type': tt_pos.get('instrument_type', ''),
+                    'underlying': tt_pos.get('underlying', ''),
+                })
+
+        # Check chain legs that TT doesn't have (stale)
+        for key in all_chain_keys - all_tt_keys:
+            acct, symbol = key
+            chain_data = chain_legs_by_key.get(key, {})
+            stale.append({
+                'symbol': symbol,
+                'account': acct,
+                'chain_quantity': chain_data.get('quantity', 0),
+                'chain_id': chain_data.get('chain_id', ''),
+            })
+
+        # Auto-close stale chains in two passes:
+        # Pass 1: Chains with stale option legs and no matched legs
+        # Pass 2: "Ghost" chains — zero net option legs AND no TT positions for that underlying+account
+        auto_closed = []
+
+        # Collect chain_ids that have at least one matched option leg in TT
+        matched_chain_ids = set()
+        for key in all_chain_keys & all_tt_keys:
+            cd = chain_legs_by_key.get(key, {})
+            if cd.get('chain_id'):
+                matched_chain_ids.add(cd['chain_id'])
+
+        # Also collect chain_ids that appear in chain_legs_by_key (have any option footprint)
+        chains_with_option_legs = set(cd['chain_id'] for cd in chain_legs_by_key.values())
+
+        # Pass 1: Chains with stale legs and no matched legs
+        if stale:
+            stale_chain_ids = set(s['chain_id'] for s in stale if s.get('chain_id'))
+            for chain_id in stale_chain_ids - matched_chain_ids:
+                try:
+                    with db.get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE order_chains SET chain_status = 'CLOSED', closing_date = ? WHERE chain_id = ? AND chain_status IN ('OPEN', 'ASSIGNED')",
+                            (today.isoformat(), chain_id)
+                        )
+                        if cursor.rowcount > 0:
+                            auto_closed.append(chain_id)
+                            logger.info(f"Auto-closed stale chain {chain_id} — TT has no matching positions")
+                        conn.commit()
+                except Exception as e:
+                    logger.error(f"Failed to auto-close chain {chain_id}: {e}")
+
+        # Pass 2: Ghost chains — OPEN/ASSIGNED with zero net option legs and no TT positions
+        # These are chains where all options were closed/assigned/expired (netting = 0)
+        # but chain_status was never updated. Check if TT has ANY position for that underlying+account.
+        tt_underlyings_by_acct = {}
+        for pos in tt_positions:
+            acct = pos.get('account_number', '')
+            und = (pos.get('underlying') or pos.get('symbol', '')).strip()
+            tt_underlyings_by_acct.setdefault(acct, set()).add(und)
+
+        for chain_summary in chain_summaries:
+            chain_id = chain_summary['chain_id']
+            if chain_id in set(auto_closed):
+                continue  # already handled in pass 1
+            if chain_id in chains_with_option_legs:
+                continue  # has open option legs, not a ghost
+            if chain_id in matched_chain_ids:
+                continue  # has matched legs
+
+            # This chain has zero net option legs — check if TT has any position for this underlying
+            acct = chain_summary['account_number']
+            underlying = chain_summary['underlying']
+            tt_has_underlying = underlying in tt_underlyings_by_acct.get(acct, set())
+
+            if not tt_has_underlying:
+                # TT has nothing for this underlying+account — auto-close
+                try:
+                    with db.get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE order_chains SET chain_status = 'CLOSED', closing_date = ? WHERE chain_id = ? AND chain_status IN ('OPEN', 'ASSIGNED')",
+                            (today.isoformat(), chain_id)
+                        )
+                        if cursor.rowcount > 0:
+                            auto_closed.append(chain_id)
+                            logger.info(f"Auto-closed ghost chain {chain_id} ({underlying}/{acct}) — no option legs and no TT positions")
+                        conn.commit()
+                except Exception as e:
+                    logger.error(f"Failed to auto-close ghost chain {chain_id}: {e}")
+
+        # Remove auto-closed entries from stale list (they've been resolved)
+        if auto_closed:
+            stale = [s for s in stale if s.get('chain_id') not in auto_closed]
+
+        total = matched + len(quantity_mismatch) + len(unlinked) + len(stale)
+        summary = {
+            'total': total,
+            'matched': matched,
+            'quantity_mismatch': quantity_mismatch,
+            'unlinked': unlinked,
+            'stale': stale,
+            'auto_closed': auto_closed,
+        }
+        logger.info(f"Reconciliation: {matched}/{total} matched, {len(quantity_mismatch)} qty mismatch, {len(unlinked)} unlinked, {len(stale)} stale, {len(auto_closed)} auto-closed")
+        return summary
+
+    except Exception as e:
+        logger.error(f"Reconciliation error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {'total': 0, 'matched': 0, 'quantity_mismatch': [], 'unlinked': [], 'stale': [], 'error': str(e)}
+
+
+@app.get("/api/reconcile")
+async def get_reconciliation():
+    """Run position reconciliation and return results"""
+    return await reconcile_positions_vs_chains()
 
 
 @app.get("/api/dashboard")
@@ -2086,16 +2592,14 @@ async def sync_positions_only():
 
         logger.info("Starting positions-only sync (fast mode)...")
 
-        # Fetch and save current positions for all accounts
+        # Fetch and save current positions for all accounts (with chain enrichment)
         logger.info("Fetching current positions from all accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
 
         for account_number, positions in all_positions.items():
             if positions:
-                # Calculate opening dates for positions
-                positions_with_dates = calculate_position_opening_dates(positions, account_number)
-                success = db.save_positions(positions_with_dates, account_number)
+                success = enrich_and_save_positions(positions, account_number)
                 if success:
                     logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
                     total_positions += len(positions)
@@ -2108,15 +2612,19 @@ async def sync_positions_only():
         if balances:
             for balance in balances:
                 db.save_account_balance(balance)
-        
+
         logger.info(f"Fast sync completed: {total_positions} positions updated")
-        
+
+        # Run reconciliation after sync
+        reconciliation = await reconcile_positions_vs_chains()
+
         return {
             "message": f"Fast sync completed: {total_positions} positions updated",
             "positions_updated": total_positions,
-            "mode": "positions_only"
+            "mode": "positions_only",
+            "reconciliation": reconciliation
         }
-        
+
     except Exception as e:
         logger.error(f"Error during fast sync: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2143,8 +2651,8 @@ async def sync_unified():
             days_back = min(days_back, 90)  # Maximum 90 days for safety
             logger.info(f"Incremental sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
         else:
-            # No previous sync, fetch last 90 days
-            days_back = 90
+            # No previous sync, fetch last 365 days
+            days_back = 365
             logger.info(f"First sync detected, fetching {days_back} days")
 
         # Save all accounts to database
@@ -2168,30 +2676,9 @@ async def sync_unified():
         raw_saved = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
         
-        # Transaction data has been saved to raw_transactions table
-        # Skip legacy trade processing - OrderManager will handle this later
         saved_count = len(transactions)
-        updated_count = 0
-        skipped_count = 0
-        failed_count = 0
-        
-        # Also fetch and save current positions for all accounts
-        logger.info("Fetching current positions from all accounts...")
-        all_positions = await tastytrade.get_positions()
-        total_positions = 0
 
-        for account_number, positions in all_positions.items():
-            if positions:
-                # Calculate opening dates for positions
-                positions_with_dates = calculate_position_opening_dates(positions, account_number)
-                success = db.save_positions(positions_with_dates, account_number)
-                if success:
-                    logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
-                    total_positions += len(positions)
-                else:
-                    logger.error(f"Failed to save positions for account {account_number}")
-
-        # Fetch and save account balances for all accounts
+        # Fetch account balances for all accounts
         logger.info("Fetching account balances...")
         balances = await tastytrade.get_account_balances()
         if balances:
@@ -2201,84 +2688,88 @@ async def sync_unified():
                     logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
                 else:
                     logger.error(f"Failed to save balance for account {balance.get('account_number')}")
-        
-        logger.info(f"Sync completed: {saved_count} transactions processed, {total_positions} positions updated")
-        
+
         # Update last sync timestamp
         db.update_last_sync_timestamp()
         logger.info("Updated last sync timestamp")
-        
-        # Reprocess chains after sync - use incremental processing when possible
-        # Skip reprocessing entirely if no new transactions were saved
-        if raw_saved == 0:
-            logger.info("No new transactions saved, skipping chain reprocessing")
-            return {
-                "message": f"Sync completed: no new transactions",
-                "transactions_processed": 0,
-                "positions_updated": total_positions,
-                "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
-            }
 
-        # Extract affected underlyings from the fetched transactions
-        affected_underlyings = set()
-        for txn in transactions:
-            underlying = txn.get('underlying_symbol', '')
-            if underlying:
-                # Strip option suffix if present (e.g., "AAPL  240119C00150000" -> "AAPL")
-                underlying = underlying.split()[0] if ' ' in underlying else underlying
-                affected_underlyings.add(underlying)
+        # Reprocess chains BEFORE saving positions (chains must exist for enrichment)
+        if raw_saved > 0:
+            # Extract affected underlyings from the fetched transactions
+            affected_underlyings = set()
+            for txn in transactions:
+                underlying = txn.get('underlying_symbol', '')
+                if underlying:
+                    underlying = underlying.split()[0] if ' ' in underlying else underlying
+                    affected_underlyings.add(underlying)
 
-        # Determine if we should do incremental or full reprocessing
-        use_incremental = raw_saved < 50 and len(affected_underlyings) <= 10
+            use_incremental = raw_saved < 50 and len(affected_underlyings) <= 10
 
-        if use_incremental:
-            logger.info(f"Incremental chain reprocessing for {len(affected_underlyings)} underlyings: {affected_underlyings}")
-        else:
-            logger.info(f"Full chain reprocessing (raw_saved={raw_saved}, underlyings={len(affected_underlyings)})")
-            affected_underlyings = None  # Signal full reprocessing
-
-        try:
-            # Clear position inventory and lots (needed for V2 processing)
-            position_manager.clear_all_positions()
-            lot_manager.clear_all_lots()
-            logger.info("Cleared position inventory and lots for reprocessing")
-
-            if use_incremental and affected_underlyings:
-                # Incremental: only process affected underlyings
-                all_chains = []
-                for underlying in affected_underlyings:
-                    underlying_txs = db.get_raw_transactions(underlying=underlying)
-                    if underlying_txs:
-                        chains_by_account = order_processor_v2.process_transactions(underlying_txs)
-                        for account, chains in chains_by_account.items():
-                            all_chains.extend(chains)
-                logger.info(f"Incremental reprocessing created {len(all_chains)} chains for affected underlyings")
+            if use_incremental:
+                logger.info(f"Incremental chain reprocessing for {len(affected_underlyings)} underlyings: {affected_underlyings}")
             else:
-                # Full reprocessing
-                raw_transactions = db.get_raw_transactions()
-                chains_by_account = order_processor_v2.process_transactions(raw_transactions)
-                all_chains = []
-                for account, chains in chains_by_account.items():
-                    all_chains.extend(chains)
-                logger.info(f"Full reprocessing created {len(all_chains)} chains")
+                logger.info(f"Full chain reprocessing (raw_saved={raw_saved}, underlyings={len(affected_underlyings)})")
+                affected_underlyings = None
 
-            if all_chains:
-                logger.info("Running strategy detection on chains...")
-                try:
-                    await update_chain_cache(all_chains, affected_underlyings)
-                    logger.info("Strategy detection and cache update completed")
-                except Exception as e:
-                    logger.error(f"Error during strategy detection after sync: {str(e)}", exc_info=True)
-            else:
-                logger.warning("No chains created during reprocessing")
-        except Exception as e:
-            logger.error(f"Error during chain reprocessing: {str(e)}")
-        
+            try:
+                position_manager.clear_all_positions()
+                lot_manager.clear_all_lots()
+                logger.info("Cleared position inventory and lots for reprocessing")
+
+                if use_incremental and affected_underlyings:
+                    all_chains = []
+                    for underlying in affected_underlyings:
+                        underlying_txs = db.get_raw_transactions(underlying=underlying)
+                        if underlying_txs:
+                            chains_by_account = order_processor.process_transactions(underlying_txs)
+                            for account, chains in chains_by_account.items():
+                                all_chains.extend(chains)
+                    logger.info(f"Incremental reprocessing created {len(all_chains)} chains for affected underlyings")
+                else:
+                    raw_transactions = db.get_raw_transactions()
+                    chains_by_account = order_processor.process_transactions(raw_transactions)
+                    all_chains = []
+                    for account, chains in chains_by_account.items():
+                        all_chains.extend(chains)
+                    logger.info(f"Full reprocessing created {len(all_chains)} chains")
+
+                if all_chains:
+                    logger.info("Running strategy detection on chains...")
+                    try:
+                        await update_chain_cache(all_chains, affected_underlyings)
+                        logger.info("Strategy detection and cache update completed")
+                    except Exception as e:
+                        logger.error(f"Error during strategy detection after sync: {str(e)}", exc_info=True)
+                else:
+                    logger.warning("No chains created during reprocessing")
+            except Exception as e:
+                logger.error(f"Error during chain reprocessing: {str(e)}")
+
+        # Fetch and save positions AFTER chain reprocessing (so enrichment can find chains)
+        logger.info("Fetching current positions from all accounts...")
+        all_positions = await tastytrade.get_positions()
+        total_positions = 0
+
+        for account_number, positions in all_positions.items():
+            if positions:
+                success = enrich_and_save_positions(positions, account_number)
+                if success:
+                    logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
+                    total_positions += len(positions)
+                else:
+                    logger.error(f"Failed to save positions for account {account_number}")
+
+        logger.info(f"Sync completed: {saved_count} transactions processed, {total_positions} positions updated")
+
+        # Run reconciliation after sync
+        reconciliation = await reconcile_positions_vs_chains()
+
         return {
             "message": f"Sync completed: {saved_count} new transactions processed",
             "transactions_processed": saved_count,
             "positions_updated": total_positions,
-            "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
+            "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None,
+            "reconciliation": reconciliation
         }
     except Exception as e:
         logger.error(f"Sync error: {str(e)}", exc_info=True)
@@ -2401,8 +2892,8 @@ async def initial_sync():
         logger.info(f"Saved {len(accounts)} accounts")
 
         # Fetch ALL transactions (longer period for initial sync)
-        logger.info("Fetching ALL transactions (last 365 days)...")
-        transactions = await tastytrade.get_transactions(days_back=365)
+        logger.info("Fetching ALL transactions (last 730 days)...")
+        transactions = await tastytrade.get_transactions(days_back=730)
         logger.info(f"Fetched {len(transactions)} transactions")
         
         # Save raw transactions first (for order ID support)
@@ -2459,16 +2950,20 @@ async def initial_sync():
         db.mark_initial_sync_completed()
         logger.info("Updated last sync timestamp and marked initial sync completed")
         
-        # Automatically reprocess chains after initial sync
-        logger.info("Auto-reprocessing chains after initial sync...")
+        # Reprocess chains using the OrderProcessor pipeline (strategy detection + cache)
+        logger.info("Reprocessing chains with strategy detection after initial sync...")
         try:
-            chain_result = order_manager.reprocess_orders_and_chains_from_database()
-            if 'error' in chain_result:
-                logger.error(f"Chain reprocessing error: {chain_result['error']}")
-            else:
-                logger.info(f"Chain reprocessing completed: {chain_result['orders_saved']} orders, {chain_result['chains_saved']} chains")
+            raw_transactions = db.get_raw_transactions()
+            position_manager.clear_all_positions()
+            lot_manager.clear_all_lots()
+            chains_by_account = order_processor.process_transactions(raw_transactions)
+            all_chains = []
+            for account, chains in chains_by_account.items():
+                all_chains.extend(chains)
+            await update_chain_cache(all_chains)
+            logger.info(f"Chain reprocessing completed: {len(all_chains)} chains with strategy detection")
         except Exception as e:
-            logger.error(f"Error during auto chain reprocessing: {str(e)}")
+            logger.error(f"Error during chain reprocessing: {str(e)}", exc_info=True)
         
         return {
             "message": f"Initial sync completed successfully",
@@ -2487,9 +2982,9 @@ async def initial_sync():
 
 @app.post("/api/reprocess-chains")
 async def reprocess_chains():
-    """Reprocess orders and chains from existing raw transactions using V2 system"""
+    """Reprocess orders and chains from existing raw transactions"""
     try:
-        logger.info("Starting V2 chain reprocessing from database")
+        logger.info("Starting chain reprocessing from database")
 
         # Get all raw transactions from database
         raw_transactions = db.get_raw_transactions()
@@ -2500,8 +2995,8 @@ async def reprocess_chains():
         lot_manager.clear_all_lots()
         logger.info("Cleared position inventory and lots for reprocessing")
 
-        # Use V2 processor to create chains
-        chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+        # Use processor to create chains
+        chains_by_account = order_processor.process_transactions(raw_transactions)
         
         # Flatten chains from all accounts
         all_chains = []
@@ -2509,7 +3004,7 @@ async def reprocess_chains():
             for chain in chains:
                 all_chains.append(chain)
         
-        # Update cache with fresh V2 data
+        # Update cache with fresh data
         logger.info(f"About to update cache with {len(all_chains)} chains...")
         await update_chain_cache(all_chains)
         logger.info("Cache update completed")
@@ -2892,9 +3387,9 @@ async def health_check():
 @app.get("/api/debug/strategy/{chain_id}")
 async def debug_strategy(chain_id: str):
     """Debug strategy detection for a specific chain"""
-    # Get the chain from V2 processor (same as cache update process)
+    # Get the chain from processor (same as cache update process)
     raw_transactions = db.get_raw_transactions()
-    chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+    chains_by_account = order_processor.process_transactions(raw_transactions)
     
     # Find the specific chain
     target_chain = None
@@ -2913,7 +3408,7 @@ async def debug_strategy(chain_id: str):
         "underlying": target_chain.underlying,
         "orders": len(target_chain.orders),
         "opening_orders": [],
-        "debug_path": "fresh_v2_processing"
+        "debug_path": "fresh_processing"
     }
     
     for order in target_chain.orders:
@@ -2950,7 +3445,7 @@ async def debug_cache_path(chain_id: str):
     """Debug strategy detection using the EXACT same code path as cache update"""
     # This mimics the exact code path used in cache updates
     raw_transactions = db.get_raw_transactions()
-    chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+    chains_by_account = order_processor.process_transactions(raw_transactions)
     
     # Flatten chains from all accounts (same as cache update)
     all_chains = []
@@ -2994,7 +3489,7 @@ async def debug_cache_update(chain_id: str):
         raw_transactions = db.get_raw_transactions()
         
         # Step 2: Process transactions
-        chains_by_account = order_processor_v2.process_transactions(raw_transactions)
+        chains_by_account = order_processor.process_transactions(raw_transactions)
         
         # Step 3: Find target chain
         target_chain = None

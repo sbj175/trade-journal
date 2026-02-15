@@ -1,7 +1,7 @@
 """
-P&L Calculator V2
+P&L Calculator
 Implements P&L calculation based on position inventory and FIFO matching
-Enhanced with V3 lot-based calculations for accurate chain P&L
+Enhanced with lot-based calculations for accurate chain P&L
 """
 
 from dataclasses import dataclass
@@ -38,10 +38,10 @@ class PositionLot:
     account_number: str
 
 
-class PnLCalculatorV2:
+class PnLCalculator:
     """Calculates P&L using FIFO matching and position inventory
 
-    Enhanced with V3 lot-based calculations when LotManager is provided.
+    Enhanced with lot-based calculations when LotManager is provided.
     Falls back to legacy position-based calculations otherwise.
     """
 

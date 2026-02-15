@@ -1,7 +1,7 @@
 """
-Order Processing Engine V2
-Implements the new order chain processing rules
-Enhanced with V3 lot-based position tracking
+Order Processing Engine
+Implements order chain processing rules
+Enhanced with lot-based position tracking
 """
 
 from dataclasses import dataclass, field
@@ -132,10 +132,10 @@ class Chain:
         return None
 
 
-class OrderProcessorV2:
-    """New order processing engine based on simplified rules
+class OrderProcessor:
+    """Order processing engine based on simplified rules
 
-    Enhanced with V3 lot-based position tracking for:
+    Enhanced with lot-based position tracking for:
     - Overlapping positions (multiple trades on same symbol)
     - Vertical spread leg linking
     - Early assignment with stock lineage tracking
@@ -668,21 +668,37 @@ class OrderProcessorV2:
 
         for order in orders:
             if order.order_type == OrderType.OPENING:
-                # OPENING orders always start a new chain
-                chain_id = f"{order.underlying}_OPENING_{order.executed_at.strftime('%Y%m%d')}_{order.order_id[:8]}"
-                chain = Chain(
-                    chain_id=chain_id,
-                    underlying=order.underlying,
-                    account_number=order.account_number,
-                    orders=[order]
-                )
-                chains[chain_id] = chain
-                order_to_chain[order.order_id] = chain_id
+                # Check if this is a stock-only order that should merge into an existing chain
+                merged_into = None
+                is_stock_only = all(tx.strike is None for tx in order.transactions)
 
-                # V3: Update lot chain_ids if needed (they may have been created with temp chain_id)
-                if self._use_lots and self.lot_manager:
-                    # Lots were already created in _update_positions with the same chain_id
-                    pass
+                if is_stock_only:
+                    # Look for an existing open chain on this underlying+account that has stock lots
+                    merged_into = self._find_stock_merge_target(
+                        chains, order.underlying, order.account_number
+                    )
+
+                if merged_into:
+                    # Merge into existing chain
+                    chains[merged_into].orders.append(order)
+                    order_to_chain[order.order_id] = merged_into
+                    logger.info(f"Merged stock-only opening order {order.order_id} into chain {merged_into}")
+                else:
+                    # OPENING orders start a new chain
+                    chain_id = f"{order.underlying}_OPENING_{order.executed_at.strftime('%Y%m%d')}_{order.order_id[:8]}"
+                    chain = Chain(
+                        chain_id=chain_id,
+                        underlying=order.underlying,
+                        account_number=order.account_number,
+                        orders=[order]
+                    )
+                    chains[chain_id] = chain
+                    order_to_chain[order.order_id] = chain_id
+
+                    # V3: Update lot chain_ids if needed (they may have been created with temp chain_id)
+                    if self._use_lots and self.lot_manager:
+                        # Lots were already created in _update_positions with the same chain_id
+                        pass
 
             elif order.order_type in [OrderType.ROLLING, OrderType.CLOSING]:
                 # Check if this is a system-generated assignment/exercise/expiration order
@@ -830,6 +846,48 @@ class OrderProcessorV2:
         
         return list(chains.values())
     
+    def _find_stock_merge_target(self, chains: dict, underlying: str, account_number: str) -> Optional[str]:
+        """Find an existing open chain with stock lots for the same underlying+account.
+
+        Returns chain_id to merge into, or None if no suitable target.
+        Only merges stock-only opening orders — options always create new chains.
+        """
+        for chain_id, chain in chains.items():
+            if (chain.underlying != underlying or
+                chain.account_number != account_number or
+                chain.status == 'CLOSED'):
+                continue
+
+            # Check if this chain has open stock lots (from assignments or direct stock purchases)
+            has_open_stock = False
+            for order in chain.orders:
+                for tx in order.transactions:
+                    # Stock transaction: no strike price
+                    if tx.strike is None and tx.is_opening:
+                        has_open_stock = True
+                        break
+                    # Also check for derived stock from assignments
+                    if tx.is_assignment:
+                        has_open_stock = True
+                        break
+                if has_open_stock:
+                    break
+
+            # V3: Also check lot manager for open stock lots
+            if not has_open_stock and self._use_lots and self.lot_manager:
+                lots = self.lot_manager.get_lots_for_chain(chain_id, include_derived=True)
+                for lot in lots:
+                    if (lot.status != 'CLOSED' and
+                        lot.instrument_type in (None, 'EQUITY') and
+                        lot.strike is None):
+                        has_open_stock = True
+                        break
+
+            if has_open_stock:
+                return chain_id
+
+        return None
+
     def _merge_chains(self, chains_to_merge: List[Chain], new_order: Order) -> Chain:
         """Merge multiple chains into one
 

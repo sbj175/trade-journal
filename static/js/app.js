@@ -52,6 +52,9 @@ function tradeJournal() {
         showClosed: true,
         filteredChains: [],
 
+        // Direct chain_id filter (from position page link)
+        filterChainId: '',
+
         // Category-based filtering (like Reports page)
         filterDirection: [],  // 'bullish', 'bearish', 'neutral'
         filterType: [],       // 'credit', 'debit'
@@ -129,6 +132,17 @@ function tradeJournal() {
             const underlyingParam = urlParams.get('underlying');
             const accountParam = urlParams.get('account');
             const statusParam = urlParams.get('status');
+            const chainIdParam = urlParams.get('chain_id');
+
+            // Handle chain_id parameter (direct link from positions page)
+            if (chainIdParam) {
+                this.filterChainId = chainIdParam;
+                this.showOpen = true;
+                this.showClosed = true;
+                this.filterUnderlying = '';
+                this.timePeriod = 'all';
+                console.log('Applied URL parameter chain_id filter:', chainIdParam);
+            }
 
             // Handle status parameter (e.g., from positions page linking to open chains)
             if (statusParam === 'open') {
@@ -192,32 +206,33 @@ function tradeJournal() {
             }
             
             // Clear URL parameters after applying them
-            if (underlyingParam || accountParam || statusParam) {
+            if (underlyingParam || accountParam || statusParam || chainIdParam) {
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
             
             // Apply saved underlying if no URL parameter was provided
-            if (!underlyingParam && savedState && savedState.filterUnderlying) {
-                if (this.availableUnderlyings.includes(savedState.filterUnderlying)) {
-                    this.filterUnderlying = savedState.filterUnderlying;
-                    console.log('Restored underlying:', savedState.filterUnderlying);
-                } else {
-                    console.log('Saved underlying not found:', savedState.filterUnderlying);
+            // Skip when chain_id is set — we want an unfiltered view for direct chain lookup
+            if (!underlyingParam && !chainIdParam) {
+                const sharedUnderlying = localStorage.getItem('trade_journal_selected_underlying') || '';
+                if (sharedUnderlying) {
+                    this.filterUnderlying = sharedUnderlying;
+                    console.log('Restored underlying from shared key:', sharedUnderlying);
                 }
             }
             
             // Apply other saved filters
             if (savedState) {
-                // Clear category filters when navigating via URL underlying param
-                // (user explicitly wants to see that symbol's chains regardless of category)
-                this.filterDirection = underlyingParam ? [] : (savedState.filterDirection || []);
-                this.filterType = underlyingParam ? [] : (savedState.filterType || []);
-                this.filterStatus = savedState.filterStatus || '';
-                this.timePeriod = savedState.timePeriod || 'all';
+                // Clear category filters when navigating via URL param
+                // (user explicitly wants to see that specific chain/symbol regardless of category)
+                const clearCategoryFilters = underlyingParam || chainIdParam;
+                this.filterDirection = clearCategoryFilters ? [] : (savedState.filterDirection || []);
+                this.filterType = clearCategoryFilters ? [] : (savedState.filterType || []);
+                this.filterStatus = chainIdParam ? '' : (savedState.filterStatus || '');
+                this.timePeriod = chainIdParam ? 'all' : (savedState.timePeriod || 'all');
                 this.sortColumn = savedState.sortColumn || 'underlying';
                 this.sortDirection = savedState.sortDirection || 'asc';
-                // Only apply saved state for showOpen/showClosed if no URL status param was provided
-                if (!statusParam) {
+                // Only apply saved state for showOpen/showClosed if no URL status/chain_id param
+                if (!statusParam && !chainIdParam) {
                     this.showOpen = savedState.showOpen !== undefined ? savedState.showOpen : true;
                     this.showClosed = savedState.showClosed !== undefined ? savedState.showClosed : true;
                 }
@@ -896,6 +911,7 @@ function tradeJournal() {
                 const params = new URLSearchParams();
                 // Always pass account_number - empty string for "All Accounts", specific value for single account
                 params.append('account_number', this.selectedAccount || '');
+                if (this.filterChainId) params.append('chain_id', this.filterChainId);
                 if (this.filterUnderlying) params.append('underlying', this.filterUnderlying);
 
                 const urlStr = `/api/chains?${params}`;
@@ -934,6 +950,16 @@ function tradeJournal() {
                 console.log('DEBUG: After applyStatusFilter, this.filteredChains.length =', this.filteredChains.length);
                 console.log('DEBUG: this.filteredChains =', this.filteredChains);
 
+                // Auto-expand when navigating to a specific chain
+                if (this.filterChainId && this.filteredChains.length === 1) {
+                    this.filteredChains[0].expanded = true;
+                    console.log('Auto-expanded single chain result for chain_id:', this.filterChainId);
+                }
+                // Clear filterChainId after first load so subsequent loads are unfiltered
+                if (this.filterChainId) {
+                    this.filterChainId = '';
+                }
+
                 const saveStateStart = performance.now();
                 this.saveState(); // Save state when filters change
                 const saveStateTime = performance.now() - saveStateStart;
@@ -944,7 +970,7 @@ function tradeJournal() {
 
                 // Log timing data from server if available
                 if (data.timing) {
-                    console.log(`🕐 TIMING: Server breakdown: total=${data.timing.total_time}s, db=${data.timing.db_time}s, v2=${data.timing.v2_time}s, format=${data.timing.format_time}s`);
+                    console.log(`🕐 TIMING: Server breakdown: total=${data.timing.total_time}s, db=${data.timing.db_time}s, processor=${data.timing.processor_time}s, format=${data.timing.format_time}s`);
                 }
             } catch (error) {
                 console.error('Error loading chains:', error);
@@ -1242,9 +1268,9 @@ function tradeJournal() {
                 console.log('Initial sync completed:', result);
                 
                 alert(`Initial sync completed successfully!\n\n` +
-                      `Processed ${result.transactions_processed} transactions\n` +
-                      `Created ${result.trades_saved} trades\n` +
-                      `Updated ${result.positions_updated} positions`);
+                      `Processed ${result.transactions_processed || 0} transactions\n` +
+                      `Created ${result.orders_saved || 0} orders in ${result.chains_saved || 0} chains\n` +
+                      `Updated ${result.positions_updated || 0} positions`);
                 
                 // Reload all data including accounts
                 await this.loadAccounts();
@@ -1547,8 +1573,9 @@ function tradeJournal() {
                 showClosed: this.showClosed
             };
             localStorage.setItem('tradeJournalState', JSON.stringify(state));
-            // Also save account to shared key (synced across all pages)
+            // Also save to shared keys (synced across all pages)
             localStorage.setItem('trade_journal_selected_account', this.selectedAccount || '');
+            localStorage.setItem('trade_journal_selected_underlying', this.filterUnderlying || '');
         },
 
         // Handle time period change
@@ -1845,14 +1872,7 @@ function tradeJournal() {
 
         getPositionNote(chain) {
             const chainKey = 'chain_' + chain.chain_id;
-            if (this.positionNotes[chainKey]) return this.positionNotes[chainKey];
-            // Fallback: match pos_<underlying>_*_<account> keys from positions page
-            const prefix = 'pos_' + chain.underlying + '_';
-            const suffix = '_' + chain.account_number;
-            for (const [key, value] of Object.entries(this.positionNotes)) {
-                if (key.startsWith(prefix) && key.endsWith(suffix)) return value;
-            }
-            return '';
+            return this.positionNotes[chainKey] || '';
         },
 
         updatePositionNote(chain, value) {
@@ -1867,19 +1887,6 @@ function tradeJournal() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ note: value })
                 }).catch(err => console.error('Error saving position note:', err));
-                // Clean up any fallback pos_* key for this underlying+account
-                const prefix = 'pos_' + chain.underlying + '_';
-                const suffix = '_' + chain.account_number;
-                for (const k of Object.keys(this.positionNotes)) {
-                    if (k.startsWith(prefix) && k.endsWith(suffix)) {
-                        delete this.positionNotes[k];
-                        fetch(`/api/position-notes/${encodeURIComponent(k)}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ note: '' })
-                        }).catch(() => {});
-                    }
-                }
                 delete this._noteSaveTimers[key];
             }, 500);
         },

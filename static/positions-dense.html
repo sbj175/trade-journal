@@ -49,9 +49,11 @@
     <script>
         function positionsApp() {
             return {
-                // Basic state
-                allPositions: [],
-                filteredPositions: [],
+                // State
+                allChains: [],        // chain objects from /api/open-chains
+                allShares: {},        // underlying -> share data, keyed by account
+                allItems: [],         // flat list of displayable items (chains + share rows)
+                filteredItems: [],
                 accounts: [],
                 accountBalances: {},
                 underlyingQuotes: {},
@@ -70,6 +72,9 @@
                 strategyTargets: {},
                 rollAlertSettings: { enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true },
                 privacyMode: 'off',
+
+                // Reconciliation state
+                reconciliation: null,
 
                 // Sorting state
                 sortColumn: 'underlying',
@@ -92,47 +97,14 @@
 
                 get groupedPositions() {
                     try {
-                        if (this.isLoading || !this.allPositions || this.allPositions.length === 0) return [];
-                        const groups = new Map();
+                        if (this.isLoading || !this.filteredItems || this.filteredItems.length === 0) return [];
 
-                        this.filteredPositions.forEach(position => {
-                            const underlying = this.getUnderlyingSymbol(position);
-                            if (!underlying || underlying === 'Unknown') return;
-
-                            const chainId = position.chain_id;
-                            const strategyType = position.strategy_type || 'Unknown';
-                            const accountNumber = position.account_number;
-
-                            let groupKey, displayKey;
-                            if (chainId) {
-                                groupKey = `${accountNumber}|${chainId}`;
-                                displayKey = underlying;
-                            } else {
-                                const expiration = position.expires_at || position.expiration || 'Unknown';
-                                groupKey = `${accountNumber}|${underlying}|unenriched|${expiration}`;
-                                displayKey = underlying;
-                            }
-
-                            if (!groups.has(groupKey)) {
-                                groups.set(groupKey, {
-                                    groupKey,
-                                    displayKey, underlying,
-                                    accountNumber,
-                                    chainId: chainId || 'unenriched',
-                                    strategyType,
-                                    positions: []
-                                });
-                            }
-                            groups.get(groupKey).positions.push(position);
-                        });
-
-                        // Merge share + short-call groups into Covered Call groups
-                        this.mergeCoveredCallGroups(groups);
-
-                        // Apply sorting based on sortColumn and sortDirection
+                        // Each chain/share item IS already a group — no grouping logic needed
+                        // Just apply sorting
                         this.quoteUpdateCounter; // ensure recompute on quote changes
                         const self = this;
-                        const sorted = Array.from(groups.values()).sort((a, b) => {
+
+                        const sorted = [...this.filteredItems].sort((a, b) => {
                             let aVal, bVal;
 
                             switch (self.sortColumn) {
@@ -151,34 +123,43 @@
                                     bVal = bQuote?.price || 0;
                                     break;
                                 case 'cost_basis':
-                                    aVal = self.getGroupCostBasis(a.positions);
-                                    bVal = self.getGroupCostBasis(b.positions);
+                                    aVal = self.getGroupCostBasis(a);
+                                    bVal = self.getGroupCostBasis(b);
                                     break;
                                 case 'net_liq':
-                                    aVal = self.getGroupNetLiqWithLiveQuotes(a.positions);
-                                    bVal = self.getGroupNetLiqWithLiveQuotes(b.positions);
+                                    aVal = self.getGroupNetLiqWithLiveQuotes(a);
+                                    bVal = self.getGroupNetLiqWithLiveQuotes(b);
                                     break;
                                 case 'pnl':
-                                    aVal = self.getGroupPnLWithLiveQuotes(a.positions);
-                                    bVal = self.getGroupPnLWithLiveQuotes(b.positions);
+                                case 'total_pnl':
+                                    aVal = self.getGroupTotalPnL(a);
+                                    bVal = self.getGroupTotalPnL(b);
+                                    break;
+                                case 'realized_pnl':
+                                    aVal = a.realized_pnl || 0;
+                                    bVal = b.realized_pnl || 0;
+                                    break;
+                                case 'open_pnl':
+                                    aVal = self.getGroupOpenPnL(a);
+                                    bVal = self.getGroupOpenPnL(b);
                                     break;
                                 case 'pnl_percent':
-                                    aVal = parseFloat(self.getGroupPnLPercent(a.positions)) || 0;
-                                    bVal = parseFloat(self.getGroupPnLPercent(b.positions)) || 0;
+                                    aVal = parseFloat(self.getGroupPnLPercent(a)) || 0;
+                                    bVal = parseFloat(self.getGroupPnLPercent(b)) || 0;
                                     break;
                                 case 'max_percent':
-                                    const aMax = self.getGroupMaxPercent(a.positions);
-                                    const bMax = self.getGroupMaxPercent(b.positions);
+                                    const aMax = self.getGroupMaxPercent(a);
+                                    const bMax = self.getGroupMaxPercent(b);
                                     aVal = aMax === '—' ? -1 : parseFloat(aMax) || 0;
                                     bVal = bMax === '—' ? -1 : parseFloat(bMax) || 0;
                                     break;
                                 case 'days':
-                                    aVal = self.getGroupDaysOpen(a.positions) || 0;
-                                    bVal = self.getGroupDaysOpen(b.positions) || 0;
+                                    aVal = self.getGroupDaysOpen(a) || 0;
+                                    bVal = self.getGroupDaysOpen(b) || 0;
                                     break;
                                 case 'dte':
-                                    aVal = self.getMinDTE(a.positions) ?? 9999;
-                                    bVal = self.getMinDTE(b.positions) ?? 9999;
+                                    aVal = self.getMinDTE(a) ?? 9999;
+                                    bVal = self.getMinDTE(b) ?? 9999;
                                     break;
                                 case 'strategy':
                                     aVal = self.getGroupStrategyLabel(a).toLowerCase();
@@ -189,7 +170,6 @@
                                     bVal = b.underlying.toLowerCase();
                             }
 
-                            // Compare
                             if (aVal < bVal) return self.sortDirection === 'asc' ? -1 : 1;
                             if (aVal > bVal) return self.sortDirection === 'asc' ? 1 : -1;
                             return 0;
@@ -197,8 +177,15 @@
 
                         // Attach roll analysis to each group for reactive badge display
                         sorted.forEach(group => {
-                            group.rollAnalysis = this.getRollAnalysis(group);
+                            if (!group._isShareRow) {
+                                group.rollAnalysis = this.getRollAnalysis(group);
+                            }
                         });
+
+                        // Phase 3: Insert subtotal rows when sorted by underlying
+                        if (this.sortColumn === 'underlying') {
+                            return this._insertSubtotals(sorted);
+                        }
                         return sorted;
                     } catch (error) {
                         console.error('Error in groupedPositions:', error);
@@ -207,7 +194,7 @@
                 },
 
                 get underlyings() {
-                    return [...new Set(this.filteredPositions.map(p => this.getUnderlyingSymbol(p)).filter(s => s && s !== 'Unknown'))];
+                    return [...new Set(this.filteredItems.map(item => item.underlying).filter(s => s && s !== 'Unknown'))];
                 },
 
                 // Initialize
@@ -242,29 +229,75 @@
                     } catch (error) { console.error('Failed to load accounts:', error); }
                 },
 
-                async fetchPositions(includeSync = false, fastMode = true) {
+                async fetchPositions(includeSync = false) {
                     this.isLoading = true;
                     this.error = null;
                     try {
                         if (includeSync) {
-                            const endpoint = fastMode ? '/api/sync-positions-only' : '/api/sync';
-                            await fetch(endpoint, { method: 'POST' });
+                            const syncResp = await fetch('/api/sync', { method: 'POST' });
+                            if (syncResp.ok) {
+                                const syncData = await syncResp.json();
+                                if (syncData.reconciliation) {
+                                    this.reconciliation = syncData.reconciliation;
+                                }
+                            }
                         }
-                        const response = await fetch('/api/positions');
+
+                        // Fetch from chain-based endpoint
+                        const response = await fetch('/api/open-chains');
                         const data = await response.json();
 
-                        this.allPositions = [];
+                        this.allChains = [];
+                        this.allShares = {};
+                        this.allItems = [];
+
                         if (typeof data === 'object' && !Array.isArray(data)) {
-                            Object.entries(data).forEach(([accountNumber, accountPositions]) => {
-                                if (Array.isArray(accountPositions)) {
-                                    accountPositions.forEach(position => {
-                                        position.account_number = accountNumber;
-                                        this.allPositions.push(position);
+                            Object.entries(data).forEach(([accountNumber, accountData]) => {
+                                const chains = accountData.chains || [];
+                                const shares = accountData.shares || {};
+
+                                // Process chains
+                                chains.forEach(chain => {
+                                    chain.account_number = accountNumber;
+                                    this.allChains.push(chain);
+
+                                    // Create a display item for each chain
+                                    this.allItems.push({
+                                        ...chain,
+                                        groupKey: `${accountNumber}|${chain.chain_id}`,
+                                        displayKey: chain.underlying,
+                                        accountNumber: accountNumber,
+                                        positions: chain.open_legs || [],
+                                        _isShareRow: false,
                                     });
-                                }
+                                });
+
+                                // Process shares — create one display item per underlying
+                                Object.entries(shares).forEach(([underlying, shareData]) => {
+                                    this.allShares[`${accountNumber}|${underlying}`] = shareData;
+                                    this.allItems.push({
+                                        groupKey: `${accountNumber}|shares_${underlying}`,
+                                        displayKey: underlying,
+                                        underlying: underlying,
+                                        accountNumber: accountNumber,
+                                        chain_id: `shares_${underlying}`,
+                                        chainId: `shares_${underlying}`,
+                                        strategy_type: 'Shares',
+                                        strategyType: 'Shares',
+                                        opening_date: null,
+                                        chain_status: 'OPEN',
+                                        realized_pnl: 0,
+                                        cost_basis_total: shareData.cost_basis || 0,
+                                        roll_count: 0,
+                                        order_count: 0,
+                                        has_assignment: false,
+                                        positions: [],  // shares don't have option legs
+                                        open_legs: [],
+                                        _isShareRow: true,
+                                        _shareData: shareData,
+                                    });
+                                });
                             });
-                        } else {
-                            this.allPositions = Array.isArray(data) ? data : [];
                         }
                         this.applyFilters();
                     } catch (error) {
@@ -289,10 +322,10 @@
 
                 async loadCachedQuotes() {
                     try {
-                        const underlyings = [...new Set(this.filteredPositions.map(p => this.getUnderlyingSymbol(p)).filter(s => s && s !== 'Unknown'))];
-                        if (underlyings.length === 0) return;
+                        const symbols = this._collectSymbols();
+                        if (symbols.length === 0) return;
 
-                        const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(underlyings.join(','))}`);
+                        const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
                         if (response.ok) {
                             const quotes = await response.json();
                             for (const [symbol, quoteData] of Object.entries(quotes)) {
@@ -307,6 +340,19 @@
                             this.quoteUpdateCounter++;
                         }
                     } catch (error) { console.error('Error loading cached quotes:', error); }
+                },
+
+                _collectSymbols() {
+                    const symbolSet = new Set();
+                    this.filteredItems.forEach(item => {
+                        // Add underlying
+                        if (item.underlying) symbolSet.add(item.underlying);
+                        // Add option leg symbols
+                        (item.positions || []).forEach(leg => {
+                            if (leg.symbol) symbolSet.add(leg.symbol);
+                        });
+                    });
+                    return Array.from(symbolSet).filter(s => s && s !== 'Unknown');
                 },
 
                 initializeWebSocket() {
@@ -326,8 +372,6 @@
                                 let quotesUpdated = false;
                                 for (const [symbol, quoteData] of Object.entries(message.data)) {
                                     if (quoteData && typeof quoteData === 'object') {
-                                        // Merge with existing data so IVR/IV fields survive
-                                        // when a quote refresh omits them temporarily
                                         this.underlyingQuotes[symbol] = {
                                             ...this.underlyingQuotes[symbol],
                                             ...quoteData
@@ -350,47 +394,28 @@
                     } catch (error) { console.error('WebSocket error:', error); }
                 },
 
-                getPositionSymbol(position) {
-                    const isOption = position.instrument_type && position.instrument_type.includes('OPTION');
-                    return isOption ? position.symbol : this.getUnderlyingSymbol(position);
-                },
-
                 requestLiveQuotes() {
                     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-                    const symbolSet = new Set();
-                    this.filteredPositions.forEach(p => {
-                        const posSymbol = this.getPositionSymbol(p);
-                        if (posSymbol && posSymbol !== 'Unknown') symbolSet.add(posSymbol);
-                        const isOption = p.instrument_type && p.instrument_type.includes('OPTION');
-                        if (isOption) {
-                            const underlying = this.getUnderlyingSymbol(p);
-                            if (underlying && underlying !== 'Unknown') symbolSet.add(underlying);
-                        }
-                    });
-
-                    const symbols = Array.from(symbolSet);
+                    const symbols = this._collectSymbols();
                     if (symbols.length > 0) {
                         this.ws.send(JSON.stringify({ subscribe: symbols }));
                     }
                 },
 
                 applyFilters() {
-                    this.filteredPositions = this.allPositions.filter(position => {
-                        if (this.selectedAccount && position.account_number !== this.selectedAccount) return false;
+                    this.filteredItems = this.allItems.filter(item => {
+                        if (this.selectedAccount && item.accountNumber !== this.selectedAccount) return false;
                         if (this.selectedUnderlying) {
-                            const underlying = this.getUnderlyingSymbol(position);
-                            if (underlying !== this.selectedUnderlying) return false;
+                            if (item.underlying !== this.selectedUnderlying) return false;
                         }
                         return true;
                     });
 
-                    if (this.selectedAccount && this.filteredPositions.length === 0 && this.allPositions.length > 0) {
+                    if (this.selectedAccount && this.filteredItems.length === 0 && this.allItems.length > 0) {
                         this.selectedAccount = '';
-                        this.filteredPositions = this.allPositions.filter(position => {
+                        this.filteredItems = this.allItems.filter(item => {
                             if (this.selectedUnderlying) {
-                                const underlying = this.getUnderlyingSymbol(position);
-                                if (underlying !== this.selectedUnderlying) return false;
+                                if (item.underlying !== this.selectedUnderlying) return false;
                             }
                             return true;
                         });
@@ -411,16 +436,13 @@
                     const savedUnderlying = localStorage.getItem('trade_journal_selected_underlying');
                     if (savedUnderlying) this.selectedUnderlying = savedUnderlying;
 
-                    // Load saved sort preference
                     const savedSort = localStorage.getItem('positions_sort');
                     if (savedSort) {
                         try {
                             const parsed = JSON.parse(savedSort);
                             this.sortColumn = parsed.column || 'underlying';
                             this.sortDirection = parsed.direction || 'asc';
-                        } catch (e) {
-                            // Default sort
-                        }
+                        } catch (e) { /* Default sort */ }
                     }
                 },
 
@@ -432,15 +454,6 @@
                 },
 
                 // Utility methods
-                getUnderlyingSymbol(position) {
-                    if (position.underlying) return position.underlying;
-                    if (position.symbol) {
-                        if (position.instrument_type === 'EQUITY') return position.symbol;
-                        return position.symbol.split(' ')[0] || position.symbol.split('_')[0];
-                    }
-                    return 'Unknown';
-                },
-
                 formatNumber(value, decimals = 2) {
                     if (value === null || value === undefined || isNaN(value)) return '0';
                     return new Intl.NumberFormat('en-US', {
@@ -448,86 +461,100 @@
                         maximumFractionDigits: decimals
                     }).format(value);
                 },
+                // Format dollar amounts: drop decimals for large numbers to prevent overflow
+                formatDollar(value) {
+                    const abs = Math.abs(value || 0);
+                    return this.formatNumber(abs, abs >= 100000 ? 0 : 2);
+                },
+                // Return smaller font class for very large dollar amounts
+                dollarSizeClass(value) {
+                    return Math.abs(value || 0) >= 1000000 ? 'text-xs' : '';
+                },
 
-                // Position calculations
-                getGroupCostBasis(positions) {
-                    if (!Array.isArray(positions)) return 0;
-                    return positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
+                // ===== P&L CALCULATIONS =====
+                // Group = a chain item or share item from allItems
+
+                getGroupCostBasis(group) {
+                    if (group._isSubtotal) return group._subtotalCostBasis;
+                    if (group._isShareRow) return group.cost_basis_total || 0;
+                    // For chains: sum of open leg cost bases
+                    const legs = group.positions || [];
+                    if (legs.length === 0) return 0;
+                    return legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
                 },
-                getGroupNetLiq(positions) {
-                    if (!Array.isArray(positions)) return 0;
-                    return positions.reduce((sum, pos) => sum + (pos.market_value || 0), 0);
+
+                // Open P/L: unrealized P&L on current legs using live quotes
+                getGroupOpenPnL(group) {
+                    this.quoteUpdateCounter;
+                    if (group._isSubtotal) return group._subtotalOpenPnL;
+                    if (group._isShareRow) return this._getShareOpenPnL(group);
+                    const legs = group.positions || [];
+                    if (legs.length === 0) return 0;
+                    return legs.reduce((sum, leg) => sum + this._calculateLegPnL(leg), 0);
                 },
-                getGroupPnL(positions) {
-                    if (!Array.isArray(positions)) return 0;
-                    return positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+
+                // Realized P/L: banked P&L from rolls/partial closes
+                getGroupRealizedPnL(group) {
+                    if (group._isSubtotal) return group._subtotalRealizedPnL;
+                    return group.realized_pnl || 0;
                 },
-                getGroupPnLPercent(positions) {
-                    if (!Array.isArray(positions) || positions.length === 0) return null;
-                    const totalCostBasis = positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
-                    const totalPnL = this.getGroupPnLWithLiveQuotes(positions);
-                    if (totalCostBasis === 0) return null;
-                    return ((totalPnL / Math.abs(totalCostBasis)) * 100).toFixed(1);
+
+                // Total P/L = Realized + Open
+                getGroupTotalPnL(group) {
+                    if (group._isSubtotal) return group._subtotalTotalPnL;
+                    return this.getGroupRealizedPnL(group) + this.getGroupOpenPnL(group);
                 },
-                getGroupMaxPercent(positions) {
-                    // For spread strategies, calculate current P&L as percentage of max profit
-                    // % Max = (Current P&L / Max Profit) × 100
-                    const totalCostBasis = positions.reduce((sum, pos) => sum + (pos.cost_basis || 0), 0);
+
+                getGroupNetLiqWithLiveQuotes(group) {
+                    this.quoteUpdateCounter;
+                    if (group._isSubtotal) return group._subtotalNetLiq;
+                    if (group._isShareRow) return this._getShareMarketValue(group);
+                    const legs = group.positions || [];
+                    if (legs.length === 0) return 0;
+                    return legs.reduce((sum, leg) => sum + this._calculateLegMarketValue(leg), 0);
+                },
+
+                getGroupPnLPercent(group) {
+                    const costBasis = this.getGroupCostBasis(group);
+                    const totalPnL = this.getGroupTotalPnL(group);
+                    if (costBasis === 0) return null;
+                    return ((totalPnL / Math.abs(costBasis)) * 100).toFixed(1);
+                },
+
+                getGroupMaxPercent(group) {
+                    if (group._isShareRow || group._isSubtotal) return '—';
+                    const legs = group.positions || [];
+                    const totalCostBasis = legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
                     if (totalCostBasis === 0) return '—';
 
-                    // Get strikes and sort them
-                    const getStrike = (p) => {
-                        if (p.strike_price && p.strike_price > 0) return p.strike_price;
-                        const match = (p.symbol || '').match(/([CP])(\d+)/);
-                        if (match) {
-                            const priceStr = match[2];
-                            if (priceStr.length >= 3) return parseFloat(priceStr.slice(0, -3) + '.' + priceStr.slice(-3));
-                        }
-                        return null;
-                    };
-
-                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
-                    const strikes = optionPositions.map(getStrike).filter(s => s !== null && s > 0).sort((a, b) => a - b);
-
-                    // Need at least 2 strikes for a spread
+                    const optionLegs = legs.filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
+                    const strikes = optionLegs.map(l => l.strike).filter(s => s !== null && s > 0).sort((a, b) => a - b);
                     if (strikes.length < 2) return '—';
 
-                    // Calculate spread width (difference between strikes)
                     const spreadWidth = strikes[strikes.length - 1] - strikes[0];
-
-                    // Get number of contracts (both long and short should have same quantity)
-                    const numContracts = Math.abs(positions[0].quantity || 0);
-
-                    // Detect credit vs debit: positive cost basis = credit received
+                    const numContracts = Math.abs(legs[0].quantity || 0);
                     const isCreditSpread = totalCostBasis > 0;
 
                     let maxProfit;
                     if (isCreditSpread) {
-                        maxProfit = Math.abs(totalCostBasis); // credit received
+                        maxProfit = Math.abs(totalCostBasis);
                     } else {
-                        maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis); // debit spread
+                        maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis);
                     }
-
                     if (maxProfit <= 0) return '—';
 
-                    // Current P&L using live quotes
-                    const currentPnL = this.getGroupPnLWithLiveQuotes(positions);
-
-                    // For debit spreads: only show when profitable
-                    // For credit spreads: show even when negative (indicates credit erosion)
+                    const currentPnL = this.getGroupOpenPnL(group);
                     if (!isCreditSpread && currentPnL <= 0) return '—';
 
-                    // % Max = (Current P&L / Max Profit) × 100
-                    const maxPercent = ((currentPnL / maxProfit) * 100).toFixed(1);
+                    return ((currentPnL / maxProfit) * 100).toFixed(1) + '%';
+                },
 
-                    return maxPercent + '%';
+                shouldShowMaxPercent(group) {
+                    if (group._isShareRow || group._isSubtotal) return false;
+                    const optionLegs = (group.positions || []).filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
+                    return optionLegs.length >= 2;
                 },
-                shouldShowMaxPercent(positions) {
-                    if (!Array.isArray(positions) || positions.length <= 1) return false;
-                    // Show max percent for multi-leg strategies (spreads, covered calls, etc.)
-                    const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
-                    return optionPositions.length >= 2;
-                },
+
                 getMaxPercentColor(value) {
                     if (typeof value !== 'string' || value === '—') return 'text-tv-muted';
                     const numVal = parseFloat(value);
@@ -535,21 +562,25 @@
                     if (numVal >= 30) return 'text-tv-text';
                     return 'text-tv-muted';
                 },
-                getGroupDaysOpen(positions) {
-                    if (!Array.isArray(positions) || positions.length === 0) return null;
-                    const firstPos = positions[0];
-                    if (!firstPos.opened_at) return null;
-                    const openedDate = new Date(firstPos.opened_at);
+
+                getGroupDaysOpen(group) {
+                    if (group._isSubtotal) return null;
+                    const openDate = group.opening_date;
+                    if (!openDate) return null;
+                    const d = new Date(openDate + 'T00:00:00');
                     const now = new Date();
-                    const days = Math.floor((now - openedDate) / (1000 * 60 * 60 * 24));
+                    const days = Math.floor((now - d) / (1000 * 60 * 60 * 24));
                     return days > 0 ? days : 0;
                 },
-                getMinDTE(positions) {
-                    if (!Array.isArray(positions) || positions.length === 0) return null;
+
+                getMinDTE(group) {
+                    if (group._isSubtotal) return null;
+                    if (group._isShareRow) return null;
+                    const legs = group.positions || [];
                     let minDTE = null;
-                    for (const pos of positions) {
-                        if (pos.expires_at) {
-                            const dateStr = pos.expires_at.substring(0, 10);
+                    for (const leg of legs) {
+                        if (leg.expiration) {
+                            const dateStr = leg.expiration.substring(0, 10);
                             const expDate = new Date(dateStr + 'T00:00:00');
                             const today = new Date();
                             today.setHours(0, 0, 0, 0);
@@ -560,22 +591,62 @@
                     return minDTE;
                 },
 
-                // Sort positions by column
+                // ===== Live P&L for individual legs =====
+                _calculateLegMarketValue(leg) {
+                    this.quoteUpdateCounter;
+                    const optionSymbol = (leg.symbol || '').trim();
+                    const optionQuote = this.underlyingQuotes[optionSymbol];
+                    if (optionQuote && optionQuote.mark !== undefined) {
+                        const absValue = optionQuote.mark * leg.quantity * 100;
+                        return leg.quantity_direction === 'Short' ? -absValue : absValue;
+                    }
+                    // Fallback: use opening price
+                    const absValue = (leg.opening_price || 0) * leg.quantity * 100;
+                    return leg.quantity_direction === 'Short' ? -absValue : absValue;
+                },
+
+                _calculateLegPnL(leg) {
+                    const marketValue = this._calculateLegMarketValue(leg);
+                    const costBasis = leg.cost_basis || 0;
+                    const absMV = Math.abs(marketValue);
+                    const absCB = Math.abs(costBasis);
+                    if (leg.quantity_direction === 'Short') {
+                        return absCB - absMV;
+                    } else {
+                        return absMV - absCB;
+                    }
+                },
+
+                _getShareMarketValue(group) {
+                    this.quoteUpdateCounter;
+                    const shareData = group._shareData;
+                    if (!shareData) return 0;
+                    const quote = this.underlyingQuotes[group.underlying];
+                    if (quote && quote.price) {
+                        return quote.price * shareData.quantity;
+                    }
+                    // Fallback: use cost basis as market value
+                    return shareData.cost_basis || 0;
+                },
+
+                _getShareOpenPnL(group) {
+                    const marketValue = this._getShareMarketValue(group);
+                    const costBasis = group.cost_basis_total || 0;
+                    return marketValue - costBasis;
+                },
+
+                // ===== Sort =====
                 sortPositions(column) {
-                    // Toggle direction if same column
                     if (this.sortColumn === column) {
                         this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
                     } else {
                         this.sortColumn = column;
-                        // Default to descending for P&L/value columns, ascending for others
-                        if (column === 'pnl' || column === 'pnl_percent' || column === 'net_liq' || column === 'price' || column === 'ivr' || column === 'max_percent') {
+                        if (['pnl', 'total_pnl', 'realized_pnl', 'open_pnl', 'pnl_percent', 'net_liq', 'price', 'ivr', 'max_percent'].includes(column)) {
                             this.sortDirection = 'desc';
                         } else {
                             this.sortDirection = 'asc';
                         }
                     }
-
-                    // Save sort preference
                     localStorage.setItem('positions_sort', JSON.stringify({
                         column: this.sortColumn,
                         direction: this.sortDirection
@@ -583,166 +654,50 @@
                 },
 
                 getGroupStrategyLabel(group) {
-                    // Trust chain-persisted strategy (single source of truth from StrategyDetector)
-                    if (group.strategyType && group.strategyType !== 'Unknown') return group.strategyType;
-                    for (const pos of group.positions) {
-                        if (pos.strategy_type && pos.strategy_type !== 'Unknown') return pos.strategy_type;
+                    if (group._isSubtotal) return '';
+                    if (group._isShareRow) return 'Shares';
+                    if (group.strategy_type && group.strategy_type !== 'Unknown') return group.strategy_type;
+                    return 'Unknown';
+                },
+
+                // ===== Leg display helpers =====
+                getOptionType(leg) {
+                    if (leg.option_type === 'Call' || leg.option_type === 'C') return 'C';
+                    if (leg.option_type === 'Put' || leg.option_type === 'P') return 'P';
+                    if (leg.option_type) return leg.option_type.charAt(0).toUpperCase();
+                    const match = (leg.symbol || '').match(/\d{6}([CP])/);
+                    if (match) return match[1];
+                    return '—';
+                },
+                getSignedQuantity(leg) {
+                    const qty = leg.quantity || 0;
+                    if (leg.quantity_direction === 'Short') return -qty;
+                    return qty;
+                },
+                getExpirationDate(leg) {
+                    if (!leg.expiration) return '';
+                    const date = new Date(leg.expiration);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                },
+                getStrikePrice(leg) {
+                    if (leg.strike && leg.strike > 0) return leg.strike.toFixed(2);
+                    const symbol = leg.symbol || '';
+                    const match = symbol.match(/([CP])(\d+)/);
+                    if (match && match[2].length >= 3) {
+                        return parseFloat(match[2].slice(0, -3) + '.' + match[2].slice(-3)).toFixed(2);
                     }
-                    // Minimal fallback for unenriched positions (equity-only, no chain)
-                    const hasOptions = group.positions.some(p =>
-                        p.instrument_type && p.instrument_type.includes('OPTION'));
-                    return hasOptions ? 'Unknown' : 'Shares';
+                    return '';
                 },
-                _getOptionTypeChar(p) {
-                    if (p.option_type === 'Call') return 'C';
-                    if (p.option_type === 'Put') return 'P';
-                    const match = (p.symbol || '').match(/\d{6}([CP])/);
-                    return match ? match[1] : null;
-                },
-
-                _splitSharePositions(sharePositions, targetQuantity) {
-                    const totalShares = sharePositions.reduce((sum, p) => sum + Math.abs(p.quantity || 0), 0);
-                    if (totalShares === 0) return [];
-                    const ratio = targetQuantity / totalShares;
-                    return sharePositions.map(p => {
-                        const clone = { ...p };
-                        const origQty = Math.abs(p.quantity || 0);
-                        const splitQty = Math.round(origQty * ratio);
-                        clone.quantity = p.quantity >= 0 ? splitQty : -splitQty;
-                        clone.cost_basis = (p.cost_basis || 0) * ratio;
-                        clone.market_value = (p.market_value || 0) * ratio;
-                        clone.unrealized_pnl = (p.unrealized_pnl || 0) * ratio;
-                        // average_open_price stays the same (per-share metric)
-                        clone._isSplitClone = true;
-                        return clone;
-                    });
+                getDTE(leg) {
+                    if (!leg.expiration) return null;
+                    const dateStr = leg.expiration.substring(0, 10);
+                    const expDate = new Date(dateStr + 'T00:00:00');
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const dte = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+                    return dte > 0 ? dte : 0;
                 },
 
-                mergeCoveredCallGroups(groups) {
-                    // Index groups by account|underlying
-                    const byKey = new Map();
-                    for (const [groupKey, group] of groups) {
-                        const k = `${group.accountNumber}|${group.underlying}`;
-                        if (!byKey.has(k)) byKey.set(k, []);
-                        byKey.get(k).push({ groupKey, group });
-                    }
-
-                    for (const [, entries] of byKey) {
-                        const shareGroups = [];
-                        const shortCallGroups = [];
-
-                        for (const { groupKey, group } of entries) {
-                            const positions = group.positions;
-                            const allEquity = positions.length > 0 && positions.every(p => !(p.instrument_type && p.instrument_type.includes('OPTION')));
-                            if (allEquity) {
-                                shareGroups.push({ groupKey, group });
-                                continue;
-                            }
-                            const allShortCalls = positions.length > 0 && positions.every(p => {
-                                const otype = this._getOptionTypeChar(p);
-                                const isShort = p.quantity_direction === 'Short' || (p.quantity || 0) < 0;
-                                return otype === 'C' && isShort;
-                            });
-                            if (allShortCalls) {
-                                shortCallGroups.push({ groupKey, group });
-                            }
-                        }
-
-                        if (shareGroups.length === 0 || shortCallGroups.length === 0) continue;
-
-                        const allSharePositions = shareGroups.flatMap(sg => sg.group.positions);
-                        const allCallPositions = shortCallGroups.flatMap(cg => cg.group.positions);
-                        const totalShares = allSharePositions.reduce((sum, p) => sum + Math.abs(p.quantity || 0), 0);
-                        const totalContracts = allCallPositions.reduce((sum, p) => sum + Math.abs(p.quantity || 0), 0);
-                        const coveredShares = Math.min(totalShares, totalContracts * 100);
-                        const uncoveredShares = totalShares - coveredShares;
-
-                        const baseGroup = shareGroups[0].group;
-                        const coveredSharePositions = this._splitSharePositions(allSharePositions, coveredShares);
-
-                        // Build merged group
-                        const mergedKey = `${baseGroup.accountNumber}|${baseGroup.underlying}|merged_cc`;
-                        const mergedGroup = {
-                            groupKey: mergedKey,
-                            displayKey: baseGroup.underlying,
-                            underlying: baseGroup.underlying,
-                            accountNumber: baseGroup.accountNumber,
-                            chainId: 'merged_cc',
-                            strategyType: 'Unknown',
-                            positions: [...coveredSharePositions, ...allCallPositions],
-                            _isMergedCoveredCall: true
-                        };
-
-                        // Delete original groups
-                        for (const sg of shareGroups) groups.delete(sg.groupKey);
-                        for (const cg of shortCallGroups) groups.delete(cg.groupKey);
-
-                        // Add merged group
-                        groups.set(mergedKey, mergedGroup);
-
-                        // Add residual shares group if any
-                        if (uncoveredShares > 0) {
-                            const residualPositions = this._splitSharePositions(allSharePositions, uncoveredShares);
-                            const residualKey = `${baseGroup.accountNumber}|${baseGroup.underlying}|residual_shares`;
-                            groups.set(residualKey, {
-                                groupKey: residualKey,
-                                displayKey: baseGroup.underlying,
-                                underlying: baseGroup.underlying,
-                                accountNumber: baseGroup.accountNumber,
-                                chainId: 'residual_shares',
-                                strategyType: 'Unknown',
-                                positions: residualPositions
-                            });
-                        }
-                    }
-                },
-
-                calculateLiveMarketValue(position) {
-                    this.quoteUpdateCounter;
-                    let marketValue = position.market_value || 0;
-
-                    const isOption = position.instrument_type && position.instrument_type.includes('OPTION');
-                    const isEquity = !isOption && (!position.instrument_type || position.instrument_type === 'EQUITY' || position.instrument_type.includes('EQUITY'));
-
-                    if (isEquity) {
-                        const underlying = this.getUnderlyingSymbol(position);
-                        const quote = this.underlyingQuotes[underlying];
-                        if (quote && quote.price) {
-                            const absValue = quote.price * position.quantity;
-                            marketValue = position.quantity_direction === 'Short' ? -absValue : absValue;
-                        }
-                    } else {
-                        const optionSymbol = position.symbol.trim();
-                        const optionQuote = this.underlyingQuotes[optionSymbol];
-                        if (optionQuote && optionQuote.mark !== undefined) {
-                            const absValue = optionQuote.mark * position.quantity * 100;
-                            marketValue = position.quantity_direction === 'Short' ? -absValue : absValue;
-                        }
-                    }
-                    return marketValue;
-                },
-                calculateLivePositionPnL(position) {
-                    const liveMarketValue = this.calculateLiveMarketValue(position);
-                    const costBasis = position.cost_basis || 0;
-                    const absMarketValue = Math.abs(liveMarketValue);
-                    const absCostBasis = Math.abs(costBasis);
-
-                    if (position.quantity_direction === 'Short') {
-                        return absCostBasis - absMarketValue;
-                    } else {
-                        return absMarketValue - absCostBasis;
-                    }
-                },
-                getGroupNetLiqWithLiveQuotes(positions) {
-                    this.quoteUpdateCounter;
-                    if (!Array.isArray(positions)) return 0;
-                    return positions.reduce((sum, pos) => sum + this.calculateLiveMarketValue(pos), 0);
-                },
-                getGroupPnLWithLiveQuotes(positions) {
-                    this.quoteUpdateCounter;
-                    if (!Array.isArray(positions)) return 0;
-                    return positions.reduce((sum, pos) => sum + this.calculateLivePositionPnL(pos), 0);
-                },
                 getUnderlyingQuote(underlying) {
                     return this.underlyingQuotes[underlying] || null;
                 },
@@ -751,63 +706,75 @@
                     if (!quote || !quote.ivr) return null;
                     return Math.round(quote.ivr * 100);
                 },
-                getOptionType(position) {
-                    if (position.option_type === 'Call' || position.option_type === 'C') return 'C';
-                    if (position.option_type === 'Put' || position.option_type === 'P') return 'P';
-                    if (position.option_type) return position.option_type.charAt(0).toUpperCase();
-                    const match = (position.symbol || '').match(/\d{6}([CP])/);
-                    if (match) return match[1];
-                    return '—';
-                },
-                getSignedQuantity(position) {
-                    const qty = position.quantity || 0;
-                    if (position.quantity_direction === 'Short') return -qty;
-                    return qty;
-                },
-                getExpirationDate(position) {
-                    if (!position.expires_at) return '';
-                    const date = new Date(position.expires_at);
-                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                },
-                getStrikePrice(position) {
-                    if (position.strike_price && position.strike_price > 0) return position.strike_price.toFixed(2);
-                    const symbol = position.symbol || '';
-                    const match = symbol.match(/([CP])(\d+)/);
-                    if (match) {
-                        const priceStr = match[2];
-                        if (priceStr.length >= 3) {
-                            const strike = parseFloat(priceStr.slice(0, -3) + '.' + priceStr.slice(-3));
-                            return strike.toFixed(2);
+
+                // ===== Phase 3: Subtotals =====
+                _insertSubtotals(sorted) {
+                    // Group items by underlying+account, insert subtotal rows for multi-item groups
+                    const result = [];
+                    let currentKey = null;
+                    let currentGroup = [];
+
+                    const flushGroup = () => {
+                        if (currentGroup.length <= 1) {
+                            result.push(...currentGroup);
+                            return;
+                        }
+                        // Build subtotal row
+                        const underlying = currentGroup[0].underlying;
+                        const acct = currentGroup[0].accountNumber;
+                        const subtotal = {
+                            _isSubtotal: true,
+                            groupKey: `subtotal_${acct}_${underlying}`,
+                            displayKey: underlying,
+                            underlying: underlying,
+                            accountNumber: acct,
+                            _subtotalCostBasis: 0,
+                            _subtotalNetLiq: 0,
+                            _subtotalOpenPnL: 0,
+                            _subtotalRealizedPnL: 0,
+                            _subtotalTotalPnL: 0,
+                            _childCount: currentGroup.length,
+                        };
+                        currentGroup.forEach(item => {
+                            subtotal._subtotalCostBasis += this.getGroupCostBasis(item);
+                            subtotal._subtotalNetLiq += this.getGroupNetLiqWithLiveQuotes(item);
+                            subtotal._subtotalOpenPnL += this.getGroupOpenPnL(item);
+                            subtotal._subtotalRealizedPnL += this.getGroupRealizedPnL(item);
+                            subtotal._subtotalTotalPnL += this.getGroupTotalPnL(item);
+                        });
+                        result.push(subtotal);
+                        result.push(...currentGroup);
+                    };
+
+                    for (const item of sorted) {
+                        const key = `${item.accountNumber}|${item.underlying}`;
+                        if (key !== currentKey) {
+                            if (currentGroup.length > 0) flushGroup();
+                            currentKey = key;
+                            currentGroup = [item];
+                        } else {
+                            currentGroup.push(item);
                         }
                     }
-                    return '';
-                },
-                getDTE(position) {
-                    if (!position.expires_at) return null;
-                    const dateStr = position.expires_at.substring(0, 10);
-                    const expDate = new Date(dateStr + 'T00:00:00');
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const dte = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
-                    return dte > 0 ? dte : 0;
+                    if (currentGroup.length > 0) flushGroup();
+                    return result;
                 },
 
-                // Roll analysis
+                // ===== Roll Analysis (works on option legs) =====
                 getRollAnalysis(group) {
                     const strategy = this.getGroupStrategyLabel(group);
                     const supportedStrategies = ['Bull Call Spread', 'Bear Put Spread', 'Bull Put Spread', 'Bear Call Spread'];
                     if (!supportedStrategies.includes(strategy)) return null;
                     if (!this.rollAlertSettings.enabled) return null;
 
-                    const positions = group.positions;
+                    const positions = group.positions || [];
                     const underlying = group.underlying;
                     const quote = this.underlyingQuotes[underlying];
                     if (!quote || !quote.price) return null;
                     const underlyingPrice = quote.price;
 
-                    // Helper functions
                     const getStrike = (p) => {
-                        if (p.strike_price && p.strike_price > 0) return p.strike_price;
+                        if (p.strike && p.strike > 0) return p.strike;
                         const match = (p.symbol || '').match(/([CP])(\d+)/);
                         if (match && match[2].length >= 3) return parseFloat(match[2].slice(0, -3) + '.' + match[2].slice(-3));
                         return null;
@@ -823,7 +790,6 @@
                     const optionPositions = positions.filter(p => p.instrument_type && p.instrument_type.includes('OPTION'));
                     if (optionPositions.length < 2) return null;
 
-                    // Identify long and short legs
                     let longLeg = null, shortLeg = null;
                     for (const p of optionPositions) {
                         if (isShort(p)) shortLeg = p;
@@ -843,270 +809,142 @@
                     const isBullPut = strategy === 'Bull Put Spread';
                     const isBearCall = strategy === 'Bear Call Spread';
                     const isCredit = isBullPut || isBearCall;
-                    const isDebit = !isCredit;
 
                     let maxProfit, maxLoss;
                     if (isCredit) {
-                        maxProfit = totalCostBasis;                                    // credit received
-                        maxLoss = (spreadWidth * 100 * numContracts) - totalCostBasis; // spread width minus credit
+                        maxProfit = totalCostBasis;
+                        maxLoss = (spreadWidth * 100 * numContracts) - totalCostBasis;
                     } else {
                         maxProfit = (spreadWidth * 100 * numContracts) - totalCostBasis;
                         maxLoss = totalCostBasis;
                     }
+
                     if (maxProfit <= 0 || maxLoss <= 0) return null;
 
-                    const currentPnL = this.getGroupPnLWithLiveQuotes(positions);
-                    const dte = this.getMinDTE(positions);
+                    const currentPnL = this.getGroupOpenPnL(group);
+                    const pctMaxProfit = ((currentPnL / maxProfit) * 100).toFixed(1);
+                    const pctMaxLoss = currentPnL < 0 ? ((Math.abs(currentPnL) / maxLoss) * 100).toFixed(1) : '0.0';
 
-                    // Derived metrics
-                    const pctMaxProfit = (currentPnL / maxProfit) * 100;
-                    const pctMaxLoss = currentPnL < 0 ? (Math.abs(currentPnL) / maxLoss) * 100 : 0;
-                    const remainingReward = maxProfit - currentPnL;
-                    const remainingRisk = maxLoss + currentPnL;
-                    const rewardToRisk = remainingRisk > 0 ? remainingReward / remainingRisk : 99;
-                    const proximityToShort = Math.abs(underlyingPrice - shortStrike) / shortStrike * 100;
+                    const rewardRemaining = maxProfit - currentPnL;
+                    const riskRemaining = maxLoss + currentPnL;
+                    const rewardToRiskRaw = riskRemaining > 0 ? rewardRemaining / riskRemaining : 99;
+                    const rewardToRisk = rewardToRiskRaw >= 10 ? '10+' : rewardToRiskRaw.toFixed(2);
 
-                    // Delta saturation via BS theoretical spread value.
-                    // Measures what % of the spread's max value has been realized,
-                    // accounting for both moneyness and remaining time value.
-                    // Raw delta approaches 1.0 too fast for deep ITM (gives 100%),
-                    // and net spread delta gives 0% for deep ITM (both legs ≈1.0).
-                    // Theoretical price ratio avoids both problems.
-                    const r = 0.045;
-                    const sigma = this._getEffectiveIV(underlying);
-                    const T = dte !== null && dte > 0 ? dte / 365 : 0.01;
-                    const optType = (isBullCall || isBearCall) ? 'C' : 'P';
-                    const longPrice = this._bsPrice(underlyingPrice, longStrike, T, r, sigma, optType);
-                    const shortPrice = this._bsPrice(underlyingPrice, shortStrike, T, r, sigma, optType);
-                    let deltaSaturation;
-                    if (isCredit) {
-                        // For credit spreads: shortPrice - longPrice = cost to buy back = theoretical risk
-                        const theoreticalRisk = shortPrice - longPrice;
-                        deltaSaturation = Math.min(Math.max(theoreticalRisk / spreadWidth * 100, 0), 100);
-                    } else {
-                        const theoreticalValue = longPrice - shortPrice;
-                        deltaSaturation = Math.min(Math.max(theoreticalValue / spreadWidth * 100, 0), 100);
+                    const dte = this.getMinDTE(group) || 0;
+
+                    // Delta saturation
+                    let deltaSaturation = '0.0';
+                    const iv = this._getEffectiveIV(underlying);
+                    if (iv > 0 && dte > 0) {
+                        const T = dte / 365;
+                        const shortDelta = Math.abs(this._bsDelta(underlyingPrice, shortStrike, T, 0.04, iv, getOptionType(shortLeg) === 'C'));
+                        deltaSaturation = (shortDelta * 100).toFixed(1);
                     }
 
-                    // Convexity / Risk state — multi-factor for credit spreads
-                    // Delta saturation alone can mislead in high-IV environments;
-                    // require corroborating proximity or loss evidence to escalate.
+                    // Proximity to short strike
+                    const proximityToShort = ((Math.abs(underlyingPrice - shortStrike) / underlyingPrice) * 100).toFixed(1);
+
+                    // Badges
+                    const badges = [];
+                    const targets = this.strategyTargets[strategy] || {};
+                    const profitTarget = targets.profitTarget || 50;
+                    const lossLimit = targets.lossLimit || 100;
+
+                    if (this.rollAlertSettings.profitTarget && parseFloat(pctMaxProfit) >= profitTarget) {
+                        badges.push({ label: `${pctMaxProfit}% Profit`, color: 'green' });
+                    }
+                    if (this.rollAlertSettings.lossLimit) {
+                        if (isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
+                            badges.push({ label: `${pctMaxLoss}% Loss`, color: 'red' });
+                        } else if (!isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
+                            badges.push({ label: `${pctMaxLoss}% Loss`, color: 'red' });
+                        }
+                    }
+                    if (this.rollAlertSettings.lateStage && dte <= 21 && dte > 0) {
+                        badges.push({ label: `${dte}d Left`, color: 'yellow' });
+                    }
+                    if (this.rollAlertSettings.deltaSaturation && parseFloat(deltaSaturation) >= 65) {
+                        badges.push({ label: `${deltaSaturation}% Delta`, color: isCredit ? 'red' : 'orange' });
+                    }
+                    if (this.rollAlertSettings.lowRewardToRisk && rewardToRiskRaw < (isCredit ? 0.3 : 0.6)) {
+                        badges.push({ label: `R:R ${rewardToRisk}`, color: 'orange' });
+                    }
+
                     let convexity;
                     if (isCredit) {
-                        const proximityClose = proximityToShort < 5;
-                        const lossSignificant = pctMaxLoss > 30;
-                        const corroborating = proximityClose || lossSignificant;
-
-                        if (deltaSaturation >= 65 && corroborating) convexity = 'High Risk';
-                        else if ((deltaSaturation >= 65) || (deltaSaturation >= 40 && corroborating)) convexity = 'Elevated Risk';
-                        else convexity = 'Low Risk';
+                        const lossRatio = parseFloat(pctMaxLoss);
+                        if (lossRatio < 50) convexity = 'Low Risk';
+                        else if (lossRatio < 100) convexity = 'Elevated Risk';
+                        else convexity = 'High Risk';
                     } else {
-                        // For debit spreads: high delta sat = good (near max profit)
-                        if (deltaSaturation < 40) convexity = 'High';
-                        else if (deltaSaturation < 65) convexity = 'Diminishing';
+                        if (rewardToRiskRaw > 2) convexity = 'High';
+                        else if (rewardToRiskRaw > 0.8) convexity = 'Diminishing';
                         else convexity = 'Low';
                     }
 
-                    // Late-stage check (>= 2 of 5 conditions)
-                    // Credit spreads use tighter thresholds (theta helps, close at 50%)
-                    let lateStageCount = 0;
-                    if (isCredit) {
-                        if (dte !== null && dte < 21) lateStageCount++;
-                        if (pctMaxProfit >= 50) lateStageCount++;
-                        if (deltaSaturation >= 65) lateStageCount++;
-                        if (proximityToShort < 3) lateStageCount++;
-                        if (rewardToRisk < 0.3) lateStageCount++;
-                    } else {
-                        // For debit spreads, proximity and low R:R indicate success
-                        // (near short strike = near max profit), not decay.
-                        // Only DTE, delta saturation, and captured profit signal maturity.
-                        if (dte !== null && dte < 21) lateStageCount++;
-                        if (pctMaxProfit >= 70) lateStageCount++;
-                        if (deltaSaturation >= 65) lateStageCount++;
-                    }
-                    const isLateStage = lateStageCount >= 2;
-
-                    // User targets
-                    const targetConfig = this.strategyTargets[strategy];
-                    const profitTargetPct = targetConfig ? targetConfig.profit_target_pct : (isBullCall ? 100 : 100);
-                    const lossTargetPct = targetConfig ? targetConfig.loss_target_pct : 75;
-
-                    // Build badges
-                    const badges = [];
-                    const profitHit = pctMaxProfit >= profitTargetPct;
-                    // Credit spreads: loss measured as % of credit received (|pctMaxProfit|)
-                    // Debit spreads: loss measured as % of debit paid (pctMaxLoss, since maxLoss = debit)
-                    const lossMetric = isCredit ? Math.abs(pctMaxProfit) : pctMaxLoss;
-                    const lossHit = currentPnL < 0 && lossMetric >= lossTargetPct;
-                    const lowRRThreshold = isCredit ? 0.3 : 0.6;
-
-                    if (profitHit && this.rollAlertSettings.profitTarget) {
-                        badges.push({ label: 'Profit Target', color: 'green' });
-                    }
-                    if (lossHit && this.rollAlertSettings.lossLimit) {
-                        badges.push({ label: 'Loss Limit', color: 'red' });
-                    }
-                    if (!profitHit && !lossHit && isLateStage && this.rollAlertSettings.lateStage) {
-                        badges.push({ label: 'Late-Stage', color: 'yellow' });
-                    }
-                    if (!profitHit && deltaSaturation >= 65 && this.rollAlertSettings.deltaSaturation) {
-                        // For credit spreads, high delta sat = near max loss (red); for debit = near max profit (orange)
-                        badges.push({ label: 'High Delta', color: isCredit ? 'red' : 'orange' });
-                    }
-                    if (!profitHit && !lossHit && rewardToRisk < lowRRThreshold && this.rollAlertSettings.lowRewardToRisk) {
-                        badges.push({ label: 'Low R:R', color: 'orange' });
-                    }
-                    // DTE warning — always shown when <= 21, independent of other conditions
-                    // Suggestion text covers the gamma (credit) / theta (debit) implications
-                    if (dte !== null && dte <= 21) {
-                        badges.push({ label: '≤21 DTE', color: dte <= 7 ? 'red' : 'yellow' });
-                    }
-
-                    // Primary suggestion
-                    const defensiveDirectionCredit = isBullPut ? 'down' : 'up'; // further OTM for credit spreads
-                    const profitDirection = isBullCall ? 'up' : 'down';
-                    const profitDirectionOut = isBullCall ? 'up and out' : 'down and out';
-                    const defensiveDirection = isBullCall ? 'down' : 'up';
-                    let suggestion = null;
-                    let urgency = 'low'; // low, medium, high
-
-                    if (isCredit) {
-                        // Credit spread suggestions
-                        if (lossHit) {
-                            urgency = 'high';
-                            suggestion = `Close to limit loss. Down ${lossMetric.toFixed(0)}% of credit received with ${dte ?? '?'} DTE remaining. Could roll out for a net credit at same or further OTM strikes ${defensiveDirectionCredit} \u2014 do not roll for a debit.`;
-                        } else if (profitHit) {
-                            urgency = 'medium';
-                            suggestion = `Captured ${pctMaxProfit.toFixed(0)}% of max profit ($${maxProfit.toFixed(0)} credit). Close to lock in gains.`;
-                        } else if (proximityToShort < 3) {
-                            urgency = 'medium';
-                            suggestion = `Short strike being tested (${proximityToShort.toFixed(1)}% away). Roll out in time or further OTM ${defensiveDirectionCredit} for a net credit.`;
-                        } else if (dte !== null && dte <= 21 && deltaSaturation > 40 && proximityToShort < 5) {
-                            urgency = 'medium';
-                            suggestion = `Gamma risk elevated at ${dte} DTE with spread near the money. Close or roll out in time for a credit.`;
-                        } else if (dte !== null && dte <= 21 && deltaSaturation <= 40) {
-                            urgency = 'low';
-                            suggestion = `Spread is far OTM with theta in your favor at ${dte} DTE \u2014 monitor.`;
-                        } else if (isLateStage && pctMaxProfit >= 50) {
-                            urgency = 'low';
-                            suggestion = `Premium is ${pctMaxProfit.toFixed(0)}% captured with diminishing return. Close.`;
-                        }
-                    } else {
-                        // Debit spread suggestions
-                        // Roll direction depends on DTE: roll in-cycle (up/down) when time
-                        // remains, roll up-and-out / down-and-out near 21 DTE to escape theta decay.
-                        const thetaUrgent = dte !== null && dte <= 21;
-                        const rollDir = thetaUrgent ? profitDirectionOut : profitDirection;
-
-                        if (lossHit) {
-                            urgency = 'high';
-                            suggestion = `Consider closing to limit loss. Down ${pctMaxLoss.toFixed(0)}% of debit paid with ${dte ?? '?'} DTE remaining. A defensive roll ${defensiveDirection} would reposition strikes near the current price but adds to cost basis.`;
-                        } else if (profitHit && (isLateStage || thetaUrgent)) {
-                            urgency = 'medium';
-                            suggestion = thetaUrgent
-                                ? `Profit target reached with ${dte} DTE remaining. Close to lock in ${pctMaxProfit.toFixed(0)}% of max profit, or roll ${rollDir} to a later expiration.`
-                                : `Profit target reached with ${dte ?? '?'} DTE remaining. Roll ${rollDir} to capture additional upside, or close at ${pctMaxProfit.toFixed(0)}% of max profit.`;
-                        } else if (profitHit) {
-                            urgency = 'low';
-                            suggestion = `Roll ${rollDir} to capture additional upside, or close at ${pctMaxProfit.toFixed(0)}% of max profit.`;
-                        } else if (isLateStage && pctMaxProfit >= 50) {
-                            urgency = 'low';
-                            suggestion = `Structure is maturing with ${convexity.toLowerCase()} convexity. ${pctMaxProfit.toFixed(0)}% of max profit reached with ${dte ?? '?'} DTE. Consider closing or rolling ${rollDir}.`;
-                        } else if (thetaUrgent) {
-                            urgency = 'medium';
-                            suggestion = `Approaching 21 DTE. Theta decay accelerates from here \u2014 consider rolling out to a later expiration to preserve time value, or closing to realize current P&L.`;
-                        }
-                    }
-
-                    // Border color for the panel
                     let borderColor = 'blue';
-                    if (lossHit) borderColor = 'red';
-                    else if (profitHit) borderColor = 'green';
-                    else if (isLateStage) borderColor = 'yellow';
-                    else if (dte !== null && dte <= 21) borderColor = 'yellow';
+                    if (badges.some(b => b.color === 'red')) borderColor = 'red';
+                    else if (badges.some(b => b.color === 'yellow' || b.color === 'orange')) borderColor = 'yellow';
+                    else if (badges.some(b => b.color === 'green')) borderColor = 'green';
 
-                    // TODO: Per-leg IV from option quotes for more accurate delta
-                    // TODO: Gamma/convexity health tracking across consecutive updates
-                    // TODO: Laddering / partial roll suggestions
-                    // TODO: Alert/notification system integration
-                    // TODO: Multi-leg (Iron Condor) support with per-wing analysis
+                    let suggestion = null;
+                    let urgency = 'low';
+                    if (parseFloat(pctMaxProfit) >= profitTarget) {
+                        suggestion = `Consider closing: ${pctMaxProfit}% of max profit captured.`;
+                        urgency = 'medium';
+                    }
+                    if (isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
+                        suggestion = `Loss limit hit: ${pctMaxLoss}% of max loss. Consider closing or rolling.`;
+                        urgency = 'high';
+                    } else if (!isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
+                        suggestion = `Loss limit hit: ${pctMaxLoss}% of max loss. Consider closing or rolling.`;
+                        urgency = 'high';
+                    }
 
                     return {
-                        strategy,
-                        isCredit,
-                        pctMaxProfit: pctMaxProfit.toFixed(1),
-                        pctMaxLoss: pctMaxLoss.toFixed(1),
-                        rewardToRiskRaw: rewardToRisk,
-                        rewardToRisk: rewardToRisk >= 99 ? '—' : rewardToRisk >= 1 ? `${rewardToRisk.toFixed(1)}:1` : `1:${(1 / rewardToRisk).toFixed(1)}`,
-                        deltaSaturation: deltaSaturation.toFixed(0),
-                        proximityToShort: proximityToShort.toFixed(1),
-                        maxProfit: maxProfit.toFixed(0),
-                        maxLoss: maxLoss.toFixed(0),
-                        convexity,
-                        isLateStage,
-                        badges,
-                        suggestion,
-                        urgency,
-                        borderColor
+                        pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
+                        deltaSaturation, proximityToShort, convexity, isCredit,
+                        maxProfit: this.formatNumber(maxProfit, 0),
+                        maxLoss: this.formatNumber(maxLoss, 0),
+                        badges, borderColor, suggestion, urgency
                     };
                 },
 
-                // Roll alert settings
-                loadRollAlertSettings() {
-                    try {
-                        const saved = localStorage.getItem('rollAlertSettings');
-                        if (saved) this.rollAlertSettings = JSON.parse(saved);
-                    } catch (e) { /* use defaults */ }
+                _bsDelta(S, K, T, r, sigma, isCall) {
+                    if (T <= 0 || sigma <= 0) return isCall ? (S > K ? 1 : 0) : (S < K ? -1 : 0);
+                    const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+                    return isCall ? this._normalCDF(d1) : this._normalCDF(d1) - 1;
                 },
-
-                async loadStrategyTargets() {
-                    try {
-                        const resp = await fetch('/api/settings/targets');
-                        if (resp.ok) {
-                            const targets = await resp.json();
-                            this.strategyTargets = {};
-                            targets.forEach(t => { this.strategyTargets[t.strategy_name] = t; });
-                        }
-                    } catch (e) { console.error('Failed to load strategy targets:', e); }
-                },
-
-                // Black-Scholes delta utilities
                 _normalCDF(x) {
-                    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
-                    const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
-                    const sign = x < 0 ? -1 : 1;
-                    x = Math.abs(x) / Math.sqrt(2);
-                    const t = 1.0 / (1.0 + p * x);
-                    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-                    return 0.5 * (1.0 + sign * y);
+                    const t = 1 / (1 + 0.2316419 * Math.abs(x));
+                    const d = 0.3989422804014327;
+                    const p = d * Math.exp(-x * x / 2) * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+                    return x > 0 ? 1 - p : p;
                 },
-
-                _bsDelta(S, K, T, r, sigma, optType) {
-                    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) return optType === 'C' ? 0.5 : -0.5;
-                    const d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * Math.sqrt(T));
-                    if (optType === 'C') return this._normalCDF(d1);
-                    return this._normalCDF(d1) - 1;
-                },
-
-                _bsPrice(S, K, T, r, sigma, optType) {
-                    if (T <= 0) return optType === 'C' ? Math.max(0, S - K) : Math.max(0, K - S);
-                    if (sigma <= 0 || S <= 0 || K <= 0) return 0;
-                    const sqrtT = Math.sqrt(T);
-                    const d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * sqrtT);
-                    const d2 = d1 - sigma * sqrtT;
-                    if (optType === 'C') {
-                        return S * this._normalCDF(d1) - K * Math.exp(-r * T) * this._normalCDF(d2);
-                    }
-                    return K * Math.exp(-r * T) * this._normalCDF(-d2) - S * this._normalCDF(-d1);
-                },
-
                 _getEffectiveIV(underlying) {
                     const quote = this.underlyingQuotes[underlying];
                     if (quote && quote.iv && quote.iv > 0) return quote.iv / 100;
                     return 0.30;
                 },
 
-                // Notes (DB-persisted)
+                // ===== Strategy Targets =====
+                async loadStrategyTargets() {
+                    try {
+                        const response = await fetch('/api/settings/targets');
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.strategyTargets = data.targets || {};
+                        }
+                    } catch (error) { console.error('Failed to load strategy targets:', error); }
+                },
+                loadRollAlertSettings() {
+                    try {
+                        const saved = localStorage.getItem('rollAlertSettings');
+                        if (saved) this.rollAlertSettings = { ...this.rollAlertSettings, ...JSON.parse(saved) };
+                    } catch (e) { /* use defaults */ }
+                },
+
+                // ===== Notes (DB-persisted) =====
                 async loadComments() {
                     try {
                         const response = await fetch('/api/position-notes');
@@ -1143,21 +981,20 @@
                     } catch (e) { /* ignore migration errors */ }
                 },
                 getCommentKey(group) {
-                    if (group._isMergedCoveredCall) {
-                        return `pos_${group.underlying}_coveredcall_${group.accountNumber || 'default'}`;
-                    }
-                    if (group.chainId && group.chainId !== 'unenriched' && group.chainId !== 'residual_shares') return `chain_${group.chainId}`;
-                    const symbol = group.underlying;
-                    const account = group.accountNumber || 'default';
-                    const expiration = group.positions[0]?.expires_at || group.positions[0]?.expiration || 'noexp';
-                    return `pos_${symbol}_${expiration}_${account}`;
+                    if (group._isSubtotal) return null;
+                    if (group._isShareRow) return `shares_${group.underlying}_${group.accountNumber || 'default'}`;
+                    const chainId = group.chain_id || group.chainId;
+                    if (chainId && !chainId.startsWith('shares_')) return `chain_${chainId}`;
+                    return `pos_${group.underlying}_${group.accountNumber || 'default'}`;
                 },
                 getPositionComment(group) {
                     const key = this.getCommentKey(group);
+                    if (!key) return '';
                     return this.positionComments[key] || '';
                 },
                 updatePositionComment(group, value) {
                     const key = this.getCommentKey(group);
+                    if (!key) return;
                     this.positionComments[key] = value;
                     if (this._noteSaveTimers[key]) {
                         clearTimeout(this._noteSaveTimers[key]);
@@ -1180,7 +1017,7 @@
                     if (name.includes('ROTH')) return 'R';
                     if (name.includes('INDIVIDUAL')) return 'I';
                     if (name.includes('TRADITIONAL')) return 'T';
-                    return name.charAt(0) || '?';  // First letter fallback
+                    return name.charAt(0) || '?';
                 }
             };
         }
@@ -1286,13 +1123,33 @@
     </div>
 
     <!-- Empty State -->
-    <div x-show="!isLoading && !error && filteredPositions.length === 0" class="text-center py-12">
+    <div x-show="!isLoading && !error && filteredItems.length === 0" class="text-center py-12">
         <i class="fas fa-layer-group text-4xl text-tv-muted mb-4"></i>
         <p class="text-tv-muted mb-4">No open positions found</p>
     </div>
 
+    <!-- Reconciliation Banner -->
+    <div x-show="reconciliation && !isLoading" x-cloak class="mx-2 mt-2">
+        <div class="px-4 py-2 rounded text-sm flex items-center justify-between"
+             :class="(reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length)
+                     ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
+                     : 'bg-tv-green/10 border border-tv-green/30 text-tv-green'">
+            <span>
+                <i class="fas fa-check-circle mr-1" x-show="!reconciliation.unlinked?.length && !reconciliation.quantity_mismatch?.length && !reconciliation.stale?.length"></i>
+                <i class="fas fa-exclamation-triangle mr-1" x-show="reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length"></i>
+                <span x-text="reconciliation.matched + '/' + reconciliation.total + ' options matched'"></span>
+                <span x-show="reconciliation.unlinked?.length" class="ml-2" x-text="reconciliation.unlinked.length + ' unlinked'"></span>
+                <span x-show="reconciliation.stale?.length" class="ml-2" x-text="reconciliation.stale.length + ' stale'"></span>
+                <span x-show="reconciliation.auto_closed?.length" class="ml-2 text-tv-green" x-text="reconciliation.auto_closed.length + ' auto-closed'"></span>
+            </span>
+            <button @click="reconciliation = null" class="text-tv-muted hover:text-tv-text text-xs ml-4">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
     <!-- Main Content -->
-    <main x-show="!isLoading && !error && filteredPositions.length > 0 && allPositions.length > 0" x-cloak class="p-2">
+    <main x-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" x-cloak class="p-2">
         <!-- Column Headers -->
         <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16">
             <span class="w-8"></span>
@@ -1318,13 +1175,17 @@
                 Net Liq
                 <span x-show="sortColumn === 'net_liq'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl')">
-                P&L
-                <span x-show="sortColumn === 'pnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('realized_pnl')">
+                Realized
+                <span x-show="sortColumn === 'realized_pnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-16 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
-                % Ret
-                <span x-show="sortColumn === 'pnl_percent'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
+                Open
+                <span x-show="sortColumn === 'open_pnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            </span>
+            <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('total_pnl')">
+                Total
+                <span x-show="sortColumn === 'total_pnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
             <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('max_percent')">
                 % Max
@@ -1338,7 +1199,7 @@
                 DTE
                 <span x-show="sortColumn === 'dte'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
+            <span class="w-36 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
                 Strategy
                 <span x-show="sortColumn === 'strategy'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
@@ -1347,273 +1208,368 @@
         <!-- Position Groups -->
         <div class="divide-y divide-tv-border">
             <template x-for="(group, index) in groupedPositions" :key="group.groupKey">
-                <div x-data="{ expanded: false }">
-                    <!-- Group Row -->
-                    <div class="flex items-center px-4 py-2 hover:bg-tv-border/30 cursor-pointer transition-colors"
-                         @click="expanded = !expanded">
-                        <!-- Chevron -->
-                        <div class="w-8">
-                            <i class="fas fa-chevron-right text-tv-muted transition-transform duration-200"
-                               :class="{ 'rotate-90': expanded }"></i>
+                <div>
+                    <!-- Subtotal Row -->
+                    <template x-if="group._isSubtotal">
+                        <div class="flex items-center px-4 py-2 bg-blue-500/10 border-l-2 border-tv-blue">
+                            <div class="w-8"></div>
+                            <div class="w-6" x-show="selectedAccount === ''"></div>
+                            <div class="w-24">
+                                <div class="font-bold text-base text-tv-text" x-text="group.displayKey"></div>
+                            </div>
+                            <div class="w-12"></div>
+                            <div class="w-40"></div>
+                            <div class="w-12"></div>
+                            <!-- Cost Basis -->
+                            <div class="w-24 text-right font-medium"
+                                 :class="(group._subtotalCostBasis >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalCostBasis)">
+                                <span x-show="group._subtotalCostBasis < 0">-</span>$<span x-text="formatDollar(group._subtotalCostBasis)"></span>
+                            </div>
+                            <!-- Net Liq -->
+                            <div class="w-24 text-right font-medium"
+                                 :class="(group._subtotalNetLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalNetLiq)">
+                                <span x-show="group._subtotalNetLiq < 0">-</span>$<span x-text="formatDollar(group._subtotalNetLiq)"></span>
+                            </div>
+                            <!-- Realized -->
+                            <div class="w-24 text-right font-medium"
+                                 :class="(group._subtotalRealizedPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalRealizedPnL)">
+                                <span x-show="group._subtotalRealizedPnL !== 0">
+                                    <span x-show="group._subtotalRealizedPnL < 0">-</span>$<span x-text="formatDollar(group._subtotalRealizedPnL)"></span>
+                                </span>
+                            </div>
+                            <!-- Open P/L -->
+                            <div class="w-24 text-right font-medium"
+                                 :class="(group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalOpenPnL)">
+                                <span x-show="group._subtotalOpenPnL < 0">-</span>$<span x-text="formatDollar(group._subtotalOpenPnL)"></span>
+                            </div>
+                            <!-- Total P/L -->
+                            <div class="w-24 text-right font-bold"
+                                 :class="(group._subtotalTotalPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalTotalPnL)">
+                                <span x-show="group._subtotalTotalPnL < 0">-</span>$<span x-text="formatDollar(group._subtotalTotalPnL)"></span>
+                            </div>
+                            <div class="w-14"></div>
+                            <div class="w-12"></div>
+                            <div class="w-12"></div>
+                            <div class="w-36 text-xs text-tv-muted" x-text="group._childCount + ' positions'"></div>
                         </div>
+                    </template>
 
-                        <!-- Account Symbol (only when All Accounts selected) -->
-                        <div class="w-6 text-center text-tv-muted text-sm" x-show="selectedAccount === ''">
-                            <span x-text="getAccountSymbol(group.accountNumber)"></span>
-                        </div>
+                    <!-- Regular Row (Chain or Share) -->
+                    <template x-if="!group._isSubtotal">
+                        <div x-data="{ expanded: false }">
+                            <!-- Group Row -->
+                            <div class="flex items-center px-4 py-2 hover:bg-tv-border/30 cursor-pointer transition-colors"
+                                 @click="expanded = !expanded"
+                                 :class="group._isShareRow ? 'bg-tv-panel/30' : ''">
+                                <!-- Chevron -->
+                                <div class="w-8">
+                                    <i class="fas fa-chevron-right text-tv-muted transition-transform duration-200"
+                                       :class="{ 'rotate-90': expanded }"
+                                       x-show="!group._isShareRow || group._shareData?.quantity"></i>
+                                </div>
 
-                        <!-- Symbol -->
-                        <div class="w-24">
-                            <div class="font-semibold text-base text-tv-text" x-text="group.displayKey || group.underlying"></div>
-                        </div>
+                                <!-- Account Symbol (only when All Accounts selected) -->
+                                <div class="w-6 text-center text-tv-muted text-sm" x-show="selectedAccount === ''">
+                                    <span x-text="getAccountSymbol(group.accountNumber)"></span>
+                                </div>
 
-                        <!-- IVR -->
-                        <div class="w-12 text-center"
-                             :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-yellow-400' : 'text-tv-muted'"
-                             x-text="getUnderlyingIVR(group.underlying) !== null ? getUnderlyingIVR(group.underlying) : ''"></div>
-
-                        <!-- Price -->
-                        <div class="w-40 flex items-center gap-2">
-                            <template x-if="getUnderlyingQuote(group.underlying)">
-                                <div class="flex items-center gap-2">
-                                    <div class="px-2 py-1 rounded-sm text-base font-medium border"
-                                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-green-900/60 text-green-400 border-green-700/50' : 'bg-tv-border text-tv-muted border-tv-border'">
-                                        <span x-text="formatNumber(getUnderlyingQuote(group.underlying).price || 0)"></span>
-                                    </div>
-                                    <div class="text-sm"
-                                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-green-400' : 'text-tv-muted'">
-                                        <span x-text="((getUnderlyingQuote(group.underlying).change || 0) >= 0 ? '+' : '') + (getUnderlyingQuote(group.underlying).changePercent || 0).toFixed(2) + '%'"></span>
+                                <!-- Symbol -->
+                                <div class="w-24">
+                                    <div class="font-semibold text-base text-tv-text">
+                                        <span x-text="group.displayKey || group.underlying"></span>
+                                        <span x-show="group._isShareRow" class="text-xs text-tv-muted ml-1">stk</span>
                                     </div>
                                 </div>
-                            </template>
-                            <template x-if="!getUnderlyingQuote(group.underlying)">
-                                <span class="text-tv-muted text-sm"><i class="fas fa-spinner fa-spin"></i></span>
-                            </template>
-                        </div>
 
-                        <!-- Chain Link -->
-                        <div class="w-12">
-                            <a :href="group.chainId && group.chainId !== 'unenriched'
-                                   ? '/chains?chain_id=' + encodeURIComponent(group.chainId)
-                                   : '/chains?underlying=' + encodeURIComponent(group.underlying) + '&status=open'"
-                               @click.stop
-                               class="text-tv-blue hover:text-blue-400"
-                               title="View chain">
-                                <i class="fas fa-link"></i>
-                            </a>
-                        </div>
+                                <!-- IVR -->
+                                <div class="w-12 text-center"
+                                     :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-yellow-400' : 'text-tv-muted'"
+                                     x-text="getUnderlyingIVR(group.underlying) !== null ? getUnderlyingIVR(group.underlying) : ''"></div>
 
-                        <!-- Cost Basis -->
-                        <div class="w-24 text-right"
-                             :class="getGroupCostBasis(group.positions) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                            <span x-show="getGroupCostBasis(group.positions) < 0">-</span>$<span x-text="formatNumber(Math.abs(getGroupCostBasis(group.positions)))"></span>
-                        </div>
-
-                        <!-- Net Liq -->
-                        <div class="w-24 text-right font-medium"
-                             :class="getGroupNetLiqWithLiveQuotes(group.positions) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                            <span x-show="getGroupNetLiqWithLiveQuotes(group.positions) < 0">-</span>$<span x-text="formatNumber(Math.abs(getGroupNetLiqWithLiveQuotes(group.positions)))"></span>
-                        </div>
-
-                        <!-- P&L -->
-                        <div class="w-24 text-right font-medium"
-                             :class="getGroupPnLWithLiveQuotes(group.positions) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                            <span x-show="getGroupPnLWithLiveQuotes(group.positions) < 0">-</span>$<span x-text="formatNumber(Math.abs(getGroupPnLWithLiveQuotes(group.positions)))"></span>
-                        </div>
-
-                        <!-- % Return -->
-                        <div class="w-16 text-right"
-                             :class="parseFloat(getGroupPnLPercent(group.positions)) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                            <span x-text="getGroupPnLPercent(group.positions) ? getGroupPnLPercent(group.positions) + '%' : ''"></span>
-                        </div>
-
-                        <!-- % Max -->
-                        <div class="w-14 text-right"
-                             :class="getMaxPercentColor(getGroupMaxPercent(group.positions))"
-                             x-text="shouldShowMaxPercent(group.positions) ? getGroupMaxPercent(group.positions) : '—'"></div>
-
-                        <!-- Days -->
-                        <div class="w-12 text-center text-tv-text" x-text="getGroupDaysOpen(group.positions) || ''"></div>
-
-                        <!-- DTE -->
-                        <div class="w-12 text-center"
-                             :class="getMinDTE(group.positions) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'"
-                             x-text="getMinDTE(group.positions) || ''"></div>
-
-                        <!-- Strategy -->
-                        <div class="w-40">
-                            <div class="text-sm text-tv-muted" x-text="getGroupStrategyLabel(group)"></div>
-                            <template x-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
-                                <div class="flex flex-wrap gap-1 mt-0.5">
-                                    <template x-for="badge in group.rollAnalysis.badges" :key="badge.label">
-                                        <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
-                                              :class="{
-                                                  'bg-green-500/20 text-green-400 border-green-500/50': badge.color === 'green',
-                                                  'bg-red-500/20 text-red-400 border-red-500/50': badge.color === 'red',
-                                                  'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': badge.color === 'yellow',
-                                                  'bg-orange-500/20 text-orange-400 border-orange-500/50': badge.color === 'orange'
-                                              }"
-                                              x-text="badge.label"></span>
+                                <!-- Price -->
+                                <div class="w-40 flex items-center gap-2">
+                                    <template x-if="getUnderlyingQuote(group.underlying)">
+                                        <div class="flex items-center gap-2">
+                                            <div class="px-2 py-1 rounded-sm text-base font-medium border"
+                                                 :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-green-900/60 text-green-400 border-green-700/50' : 'bg-tv-border text-tv-muted border-tv-border'">
+                                                <span x-text="formatNumber(getUnderlyingQuote(group.underlying).price || 0)"></span>
+                                            </div>
+                                            <div class="text-sm"
+                                                 :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-green-400' : 'text-tv-muted'">
+                                                <span x-text="((getUnderlyingQuote(group.underlying).change || 0) >= 0 ? '+' : '') + (getUnderlyingQuote(group.underlying).changePercent || 0).toFixed(2) + '%'"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!getUnderlyingQuote(group.underlying)">
+                                        <span class="text-tv-muted text-sm"><i class="fas fa-spinner fa-spin"></i></span>
                                     </template>
                                 </div>
-                            </template>
-                        </div>
 
-                        <!-- Comment indicator -->
-                        <div class="flex-1 text-tv-muted text-sm truncate pl-2"
-                             x-show="getPositionComment(group)"
-                             x-text="getPositionComment(group)"></div>
+                                <!-- Chain Link -->
+                                <div class="w-12">
+                                    <template x-if="!group._isShareRow">
+                                        <a :href="group.chain_id
+                                               ? '/chains?chain_id=' + encodeURIComponent(group.chain_id)
+                                               : '/chains?underlying=' + encodeURIComponent(group.underlying) + '&status=open'"
+                                           @click.stop
+                                           class="text-tv-blue hover:text-blue-400"
+                                           title="View chain">
+                                            <i class="fas fa-link"></i>
+                                            <span x-show="group.roll_count > 0" class="text-xs text-tv-muted ml-0.5" x-text="'R' + group.roll_count"></span>
+                                        </a>
+                                    </template>
+                                </div>
 
-                    </div>
+                                <!-- Cost Basis -->
+                                <div class="w-24 text-right"
+                                     :class="(getGroupCostBasis(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupCostBasis(group))">
+                                    <span x-show="getGroupCostBasis(group) < 0">-</span>$<span x-text="formatDollar(getGroupCostBasis(group))"></span>
+                                </div>
 
-                    <!-- TT-style Expanded Positions -->
-                    <div x-show="expanded" class="bg-tv-bg border-t border-tv-border">
-                        <div class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border font-mono">
-                            <div class="flex gap-4">
-                                <!-- Leg data -->
-                                <div class="flex-shrink-0 space-y-1">
-                                    <!-- Header row -->
-                                    <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
-                                        <span class="w-10 text-right">Qty</span>
-                                        <span class="w-16 text-center mx-2">Exp</span>
-                                        <span class="w-10">DTE</span>
-                                        <span class="w-16 text-center mx-2">Strike</span>
-                                        <span class="w-6">Type</span>
-                                        <span class="w-24 text-right ml-4">Cost Basis</span>
-                                        <span class="w-20 text-right">Net Liq</span>
-                                        <span class="w-20 text-right">P&L</span>
-                                        <span class="w-16 text-right">P&L %</span>
-                                    </div>
+                                <!-- Net Liq -->
+                                <div class="w-24 text-right font-medium"
+                                     :class="(getGroupNetLiqWithLiveQuotes(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupNetLiqWithLiveQuotes(group))">
+                                    <span x-show="getGroupNetLiqWithLiveQuotes(group) < 0">-</span>$<span x-text="formatDollar(getGroupNetLiqWithLiveQuotes(group))"></span>
+                                </div>
 
-                                    <!-- Data rows -->
-                                    <template x-for="position in [...group.positions].sort((a, b) => {
-                                        const expA = a.expires_at || '';
-                                        const expB = b.expires_at || '';
-                                        if (expA !== expB) return expA.localeCompare(expB);
-                                        const strikeA = parseFloat(getStrikePrice(a)) || 0;
-                                        const strikeB = parseFloat(getStrikePrice(b)) || 0;
-                                        return strikeA - strikeB;
-                                    })" :key="position.symbol + position.account_number">
-                                        <div class="flex items-center text-sm py-0.5">
-                                            <!-- Qty -->
-                                            <span class="w-10 text-right font-medium"
-                                                  :class="getSignedQuantity(position) > 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                  x-text="getSignedQuantity(position)"></span>
-                                            <!-- Expiration (options only) -->
-                                            <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
-                                                  x-text="position.instrument_type?.includes('OPTION') ? getExpirationDate(position) : ''"></span>
-                                            <!-- DTE (options only) -->
-                                            <span class="w-10 text-tv-muted"
-                                                  :class="getDTE(position) <= 7 ? 'text-tv-red' : getDTE(position) <= 30 ? 'text-yellow-400' : ''"
-                                                  x-text="position.instrument_type?.includes('OPTION') && getDTE(position) !== null ? getDTE(position) + 'd' : ''"></span>
-                                            <!-- Strike (options only) -->
-                                            <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
-                                                  x-text="position.instrument_type?.includes('OPTION') ? getStrikePrice(position) : ''"></span>
-                                            <!-- Option Type (options only) -->
-                                            <span class="w-6 text-tv-muted"
-                                                  x-text="position.instrument_type?.includes('OPTION') ? getOptionType(position) : ''"></span>
-                                            <!-- Cost Basis -->
-                                            <span class="w-24 text-right ml-4"
-                                                  :class="position.cost_basis >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                  x-text="'$' + formatNumber(position.cost_basis)"></span>
-                                            <!-- Net Liq -->
-                                            <span class="w-20 text-right text-tv-muted"
-                                                  x-text="'$' + formatNumber(calculateLiveMarketValue(position))"></span>
-                                            <!-- P&L -->
-                                            <span class="w-20 text-right font-medium"
-                                                  :class="calculateLivePositionPnL(position) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                  x-text="'$' + formatNumber(calculateLivePositionPnL(position))"></span>
-                                            <!-- P&L % -->
-                                            <span class="w-16 text-right"
-                                                  :class="(calculateLivePositionPnL(position) / Math.abs(position.cost_basis || 1) * 100) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                  x-text="(calculateLivePositionPnL(position) / Math.abs(position.cost_basis || 1) * 100).toFixed(1) + '%'"></span>
+                                <!-- Realized P/L -->
+                                <div class="w-24 text-right"
+                                     :class="(getGroupRealizedPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupRealizedPnL(group))">
+                                    <template x-if="getGroupRealizedPnL(group) !== 0">
+                                        <span>
+                                            <span x-show="getGroupRealizedPnL(group) < 0">-</span>$<span x-text="formatDollar(getGroupRealizedPnL(group))"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="getGroupRealizedPnL(group) === 0">
+                                        <span class="text-tv-muted">—</span>
+                                    </template>
+                                </div>
+
+                                <!-- Open P/L -->
+                                <div class="w-24 text-right font-medium"
+                                     :class="(getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupOpenPnL(group))">
+                                    <span x-show="getGroupOpenPnL(group) < 0">-</span>$<span x-text="formatDollar(getGroupOpenPnL(group))"></span>
+                                </div>
+
+                                <!-- Total P/L -->
+                                <div class="w-24 text-right font-bold"
+                                     :class="(getGroupTotalPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupTotalPnL(group))">
+                                    <span x-show="getGroupTotalPnL(group) < 0">-</span>$<span x-text="formatDollar(getGroupTotalPnL(group))"></span>
+                                </div>
+
+                                <!-- % Max -->
+                                <div class="w-14 text-right"
+                                     :class="getMaxPercentColor(getGroupMaxPercent(group))"
+                                     x-text="shouldShowMaxPercent(group) ? getGroupMaxPercent(group) : '—'"></div>
+
+                                <!-- Days -->
+                                <div class="w-12 text-center text-tv-text" x-text="getGroupDaysOpen(group) || ''"></div>
+
+                                <!-- DTE -->
+                                <div class="w-12 text-center"
+                                     :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'"
+                                     x-text="getMinDTE(group) || ''"></div>
+
+                                <!-- Strategy -->
+                                <div class="w-36">
+                                    <div class="text-sm text-tv-muted" x-text="getGroupStrategyLabel(group)"></div>
+                                    <template x-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
+                                        <div class="flex flex-wrap gap-1 mt-0.5">
+                                            <template x-for="badge in group.rollAnalysis.badges" :key="badge.label">
+                                                <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
+                                                      :class="{
+                                                          'bg-green-500/20 text-green-400 border-green-500/50': badge.color === 'green',
+                                                          'bg-red-500/20 text-red-400 border-red-500/50': badge.color === 'red',
+                                                          'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': badge.color === 'yellow',
+                                                          'bg-orange-500/20 text-orange-400 border-orange-500/50': badge.color === 'orange'
+                                                      }"
+                                                      x-text="badge.label"></span>
+                                            </template>
                                         </div>
                                     </template>
                                 </div>
 
-                                <!-- Comments -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="text-xs text-tv-muted pb-1 border-b border-tv-border/30 mb-1">Notes</div>
-                                    <textarea :value="getPositionComment(group)"
-                                              @input="updatePositionComment(group, $event.target.value)"
-                                              @click.stop
-                                              rows="3"
-                                              class="w-full bg-transparent text-tv-text text-sm font-sans border border-tv-border/30 rounded px-2 py-1 resize-none outline-none focus:border-tv-blue/50"
-                                              placeholder="Add notes..."></textarea>
-                                </div>
+                                <!-- Comment indicator -->
+                                <div class="flex-1 text-tv-muted text-sm truncate pl-2"
+                                     x-show="getPositionComment(group)"
+                                     x-text="getPositionComment(group)"></div>
+
                             </div>
-                        </div>
 
-                        <!-- Roll Analysis Panel -->
-                        <template x-if="group.rollAnalysis">
-                            <div class="mx-4 mb-3 p-3 bg-tv-panel rounded border-l-2"
-                                 :class="{
-                                     'border-green-500 border border-l-2 border-green-500/30': group.rollAnalysis.borderColor === 'green',
-                                     'border-red-500 border border-l-2 border-red-500/30': group.rollAnalysis.borderColor === 'red',
-                                     'border-yellow-500 border border-l-2 border-yellow-500/30': group.rollAnalysis.borderColor === 'yellow',
-                                     'border-tv-blue border border-l-2 border-tv-blue/30': group.rollAnalysis.borderColor === 'blue'
-                                 }">
-                                <!-- Header -->
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-xs font-semibold text-tv-text">Roll Analysis</span>
-                                    <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
-                                          :class="{
-                                              'bg-green-500/20 text-green-400 border-green-500/50': group.rollAnalysis.convexity === 'High' || group.rollAnalysis.convexity === 'Low Risk',
-                                              'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': group.rollAnalysis.convexity === 'Diminishing' || group.rollAnalysis.convexity === 'Elevated Risk',
-                                              'bg-red-500/20 text-red-400 border-red-500/50': group.rollAnalysis.convexity === 'Low' || group.rollAnalysis.convexity === 'High Risk'
-                                          }"
-                                          x-text="group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity')"></span>
+                            <!-- Expanded Detail Panel -->
+                            <div x-show="expanded" class="bg-tv-bg border-t border-tv-border">
+                                <div class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border font-mono">
+                                    <div class="flex gap-4">
+                                        <!-- Leg data (options) -->
+                                        <template x-if="!group._isShareRow">
+                                            <div class="flex-shrink-0 space-y-1">
+                                                <!-- Header row -->
+                                                <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
+                                                    <span class="w-10 text-right">Qty</span>
+                                                    <span class="w-16 text-center mx-2">Exp</span>
+                                                    <span class="w-10">DTE</span>
+                                                    <span class="w-16 text-center mx-2">Strike</span>
+                                                    <span class="w-6">Type</span>
+                                                    <span class="w-24 text-right ml-4">Cost Basis</span>
+                                                    <span class="w-20 text-right">Net Liq</span>
+                                                    <span class="w-20 text-right">Open P/L</span>
+                                                </div>
+
+                                                <!-- Option legs -->
+                                                <template x-for="leg in [...(group.positions || [])].sort((a, b) => {
+                                                    const expA = a.expiration || '';
+                                                    const expB = b.expiration || '';
+                                                    if (expA !== expB) return expA.localeCompare(expB);
+                                                    return (a.strike || 0) - (b.strike || 0);
+                                                })" :key="leg.symbol">
+                                                    <div class="flex items-center text-sm py-0.5">
+                                                        <span class="w-10 text-right font-medium"
+                                                              :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                              x-text="getSignedQuantity(leg)"></span>
+                                                        <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
+                                                              x-text="getExpirationDate(leg)"></span>
+                                                        <span class="w-10 text-tv-muted"
+                                                              :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 30 ? 'text-yellow-400' : ''"
+                                                              x-text="getDTE(leg) !== null ? getDTE(leg) + 'd' : ''"></span>
+                                                        <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
+                                                              x-text="getStrikePrice(leg)"></span>
+                                                        <span class="w-6 text-tv-muted"
+                                                              x-text="getOptionType(leg)"></span>
+                                                        <span class="w-24 text-right ml-4"
+                                                              :class="(leg.cost_basis || 0) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                              x-text="'$' + formatNumber(leg.cost_basis || 0)"></span>
+                                                        <span class="w-20 text-right text-tv-muted"
+                                                              x-text="'$' + formatNumber(_calculateLegMarketValue(leg))"></span>
+                                                        <span class="w-20 text-right font-medium"
+                                                              :class="_calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                              x-text="'$' + formatNumber(_calculateLegPnL(leg))"></span>
+                                                    </div>
+                                                </template>
+
+                                                <!-- No legs message for assigned chains -->
+                                                <template x-if="(group.positions || []).length === 0">
+                                                    <div class="text-xs text-tv-muted py-1">
+                                                        <span x-show="group.has_assignment">All options assigned/exercised — see shares row above</span>
+                                                        <span x-show="!group.has_assignment">No open option legs</span>
+                                                    </div>
+                                                </template>
+
+                                                <!-- Chain summary -->
+                                                <div class="flex items-center text-xs text-tv-muted mt-2 pt-1 border-t border-tv-border/30 gap-4">
+                                                    <span x-text="'Opened: ' + (group.opening_date || 'N/A')"></span>
+                                                    <span x-text="'Orders: ' + (group.order_count || 1)"></span>
+                                                    <span x-show="group.roll_count > 0" x-text="'Rolls: ' + group.roll_count" class="text-tv-blue"></span>
+                                                    <span x-show="group.realized_pnl !== 0"
+                                                          :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="'Realized: $' + formatNumber(group.realized_pnl)"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <!-- Share detail (equity positions) -->
+                                        <template x-if="group._isShareRow && group._shareData">
+                                            <div class="flex-shrink-0 space-y-1">
+                                                <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
+                                                    <span class="w-16">Shares</span>
+                                                    <span class="w-20 text-right">Avg Price</span>
+                                                    <span class="w-24 text-right ml-4">Cost Basis</span>
+                                                    <span class="w-20 text-right">Mkt Value</span>
+                                                    <span class="w-20 text-right">Open P/L</span>
+                                                </div>
+                                                <div class="flex items-center text-sm py-0.5">
+                                                    <span class="w-16 font-medium text-tv-text" x-text="group._shareData.quantity"></span>
+                                                    <span class="w-20 text-right text-tv-muted" x-text="'$' + formatNumber(group._shareData.average_open_price)"></span>
+                                                    <span class="w-24 text-right ml-4"
+                                                          :class="(group.cost_basis_total || 0) >= 0 ? 'text-tv-muted' : 'text-tv-red'"
+                                                          x-text="'$' + formatNumber(group.cost_basis_total || 0)"></span>
+                                                    <span class="w-20 text-right text-tv-muted"
+                                                          x-text="'$' + formatNumber(_getShareMarketValue(group))"></span>
+                                                    <span class="w-20 text-right font-medium"
+                                                          :class="_getShareOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="'$' + formatNumber(_getShareOpenPnL(group))"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <!-- Comments -->
+                                        <div class="flex-1 min-w-0">
+                                            <div class="text-xs text-tv-muted pb-1 border-b border-tv-border/30 mb-1">Notes</div>
+                                            <textarea :value="getPositionComment(group)"
+                                                      @input="updatePositionComment(group, $event.target.value)"
+                                                      @click.stop
+                                                      rows="3"
+                                                      class="w-full bg-transparent text-tv-text text-sm font-sans border border-tv-border/30 rounded px-2 py-1 resize-none outline-none focus:border-tv-blue/50"
+                                                      placeholder="Add notes..."></textarea>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <!-- Metrics grid -->
-                                <div class="grid grid-cols-6 gap-2 text-xs mb-2">
-                                    <div class="text-center">
-                                        <div class="text-tv-muted">% Max Profit</div>
-                                        <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxProfit) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                             x-text="group.rollAnalysis.pctMaxProfit + '%'"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-tv-muted">% Max Loss</div>
-                                        <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxLoss) > 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                             x-text="group.rollAnalysis.pctMaxLoss + '%'"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-tv-muted">Reward:Risk</div>
-                                        <div class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'"
-                                             x-text="group.rollAnalysis.rewardToRisk"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-tv-muted">Delta Sat.</div>
-                                        <div class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'"
-                                             x-text="group.rollAnalysis.deltaSaturation + '%'"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-tv-muted">Near Short</div>
-                                        <div class="font-medium" :class="parseFloat(group.rollAnalysis.proximityToShort) < 3 ? 'text-yellow-400' : 'text-tv-text'"
-                                             x-text="group.rollAnalysis.proximityToShort + '%'"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-tv-muted">Max P / Max L</div>
-                                        <div class="font-medium text-tv-text"
-                                             x-text="'$' + group.rollAnalysis.maxProfit + ' / $' + group.rollAnalysis.maxLoss"></div>
-                                    </div>
-                                </div>
-
-                                <!-- Suggestion box -->
-                                <template x-if="group.rollAnalysis.suggestion">
-                                    <div class="mt-2 pl-3 py-2 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r"
+                                <!-- Roll Analysis Panel -->
+                                <template x-if="group.rollAnalysis">
+                                    <div class="mx-4 mb-3 p-3 bg-tv-panel rounded border-l-2"
                                          :class="{
-                                             'border-red-500': group.rollAnalysis.urgency === 'high',
-                                             'border-yellow-500': group.rollAnalysis.urgency === 'medium',
-                                             'border-tv-blue': group.rollAnalysis.urgency === 'low'
+                                             'border-green-500 border border-l-2 border-green-500/30': group.rollAnalysis.borderColor === 'green',
+                                             'border-red-500 border border-l-2 border-red-500/30': group.rollAnalysis.borderColor === 'red',
+                                             'border-yellow-500 border border-l-2 border-yellow-500/30': group.rollAnalysis.borderColor === 'yellow',
+                                             'border-tv-blue border border-l-2 border-tv-blue/30': group.rollAnalysis.borderColor === 'blue'
                                          }">
-                                        <span x-text="group.rollAnalysis.suggestion"></span>
-
+                                        <div class="flex items-center justify-between mb-2">
+                                            <span class="text-xs font-semibold text-tv-text">Roll Analysis</span>
+                                            <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
+                                                  :class="{
+                                                      'bg-green-500/20 text-green-400 border-green-500/50': group.rollAnalysis.convexity === 'High' || group.rollAnalysis.convexity === 'Low Risk',
+                                                      'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': group.rollAnalysis.convexity === 'Diminishing' || group.rollAnalysis.convexity === 'Elevated Risk',
+                                                      'bg-red-500/20 text-red-400 border-red-500/50': group.rollAnalysis.convexity === 'Low' || group.rollAnalysis.convexity === 'High Risk'
+                                                  }"
+                                                  x-text="group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity')"></span>
+                                        </div>
+                                        <div class="grid grid-cols-6 gap-2 text-xs mb-2">
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">% Max Profit</div>
+                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxProfit) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                     x-text="group.rollAnalysis.pctMaxProfit + '%'"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">% Max Loss</div>
+                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxLoss) > 0 ? 'text-tv-red' : 'text-tv-muted'"
+                                                     x-text="group.rollAnalysis.pctMaxLoss + '%'"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Reward:Risk</div>
+                                                <div class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'"
+                                                     x-text="group.rollAnalysis.rewardToRisk"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Delta Sat.</div>
+                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'"
+                                                     x-text="group.rollAnalysis.deltaSaturation + '%'"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Near Short</div>
+                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.proximityToShort) < 3 ? 'text-yellow-400' : 'text-tv-text'"
+                                                     x-text="group.rollAnalysis.proximityToShort + '%'"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Max P / Max L</div>
+                                                <div class="font-medium text-tv-text"
+                                                     x-text="'$' + group.rollAnalysis.maxProfit + ' / $' + group.rollAnalysis.maxLoss"></div>
+                                            </div>
+                                        </div>
+                                        <template x-if="group.rollAnalysis.suggestion">
+                                            <div class="mt-2 pl-3 py-2 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r"
+                                                 :class="{
+                                                     'border-red-500': group.rollAnalysis.urgency === 'high',
+                                                     'border-yellow-500': group.rollAnalysis.urgency === 'medium',
+                                                     'border-tv-blue': group.rollAnalysis.urgency === 'low'
+                                                 }">
+                                                <span x-text="group.rollAnalysis.suggestion"></span>
+                                            </div>
+                                        </template>
                                     </div>
                                 </template>
                             </div>
-                        </template>
-                    </div>
+                        </div>
+                    </template>
                 </div>
             </template>
         </div>

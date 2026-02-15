@@ -32,8 +32,7 @@
         }
     </script>
 
-    <!-- Load the V2 app JavaScript -->
-    <script src="/static/js/app-v2.js?v=20260209b"></script>
+    <script src="/static/js/app.js?v=20260212"></script>
 
     <!-- Alpine.js Collapse Plugin -->
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
@@ -160,6 +159,7 @@
                 <div class="relative">
                     <input type="text"
                            x-model="filterUnderlying"
+                           @focus="$event.target.select()"
                            @keyup.enter="onUnderlyingChange()"
                            @blur="onUnderlyingChange()"
                            @input="filterUnderlying = filterUnderlying.toUpperCase()"
@@ -267,6 +267,16 @@
         </div>
 
         <!-- Main Content: Chains Table -->
+        <!-- Full-page overlay for long-running operations -->
+        <div x-show="initialSyncing || reprocessing" x-cloak
+             class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+            <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl">
+                <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
+                <p class="text-tv-text text-lg font-medium" x-text="initialSyncing ? 'Rebuilding database...' : 'Reprocessing chains...'"></p>
+                <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
+            </div>
+        </div>
+
         <div class="tv-scrollbar" style="height: calc(100vh - 180px); overflow-y: auto;">
             <!-- Loading -->
             <div x-show="chainsLoading" class="flex items-center justify-center py-12">

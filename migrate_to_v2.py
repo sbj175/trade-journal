@@ -9,8 +9,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.database.db_manager import DatabaseManager
 from src.models.position_inventory import PositionInventoryManager
-from src.models.order_processor_v2 import OrderProcessorV2
-from src.models.pnl_calculator_v2 import PnLCalculatorV2
+from src.models.order_processor import OrderProcessor
+from src.models.pnl_calculator import PnLCalculator
 from datetime import datetime
 import logging
 
@@ -29,8 +29,8 @@ def migrate_to_v2_system():
     # Initialize managers
     db_manager = DatabaseManager()
     position_manager = PositionInventoryManager(db_manager)
-    pnl_calculator = PnLCalculatorV2(db_manager, position_manager)
-    order_processor = OrderProcessorV2(db_manager, position_manager)
+    pnl_calculator = PnLCalculator(db_manager, position_manager)
+    order_processor = OrderProcessor(db_manager, position_manager)
     
     try:
         # Step 1: Clear existing position data (if any)
@@ -188,7 +188,7 @@ def test_specific_chain(chain_id='IBIT_OPENING_20250630_39244084'):
     logger.info(f"Found {len(transactions)} transactions")
     
     # Process through new system
-    order_processor = OrderProcessorV2(db_manager, position_manager)
+    order_processor = OrderProcessor(db_manager, position_manager)
     chains_by_account = order_processor.process_transactions(transactions)
     
     # Find the specific chain

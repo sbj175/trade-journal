@@ -50,7 +50,7 @@ The application solves several key problems for options traders:
 
 The application follows a modern web architecture:
 - **Backend**: Python FastAPI server providing REST API and WebSocket endpoints
-- **Frontend**: Single-page applications using Alpine.js for reactivity
+- **Frontend**: Multi-page app with per-page Alpine.js components for reactivity
 - **Database**: SQLite for local data persistence
 - **Real-time Data**: WebSocket integration for live market quotes
 - **Authentication**: OAuth2 via tastytrade SDK v12 (provider_secret + refresh_token in `.env`)
@@ -115,7 +115,7 @@ python manage_trades.py
 # Run individual test files directly with Python
 python test_pnl_calculation.py
 python test_chain_creation.py
-python test_v2_expiration.py
+python test_expiration.py
 # etc.
 ```
 
@@ -127,25 +127,25 @@ python test_v2_expiration.py
    - Serves the web interface and API endpoints
    - Handles trade sync, filtering, and updates
    - WebSocket endpoint for real-time quotes at `/ws/quotes`
-   - V2 system components initialized on startup
+   - System components initialized on startup
 
 2. **Database Layer** (`src/database/db_manager.py`):
-   - SQLite database with tables for trades, option_legs, stock_legs, accounts, transactions, positions, and V2 tables (orders, order_legs, order_chains)
+   - SQLite database with tables for trades, option_legs, stock_legs, accounts, transactions, positions, orders, order_legs, order_chains
    - Context manager pattern for safe database operations
    - All trades stored locally in `trade_journal.db`
    - Row factory returns sqlite3.Row objects for dict-like access
 
-3. **V2 Order Processing System** (migrated from legacy chain system):
-   - **OrderProcessorV2** (`src/models/order_processor_v2.py`): Core processing engine for transaction grouping
+3. **Order Processing System**:
+   - **OrderProcessor** (`src/models/order_processor.py`): Core processing engine for transaction grouping
    - **PositionInventoryManager** (`src/models/position_inventory.py`): Tracks open positions and matches closings
    - **StrategyDetector** (`src/models/strategy_detector.py`): Identifies complex option strategies
-   - **PnLCalculatorV2** (`src/models/pnl_calculator_v2.py`): Calculates P&L with proper roll chain handling
+   - **PnLCalculator** (`src/models/pnl_calculator.py`): Calculates P&L with proper roll chain handling
 
 4. **Legacy Trade Recognition** (`src/models/trade_strategy.py`):
    - Groups individual transactions into complete trades
    - Recognizes multi-leg option strategies (Iron Condors, Verticals, etc.)
    - Handles timezone conversion (UTC → US/Eastern)
-   - Still used alongside V2 for backward compatibility
+   - Still used alongside the order system for backward compatibility
 
 5. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
    - OAuth2 authentication via `Session(provider_secret, refresh_token)`
@@ -162,7 +162,7 @@ python test_v2_expiration.py
 ### Frontend Structure
 
 - **Open Positions Page** (default): `static/positions-dense.html` with live quotes and position management
-- **Order Chains Dashboard**: `static/chains-dense.html` at `/chains` with `static/js/app-v2.js` (V2 system with advanced strategy detection)
+- **Order Chains Dashboard**: `static/chains-dense.html` at `/chains` with `static/js/app.js` (advanced strategy detection)
 - **Performance Reports**: `static/reports-dense.html` at `/reports` with strategy breakdown and historical performance
 - **Portfolio Risk X-Ray**: `static/risk-dashboard.html` at `/risk` with real-time portfolio Greeks, Black-Scholes engine, and ApexCharts visualizations (delta exposure, theta projection, treemap, scenario analysis)
 - **Settings**: `static/settings.html` at `/settings` for OAuth credential management, connection status, and app configuration
@@ -240,15 +240,15 @@ All timestamps from Tastytrade (UTC) are converted to US/Eastern time to ensure 
 - **Live P&L**: Real-time unrealized P&L calculations using current market prices
 - **Comments System**: Persistent user notes stored locally with localStorage
 
-## V2 Migration Notes
+## Order System Notes
 
-The system has been migrated from a legacy chain system to V2 with improved:
+The system uses position-based order chain tracking with:
 - Position-based tracking instead of trade-based
 - Better handling of rolls and chain relationships
 - More accurate P&L calculations for complex strategies
 - Separation of orders from trades for cleaner data model
 
-Key V2 tables:
+Key tables:
 - `orders`: Individual orders with strategy detection
 - `order_legs`: Option/stock legs for each order
 - `order_chains`: Links related orders (opening → rolls → closing)
@@ -265,9 +265,19 @@ Key V2 tables:
 ## Common Issues and Solutions
 
 1. **Trades showing wrong dates**: Fixed by timezone conversion in `trade_strategy.py`
-2. **Multi-leg trades split up**: Fixed by improved transaction grouping in V2 OrderProcessor
+2. **Multi-leg trades split up**: Fixed by improved transaction grouping in OrderProcessor
 3. **Database locked errors**: Use context managers, avoid long-running transactions
 4. **Authentication failures**: Check `.env` has valid `TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`, or update via Settings page
 5. **Missing quotes**: Check market hours and ensure symbols are valid
-6. **Incorrect P&L for rolls**: V2 system properly tracks roll chains and calculates cumulative P&L
-7. **Expired positions showing as open**: V2 handles expirations, assignments, and exercises as closing events
+6. **Incorrect P&L for rolls**: The system properly tracks roll chains and calculates cumulative P&L
+7. **Expired positions showing as open**: The system handles expirations, assignments, and exercises as closing events
+
+## "Issues"
+- When I refer to "Issues" I am referring to the issues, bugs, enhancements, etc. that are kept in Linear
+  - Don't ask for permission to read or write to Linear - just do it
+  - When creating a new issue, always assign it to me (Steve Johnson)
+  - When working on an issue, update its status to In-Process
+  - When you make code changes associated with an issue, update the comments in Linear
+  - change the status to "In Review" if you believe the issue is fixed or completed
+  - sometimes there will be issues labeled "Research"
+    - update Research issues with your findings in the comments

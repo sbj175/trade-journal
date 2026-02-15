@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-# Legacy imports removed - V2 system only
+# Legacy imports removed
 
 
 class DatabaseManager:
@@ -404,7 +404,18 @@ class DatabaseManager:
                 if 'option_type' not in position_columns:
                     cursor.execute("ALTER TABLE positions ADD COLUMN option_type TEXT")
                     logger.info("Added option_type column to positions")
-                
+
+                if 'chain_id' not in position_columns:
+                    cursor.execute("ALTER TABLE positions ADD COLUMN chain_id TEXT")
+                    logger.info("Added chain_id column to positions")
+
+                if 'strategy_type' not in position_columns:
+                    cursor.execute("ALTER TABLE positions ADD COLUMN strategy_type TEXT")
+                    logger.info("Added strategy_type column to positions")
+
+                # Create index for chain_id lookups
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_chain_id ON positions(chain_id)")
+
                 # Check order_positions table for new enhanced fields
                 cursor.execute("PRAGMA table_info(order_positions)")
                 position_columns = [column[1] for column in cursor.fetchall()]
@@ -578,7 +589,7 @@ class DatabaseManager:
             row = cursor.fetchone()
             return dict(row) if row else None
     
-    # Legacy trade methods removed - use V2 order system instead
+    # Legacy trade methods removed - use order system instead
 
     def save_raw_transactions(self, transactions: List[Dict]) -> int:
         """Save raw transactions to database for order-based grouping"""
@@ -684,6 +695,27 @@ class DatabaseManager:
                 
             return transactions
     
+    def get_open_chain_summaries(self, account_number: str = None) -> List[Dict[str, Any]]:
+        """Get open/assigned chain summaries from order_chains table"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            query = """
+                SELECT chain_id, underlying, account_number, strategy_type,
+                       opening_date, closing_date, chain_status, order_count,
+                       total_pnl, realized_pnl, unrealized_pnl,
+                       leg_count, original_quantity, remaining_quantity,
+                       has_assignment, assignment_date
+                FROM order_chains
+                WHERE chain_status IN ('OPEN', 'ASSIGNED')
+            """
+            params = []
+            if account_number and account_number != '':
+                query += " AND account_number = ?"
+                params.append(account_number)
+            query += " ORDER BY underlying ASC, opening_date DESC"
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get current open positions"""
         with self.get_connection() as conn:
@@ -721,19 +753,21 @@ class DatabaseManager:
                             pos.get('opened_at'),
                             pos.get('expires_at'),
                             pos.get('strike_price'),
-                            pos.get('option_type')
+                            pos.get('option_type'),
+                            pos.get('chain_id'),
+                            pos.get('strategy_type')
                         )
                         for pos in positions
                     ]
-                    
+
                     cursor.executemany("""
                         INSERT INTO positions (
                             account_number, symbol, underlying, instrument_type, quantity,
                             quantity_direction, average_open_price, close_price,
                             market_value, cost_basis, realized_day_gain,
                             unrealized_pnl, pnl_percent, opened_at, expires_at,
-                            strike_price, option_type
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            strike_price, option_type, chain_id, strategy_type
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, insert_data)
                 
                 return True
@@ -742,7 +776,7 @@ class DatabaseManager:
             logger.error(f"Error saving positions: {str(e)}")
             return False
     
-    # Legacy statistics methods removed - use V2 order/chain system for analytics
+    # Legacy statistics methods removed - use order/chain system for analytics
 
     def save_account_balance(self, balance: Dict[str, Any]) -> bool:
         """Save account balance snapshot"""

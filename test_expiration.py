@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test the V2 system's handling of expiration transactions
+Test the system's handling of expiration transactions
 """
 
 import sys
@@ -9,19 +9,19 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.database.db_manager import DatabaseManager
 from src.models.position_inventory import PositionInventoryManager
-from src.models.order_processor_v2 import OrderProcessorV2
-from src.models.pnl_calculator_v2 import PnLCalculatorV2
+from src.models.order_processor import OrderProcessor
+from src.models.pnl_calculator import PnLCalculator
 
 
 def test_expiration_handling():
     """Test that expirations correctly close chains"""
-    print("🧪 Testing V2 Expiration Handling")
+    print("🧪 Testing Expiration Handling")
     print("=" * 60)
     
     db_manager = DatabaseManager()
     position_manager = PositionInventoryManager(db_manager)
-    order_processor = OrderProcessorV2(db_manager, position_manager)
-    pnl_calculator = PnLCalculatorV2(db_manager, position_manager)
+    order_processor = OrderProcessor(db_manager, position_manager)
+    pnl_calculator = PnLCalculator(db_manager, position_manager)
     
     # Get IBIT transactions that include expirations
     with db_manager.get_connection() as conn:

@@ -1,5 +1,5 @@
 """
-Strategy Detection for V2 Order Chains
+Strategy Detection for Order Chains
 Analyzes positions within chains and account context to identify option strategies
 """
 

@@ -111,12 +111,13 @@ class TastytradeClient:
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=days_back)
 
-                # Get transaction history using the correct method
+                # Get transaction history - page_offset=None fetches all pages automatically
                 transactions = await account.get_history(
                     self.session,
                     start_date=start_date,
                     end_date=end_date,
-                    per_page=250
+                    per_page=250,
+                    page_offset=None
                 )
 
                 # Convert to list of dicts
@@ -769,7 +770,7 @@ class TastytradeClient:
                                     value = getattr(data, field)
                                     if value is not None:
                                         iv = float(value) * 100
-                                        logger.info(f"Found IV in market metrics for {symbol}.{field}: {iv}")
+                                        logger.debug(f"Found IV in market metrics for {symbol}.{field}: {iv}")
                                         break
 
                             # Look for IVR
@@ -779,7 +780,7 @@ class TastytradeClient:
                                     value = getattr(data, field)
                                     if value is not None:
                                         ivr = float(value)
-                                        logger.info(f"Found IVR in market metrics for {symbol}.{field}: {ivr}")
+                                        logger.debug(f"Found IVR in market metrics for {symbol}.{field}: {ivr}")
                                         break
 
                             if iv is not None or ivr is not None:
