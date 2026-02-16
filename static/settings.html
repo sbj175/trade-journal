@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptionEdge - Settings</title>
+    <title>OptionLedger - Settings</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
 
     <!-- Tailwind CSS -->
@@ -82,7 +82,9 @@
 
                 rollAlerts: { enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true },
                 privacyMode: 'off',
-                activeTab: 'privacy',
+                activeTab: 'import',
+                initialSyncing: false,
+                reprocessing: false,
 
                 async init() {
                     await this.checkConnection();
@@ -220,6 +222,50 @@
                     setTimeout(() => { if (this.saveStatus === 'saved') this.saveStatus = null; }, 2000);
                 },
 
+                async initialSync() {
+                    const confirmed = confirm(
+                        'Initial Sync will CLEAR the entire database and rebuild it from scratch.\n\n' +
+                        'This will fetch all transactions from the last year and may take several minutes.\n\n' +
+                        'Are you sure you want to continue?'
+                    );
+                    if (!confirmed) return;
+
+                    this.initialSyncing = true;
+                    try {
+                        const response = await fetch('/api/sync/initial', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        if (!response.ok) throw new Error(`Initial sync failed: ${response.statusText}`);
+                        const result = await response.json();
+                        this.showNotification(
+                            `Initial sync completed! ${result.transactions_processed || 0} transactions, ` +
+                            `${result.orders_saved || 0} orders in ${result.chains_saved || 0} chains`, 'success'
+                        );
+                    } catch (error) {
+                        this.showNotification('Initial sync failed: ' + error.message, 'error');
+                    } finally {
+                        this.initialSyncing = false;
+                    }
+                },
+
+                async reprocessChains() {
+                    this.reprocessing = true;
+                    try {
+                        const response = await fetch('/api/reprocess-chains', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        if (!response.ok) throw new Error(`Reprocessing failed: ${response.statusText}`);
+                        await response.json();
+                        this.showNotification('Chain reprocessing completed successfully!', 'success');
+                    } catch (error) {
+                        this.showNotification('Reprocessing failed: ' + error.message, 'error');
+                    } finally {
+                        this.reprocessing = false;
+                    }
+                },
+
                 showNotification(message, type) {
                     this.notification = { message, type };
                     setTimeout(() => { this.notification = null; }, 3000);
@@ -230,38 +276,7 @@
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="settingsApp()" x-init="init()">
 
-    <!-- Compact Nav Bar -->
-    <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-        <div class="flex items-center justify-between h-16 px-4">
-            <!-- Left: Logo & Nav -->
-            <div class="flex items-center gap-8">
-                <span class="text-tv-blue font-semibold text-2xl">
-                    <i class="fas fa-chart-line mr-2"></i>OptionEdge
-                </span>
-                <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-                    <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
-                    <a href="/chains" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Chains</a>
-                    <a href="/reports" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Reports</a>
-                    <a href="/risk" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Risk</a>
-                </div>
-            </div>
-
-            <!-- Right: Connection Status -->
-            <div class="flex items-center gap-4 text-base">
-                <div class="flex items-center gap-2 text-sm" x-show="connectionStatus">
-                    <template x-if="connectionStatus?.connected">
-                        <span class="text-tv-green"><i class="fas fa-circle text-[8px] mr-1"></i>Connected</span>
-                    </template>
-                    <template x-if="!connectionStatus?.connected">
-                        <span class="text-tv-red"><i class="fas fa-circle text-[8px] mr-1"></i>Disconnected</span>
-                    </template>
-                </div>
-                <a href="/settings" class="text-tv-blue hover:text-tv-text px-3 py-1 border border-tv-blue rounded text-sm">
-                    <i class="fas fa-cog mr-1"></i>Settings
-                </a>
-            </div>
-        </div>
-    </nav>
+    {% include 'partials/nav.html' %}
 
     <!-- Notification -->
     <div x-show="notification" x-cloak
@@ -283,6 +298,12 @@
                 </h1>
             </div>
             <nav class="space-y-0.5 px-2">
+                <button @click="activeTab = 'import'"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+                        :class="activeTab === 'import' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+                    <i class="fas fa-file-import w-4 text-center"></i>
+                    <span>Import Trades</span>
+                </button>
                 <button @click="activeTab = 'privacy'"
                         class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
                         :class="activeTab === 'privacy' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
@@ -328,8 +349,64 @@
                 </span>
             </div>
 
+            <!-- Import Trades Tab -->
+            <div x-show="activeTab === 'import'">
+                <div class="mb-6">
+                    <h2 class="text-xl font-semibold text-tv-text mb-1">
+                        <i class="fas fa-file-import mr-2 text-tv-blue"></i>Import Trades
+                    </h2>
+                    <p class="text-tv-muted text-sm">Rebuild or reprocess your trade data from Tastytrade</p>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Initial Sync -->
+                    <div class="bg-tv-panel border border-tv-border rounded">
+                        <div class="p-5 flex items-start justify-between">
+                            <div>
+                                <h3 class="text-tv-text font-medium mb-1">
+                                    <i class="fas fa-database mr-2 text-tv-muted"></i>Initial Sync
+                                </h3>
+                                <p class="text-tv-muted text-sm">Clears the entire database and rebuilds it from scratch. Fetches all transactions from the last year. Use this if your data appears corrupted or after first install.</p>
+                            </div>
+                            <button @click="initialSync()" :disabled="initialSyncing || reprocessing"
+                                    class="flex-shrink-0 ml-6 bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30 px-5 py-2.5 rounded text-sm disabled:opacity-50 whitespace-nowrap">
+                                <i class="fas fa-database mr-2" :class="{'animate-spin': initialSyncing}"></i>
+                                <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial Sync'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Reprocess Chains -->
+                    <div class="bg-tv-panel border border-tv-border rounded">
+                        <div class="p-5 flex items-start justify-between">
+                            <div>
+                                <h3 class="text-tv-text font-medium mb-1">
+                                    <i class="fas fa-link mr-2 text-tv-muted"></i>Reprocess Chains
+                                </h3>
+                                <p class="text-tv-muted text-sm">Re-analyzes existing transactions to rebuild order chains and strategy detection. Does not fetch new data from Tastytrade. Use this after a software update.</p>
+                            </div>
+                            <button @click="reprocessChains()" :disabled="initialSyncing || reprocessing"
+                                    class="flex-shrink-0 ml-6 bg-tv-blue/20 hover:bg-tv-blue/30 text-tv-blue border border-tv-blue/30 px-5 py-2.5 rounded text-sm disabled:opacity-50 whitespace-nowrap">
+                                <i class="fas fa-link mr-2" :class="{'animate-spin': reprocessing}"></i>
+                                <span x-text="reprocessing ? 'Processing...' : 'Reprocess Chains'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress overlay -->
+                <div x-show="initialSyncing || reprocessing" x-cloak
+                     class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl">
+                        <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
+                        <p class="text-tv-text text-lg font-medium" x-text="initialSyncing ? 'Rebuilding database...' : 'Reprocessing chains...'"></p>
+                        <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Privacy Mode Tab -->
-            <div x-show="activeTab === 'privacy'">
+            <div x-show="activeTab === 'privacy'" x-cloak>
                 <div class="mb-6">
                     <h2 class="text-xl font-semibold text-tv-text mb-1">
                         <i class="fas fa-eye-slash mr-2 text-tv-muted"></i>Privacy Mode

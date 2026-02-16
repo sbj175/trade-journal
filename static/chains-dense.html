@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptionEdge - Order Chains</title>
+    <title>OptionLedger - Order Chains</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
 
     <!-- Tailwind CSS -->
@@ -32,7 +32,7 @@
         }
     </script>
 
-    <script src="/static/js/app.js?v=20260212"></script>
+    <script src="/static/js/app.js?v=20260215"></script>
 
     <!-- Alpine.js Collapse Plugin -->
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
@@ -83,71 +83,24 @@
             </button>
         </div>
 
-        <!-- Compact Nav Bar -->
-        <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-            <div class="flex items-center justify-between h-16 px-4">
-                <!-- Left: Logo & Nav -->
-                <div class="flex items-center gap-8">
-                    <span class="text-tv-blue font-semibold text-2xl">
-                        <i class="fas fa-chart-line mr-2"></i>OptionEdge
-                    </span>
-                    <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-                        <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
-                        <a href="/chains" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">Chains</a>
-                        <a href="/reports" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Reports</a>
-                        <a href="/risk" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Risk</a>
-                    </div>
-                </div>
-
-                <!-- Right: Account & User -->
-                <div class="flex items-center gap-6 text-base">
-                    <select x-model="selectedAccount" @change="onAccountChange()"
-                            class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-                        <option value="">All Accounts</option>
-                        <template x-for="account in accounts" :key="account.account_number">
-                            <option :value="account.account_number" x-text="'(' + getAccountSymbol(account.account_number) + ') ' + (account.account_name || account.account_number)"></option>
-                        </template>
-                    </select>
-                    <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-                        <i class="fas fa-cog"></i>
-                    </a>
-                </div>
-            </div>
-        </nav>
+        {% include 'partials/nav.html' %}
 
         <!-- Action Bar -->
         <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-4">
-                <button @click="syncTrades()" :disabled="syncing || initialSyncing || reprocessing"
+                <button @click="syncTrades()" :disabled="syncing"
                         class="bg-tv-green/20 hover:bg-tv-green/30 text-tv-green border border-tv-green/30 px-4 py-2 text-base disabled:opacity-50">
                     <i class="fas fa-sync-alt mr-2" :class="{'animate-spin': syncing}"></i>
                     <span x-text="syncing ? 'Syncing...' : 'Sync'"></span>
                 </button>
-                <!-- Admin Actions Dropdown -->
-                <div class="relative" x-data="{ adminMenuOpen: false }">
-                    <button @click="adminMenuOpen = !adminMenuOpen"
-                            :disabled="syncing || initialSyncing || reprocessing"
-                            class="text-tv-muted hover:text-tv-text px-2 py-2 disabled:opacity-50">
-                        <i class="fas fa-ellipsis-v"></i>
-                    </button>
-                    <div x-show="adminMenuOpen"
-                         @click.away="adminMenuOpen = false"
-                         x-transition
-                         class="absolute left-0 top-full mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-50 min-w-[160px]">
-                        <button @click="initialSync(); adminMenuOpen = false"
-                                :disabled="syncing || initialSyncing || reprocessing"
-                                class="w-full text-left px-4 py-2 text-base text-tv-text hover:bg-tv-border disabled:opacity-50 flex items-center gap-2">
-                            <i class="fas fa-database" :class="{'animate-spin': initialSyncing}"></i>
-                            <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial Sync'"></span>
-                        </button>
-                        <button @click="reprocessChains(); adminMenuOpen = false"
-                                :disabled="syncing || initialSyncing || reprocessing"
-                                class="w-full text-left px-4 py-2 text-base text-tv-text hover:bg-tv-border disabled:opacity-50 flex items-center gap-2">
-                            <i class="fas fa-link" :class="{'animate-spin': reprocessing}"></i>
-                            <span x-text="reprocessing ? 'Processing...' : 'Reprocess Chains'"></span>
-                        </button>
-                    </div>
-                </div>
+                <!-- Merge Chains toggle -->
+                <button @click="toggleMergeMode()"
+                        :class="mergeMode ? 'bg-tv-blue text-white border-tv-blue' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                        class="px-4 py-2 text-base border transition-colors">
+                    <i class="fas fa-object-group mr-2"></i>
+                    <span x-text="mergeMode ? 'Cancel Merge' : 'Merge Chains'"></span>
+                </button>
+
                 <span class="text-base text-tv-muted ml-4" x-show="lastSyncTimestamp">
                     Last: <span x-text="lastSyncTimestamp"></span>
                 </span>
@@ -267,16 +220,6 @@
         </div>
 
         <!-- Main Content: Chains Table -->
-        <!-- Full-page overlay for long-running operations -->
-        <div x-show="initialSyncing || reprocessing" x-cloak
-             class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-            <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl">
-                <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
-                <p class="text-tv-text text-lg font-medium" x-text="initialSyncing ? 'Rebuilding database...' : 'Reprocessing chains...'"></p>
-                <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
-            </div>
-        </div>
-
         <div class="tv-scrollbar" style="height: calc(100vh - 180px); overflow-y: auto;">
             <!-- Loading -->
             <div x-show="chainsLoading" class="flex items-center justify-center py-12">
@@ -294,6 +237,7 @@
                 <!-- Column Headers -->
                 <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-0">
                     <span class="w-8"></span>
+                    <span class="w-6" x-show="mergeMode"></span>
                     <span class="w-6 text-center" x-show="selectedAccount === ''"></span>
                     <span class="w-24 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortChains('underlying')">
                         Symbol
@@ -357,6 +301,15 @@
                             <!-- Expand Icon -->
                             <i class="fas fa-caret-right text-tv-muted w-8 transition-transform text-lg"
                                :class="{'rotate-90': chain.expanded}"></i>
+
+                            <!-- Merge checkbox -->
+                            <span x-show="mergeMode" class="w-6 flex items-center justify-center" @click.stop>
+                                <input type="checkbox"
+                                       :disabled="!isChainSelectable(chain)"
+                                       :checked="selectedChains.includes(chain.chain_id)"
+                                       @click.stop="toggleChainSelection(chain)"
+                                       class="w-4 h-4 accent-blue-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+                            </span>
 
                             <!-- Account Symbol (only when All Accounts selected) -->
                             <span class="w-6 text-center text-tv-muted text-sm" x-show="selectedAccount === ''">
@@ -427,6 +380,16 @@
                                   :class="chain.status === 'OPEN' ? ((chain.net_liquidity + chain.total_pnl) >= 0 ? 'text-tv-green' : 'text-tv-red') : ''">
                                 <span x-show="chain.status === 'OPEN'" x-text="'$' + formatNumber(chain.net_liquidity + chain.total_pnl)"></span>
                             </span>
+
+                            <!-- Unmerge button (merged chains only) -->
+                            <template x-if="isMergedChain(chain)">
+                                <button @click.stop="unmergeChain(chain)"
+                                        :disabled="merging"
+                                        class="ml-2 px-2 py-1 text-xs text-tv-muted hover:text-amber-400 hover:bg-amber-400/10 border border-transparent hover:border-amber-400/30 rounded transition-colors disabled:opacity-50"
+                                        title="Unmerge this chain back into its original chains">
+                                    <i class="fas fa-unlink mr-1"></i>Unmerge
+                                </button>
+                            </template>
                         </div>
 
                         <!-- Expanded Orders -->
@@ -588,6 +551,28 @@
                     </div>
                 </template>
             </div>
+        </div>
+
+        <!-- Merge Action Bar (floating) -->
+        <div x-show="mergeMode && selectedChains.length >= 2" x-cloak
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 transform translate-y-4"
+             x-transition:enter-end="opacity-100 transform translate-y-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 transform translate-y-0"
+             x-transition:leave-end="opacity-0 transform translate-y-4"
+             class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-tv-panel border border-tv-blue/50 rounded-lg shadow-2xl px-6 py-4 flex items-center gap-6">
+            <i class="fas fa-object-group text-tv-blue text-lg"></i>
+            <span class="text-tv-text text-base font-medium" x-text="selectedChains.length + ' chains selected'"></span>
+            <span class="text-tv-muted text-sm" x-text="'(' + selectedUnderlying + ')'"></span>
+            <button @click="mergeSelectedChains()" :disabled="merging"
+                    class="bg-tv-blue hover:bg-tv-blue/80 text-white px-5 py-2 text-base rounded disabled:opacity-50">
+                <i class="fas fa-compress-arrows-alt mr-2" :class="{'animate-spin': merging}"></i>
+                <span x-text="merging ? 'Merging...' : 'Merge'"></span>
+            </button>
+            <button @click="toggleMergeMode()" class="text-tv-muted hover:text-tv-text px-3 py-2 text-base">
+                Cancel
+            </button>
         </div>
 
         <!-- Edit Modal (simplified for dense UI) -->
