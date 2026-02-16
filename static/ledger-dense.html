@@ -18,9 +18,9 @@
                             panel: '#1e222d',
                             border: '#2a2e39',
                             text: '#d1d4dc',
-                            muted: '#787b86',
-                            green: '#26a69a',
-                            red: '#ef5350',
+                            muted: '#868c99',
+                            green: '#2ec4b6',
+                            red: '#f77171',
                             blue: '#2962ff',
                         }
                     }
@@ -79,13 +79,6 @@
                 </button>
             </div>
 
-            <!-- Edit Mode -->
-            <button @click="toggleEditMode()"
-                    :class="editMode ? 'bg-tv-blue text-white border-tv-blue' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
-                    class="px-4 py-2 text-base border transition-colors">
-                <i class="fas fa-edit mr-1"></i>
-                <span x-text="editMode ? 'Done Editing' : 'Edit Groups'"></span>
-            </button>
         </div>
 
         <!-- Filters -->
@@ -136,7 +129,7 @@
             <!-- Sort direction indicator -->
             <div class="flex items-center gap-1 text-tv-muted text-sm">
                 <i class="fas fa-sort"></i>
-                <span x-text="sortColumn === 'opening_date' ? 'Date' : sortColumn === 'underlying' ? 'Symbol' : sortColumn === 'strategy_label' ? 'Strategy' : sortColumn === 'status' ? 'Status' : sortColumn === 'lot_count' ? 'Lots' : sortColumn === 'closing_date' ? 'Closed' : 'P&L'"></span>
+                <span x-text="sortColumn === 'opening_date' ? 'Date' : sortColumn === 'underlying' ? 'Symbol' : sortColumn === 'strategy_label' ? 'Strategy' : sortColumn === 'status' ? 'Status' : sortColumn === 'closing_date' ? 'Closed' : 'P&L'"></span>
                 <span x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </div>
         </div>
@@ -187,13 +180,9 @@
                 Strategy
                 <span x-show="sortColumn === 'strategy_label'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('status')">
+            <span class="w-20 mr-6 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('status')">
                 Status
                 <span x-show="sortColumn === 'status'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
-            </span>
-            <span class="w-24 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortGroups('lot_count')">
-                Lots
-                <span x-show="sortColumn === 'lot_count'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
             <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('opening_date')">
                 Opened
@@ -213,9 +202,15 @@
         <template x-for="group in filteredGroups" :key="group.group_id">
             <div class="mb-2">
                 <!-- Group Header Row -->
-                <div @click="group.expanded = !group.expanded"
-                     class="flex items-center px-4 py-3 bg-tv-panel hover:bg-tv-border/50 cursor-pointer border border-tv-border rounded-sm transition-colors"
-                     :class="group.expanded ? 'border-b-0 rounded-b-none' : ''">
+                <div @click="selectedLots.length > 0 && isEligibleTarget(group) ? moveLots(group.group_id) : (group.expanded = !group.expanded)"
+                     class="flex items-center px-4 py-3 bg-tv-panel cursor-pointer border border-tv-border rounded-sm transition-colors"
+                     :class="{
+                         'border-b-0 rounded-b-none': group.expanded,
+                         'hover:bg-tv-border/50': selectedLots.length === 0,
+                         'border-l-4 !border-l-tv-blue bg-tv-blue/10 hover:bg-tv-blue/20': selectedLots.length > 0 && isEligibleTarget(group),
+                         'opacity-40': selectedLots.length > 0 && isSourceGroup(group),
+                         'opacity-60': selectedLots.length > 0 && !isEligibleTarget(group) && !isSourceGroup(group)
+                     }">
                     <!-- Expand icon -->
                     <i class="fas fa-chevron-right w-6 text-tv-muted transition-transform duration-200"
                        :class="group.expanded ? 'rotate-90' : ''"></i>
@@ -228,29 +223,36 @@
                     <!-- Underlying -->
                     <span class="w-20 text-lg font-semibold text-tv-text" x-text="group.underlying"></span>
 
-                    <!-- Strategy Label -->
-                    <template x-if="!editMode || !group.expanded">
-                        <span class="w-40 text-tv-muted text-base truncate" x-text="group.strategy_label || '—'"></span>
-                    </template>
-                    <template x-if="editMode && group.expanded">
-                        <input type="text"
-                               :value="group.strategy_label || ''"
-                               @click.stop
-                               @keyup.enter="updateGroupStrategy(group, $event.target.value); $event.target.blur()"
-                               @blur="updateGroupStrategy(group, $event.target.value)"
-                               class="w-40 bg-tv-bg border border-tv-border text-tv-text text-base px-2 py-1 rounded"
-                               placeholder="Strategy label">
-                    </template>
+                    <!-- Strategy Label (inline edit) -->
+                    <span class="w-40" @click.stop>
+                        <template x-if="!group._editingStrategy">
+                            <span class="flex items-center gap-1.5 group/strat">
+                                <span class="text-tv-muted text-base truncate" x-text="group.strategy_label || '—'"></span>
+                                <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+                                   @click="group._editingStrategy = true"
+                                   title="Edit strategy label"></i>
+                                <i class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+                                   :class="group._movingLots ? '!text-tv-blue' : ''"
+                                   @click="toggleGroupMoveMode(group)"
+                                   title="Move lots between groups"></i>
+                            </span>
+                        </template>
+                        <template x-if="group._editingStrategy">
+                            <input type="text"
+                                   :value="group.strategy_label || ''"
+                                   @keyup.enter="updateGroupStrategy(group, $event.target.value); group._editingStrategy = false"
+                                   @blur="updateGroupStrategy(group, $event.target.value); group._editingStrategy = false"
+                                   @keyup.escape="group._editingStrategy = false"
+                                   x-init="$el.focus(); $el.select()"
+                                   class="w-36 bg-tv-bg border border-tv-border text-tv-text text-base px-2 py-1 rounded"
+                                   placeholder="Strategy label">
+                        </template>
+                    </span>
 
                     <!-- Status -->
-                    <span class="w-20 text-sm px-2 py-0.5 rounded text-center"
+                    <span class="w-20 mr-6 text-sm px-2 py-0.5 rounded text-center"
                           :class="group.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'"
                           x-text="group.status"></span>
-
-                    <!-- Lot count -->
-                    <span class="w-24 text-tv-muted text-base text-center">
-                        <span x-text="group.open_lot_count"></span>/<span x-text="group.lot_count"></span> lots
-                    </span>
 
                     <!-- Opening date -->
                     <span class="w-28 text-tv-muted text-base" x-text="formatDate(group.opening_date)"></span>
@@ -275,7 +277,7 @@
                             <!-- Lots Table Header -->
                             <div class="flex items-center text-xs text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
                                 <span class="w-5"></span>
-                                <span x-show="editMode" class="w-8"></span>
+                                <span x-show="group._movingLots" class="w-8"></span>
                                 <span class="w-32">Entry Date</span>
                                 <span class="w-10 text-right">Qty</span>
                                 <span class="w-16 text-center mx-2">Exp</span>
@@ -304,7 +306,7 @@
                                            :class="lot._expanded ? 'rotate-90' : ''"></i>
 
                                         <!-- Checkbox (edit mode) -->
-                                        <template x-if="editMode">
+                                        <template x-if="group._movingLots">
                                             <span class="w-8">
                                                 <input type="checkbox"
                                                        :checked="selectedLots.includes(lot.transaction_id)"
@@ -372,7 +374,7 @@
                                         <!-- Opening Event -->
                                         <div class="flex items-center text-xs px-4 py-1 ml-8 text-tv-muted font-mono border-l-2 border-tv-border/30">
                                             <span class="w-5"></span>
-                                            <span x-show="editMode" class="w-8"></span>
+                                            <span x-show="group._movingLots" class="w-8"></span>
                                             <span class="w-32" x-text="formatOrderDate(lot.entry_date)"></span>
                                             <span class="w-10 text-right"
                                                   :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'"
@@ -385,8 +387,12 @@
                                             <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
                                                   :class="lot.quantity > 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-red/20 text-tv-red border-tv-red/50'"
                                                   x-text="lot.quantity > 0 ? 'BTO' : 'STO'"></span>
+                                            <!-- Per-share price -->
                                             <span class="w-20 text-right" x-text="'$' + formatNumber(lot.entry_price)"></span>
-                                            <span class="w-24 text-right" x-text="'$' + formatNumber(lot.cost_basis)"></span>
+                                            <!-- Total credit/debit -->
+                                            <span class="w-24 text-right"
+                                                  :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                  x-text="'$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')"></span>
                                             <span class="w-24 ml-4"></span>
                                             <span class="w-24"></span>
                                         </div>
@@ -395,7 +401,7 @@
                                         <template x-for="closing in (lot.closings || [])" :key="closing.closing_id">
                                             <div class="flex items-center text-xs px-4 py-1 ml-8 text-tv-muted font-mono border-l-2 border-tv-border/30">
                                                 <span class="w-5"></span>
-                                                <span x-show="editMode" class="w-8"></span>
+                                                <span x-show="group._movingLots" class="w-8"></span>
                                                 <span class="w-32" x-text="formatOrderDate(closing.closing_date)"></span>
                                                 <span class="w-10 text-right"
                                                       :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'"
@@ -407,14 +413,19 @@
                                                 <!-- Closing type badge in Status column -->
                                                 <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
                                                       :class="{
-                                                          'bg-tv-blue/20 text-tv-blue border-tv-blue/50': closing.closing_type === 'MANUAL',
+                                                          'bg-tv-green/20 text-tv-green border-tv-green/50': closing.closing_type === 'MANUAL' && lot.quantity < 0,
+                                                          'bg-tv-red/20 text-tv-red border-tv-red/50': closing.closing_type === 'MANUAL' && lot.quantity >= 0,
                                                           'bg-amber-500/20 text-amber-400 border-amber-500/50': closing.closing_type === 'EXPIRATION',
                                                           'bg-orange-500/20 text-orange-400 border-orange-500/50': closing.closing_type === 'ASSIGNMENT',
                                                           'bg-purple-500/20 text-purple-400 border-purple-500/50': closing.closing_type === 'EXERCISE'
                                                       }"
                                                       x-text="closing.closing_type === 'MANUAL' ? (lot.quantity < 0 ? 'BTC' : 'STC') : closing.closing_type"></span>
+                                                <!-- Per-share price -->
                                                 <span class="w-20 text-right" x-text="'$' + formatNumber(closing.closing_price)"></span>
-                                                <span class="w-24"></span>
+                                                <!-- Total credit/debit -->
+                                                <span class="w-24 text-right"
+                                                      :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'"
+                                                      x-text="'$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')"></span>
                                                 <!-- Closing realized P&L -->
                                                 <span class="w-24 text-right ml-4"
                                                       :class="closing.realized_pnl > 0 ? 'text-tv-green' : closing.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'"
@@ -535,29 +546,20 @@
         </div>
     </div>
 
-    <!-- Floating Action Bar (Edit Mode) -->
-    <div x-show="editMode && selectedLots.length > 0" x-cloak
+    <!-- Floating Action Bar (Move Mode) -->
+    <div x-show="selectedLots.length > 0" x-cloak
          class="fixed bottom-0 left-0 right-0 bg-tv-panel border-t border-tv-border px-6 py-4 flex items-center justify-between z-50 shadow-lg">
         <span class="text-tv-text text-base">
             <span class="font-medium" x-text="selectedLots.length"></span> lot(s) selected
+            <span class="text-tv-muted ml-2">— click a target group below</span>
         </span>
-        <div class="flex items-center gap-4">
-            <span class="text-tv-muted">Move to:</span>
-            <select x-model="moveTargetGroupId"
-                    class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2">
-                <option value="">Select group...</option>
-                <template x-for="g in getMoveTargetGroups()" :key="g.group_id">
-                    <option :value="g.group_id" x-text="g.underlying + ' — ' + (g.strategy_label || 'Unnamed')"></option>
-                </template>
-                <option value="__new__">+ New Group</option>
-            </select>
-            <button @click="moveLots()"
-                    :disabled="!moveTargetGroupId"
-                    class="bg-tv-blue text-white px-6 py-2 text-base disabled:opacity-50 hover:bg-tv-blue/80 transition-colors">
-                Move
+        <div class="flex items-center gap-3">
+            <button @click="moveLots('__new__')"
+                    class="bg-tv-blue text-white px-5 py-2 text-base hover:bg-tv-blue/80 transition-colors">
+                + New Group
             </button>
-            <button @click="selectedLots = []"
-                    class="text-tv-muted hover:text-tv-text px-4 py-2 text-base">
+            <button @click="cancelMoveMode()"
+                    class="text-tv-muted hover:text-tv-text px-4 py-2 text-base border border-tv-border">
                 Cancel
             </button>
         </div>
@@ -579,9 +581,7 @@
             sortColumn: 'opening_date',
             sortDirection: 'desc',
             loading: true,
-            editMode: false,
             selectedLots: [],
-            moveTargetGroupId: '',
             stats: { totalPnl: 0, openCount: 0, closedCount: 0 },
 
             async init() {
@@ -763,12 +763,24 @@
                 }));
             },
 
-            toggleEditMode() {
-                this.editMode = !this.editMode;
-                if (!this.editMode) {
-                    this.selectedLots = [];
-                    this.moveTargetGroupId = '';
+            toggleGroupMoveMode(group) {
+                const wasMoving = group._movingLots;
+                this.clearAllMoveMode();
+                if (!wasMoving) {
+                    group._movingLots = true;
+                    group.expanded = true;
                 }
+            },
+
+            clearAllMoveMode() {
+                for (const g of this.groups) {
+                    g._movingLots = false;
+                }
+                this.selectedLots = [];
+            },
+
+            cancelMoveMode() {
+                this.clearAllMoveMode();
             },
 
             sortedLots(group) {
@@ -798,68 +810,70 @@
                 lot._expanded = !lot._expanded;
             },
 
-            getMoveTargetGroups() {
-                // Find the underlying + account of selected lots
-                if (this.selectedLots.length === 0) return [];
-
-                let targetUnderlying = null;
-                let targetAccount = null;
+            _getSourceInfo() {
+                // Find the underlying + account + source group IDs from selected lots
+                let underlying = null, account = null;
+                const sourceIds = new Set();
                 for (const g of this.groups) {
                     for (const lot of (g.lots || [])) {
                         if (this.selectedLots.includes(lot.transaction_id)) {
-                            targetUnderlying = g.underlying;
-                            targetAccount = g.account_number;
-                            break;
-                        }
-                    }
-                    if (targetUnderlying) break;
-                }
-
-                if (!targetUnderlying) return [];
-
-                // Return groups with same underlying + account, excluding groups that contain selected lots
-                const sourceGroupIds = new Set();
-                for (const g of this.groups) {
-                    for (const lot of (g.lots || [])) {
-                        if (this.selectedLots.includes(lot.transaction_id)) {
-                            sourceGroupIds.add(g.group_id);
+                            underlying = g.underlying;
+                            account = g.account_number;
+                            sourceIds.add(g.group_id);
                             break;
                         }
                     }
                 }
-
-                return this.groups.filter(g =>
-                    g.underlying === targetUnderlying &&
-                    g.account_number === targetAccount &&
-                    !sourceGroupIds.has(g.group_id)
-                );
+                return { underlying, account, sourceIds };
             },
 
-            async moveLots() {
-                if (!this.moveTargetGroupId || this.selectedLots.length === 0) return;
+            _inferStrategyLabel() {
+                const lots = [];
+                for (const g of this.groups) {
+                    for (const lot of (g.lots || [])) {
+                        if (this.selectedLots.includes(lot.transaction_id)) {
+                            lots.push(lot);
+                        }
+                    }
+                }
+                const optionLots = lots.filter(l => l.option_type);
+                if (optionLots.length === 0) return null;
+                const firstType = optionLots[0].option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put';
+                const firstDir = optionLots[0].quantity < 0 ? 'Short' : 'Long';
+                const allSame = optionLots.every(l => {
+                    const t = l.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put';
+                    const d = l.quantity < 0 ? 'Short' : 'Long';
+                    return t === firstType && d === firstDir;
+                });
+                return allSame ? `${firstDir} ${firstType}` : null;
+            },
 
-                let targetGroupId = this.moveTargetGroupId;
+            isEligibleTarget(group) {
+                if (this.selectedLots.length === 0) return false;
+                const { underlying, account, sourceIds } = this._getSourceInfo();
+                return group.underlying === underlying &&
+                       group.account_number === account &&
+                       !sourceIds.has(group.group_id);
+            },
+
+            isSourceGroup(group) {
+                if (this.selectedLots.length === 0) return false;
+                const { sourceIds } = this._getSourceInfo();
+                return sourceIds.has(group.group_id);
+            },
+
+            async moveLots(targetGroupId) {
+                if (!targetGroupId || this.selectedLots.length === 0) return;
 
                 // Create new group if requested
                 if (targetGroupId === '__new__') {
-                    // Find the underlying/account from selected lots
-                    let underlying = '', accountNumber = '';
-                    for (const g of this.groups) {
-                        for (const lot of (g.lots || [])) {
-                            if (this.selectedLots.includes(lot.transaction_id)) {
-                                underlying = g.underlying;
-                                accountNumber = g.account_number;
-                                break;
-                            }
-                        }
-                        if (underlying) break;
-                    }
-
+                    const { underlying, account } = this._getSourceInfo();
+                    const strategyLabel = this._inferStrategyLabel();
                     try {
                         const resp = await fetch('/api/ledger/groups', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ account_number: accountNumber, underlying: underlying })
+                            body: JSON.stringify({ account_number: account, underlying: underlying, strategy_label: strategyLabel })
                         });
                         const result = await resp.json();
                         targetGroupId = result.group_id;
@@ -878,9 +892,7 @@
                             target_group_id: targetGroupId
                         })
                     });
-                    this.selectedLots = [];
-                    this.moveTargetGroupId = '';
-                    this.editMode = false;
+                    this.clearAllMoveMode();
                     await this.fetchLedger();
                 } catch (error) {
                     console.error('Error moving lots:', error);
