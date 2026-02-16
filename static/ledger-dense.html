@@ -65,20 +65,6 @@
     <!-- Action Bar -->
     <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-4">
-            <!-- View Toggle -->
-            <div class="flex items-center border border-tv-border rounded overflow-hidden">
-                <button @click="viewMode = 'positions'"
-                        :class="viewMode === 'positions' ? 'bg-tv-blue text-white' : 'bg-tv-bg text-tv-muted hover:text-tv-text'"
-                        class="px-4 py-2 text-base transition-colors">
-                    <i class="fas fa-layer-group mr-1"></i> Positions
-                </button>
-                <button @click="viewMode = 'actions'"
-                        :class="viewMode === 'actions' ? 'bg-tv-blue text-white' : 'bg-tv-bg text-tv-muted hover:text-tv-text'"
-                        class="px-4 py-2 text-base transition-colors">
-                    <i class="fas fa-list-ol mr-1"></i> Actions
-                </button>
-            </div>
-
         </div>
 
         <!-- Filters -->
@@ -112,6 +98,41 @@
                     <option value="90">90D</option>
                     <option value="all">All</option>
                 </select>
+            </div>
+
+            <!-- Direction Filter -->
+            <div class="flex items-center gap-2">
+                <span class="text-tv-muted">Direction:</span>
+                <button @click="toggleFilter('direction', 'bullish')"
+                        :class="filterDirection.includes('bullish') ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                        class="px-3 py-1.5 text-sm border rounded transition-colors">
+                    Bullish
+                </button>
+                <button @click="toggleFilter('direction', 'bearish')"
+                        :class="filterDirection.includes('bearish') ? 'bg-tv-red/20 text-tv-red border-tv-red/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                        class="px-3 py-1.5 text-sm border rounded transition-colors">
+                    Bearish
+                </button>
+                <button @click="toggleFilter('direction', 'neutral')"
+                        :class="filterDirection.includes('neutral') ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                        class="px-3 py-1.5 text-sm border rounded transition-colors">
+                    Neutral
+                </button>
+            </div>
+
+            <!-- Type Filter -->
+            <div class="flex items-center gap-2">
+                <span class="text-tv-muted">Type:</span>
+                <button @click="toggleFilter('type', 'credit')"
+                        :class="filterType.includes('credit') ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                        class="px-3 py-1.5 text-sm border rounded transition-colors">
+                    Credit
+                </button>
+                <button @click="toggleFilter('type', 'debit')"
+                        :class="filterType.includes('debit') ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                        class="px-3 py-1.5 text-sm border rounded transition-colors">
+                    Debit
+                </button>
             </div>
 
             <!-- Status Filter -->
@@ -271,8 +292,24 @@
                 <div x-show="group.expanded" x-cloak
                      class="bg-tv-bg border border-tv-border border-t-0 rounded-b-sm px-2 py-2">
 
+                    <!-- Per-group view toggle -->
+                    <div class="flex justify-start px-4 pt-1 pb-1">
+                        <div class="flex items-center border border-tv-border rounded overflow-hidden text-xs">
+                            <button @click.stop="group._viewMode = 'positions'"
+                                    :class="groupViewMode(group) === 'positions' ? 'bg-tv-blue text-white' : 'bg-tv-bg text-tv-muted hover:text-tv-text'"
+                                    class="px-2 py-1 transition-colors">
+                                <i class="fas fa-layer-group mr-1"></i>Positions
+                            </button>
+                            <button @click.stop="group._viewMode = 'actions'"
+                                    :class="groupViewMode(group) === 'actions' ? 'bg-tv-blue text-white' : 'bg-tv-bg text-tv-muted hover:text-tv-text'"
+                                    class="px-2 py-1 transition-colors">
+                                <i class="fas fa-list-ol mr-1"></i>Orders
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Position View -->
-                    <template x-if="viewMode === 'positions'">
+                    <template x-if="groupViewMode(group) === 'positions'">
                         <div>
                             <!-- Lots Table Header -->
                             <div class="flex items-center text-xs text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
@@ -413,13 +450,12 @@
                                                 <!-- Closing type badge in Status column -->
                                                 <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
                                                       :class="{
-                                                          'bg-tv-green/20 text-tv-green border-tv-green/50': closing.closing_type === 'MANUAL' && lot.quantity < 0,
-                                                          'bg-tv-red/20 text-tv-red border-tv-red/50': closing.closing_type === 'MANUAL' && lot.quantity >= 0,
-                                                          'bg-amber-500/20 text-amber-400 border-amber-500/50': closing.closing_type === 'EXPIRATION',
+                                                          'bg-tv-green/20 text-tv-green border-tv-green/50': (closing.closing_type === 'MANUAL' || closing.closing_type === 'EXPIRATION') && lot.quantity < 0,
+                                                          'bg-tv-red/20 text-tv-red border-tv-red/50': (closing.closing_type === 'MANUAL' || closing.closing_type === 'EXPIRATION') && lot.quantity >= 0,
                                                           'bg-orange-500/20 text-orange-400 border-orange-500/50': closing.closing_type === 'ASSIGNMENT',
                                                           'bg-purple-500/20 text-purple-400 border-purple-500/50': closing.closing_type === 'EXERCISE'
                                                       }"
-                                                      x-text="closing.closing_type === 'MANUAL' ? (lot.quantity < 0 ? 'BTC' : 'STC') : closing.closing_type"></span>
+                                                      x-text="closing.closing_type === 'MANUAL' ? (lot.quantity < 0 ? 'BTC' : 'STC') : closing.closing_type === 'EXPIRATION' ? 'EXPIRED' : closing.closing_type"></span>
                                                 <!-- Per-share price -->
                                                 <span class="w-20 text-right" x-text="'$' + formatNumber(closing.closing_price)"></span>
                                                 <!-- Total credit/debit -->
@@ -440,7 +476,7 @@
                     </template>
 
                     <!-- Action View -->
-                    <template x-if="viewMode === 'actions'">
+                    <template x-if="groupViewMode(group) === 'actions'">
                         <div>
                             <template x-for="(order, index) in (group.orders || []).filter(o => o != null)" :key="`${group.group_id}_order_${index}`">
                                 <div class="mx-2 my-3 p-3 bg-tv-panel rounded border border-tv-border">
@@ -463,6 +499,15 @@
                                               class="text-base px-3 py-1 rounded-sm"
                                               :class="calculateClosingCreditDebit(order)?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'"
                                               x-text="formatClosingCreditDebit(order)"></span>
+                                        <!-- Order ID -->
+                                        <span class="ml-4 text-sm font-mono text-tv-muted"
+                                              x-show="order.order_id && !order.order_id.startsWith('SYSTEM_')">
+                                            Order# <span class="text-tv-text" x-text="order.order_id"></span>
+                                        </span>
+                                        <span class="ml-4 text-sm font-mono text-amber-400"
+                                              x-show="order.order_id && order.order_id.startsWith('SYSTEM_Expiration')">
+                                            EXPIRATION
+                                        </span>
                                         <!-- P&L -->
                                         <span class="ml-auto font-medium"
                                               :class="order.total_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
@@ -498,8 +543,8 @@
                                                     <span class="w-6 text-tv-muted"
                                                           x-text="(position.option_type || '').toUpperCase().startsWith('C') ? 'C' : 'P'"></span>
                                                     <span class="w-12 ml-4"
-                                                          :class="position.opening_action?.includes('BUY') ? 'text-tv-green' : 'text-tv-red'"
-                                                          x-text="formatAction(position.opening_action)"></span>
+                                                          :class="order.order_id?.startsWith('SYSTEM_Expiration') ? 'text-amber-400' : position.opening_action?.includes('BUY') ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="order.order_id?.startsWith('SYSTEM_Expiration') ? 'EXPIRED' : formatAction(position.opening_action)"></span>
                                                     <span class="w-20 text-right text-tv-muted ml-auto"
                                                           x-text="'$' + formatNumber(position.opening_price)"></span>
                                                     <span class="w-24 text-right"
@@ -583,6 +628,27 @@
             loading: true,
             selectedLots: [],
             stats: { totalPnl: 0, openCount: 0, closedCount: 0 },
+            filterDirection: [],
+            filterType: [],
+            strategyCategories: {
+                'Bull Put Spread': { direction: 'bullish', type: 'credit' },
+                'Bear Call Spread': { direction: 'bearish', type: 'credit' },
+                'Iron Condor': { direction: 'neutral', type: 'credit' },
+                'Iron Butterfly': { direction: 'neutral', type: 'credit' },
+                'Cash Secured Put': { direction: 'bullish', type: 'credit' },
+                'Covered Call': { direction: 'bullish', type: 'credit' },
+                'Short Put': { direction: 'bullish', type: 'credit' },
+                'Short Call': { direction: 'bearish', type: 'credit' },
+                'Short Strangle': { direction: 'neutral', type: 'credit' },
+                'Short Straddle': { direction: 'neutral', type: 'credit' },
+                'Bull Call Spread': { direction: 'bullish', type: 'debit' },
+                'Bear Put Spread': { direction: 'bearish', type: 'debit' },
+                'Long Call': { direction: 'bullish', type: 'debit' },
+                'Long Put': { direction: 'bearish', type: 'debit' },
+                'Long Strangle': { direction: 'neutral', type: 'debit' },
+                'Long Straddle': { direction: 'neutral', type: 'debit' },
+                'Shares': { direction: null, type: null, isShares: true }
+            },
 
             async init() {
                 await this.loadAccounts();
@@ -598,6 +664,8 @@
                         this.sortColumn = state.sortColumn || 'opening_date';
                         this.sortDirection = state.sortDirection || 'desc';
                         this.viewMode = state.viewMode || 'positions';
+                        this.filterDirection = state.filterDirection || [];
+                        this.filterType = state.filterType || [];
                     } catch (e) {}
                 }
 
@@ -647,7 +715,7 @@
                     const data = await response.json();
 
                     // Add expanded state
-                    this.groups = data.map(g => ({ ...g, expanded: false }));
+                    this.groups = data.map(g => ({ ...g, expanded: false, _viewMode: null }));
                     this.applyFilters();
                 } catch (error) {
                     console.error('Error fetching ledger:', error);
@@ -679,6 +747,9 @@
                     const sym = this.filterUnderlying.toUpperCase();
                     filtered = filtered.filter(g => (g.underlying || '').toUpperCase().includes(sym));
                 }
+
+                // Direction/Type category filter
+                filtered = filtered.filter(g => this.groupMatchesCategoryFilters(g));
 
                 // Status filter
                 if (!this.showOpen) filtered = filtered.filter(g => g.status !== 'OPEN');
@@ -747,6 +818,39 @@
                 this.stats = { totalPnl, openCount, closedCount };
             },
 
+            toggleFilter(category, value) {
+                if (category === 'direction') {
+                    const idx = this.filterDirection.indexOf(value);
+                    if (idx >= 0) {
+                        this.filterDirection.splice(idx, 1);
+                    } else {
+                        this.filterDirection.push(value);
+                    }
+                } else if (category === 'type') {
+                    const idx = this.filterType.indexOf(value);
+                    if (idx >= 0) {
+                        this.filterType.splice(idx, 1);
+                    } else {
+                        this.filterType = [value];
+                    }
+                }
+                this.saveState();
+                this.applyFilters();
+            },
+
+            groupMatchesCategoryFilters(group) {
+                const strategy = group.strategy_label || '';
+                const noDirectionFilter = this.filterDirection.length === 0;
+                const noTypeFilter = this.filterType.length === 0;
+                if (noDirectionFilter && noTypeFilter) return true;
+                const cat = this.strategyCategories[strategy];
+                if (!cat) return noDirectionFilter && noTypeFilter;
+                if (cat.isShares) return noDirectionFilter && noTypeFilter;
+                const directionMatch = noDirectionFilter || this.filterDirection.includes(cat.direction);
+                const typeMatch = noTypeFilter || this.filterType.includes(cat.type);
+                return directionMatch && typeMatch;
+            },
+
             onAccountChange() {
                 localStorage.setItem('selectedAccount', this.selectedAccount);
                 this.fetchLedger();
@@ -760,6 +864,8 @@
                     sortColumn: this.sortColumn,
                     sortDirection: this.sortDirection,
                     viewMode: this.viewMode,
+                    filterDirection: this.filterDirection,
+                    filterType: this.filterType,
                 }));
             },
 
@@ -781,6 +887,10 @@
 
             cancelMoveMode() {
                 this.clearAllMoveMode();
+            },
+
+            groupViewMode(group) {
+                return group._viewMode || this.viewMode;
             },
 
             sortedLots(group) {
