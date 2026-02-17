@@ -188,7 +188,47 @@ class OrderProcessor:
         """Convert raw transactions to Transaction objects, generating order IDs as needed"""
         transactions = []
         self._assignment_stock_transactions = []  # V3: Reset for each processing run
-        
+
+        # Pre-scan: group Symbol Change transactions so close/open legs share order IDs
+        symbol_change_overrides = {}
+        sym_change_txs = [tx for tx in raw_transactions if tx.get('transaction_sub_type') == 'Symbol Change']
+        if sym_change_txs:
+            sc_groups = defaultdict(list)
+            for tx in sym_change_txs:
+                acct = tx.get('account_number', '')
+                old_under = tx.get('underlying_symbol', '')
+                date_str = tx.get('executed_at', '')[:10]
+                sc_groups[(acct, old_under, date_str)].append(tx)
+
+            for (acct, old_under, date_str), txs in sc_groups.items():
+                close_txs = [t for t in txs if 'TO_CLOSE' in (t.get('action') or '')]
+                open_txs = [t for t in txs if 'TO_OPEN' in (t.get('action') or '')]
+
+                # Derive new underlying from open legs' symbol
+                new_under = old_under
+                if open_txs:
+                    sym = open_txs[0].get('symbol', '')
+                    if sym:
+                        new_under = sym.split()[0]
+
+                close_oid = f"SYMCHG_CLOSE_{acct}_{old_under}_{date_str}"
+                open_oid = f"SYMCHG_OPEN_{acct}_{new_under}_{date_str}"
+
+                for t in close_txs:
+                    symbol_change_overrides[str(t.get('id', ''))] = {
+                        'order_id': close_oid,
+                        'underlying_symbol': old_under,
+                    }
+                for t in open_txs:
+                    symbol_change_overrides[str(t.get('id', ''))] = {
+                        'order_id': open_oid,
+                        'underlying_symbol': new_under,
+                    }
+
+                if open_txs or close_txs:
+                    logger.info(f"Symbol change: {old_under} -> {new_under}, "
+                                f"{len(close_txs)} close legs, {len(open_txs)} open legs")
+
         for raw_tx in raw_transactions:
             # Skip non-trading transactions (no symbol)
             # But keep assignment/exercise transactions even if action is None
@@ -224,15 +264,20 @@ class OrderProcessor:
                 # Debug: Log what we're filtering out
                 logger.debug(f"Filtering out transaction: {raw_tx.get('symbol')} - {instrument_type} - {sub_type}")
                 continue
-            # Generate order ID if missing
-            order_id = raw_tx.get('order_id')
-            if not order_id:
-                # Generate ID for system events like expiration
-                executed_at = raw_tx.get('executed_at', '')
-                symbol = raw_tx.get('symbol', '')
-                action = raw_tx.get('action', '')
-                order_id = f"SYSTEM_{raw_tx.get('transaction_sub_type', 'UNKNOWN')}_{executed_at}_{symbol}_{action}"
-                order_id = order_id.replace(' ', '_').replace(':', '')
+            # Generate order ID — use symbol change override if available
+            tx_id_str = str(raw_tx.get('id', ''))
+            sc_override = symbol_change_overrides.get(tx_id_str)
+            if sc_override:
+                order_id = sc_override['order_id']
+            else:
+                order_id = raw_tx.get('order_id')
+                if not order_id:
+                    # Generate ID for system events like expiration
+                    executed_at = raw_tx.get('executed_at', '')
+                    symbol = raw_tx.get('symbol', '')
+                    action = raw_tx.get('action', '')
+                    order_id = f"SYSTEM_{raw_tx.get('transaction_sub_type', 'UNKNOWN')}_{executed_at}_{symbol}_{action}"
+                    order_id = order_id.replace(' ', '_').replace(':', '')
             
             # Parse option details from symbol if needed
             symbol = raw_tx.get('symbol', '')
@@ -270,7 +315,7 @@ class OrderProcessor:
                 account_number=raw_tx.get('account_number', ''),
                 order_id=order_id,
                 symbol=symbol,
-                underlying_symbol=raw_tx.get('underlying_symbol', symbol.split()[0] if symbol and ' ' in symbol else symbol),
+                underlying_symbol=sc_override['underlying_symbol'] if sc_override else raw_tx.get('underlying_symbol', symbol.split()[0] if symbol and ' ' in symbol else symbol),
                 action=raw_tx.get('action') or '',
                 quantity=int(raw_tx.get('quantity', 0)),
                 price=float(raw_tx.get('price') or 0),

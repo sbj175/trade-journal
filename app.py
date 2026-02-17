@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-OptionEdge Web Application
+OptionLedger Web Application
 A beautiful, local web app for tracking and analyzing options trades
 """
 
@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from loguru import logger
@@ -42,7 +43,7 @@ logger.add(
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="OptionEdge",
+    title="OptionLedger",
     description="Personal Options Trading Analytics",
     version="1.0.0"
 )
@@ -73,6 +74,17 @@ pnl_calculator = PnLCalculator(db, position_manager, lot_manager)
 
 # Initialize connection manager (shared app-level client)
 connection_manager = ConnectionManager()
+
+# Jinja2 templates for server-side rendering (nav bar partial, etc.)
+templates = Jinja2Templates(directory="static")
+
+# Nav links - single source of truth for all pages
+NAV_LINKS = [
+    {"href": "/positions", "label": "Positions"},
+    {"href": "/ledger", "label": "Ledger"},
+    {"href": "/reports", "label": "Reports"},
+    {"href": "/risk", "label": "Risk"},
+]
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
@@ -259,10 +271,26 @@ class PositionNoteUpdate(BaseModel):
     note: str
 
 
+
+class LedgerGroupUpdate(BaseModel):
+    strategy_label: Optional[str] = None
+
+
+class LedgerMoveLots(BaseModel):
+    transaction_ids: List[str]
+    target_group_id: str
+
+
+class LedgerCreateGroup(BaseModel):
+    account_number: str
+    underlying: str
+    strategy_label: Optional[str] = None
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and connect to Tastytrade on startup"""
-    logger.info("Starting OptionEdge Web App")
+    logger.info("Starting OptionLedger Web App")
     db.initialize_database()
 
     # Auto-connect to Tastytrade using OAuth credentials from .env
@@ -354,43 +382,45 @@ async def sync_unified_internal():
     logger.info(f"Auto-sync completed: {total_positions} positions updated")
 
 
-def _serve_static_page(filename: str) -> HTMLResponse:
-    """Helper to serve a static HTML page"""
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(app_dir, "static", filename)
-    with open(filepath, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+def _nav_context(request: Request, active_path: str, variant: str = "standard") -> dict:
+    """Build template context with nav bar variables"""
+    return {
+        "request": request,
+        "nav_links": NAV_LINKS,
+        "active_path": active_path,
+        "nav_variant": variant,
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/positions", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """Serve the main application - Open Positions Page"""
-    return _serve_static_page("positions-dense.html")
-
-
-@app.get("/chains", response_class=HTMLResponse)
-async def order_chains():
-    """Serve the Order Chains page"""
-    return _serve_static_page("chains-dense.html")
+    return templates.TemplateResponse("positions-dense.html", _nav_context(request, "/positions"))
 
 
 @app.get("/reports", response_class=HTMLResponse)
-async def reports_page():
+async def reports_page(request: Request):
     """Serve the Performance Reports page"""
-    return _serve_static_page("reports-dense.html")
+    return templates.TemplateResponse("reports-dense.html", _nav_context(request, "/reports"))
 
 
 @app.get("/risk", response_class=HTMLResponse)
-async def risk_dashboard():
+async def risk_dashboard(request: Request):
     """Serve the Portfolio Risk X-Ray page"""
-    return _serve_static_page("risk-dashboard.html")
+    return templates.TemplateResponse("risk-dashboard.html", _nav_context(request, "/risk"))
+
+
+@app.get("/ledger", response_class=HTMLResponse)
+async def ledger_page(request: Request):
+    """Serve the Position Ledger page"""
+    return templates.TemplateResponse("ledger-dense.html", _nav_context(request, "/ledger"))
 
 
 @app.get("/settings", response_class=HTMLResponse)
-async def settings_page():
+async def settings_page(request: Request):
     """Serve the Settings page"""
-    return _serve_static_page("settings.html")
+    return templates.TemplateResponse("settings.html", _nav_context(request, "/settings", "settings"))
 
 
 @app.get("/api/settings/targets")
@@ -461,10 +491,637 @@ async def test_websocket():
         return HTMLResponse(content="<h1>test_websocket.html not found</h1>", status_code=404)
 
 
+# ============================================================================
+# Ledger (Position Groups) Endpoints
+# ============================================================================
+
+def seed_position_groups():
+    """Seed position_groups from existing chains. Idempotent — skips chains already seeded."""
+    import uuid as _uuid
+    groups_created = 0
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Get all distinct chain_ids from position_lots
+        cursor.execute("""
+            SELECT DISTINCT chain_id, account_number, underlying
+            FROM position_lots
+            WHERE chain_id IS NOT NULL
+        """)
+        chain_rows = cursor.fetchall()
+
+        for row in chain_rows:
+            chain_id, account_number, underlying = row
+            if not chain_id:
+                continue
+
+            # Check if group already exists for this chain
+            cursor.execute(
+                "SELECT group_id FROM position_groups WHERE source_chain_id = ?",
+                (chain_id,)
+            )
+            if cursor.fetchone():
+                continue
+
+            # Get chain metadata
+            cursor.execute(
+                "SELECT strategy_type, opening_date, closing_date, chain_status FROM order_chains WHERE chain_id = ?",
+                (chain_id,)
+            )
+            chain_info = cursor.fetchone()
+            strategy_label = chain_info[0] if chain_info else None
+            opening_date = chain_info[1] if chain_info else None
+            closing_date = chain_info[2] if chain_info else None
+            chain_status = chain_info[3] if chain_info else 'OPEN'
+
+            # Check actual lot statuses to determine group status
+            cursor.execute("""
+                SELECT COUNT(*) FROM position_lots
+                WHERE chain_id = ? AND remaining_quantity != 0 AND status != 'CLOSED'
+            """, (chain_id,))
+            open_count = cursor.fetchone()[0]
+            status = 'OPEN' if open_count > 0 else 'CLOSED'
+
+            # Compute opening/closing dates from lots if not available
+            if not opening_date:
+                cursor.execute(
+                    "SELECT MIN(entry_date) FROM position_lots WHERE chain_id = ?",
+                    (chain_id,)
+                )
+                r = cursor.fetchone()
+                opening_date = r[0] if r else None
+
+            if status == 'CLOSED' and not closing_date:
+                cursor.execute("""
+                    SELECT MAX(lc.closing_date) FROM lot_closings lc
+                    JOIN position_lots pl ON lc.lot_id = pl.id
+                    WHERE pl.chain_id = ?
+                """, (chain_id,))
+                r = cursor.fetchone()
+                closing_date = r[0] if r else None
+
+            group_id = str(_uuid.uuid4())
+            cursor.execute("""
+                INSERT INTO position_groups
+                    (group_id, account_number, underlying, strategy_label, status,
+                     source_chain_id, opening_date, closing_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (group_id, account_number, underlying or '', strategy_label,
+                  status, chain_id, opening_date, closing_date))
+
+            # Link lots to group via transaction_id
+            cursor.execute(
+                "SELECT transaction_id FROM position_lots WHERE chain_id = ?",
+                (chain_id,)
+            )
+            txn_ids = [r[0] for r in cursor.fetchall()]
+            for txn_id in txn_ids:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
+                    VALUES (?, ?)
+                """, (group_id, txn_id))
+
+            groups_created += 1
+
+        # Handle lots with no chain_id — create "Ungrouped" groups per underlying/account
+        cursor.execute("""
+            SELECT pl.transaction_id, pl.account_number, pl.underlying
+            FROM position_lots pl
+            LEFT JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
+            WHERE pgl.transaction_id IS NULL AND pl.chain_id IS NULL
+        """)
+        ungrouped = cursor.fetchall()
+
+        if ungrouped:
+            # Group by account+underlying
+            buckets: Dict[str, list] = {}
+            for txn_id, acct, und in ungrouped:
+                key = f"{acct}|{und or ''}"
+                buckets.setdefault(key, []).append(txn_id)
+
+            for key, txn_ids in buckets.items():
+                acct, und = key.split('|', 1)
+                group_id = str(_uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO position_groups
+                        (group_id, account_number, underlying, strategy_label, status,
+                         source_chain_id, opening_date, closing_date)
+                    VALUES (?, ?, ?, 'Ungrouped', 'OPEN', NULL, NULL, NULL)
+                """, (group_id, acct, und))
+                for txn_id in txn_ids:
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
+                        VALUES (?, ?)
+                    """, (group_id, txn_id))
+                groups_created += 1
+
+        conn.commit()
+
+    logger.info(f"Seeded {groups_created} position groups")
+    return groups_created
+
+
+def seed_new_lots_into_groups():
+    """After reprocessing, assign new lots (not in any group) to their chain's group or create new groups."""
+    import uuid as _uuid
+    assigned = 0
+
+    unassigned = lot_manager.get_unassigned_lots()
+    if not unassigned:
+        return 0
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Check if position_groups table has any rows — if empty, do full seed instead
+        cursor.execute("SELECT COUNT(*) FROM position_groups")
+        if cursor.fetchone()[0] == 0:
+            return seed_position_groups()
+
+        # Group unassigned lots by chain_id
+        chain_lots: Dict[Optional[str], list] = {}
+        for lot in unassigned:
+            chain_lots.setdefault(lot.chain_id, []).append(lot)
+
+        for chain_id, lots in chain_lots.items():
+            if chain_id:
+                # Check if a group exists for this chain
+                cursor.execute(
+                    "SELECT group_id FROM position_groups WHERE source_chain_id = ?",
+                    (chain_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    group_id = row[0]
+                else:
+                    # Create new group for this chain
+                    cursor.execute(
+                        "SELECT strategy_type, opening_date, closing_date FROM order_chains WHERE chain_id = ?",
+                        (chain_id,)
+                    )
+                    chain_info = cursor.fetchone()
+                    group_id = str(_uuid.uuid4())
+                    cursor.execute("""
+                        INSERT INTO position_groups
+                            (group_id, account_number, underlying, strategy_label, status,
+                             source_chain_id, opening_date, closing_date)
+                        VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?)
+                    """, (group_id, lots[0].account_number, lots[0].underlying,
+                          chain_info[0] if chain_info else None,
+                          chain_id,
+                          chain_info[1] if chain_info else None,
+                          chain_info[2] if chain_info else None))
+
+                for lot in lots:
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
+                        VALUES (?, ?)
+                    """, (group_id, lot.transaction_id))
+                    assigned += 1
+            else:
+                # No chain_id — add to ungrouped bucket per underlying/account
+                buckets: Dict[str, list] = {}
+                for lot in lots:
+                    key = f"{lot.account_number}|{lot.underlying}"
+                    buckets.setdefault(key, []).append(lot)
+
+                for key, blots in buckets.items():
+                    acct, und = key.split('|', 1)
+                    # Find or create ungrouped group
+                    cursor.execute("""
+                        SELECT group_id FROM position_groups
+                        WHERE account_number = ? AND underlying = ? AND source_chain_id IS NULL
+                        AND strategy_label = 'Ungrouped'
+                    """, (acct, und))
+                    row = cursor.fetchone()
+                    if row:
+                        group_id = row[0]
+                    else:
+                        group_id = str(_uuid.uuid4())
+                        cursor.execute("""
+                            INSERT INTO position_groups
+                                (group_id, account_number, underlying, strategy_label, status,
+                                 source_chain_id, opening_date, closing_date)
+                            VALUES (?, ?, ?, 'Ungrouped', 'OPEN', NULL, NULL, NULL)
+                        """, (group_id, acct, und))
+
+                    for lot in blots:
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
+                            VALUES (?, ?)
+                        """, (group_id, lot.transaction_id))
+                        assigned += 1
+
+        # Update group statuses/dates for affected groups
+        _refresh_all_group_statuses(cursor)
+        conn.commit()
+
+    logger.info(f"Seeded {assigned} new lots into position groups")
+    return assigned
+
+
+def _reconcile_stale_groups():
+    """Update position_groups whose source_chain_id no longer exists in order_chains."""
+    reconciled = 0
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT pg.group_id, pg.source_chain_id
+            FROM position_groups pg
+            LEFT JOIN order_chains oc ON pg.source_chain_id = oc.chain_id
+            WHERE pg.source_chain_id IS NOT NULL AND oc.chain_id IS NULL
+        """)
+        stale_groups = cursor.fetchall()
+        for stale_row in stale_groups:
+            stale_gid = stale_row[0]
+            # Find the actual chain_id from the group's lots
+            cursor.execute("""
+                SELECT DISTINCT pl.chain_id
+                FROM position_group_lots pgl
+                JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
+                WHERE pgl.group_id = ? AND pl.chain_id IS NOT NULL
+            """, (stale_gid,))
+            chain_rows = cursor.fetchall()
+            if chain_rows and len(chain_rows) == 1:
+                new_chain_id = chain_rows[0][0]
+                cursor.execute("""
+                    SELECT underlying, strategy_type, opening_date, closing_date, chain_status
+                    FROM order_chains WHERE chain_id = ?
+                """, (new_chain_id,))
+                chain_info = cursor.fetchone()
+                if chain_info:
+                    cursor.execute("""
+                        UPDATE position_groups
+                        SET source_chain_id = ?, underlying = ?, strategy_label = ?,
+                            opening_date = ?, closing_date = ?, status = ?
+                        WHERE group_id = ?
+                    """, (new_chain_id, chain_info[0], chain_info[1],
+                          chain_info[2], chain_info[3], chain_info[4], stale_gid))
+                    reconciled += 1
+                    logger.info(f"Reconciled stale group {stale_gid}: "
+                                f"{stale_row[1]} -> {new_chain_id} ({chain_info[0]})")
+        conn.commit()
+    if reconciled:
+        logger.info(f"Reconciled {reconciled} stale position groups")
+    return reconciled
+
+
+def _refresh_group_status(cursor, group_id: str):
+    """Recalculate status, opening_date, closing_date for a single group."""
+    cursor.execute("""
+        SELECT COUNT(*) FROM position_group_lots pgl
+        JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
+        WHERE pgl.group_id = ? AND pl.remaining_quantity != 0 AND pl.status != 'CLOSED'
+    """, (group_id,))
+    open_count = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM position_group_lots WHERE group_id = ?
+    """, (group_id,))
+    total_count = cursor.fetchone()[0]
+
+    if total_count == 0:
+        # Empty group — delete it
+        cursor.execute("DELETE FROM position_groups WHERE group_id = ?", (group_id,))
+        return
+
+    status = 'OPEN' if open_count > 0 else 'CLOSED'
+
+    cursor.execute("""
+        SELECT MIN(pl.entry_date) FROM position_group_lots pgl
+        JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
+        WHERE pgl.group_id = ?
+    """, (group_id,))
+    opening_date = cursor.fetchone()[0]
+
+    closing_date = None
+    if status == 'CLOSED':
+        cursor.execute("""
+            SELECT MAX(lc.closing_date) FROM lot_closings lc
+            JOIN position_lots pl ON lc.lot_id = pl.id
+            JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
+            WHERE pgl.group_id = ?
+        """, (group_id,))
+        r = cursor.fetchone()
+        closing_date = r[0] if r else None
+
+    cursor.execute("""
+        UPDATE position_groups
+        SET status = ?, opening_date = ?, closing_date = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE group_id = ?
+    """, (status, opening_date, closing_date, group_id))
+
+
+def _refresh_all_group_statuses(cursor):
+    """Recalculate status for all groups."""
+    cursor.execute("SELECT group_id FROM position_groups")
+    for row in cursor.fetchall():
+        _refresh_group_status(cursor, row[0])
+
+
+@app.get("/api/ledger")
+async def get_ledger(account_number: str = '', underlying: str = ''):
+    """Main Ledger data endpoint — returns position groups with lots and derived orders."""
+    import json as _json
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Auto-seed if position_groups is empty
+        cursor.execute("SELECT COUNT(*) FROM position_groups")
+        if cursor.fetchone()[0] == 0:
+            # Check if there are any lots to seed from
+            cursor.execute("SELECT COUNT(*) FROM position_lots")
+            if cursor.fetchone()[0] > 0:
+                seed_position_groups()
+
+    # Query groups with filters
+    query = "SELECT * FROM position_groups WHERE 1=1"
+    params = []
+    if account_number:
+        query += " AND account_number = ?"
+        params.append(account_number)
+    if underlying:
+        query += " AND underlying = ?"
+        params.append(underlying)
+    query += " ORDER BY underlying ASC, opening_date DESC"
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        groups_raw = [dict(row) for row in cursor.fetchall()]
+
+    if not groups_raw:
+        return []
+
+    group_ids = [g['group_id'] for g in groups_raw]
+
+    # Batch-load lots
+    lots_by_group = lot_manager.get_lots_for_groups_batch(group_ids)
+
+    # Collect all lot IDs for batch closing load
+    all_lot_ids = []
+    for lots in lots_by_group.values():
+        for lot in lots:
+            all_lot_ids.append(lot.id)
+
+    closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
+
+    # Collect all order_ids to derive orders per group
+    # and fetch order_data from order_chain_cache
+    all_order_ids = set()
+    group_order_ids: Dict[str, set] = {gid: set() for gid in group_ids}
+
+    for gid, lots in lots_by_group.items():
+        for lot in lots:
+            if lot.opening_order_id:
+                all_order_ids.add(lot.opening_order_id)
+                group_order_ids[gid].add(lot.opening_order_id)
+            # Also collect closing order_ids
+            for closing in closings_by_lot.get(lot.id, []):
+                if closing.closing_order_id:
+                    all_order_ids.add(closing.closing_order_id)
+                    group_order_ids[gid].add(closing.closing_order_id)
+
+    # Fetch order data from cache
+    order_cache: Dict[str, Dict] = {}
+    if all_order_ids:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            oid_list = list(all_order_ids)
+            placeholders = ','.join(['?' for _ in oid_list])
+            cursor.execute(f"""
+                SELECT order_id, order_data FROM order_chain_cache
+                WHERE order_id IN ({placeholders})
+            """, oid_list)
+            for row in cursor.fetchall():
+                try:
+                    order_cache[row[0]] = _json.loads(row[1])
+                except:
+                    pass
+
+    # Build response
+    result = []
+    for g in groups_raw:
+        gid = g['group_id']
+        lots = lots_by_group.get(gid, [])
+
+        # Build lots response with closings
+        lots_data = []
+        total_realized = 0.0
+        open_lot_count = 0
+
+        for lot in lots:
+            lot_closings = closings_by_lot.get(lot.id, [])
+            lot_realized = sum(c.realized_pnl for c in lot_closings)
+            total_realized += lot_realized
+
+            multiplier = 100 if lot.option_type else 1
+            cost_basis = abs(lot.entry_price * lot.original_quantity * multiplier)
+
+            is_open = lot.remaining_quantity != 0 and lot.status != 'CLOSED'
+            if is_open:
+                open_lot_count += 1
+
+            closings_data = []
+            for c in lot_closings:
+                closings_data.append({
+                    'closing_id': c.closing_id,
+                    'quantity_closed': c.quantity_closed,
+                    'closing_price': c.closing_price,
+                    'closing_date': str(c.closing_date) if c.closing_date else None,
+                    'closing_type': c.closing_type,
+                    'realized_pnl': c.realized_pnl,
+                })
+
+            lots_data.append({
+                'lot_id': lot.id,
+                'transaction_id': lot.transaction_id,
+                'symbol': lot.symbol,
+                'underlying': lot.underlying,
+                'instrument_type': lot.instrument_type,
+                'option_type': lot.option_type,
+                'strike': lot.strike,
+                'expiration': str(lot.expiration) if lot.expiration else None,
+                'quantity': lot.quantity,
+                'entry_price': lot.entry_price,
+                'entry_date': str(lot.entry_date) if lot.entry_date else None,
+                'remaining_quantity': lot.remaining_quantity,
+                'original_quantity': lot.original_quantity,
+                'status': lot.status,
+                'leg_index': lot.leg_index,
+                'derived_from_lot_id': lot.derived_from_lot_id,
+                'derivation_type': lot.derivation_type,
+                'cost_basis': cost_basis,
+                'realized_pnl': lot_realized,
+                'total_pnl': lot_realized,  # No unrealized calc here — frontend uses live quotes
+                'closings': closings_data,
+            })
+
+        # Build orders for Action view
+        orders_data = []
+        for oid in sorted(group_order_ids.get(gid, []),
+                          key=lambda x: order_cache.get(x, {}).get('order_date', ''),
+                          reverse=True):
+            if oid in order_cache:
+                orders_data.append(order_cache[oid])
+
+        result.append({
+            'group_id': gid,
+            'underlying': g['underlying'],
+            'strategy_label': g['strategy_label'],
+            'status': g['status'],
+            'account_number': g['account_number'],
+            'opening_date': g['opening_date'],
+            'closing_date': g['closing_date'],
+            'source_chain_id': g['source_chain_id'],
+            'total_pnl': total_realized,
+            'realized_pnl': total_realized,
+            'unrealized_pnl': 0.0,
+            'lot_count': len(lots),
+            'open_lot_count': open_lot_count,
+            'lots': lots_data,
+            'orders': orders_data,
+        })
+
+    return result
+
+
+@app.post("/api/ledger/seed")
+async def seed_ledger():
+    """Explicitly seed position groups from existing chains."""
+    count = seed_position_groups()
+    return {"message": f"Seeded {count} position groups", "groups_created": count}
+
+
+@app.put("/api/ledger/groups/{group_id}")
+async def update_ledger_group(group_id: str, body: LedgerGroupUpdate):
+    """Update group metadata (strategy label)."""
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT group_id FROM position_groups WHERE group_id = ?", (group_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Group not found")
+
+        updates = []
+        params = []
+        if body.strategy_label is not None:
+            updates.append("strategy_label = ?")
+            params.append(body.strategy_label)
+
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(group_id)
+            cursor.execute(
+                f"UPDATE position_groups SET {', '.join(updates)} WHERE group_id = ?",
+                params
+            )
+
+    return {"message": "Group updated"}
+
+
+@app.post("/api/ledger/move-lots")
+async def move_lots(body: LedgerMoveLots):
+    """Move lots between position groups. All lots and target must share underlying + account."""
+    if not body.transaction_ids:
+        raise HTTPException(status_code=400, detail="No transaction_ids provided")
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Validate target group exists
+        cursor.execute(
+            "SELECT account_number, underlying FROM position_groups WHERE group_id = ?",
+            (body.target_group_id,)
+        )
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target group not found")
+        target_account, target_underlying = target
+
+        # Validate all lots share same account/underlying as target
+        placeholders = ','.join(['?' for _ in body.transaction_ids])
+        cursor.execute(f"""
+            SELECT DISTINCT pl.account_number, pl.underlying
+            FROM position_lots pl
+            WHERE pl.transaction_id IN ({placeholders})
+        """, body.transaction_ids)
+        lot_accounts = cursor.fetchall()
+
+        for row in lot_accounts:
+            if row[0] != target_account or (row[1] or '') != (target_underlying or ''):
+                raise HTTPException(
+                    status_code=400,
+                    detail="All lots must share the same underlying and account as the target group"
+                )
+
+        # Find affected source groups before moving
+        cursor.execute(f"""
+            SELECT DISTINCT group_id FROM position_group_lots
+            WHERE transaction_id IN ({placeholders})
+        """, body.transaction_ids)
+        source_groups = [row[0] for row in cursor.fetchall()]
+
+        # Remove from current groups
+        cursor.execute(f"""
+            DELETE FROM position_group_lots
+            WHERE transaction_id IN ({placeholders})
+        """, body.transaction_ids)
+
+        # Insert into target group
+        for txn_id in body.transaction_ids:
+            cursor.execute("""
+                INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
+                VALUES (?, ?)
+            """, (body.target_group_id, txn_id))
+
+        # Refresh status for all affected groups
+        all_affected = set(source_groups + [body.target_group_id])
+        for gid in all_affected:
+            _refresh_group_status(cursor, gid)
+
+        conn.commit()
+
+    return {"message": f"Moved {len(body.transaction_ids)} lots"}
+
+
+@app.post("/api/ledger/groups")
+async def create_ledger_group(body: LedgerCreateGroup):
+    """Create a new empty position group."""
+    import uuid as _uuid
+    group_id = str(_uuid.uuid4())
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO position_groups
+                (group_id, account_number, underlying, strategy_label, status)
+            VALUES (?, ?, ?, ?, 'OPEN')
+        """, (group_id, body.account_number, body.underlying, body.strategy_label))
+
+    return {"group_id": group_id, "message": "Group created"}
+
+
+@app.delete("/api/ledger/groups/{group_id}")
+async def delete_ledger_group(group_id: str):
+    """Delete a group. Orphaned lots become unassigned (picked up by next seed)."""
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT group_id FROM position_groups WHERE group_id = ?", (group_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Group not found")
+
+        # CASCADE will delete position_group_lots rows
+        cursor.execute("DELETE FROM position_groups WHERE group_id = ?", (group_id,))
+
+    return {"message": "Group deleted"}
+
+
 @app.get("/api/health")
 async def health_check():
     """Simple health check endpoint"""
-    return {"status": "ok", "service": "OptionEdge"}
+    return {"status": "ok", "service": "OptionLedger"}
 
 
 # ============================================================================
@@ -811,6 +1468,205 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
     except Exception as e:
         logger.error(f"Error getting cached chains: {e}")
         return None
+
+
+def reapply_chain_merges():
+    """Re-apply saved merge records after a full chain rebuild.
+
+    Reads the chain_merges table, groups source_chain_ids by merged_chain_id,
+    and for each merge group, combines the auto-derived chains into one merged chain.
+    """
+    import json as _json
+
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Load all merge records
+            cursor.execute("SELECT merged_chain_id, source_chain_id, underlying, account_number FROM chain_merges ORDER BY id")
+            merge_rows = cursor.fetchall()
+            if not merge_rows:
+                return 0
+
+            # Group by merged_chain_id
+            merge_groups = {}
+            for row in merge_rows:
+                mid = row['merged_chain_id']
+                if mid not in merge_groups:
+                    merge_groups[mid] = {
+                        'source_chain_ids': [],
+                        'underlying': row['underlying'],
+                        'account_number': row['account_number']
+                    }
+                merge_groups[mid]['source_chain_ids'].append(row['source_chain_id'])
+
+            merges_applied = 0
+
+            for merged_chain_id, group in merge_groups.items():
+                source_ids = group['source_chain_ids']
+                underlying = group['underlying']
+                account_number = group['account_number']
+
+                # Find which source chains actually exist after reprocessing
+                # (chain_ids may differ slightly if processor generated new IDs)
+                # Strategy: match by the order_ids that belong to source chains
+                # Source chain_ids are the original auto-derived IDs
+                existing_chain_ids = set()
+                for src_id in source_ids:
+                    # Check if the source chain exists as-is
+                    cursor.execute("SELECT chain_id FROM order_chains WHERE chain_id = ?", (src_id,))
+                    if cursor.fetchone():
+                        existing_chain_ids.add(src_id)
+
+                if len(existing_chain_ids) < 2:
+                    # Not enough chains to merge — one may have been absorbed into another
+                    logger.debug(f"Skipping merge {merged_chain_id}: only {len(existing_chain_ids)} source chains exist")
+                    continue
+
+                existing_list = list(existing_chain_ids)
+                placeholders = ','.join('?' * len(existing_list))
+
+                # Gather all order_ids
+                cursor.execute(f"""
+                    SELECT DISTINCT order_id FROM order_chain_members
+                    WHERE chain_id IN ({placeholders})
+                """, existing_list)
+                all_order_ids = [row['order_id'] for row in cursor.fetchall()]
+                if not all_order_ids:
+                    continue
+
+                # Load chain metadata
+                cursor.execute(f"""
+                    SELECT chain_id, underlying, account_number, opening_date, closing_date,
+                           chain_status, strategy_type, order_count, total_pnl, realized_pnl,
+                           unrealized_pnl, leg_count, original_quantity, remaining_quantity,
+                           has_assignment, assignment_date
+                    FROM order_chains WHERE chain_id IN ({placeholders})
+                """, existing_list)
+                chain_map = {row['chain_id']: dict(row) for row in cursor.fetchall()}
+
+                # Load order cache data
+                cursor.execute(f"""
+                    SELECT chain_id, order_id, order_data FROM order_chain_cache
+                    WHERE chain_id IN ({placeholders})
+                """, existing_list)
+                order_cache_data = {}
+                for row in cursor.fetchall():
+                    try:
+                        order_cache_data[row['order_id']] = _json.loads(row['order_data'])
+                    except Exception:
+                        pass
+
+                # Recalculate metadata
+                total_pnl = 0.0
+                realized_pnl = 0.0
+                unrealized_pnl = 0.0
+                has_rolls = False
+                all_order_dates = []
+                all_strategies = set()
+                has_assignment = False
+                assignment_date = None
+
+                for oid in all_order_ids:
+                    od = order_cache_data.get(oid, {})
+                    order_pnl = od.get('total_pnl', 0.0) or 0.0
+                    total_pnl += order_pnl
+                    order_type = od.get('order_type', 'OPENING')
+                    if order_type == 'CLOSING':
+                        realized_pnl += order_pnl
+                    elif order_type == 'ROLLING':
+                        has_rolls = True
+                    else:
+                        unrealized_pnl += order_pnl
+                    order_date = od.get('order_date')
+                    if order_date:
+                        all_order_dates.append(order_date)
+                    strat = od.get('strategy_type')
+                    if strat:
+                        all_strategies.add(strat)
+
+                if has_rolls:
+                    realized_pnl = total_pnl
+                    unrealized_pnl = 0.0
+
+                opening_date = min(all_order_dates)[:10] if all_order_dates else None
+                all_closed = all(c['chain_status'] == 'CLOSED' for c in chain_map.values())
+                closing_date = max(all_order_dates)[:10] if all_closed and all_order_dates else None
+
+                statuses = set(c['chain_status'] for c in chain_map.values())
+                chain_status = 'OPEN' if 'OPEN' in statuses else ('ASSIGNED' if 'ASSIGNED' in statuses else 'CLOSED')
+
+                all_strategies.discard('Unknown')
+                all_strategies.discard(None)
+                if len(all_strategies) == 1:
+                    strategy_type = all_strategies.pop()
+                elif len(all_strategies) == 0:
+                    strategy_type = 'Unknown'
+                else:
+                    strategy_type = 'Multi-Strategy'
+
+                leg_count = sum(c.get('leg_count') or 1 for c in chain_map.values())
+                original_quantity = sum(c.get('original_quantity') or 0 for c in chain_map.values()) or None
+                remaining_quantity = sum(c.get('remaining_quantity') or 0 for c in chain_map.values()) or None
+
+                for c in chain_map.values():
+                    if c.get('has_assignment'):
+                        has_assignment = True
+                        if c.get('assignment_date') and (assignment_date is None or c['assignment_date'] < assignment_date):
+                            assignment_date = c['assignment_date']
+
+                order_count = len(all_order_ids)
+                current_time = datetime.now().isoformat()
+                order_ids_sorted = sorted(all_order_ids, key=lambda oid: order_cache_data.get(oid, {}).get('order_date') or '9999')
+
+                # Perform the merge
+                cursor.execute(f"DELETE FROM order_chain_members WHERE chain_id IN ({placeholders})", existing_list)
+                cursor.execute(f"DELETE FROM order_chain_cache WHERE chain_id IN ({placeholders})", existing_list)
+                cursor.execute(f"DELETE FROM order_chains WHERE chain_id IN ({placeholders})", existing_list)
+
+                cursor.execute("""
+                    INSERT INTO order_chains (
+                        chain_id, underlying, account_number, opening_order_id,
+                        strategy_type, opening_date, closing_date, chain_status,
+                        order_count, total_pnl, realized_pnl, unrealized_pnl,
+                        leg_count, original_quantity, remaining_quantity,
+                        has_assignment, assignment_date, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    merged_chain_id, underlying, account_number,
+                    order_ids_sorted[0] if order_ids_sorted else None,
+                    strategy_type, opening_date, closing_date, chain_status,
+                    order_count, total_pnl, realized_pnl, unrealized_pnl,
+                    leg_count, original_quantity, remaining_quantity,
+                    has_assignment, assignment_date, current_time, current_time
+                ))
+
+                for seq, oid in enumerate(order_ids_sorted):
+                    cursor.execute("INSERT INTO order_chain_members (chain_id, order_id, sequence_number) VALUES (?, ?, ?)",
+                                   (merged_chain_id, oid, seq))
+
+                for oid in all_order_ids:
+                    if oid in order_cache_data:
+                        cursor.execute("INSERT INTO order_chain_cache (chain_id, order_id, order_data) VALUES (?, ?, ?)",
+                                       (merged_chain_id, oid, _json.dumps(order_cache_data[oid])))
+
+                # Update position_lots and positions
+                for old_cid in existing_list:
+                    cursor.execute("UPDATE position_lots SET chain_id = ? WHERE chain_id = ?", (merged_chain_id, old_cid))
+                    cursor.execute("UPDATE positions SET chain_id = ? WHERE chain_id = ?", (merged_chain_id, old_cid))
+
+                merges_applied += 1
+                logger.info(f"Re-applied merge: {merged_chain_id} from {len(existing_list)} chains ({order_count} orders)")
+
+            conn.commit()
+            logger.info(f"Re-applied {merges_applied} chain merges after rebuild")
+            return merges_applied
+
+    except Exception as e:
+        logger.error(f"Error re-applying chain merges: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return 0
 
 
 async def update_chain_cache(chains, affected_underlyings: set = None, affected_account: str = None):
@@ -1160,490 +2016,6 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
         logger.error(f"[CACHE UPDATE] Error updating chain cache: {e}")
         import traceback
         logger.error(traceback.format_exc())
-
-
-@app.get("/api/chains")
-async def get_order_chains(
-    account_number: Optional[str] = None,
-    underlying: Optional[str] = None,
-    chain_id: Optional[str] = None,
-    limit: int = 10000,
-    offset: int = 0
-):
-    """Get order chains with intelligent caching for optimal performance"""
-    import time
-    start_time = time.time()
-    logger.info(f"🕐 TIMING: Starting chains API request for account={account_number}, underlying={underlying}, chain_id={chain_id}")
-
-    try:
-        # Re-enable caching now that cache has been rebuilt with order details
-        use_cache = await should_use_cached_chains(account_number, underlying)
-
-        if use_cache:
-            # Fast path: return cached data
-            cache_start = time.time()
-            cached_result = await get_cached_chains(account_number, underlying, limit, offset, chain_id=chain_id)
-            cache_time = time.time() - cache_start
-            logger.info(f"🕐 TIMING: Cache lookup took {cache_time:.2f}s")
-            if cached_result is not None:
-                total_time = time.time() - start_time
-                logger.info(f"🕐 TIMING: Total request time (cached): {total_time:.2f}s")
-                return cached_result
-            # If cache fails, fall through to fresh derivation
-            logger.info("🕐 TIMING: Cache miss, falling through to fresh derivation")
-        
-        # Slow path: derive fresh data and update cache
-        # Get all raw transactions
-        db_start = time.time()
-        raw_transactions = db.get_raw_transactions(
-            account_number=account_number,
-            underlying=underlying
-        )
-        db_time = time.time() - db_start
-        logger.info(f"🕐 TIMING: Database query took {db_time:.2f}s, got {len(raw_transactions)} transactions")
-
-        if not raw_transactions:
-            total_time = time.time() - start_time
-            logger.info(f"🕐 TIMING: Total request time (no data): {total_time:.2f}s")
-            return {"chains": [], "total": 0}
-
-        # Clear and rebuild position inventory and lots for accurate chain status
-        inventory_start = time.time()
-        position_manager.clear_all_positions()
-        lot_manager.clear_all_lots()  # V3: Also clear lots for reprocessing
-        inventory_time = time.time() - inventory_start
-        logger.info(f"🕐 TIMING: Position inventory and lots clear took {inventory_time:.2f}s")
-
-        # Process transactions to get derived chains
-        processor_start = time.time()
-        chains_by_account = order_processor.process_transactions(raw_transactions)
-        processor_time = time.time() - processor_start
-        logger.info(f"🕐 TIMING: Chain processing took {processor_time:.2f}s")
-
-        # Flatten chains from all accounts
-        all_chains = []
-        for account, chains in chains_by_account.items():
-            for chain in chains:
-                all_chains.append(chain)
-
-        # Update cache with fresh data
-        # Scope cache update to the requested account so other accounts' cached data is preserved
-        cache_account = account_number if account_number and account_number != '' else None
-        logger.info(f"About to update cache with {len(all_chains)} chains (account scope: {cache_account or 'all'})...")
-        try:
-            await update_chain_cache(all_chains, affected_account=cache_account)
-            logger.info("Cache update completed")
-        except Exception as cache_err:
-            logger.warning(f"Could not update cache: {cache_err}")
-            import traceback
-            logger.error(f"Cache update traceback: {traceback.format_exc()}")
-            # Continue without cache update - data will still be returned
-        
-        # Sort by opening date (newest first)
-        all_chains.sort(key=lambda c: c.opening_date or date.min, reverse=True)
-        
-        # Apply pagination
-        paginated_chains = all_chains[offset:offset + limit]
-        
-        # Format for frontend
-        format_start = time.time()
-        logger.info(f"🕐 TIMING: Starting formatting of {len(paginated_chains)} chains")
-
-        # Pre-fetch live position data once for all chains to improve performance
-        live_positions_cache = {}
-        api_fetch_start = time.time()
-        try:
-            client = connection_manager.get_client()
-            if client:
-                # Get unique account numbers from chains
-                unique_accounts = set()
-                for chain in paginated_chains:
-                    if chain.status == 'OPEN':  # Only need for open chains
-                        unique_accounts.add(chain.account_number)
-
-                # Fetch positions for all accounts
-                if unique_accounts:
-                    for acct in unique_accounts:
-                        try:
-                            data = await client.get_positions(account_number=acct)
-                            live_positions_cache[acct] = data.get(acct, [])
-                        except Exception as e:
-                            logger.warning(f"Could not fetch positions for account {acct}: {e}")
-                            live_positions_cache[acct] = []
-
-                api_fetch_time = time.time() - api_fetch_start
-                logger.info(f"🕐 TIMING: Pre-fetched positions for {len(unique_accounts)} accounts in {api_fetch_time:.2f}s")
-            else:
-                logger.warning("Not connected to Tastytrade - using cached data")
-                api_fetch_time = time.time() - api_fetch_start
-        except Exception as e:
-            logger.warning(f"Could not pre-fetch live positions: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            api_fetch_time = time.time() - api_fetch_start
-
-        formatted_chains = []
-        for chain in paginated_chains:
-            # Calculate totals - including ALL orders in the chain
-            # This is the running cost basis across opening, rolls, and closing orders
-            total_credit = 0.0
-            total_debit = 0.0
-            total_quantity = 0
-
-            for order in chain.orders:
-                for position in order.transactions:  # Using Transaction object
-                    quantity = abs(position.quantity)
-
-                    # Include all transactions (opening and closing)
-                    if position.price > 0 and quantity > 0:
-                        # Calculate amount (options are always 100x multiplier)
-                        amount = position.price * quantity * 100
-
-                        # Determine if transaction is a buy or sell
-                        action = str(position.action)
-                        if position.is_buy or 'BUY' in action:
-                            total_debit += amount
-                        elif position.is_sell or 'SELL' in action:
-                            total_credit += amount
-
-                    total_quantity += quantity
-            
-            # Calculate realized P&L from closed positions
-            # Note: Transaction objects don't have separate opening/closing prices
-            # The P&L will be calculated at the order level instead, which handles this correctly
-            realized_pnl = 0.0
-            unrealized_pnl = 0.0
-            
-            # Calculate cost basis per contract/share (total amount paid/received for opening transactions)
-            # Sign matters: negative = money spent (long), positive = money received (short)
-            # For long positions: cost_basis = -(total_debit - total_credit), i.e., negative cost
-            # For short positions: cost_basis = (total_credit - total_debit), i.e., positive cost
-            cost_basis_total = total_credit - total_debit  # Preserve sign: negative for long, positive for short
-
-            # Calculate the total quantity of opening transactions for per-unit calculation
-            # For multi-leg spreads, all legs have the same quantity, so use the first leg's quantity
-            # (don't sum all legs, which would count each leg separately)
-            opening_quantity_total = 0
-            for order in chain.orders:
-                for position in order.transactions:  # Using Transaction object
-                    if position.is_opening:  # Is an opening transaction
-                        opening_quantity_total = abs(position.quantity)  # Use first opening quantity, don't sum
-                        break
-                if opening_quantity_total > 0:
-                    break
-
-            # Calculate weighted average cost basis per unit (preserving sign)
-            # Also calculate per-share basis (divide by 100 for options, as prices are in cents)
-            cost_basis_per_unit = 0.0
-            cost_basis_per_share = 0.0
-            pnl_per_share = 0.0
-            if opening_quantity_total > 0:
-                cost_basis_per_unit = cost_basis_total / opening_quantity_total
-                cost_basis_per_share = cost_basis_per_unit / 100  # Convert to per-share
-                # For closed chains, also calculate P&L per share (realized_pnl is in dollars, convert to per-share)
-                pnl_per_share = realized_pnl / opening_quantity_total / 100  # Divide by contracts then by 100
-
-            # Debug logging
-            logger.debug(f"Chain {chain.chain_id} ({chain.underlying}): debit={total_debit:.2f}, credit={total_credit:.2f}, cost_basis_total={cost_basis_total:.2f}, opening_qty={opening_quantity_total}, per_unit={cost_basis_per_unit:.2f}")
-
-            # Use cached strategy from chain object (already detected in update_chain_cache)
-            # Avoid duplicate strategy detection which is expensive
-            detected_strategy = getattr(chain, 'strategy_type', None)
-            if not detected_strategy:
-                # Fallback: only detect if not cached (shouldn't happen with cache)
-                detected_strategy = strategy_detector.detect_chain_strategy(chain)
-
-            formatted_chain = {
-                'chain_id': chain.chain_id,
-                'underlying': chain.underlying,
-                'strategy_type': detected_strategy,
-                'opening_date': chain.opening_date.isoformat() if chain.opening_date else None,
-                'closing_date': chain.closing_date.isoformat() if chain.closing_date else None,
-                'status': chain.status,
-                'order_count': len(chain.orders),
-                'total_quantity': total_quantity,
-                'total_credit': total_credit,
-                'total_debit': total_debit,
-                'net_premium': total_credit - total_debit,
-                'cost_basis_total': cost_basis_total,
-                'cost_basis_per_unit': cost_basis_per_unit,
-                'cost_basis_per_share': cost_basis_per_share,
-                'pnl_per_share': pnl_per_share,
-                'realized_pnl': realized_pnl,
-                'unrealized_pnl': unrealized_pnl,
-                'total_pnl': 0,  # Will be calculated after orders are processed
-                'account_number': chain.account_number,
-                'orders': []
-            }
-            
-            # Format orders
-            for order in chain.orders:
-                # Clean up system-generated order IDs for display
-                display_order_id = order.order_id
-                if order.order_id.startswith('SYSTEM_'):
-                    if 'Expiration' in order.order_id:
-                        display_order_id = f"EXPIRATION_{order.executed_at.strftime('%Y%m%d')}"
-                    elif 'Assignment' in order.order_id:
-                        display_order_id = f"ASSIGNMENT_{order.executed_at.strftime('%Y%m%d')}"
-                    elif 'Exercise' in order.order_id:
-                        display_order_id = f"EXERCISE_{order.executed_at.strftime('%Y%m%d')}"
-                    else:
-                        display_order_id = f"SYSTEM_{order.executed_at.strftime('%Y%m%d')}"
-                
-                # Determine display type (EXPIRATION, ASSIGNMENT, etc. for system orders)
-                display_type = order.order_type.value
-                if order.order_id.startswith('SYSTEM_'):
-                    if 'Expiration' in order.order_id:
-                        display_type = 'EXPIRATION'
-                    elif 'Assignment' in order.order_id:
-                        display_type = 'ASSIGNMENT'
-                    elif 'Exercise' in order.order_id:
-                        display_type = 'EXERCISE'
-
-                order_info = {
-                    'order_id': display_order_id,
-                    'order_type': order.order_type.value,
-                    'display_type': display_type,
-                    'order_date': order.executed_at.isoformat(),
-                    'strategy_type': None,
-                    'status': 'CLOSED' if order.order_type.value == 'CLOSING' else 'FILLED',
-                    'positions': [],
-                    'emblems': []
-                }
-                
-                # Create positions from all transactions in the order
-                position_id_counter = 1
-                processed_symbols = set()  # Track which symbols we've already processed
-                
-                for tx in order.transactions:
-                    # For closing transactions (assignment/exercise/expiration), don't create separate positions
-                    # Instead, they should update the original opening positions
-                    if tx.is_closing and (tx.is_assignment or tx.is_exercise or tx.is_expiration):
-                        continue  # Skip creating separate positions for these
-                    
-                    position_info = {
-                        'position_id': f"{order.order_id}_{position_id_counter}",
-                        'symbol': tx.symbol,
-                        'underlying': tx.underlying_symbol,
-                        'instrument_type': 'EQUITY_OPTION' if tx.option_type else 'EQUITY',
-                        'option_type': tx.option_type,
-                        'strike': tx.strike,
-                        'expiration': tx.expiration.isoformat() if tx.expiration else None,
-                        'quantity': tx.quantity if tx.is_buy else -abs(tx.quantity),  # Show negative for short positions
-                        'opening_action': str(tx.action).replace('OrderAction.', ''),
-                        'opening_price': tx.price,
-                        'closing_action': None,
-                        'closing_price': None,
-                        'status': 'OPEN',
-                        'opening_transaction_id': tx.id,
-                        'closing_transaction_id': None,
-                        'pnl': 0.0
-                    }
-                    
-                    # Set transaction amount (not P&L, just the credit/debit amount)
-                    quantity = abs(tx.quantity)
-                    amount = tx.price * 100 * quantity
-                    if tx.is_sell:  # Sell transactions are credits (positive)
-                        position_info['pnl'] = amount
-                    else:  # Buy transactions are debits (negative)  
-                        position_info['pnl'] = -amount
-                    
-                    # Check if this position was closed by assignment/exercise/expiration in a later order
-                    for check_order in chain.orders:
-                        if check_order.executed_at > order.executed_at:  # Only check later orders
-                            for closing_tx in check_order.transactions:
-                                if (closing_tx.symbol == tx.symbol and 
-                                    (closing_tx.is_assignment or closing_tx.is_exercise or closing_tx.is_expiration)):
-                                    # This position was closed by assignment/exercise/expiration
-                                    position_info['status'] = 'CLOSED'
-                                    if closing_tx.is_assignment:
-                                        position_info['closing_action'] = 'ASSIGNED'
-                                    elif closing_tx.is_exercise:
-                                        position_info['closing_action'] = 'EXERCISED'
-                                    elif closing_tx.is_expiration:
-                                        position_info['closing_action'] = 'EXPIRED'
-                                    position_info['closing_price'] = closing_tx.price or 0.0
-                                    position_info['closing_transaction_id'] = closing_tx.id
-                                    
-                                    # For positions closed by assignment/exercise, show the original transaction amount
-                                    # The assignment/exercise impact will show at the order level for those orders
-                                    quantity = abs(tx.quantity)
-                                    amount = tx.price * 100 * quantity
-                                    if tx.is_sell:  # Sell transactions are credits (positive)
-                                        position_info['pnl'] = amount
-                                    else:  # Buy transactions are debits (negative)
-                                        position_info['pnl'] = -amount
-                                    break
-                    
-                    # For regular closing transactions, try to find the matching opening transaction
-                    if tx.is_closing and not (tx.is_assignment or tx.is_exercise or tx.is_expiration):
-                        # Find matching opening transaction in the same order or previous orders in chain
-                        opening_tx = None
-                        for search_order in chain.orders:
-                            for search_tx in search_order.transactions:
-                                if (search_tx.symbol == tx.symbol and 
-                                    search_tx.is_opening and 
-                                    search_tx.executed_at <= tx.executed_at):
-                                    opening_tx = search_tx
-                                    break
-                            if opening_tx:
-                                break
-                        
-                        if opening_tx:
-                            # Just show the transaction amount for closing transactions
-                            quantity = abs(tx.quantity)
-                            amount = tx.price * 100 * quantity
-                            if tx.is_sell:  # Sell to close is a credit
-                                position_info['pnl'] = amount
-                            else:  # Buy to close is a debit
-                                position_info['pnl'] = -amount
-                            position_info['closing_action'] = str(tx.action).replace('OrderAction.', '')
-                            position_info['closing_price'] = tx.price
-                            position_info['status'] = 'CLOSED'
-                    
-                    order_info['positions'].append(position_info)
-                    position_id_counter += 1
-                
-                # Calculate order-level P&L
-                if order.order_type.value == 'OPENING':
-                    # For opening orders, P&L is the net premium (credits - debits)
-                    order_credit = 0.0
-                    order_debit = 0.0
-                    for tx in order.transactions:
-                        amount = tx.price * abs(tx.quantity) * 100
-                        if tx.is_sell:
-                            order_credit += amount
-                        else:
-                            order_debit += amount
-                    order_pnl = order_credit - order_debit
-                elif order.order_type.value == 'ROLLING':
-                    # For rolling orders, P&L is net of all credits and debits
-                    order_credit = 0.0
-                    order_debit = 0.0
-                    for tx in order.transactions:
-                        amount = tx.price * abs(tx.quantity) * 100
-                        if tx.is_sell:
-                            order_credit += amount
-                        else:
-                            order_debit += amount
-                    order_pnl = order_credit - order_debit
-                elif any(tx.is_assignment or tx.is_exercise or tx.is_expiration 
-                        for tx in order.transactions):
-                    # For assignment/exercise/expiration orders, P&L is the strike impact
-                    order_pnl = 0.0
-                    for tx in order.transactions:
-                        quantity = abs(tx.quantity)
-                        if tx.is_assignment and tx.strike:
-                            order_pnl += tx.strike * 100 * quantity  # Assignment: +strike*100
-                        elif tx.is_exercise and tx.strike:
-                            order_pnl -= tx.strike * 100 * quantity  # Exercise: -strike*100
-                else:
-                    # For regular closing orders (BTC/STC only), P&L is the debit/credit
-                    order_credit = 0.0
-                    order_debit = 0.0
-                    for tx in order.transactions:
-                        amount = tx.price * abs(tx.quantity) * 100
-                        if tx.is_sell:
-                            order_credit += amount
-                        else:
-                            order_debit += amount
-                    order_pnl = order_credit - order_debit
-                
-                order_info['total_pnl'] = order_pnl
-                
-                # Add emblems for special transaction types
-                if any(tx.is_expiration for tx in order.transactions):
-                    order_info['emblems'].append('E')
-                
-                formatted_chain['orders'].append(order_info)
-            
-            # Calculate chain P&L as sum of all order P&Ls
-            # For open chains, the total P&L includes:
-            # 1. Realized P&L from closed positions (already calculated above from transaction analysis)
-            # 2. For still-open positions, we only show the premium collected/paid (credit/debit from opening orders)
-            #
-            # Note: We cannot reliably match live API positions to chains when multiple chains have the same underlying
-            # So we use the order-based calculation which correctly reflects the premiums and any realized gains/losses
-            order_pnl_total = sum(order['total_pnl'] for order in formatted_chain['orders'])
-
-            if formatted_chain['status'] == 'CLOSED':
-                # For closed chains, all P&L is realized
-                formatted_chain['total_pnl'] = order_pnl_total
-                formatted_chain['realized_pnl'] = order_pnl_total
-                formatted_chain['unrealized_pnl'] = 0.0
-            else:
-                # For open chains, show the order P&L as total (which includes opening credits and any closing transactions)
-                # This avoids the bug where all SPY chains would sum up all SPY positions
-                formatted_chain['total_pnl'] = order_pnl_total
-                # Keep the realized_pnl that was calculated from transaction analysis above
-
-            # Calculate net liquidity for OPEN chains (current market value of open positions)
-            net_liquidity = 0.0
-            if formatted_chain['status'] == 'OPEN':
-                try:
-                    # Collect all unique symbols from this chain's transactions
-                    chain_symbols = set()
-                    for order in chain.orders:
-                        for tx in order.transactions:
-                            if tx.symbol:
-                                chain_symbols.add(tx.symbol.strip())
-
-                    # Get all open positions and filter by specific symbols in this chain
-                    positions = db.get_open_positions()
-                    if positions and chain_symbols:
-                        for pos in positions:
-                            pos_symbol = (pos.get('symbol') or '').strip()
-                            if (pos_symbol in chain_symbols and
-                                pos.get('account_number') == formatted_chain['account_number']):
-                                net_liquidity += float(pos.get('market_value', 0))
-                except Exception as e:
-                    logger.warning(f"Could not calculate net liquidity for chain {formatted_chain['chain_id']}: {e}")
-                    net_liquidity = 0.0
-
-            formatted_chain['net_liquidity'] = net_liquidity
-
-            # Calculate total commissions and fees from all transactions in the chain
-            total_commission = 0.0
-            total_regulatory_fees = 0.0
-            total_clearing_fees = 0.0
-
-            try:
-                for order in chain.orders:
-                    for tx in order.transactions:
-                        total_commission += float(tx.commission) if tx.commission else 0.0
-                        total_regulatory_fees += float(tx.regulatory_fees) if tx.regulatory_fees else 0.0
-                        total_clearing_fees += float(tx.clearing_fees) if tx.clearing_fees else 0.0
-            except Exception as e:
-                logger.warning(f"Could not calculate fees for chain {formatted_chain['chain_id']}: {e}")
-
-            formatted_chain['total_commission'] = total_commission
-            formatted_chain['total_regulatory_fees'] = total_regulatory_fees
-            formatted_chain['total_clearing_fees'] = total_clearing_fees
-            formatted_chain['total_fees'] = total_commission + total_regulatory_fees + total_clearing_fees
-
-            formatted_chains.append(formatted_chain)
-        
-        format_time = time.time() - format_start
-        total_time = time.time() - start_time
-
-        logger.info(f"🕐 TIMING: Chain formatting took {format_time:.2f}s for {len(formatted_chains)} chains")
-        logger.info(f"🕐 TIMING: Total request time: {total_time:.2f}s")
-
-        return {
-            "chains": formatted_chains,
-            "total": len(formatted_chains),
-            "cached": False,  # Indicate this was freshly derived
-            "timing": {
-                "total_time": round(total_time, 2),
-                "db_time": round(db_time, 2),
-                "processor_time": round(processor_time, 2),
-                "format_time": round(format_time, 2)
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching order chains: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/orders/{order_id}")
@@ -2581,53 +2953,6 @@ async def get_dashboard_data(account_number: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/sync-positions-only")
-async def sync_positions_only():
-    """Fast sync that only updates current positions without reprocessing orders"""
-    try:
-        tastytrade = connection_manager.get_client()
-        if not tastytrade:
-            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
-
-        logger.info("Starting positions-only sync (fast mode)...")
-
-        # Fetch and save current positions for all accounts (with chain enrichment)
-        logger.info("Fetching current positions from all accounts...")
-        all_positions = await tastytrade.get_positions()
-        total_positions = 0
-
-        for account_number, positions in all_positions.items():
-            if positions:
-                success = enrich_and_save_positions(positions, account_number)
-                if success:
-                    logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
-                    total_positions += len(positions)
-                else:
-                    logger.error(f"Failed to save positions for account {account_number}")
-
-        # Fetch and save account balances
-        logger.info("Fetching account balances...")
-        balances = await tastytrade.get_account_balances()
-        if balances:
-            for balance in balances:
-                db.save_account_balance(balance)
-
-        logger.info(f"Fast sync completed: {total_positions} positions updated")
-
-        # Run reconciliation after sync
-        reconciliation = await reconcile_positions_vs_chains()
-
-        return {
-            "message": f"Fast sync completed: {total_positions} positions updated",
-            "positions_updated": total_positions,
-            "mode": "positions_only",
-            "reconciliation": reconciliation
-        }
-
-    except Exception as e:
-        logger.error(f"Error during fast sync: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/sync")
 async def sync_unified():
     """Unified sync endpoint with smart date range calculation"""
@@ -2736,6 +3061,9 @@ async def sync_unified():
                     logger.info("Running strategy detection on chains...")
                     try:
                         await update_chain_cache(all_chains, affected_underlyings)
+                        reapply_chain_merges()
+                        seed_new_lots_into_groups()
+                        _reconcile_stale_groups()
                         logger.info("Strategy detection and cache update completed")
                     except Exception as e:
                         logger.error(f"Error during strategy detection after sync: {str(e)}", exc_info=True)
@@ -2775,20 +3103,6 @@ async def sync_unified():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/sync/status")
-async def get_sync_status():
-    """Get sync status including last sync timestamp"""
-    try:
-        last_sync = db.get_last_sync_timestamp()
-        return {
-            "last_sync": last_sync.isoformat() if last_sync else None,
-            "has_synced": db.is_initial_sync_completed()
-        }
-    except Exception as e:
-        logger.error(f"Error getting sync status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/api/migrate-realized-pnl")
 async def migrate_realized_pnl():
     """One-time migration to populate realized_pnl for existing chains"""
@@ -2818,26 +3132,6 @@ async def migrate_realized_pnl():
         }
     except Exception as e:
         logger.error(f"Error during realized P&L migration: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/debug/chains")
-async def debug_chains():
-    """Debug endpoint to check realized_pnl values"""
-    try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT chain_id, underlying, chain_status, total_pnl, realized_pnl, unrealized_pnl 
-                FROM order_chains 
-                ORDER BY created_at DESC 
-                LIMIT 10
-            """)
-            chains = [dict(row) for row in cursor.fetchall()]
-        
-        return {"chains": chains}
-    except Exception as e:
-        logger.error(f"Error in debug endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2960,10 +3254,13 @@ async def initial_sync():
             for account, chains in chains_by_account.items():
                 all_chains.extend(chains)
             await update_chain_cache(all_chains)
-            logger.info(f"Chain reprocessing completed: {len(all_chains)} chains with strategy detection")
+            merges_applied = reapply_chain_merges()
+            seed_new_lots_into_groups()
+            _reconcile_stale_groups()
+            logger.info(f"Chain reprocessing completed: {len(all_chains)} chains with strategy detection, {merges_applied} merges re-applied")
         except Exception as e:
             logger.error(f"Error during chain reprocessing: {str(e)}", exc_info=True)
-        
+
         return {
             "message": f"Initial sync completed successfully",
             "orders_processed": result['orders_processed'],
@@ -3007,27 +3304,25 @@ async def reprocess_chains():
         logger.info(f"About to update cache with {len(all_chains)} chains...")
         await update_chain_cache(all_chains)
         logger.info("Cache update completed")
-        
-        # Debug: Check what was actually inserted for CSX
-        debug_info = {}
-        try:
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT strategy_type FROM order_chains WHERE chain_id = 'CSX_OPENING_20250729_39786951'")
-                result = cursor.fetchone()
-                debug_info["csx_strategy_after_insert"] = result[0] if result else "NOT_FOUND"
-        except Exception as e:
-            debug_info["debug_error"] = str(e)
-        
+
+        # Re-apply any saved chain merges
+        merges_applied = reapply_chain_merges()
+
+        # Assign new lots into position groups
+        seed_new_lots_into_groups()
+
+        # Update groups whose source chain changed (e.g. symbol changes)
+        _reconcile_stale_groups()
+
         return {
             "message": "Reprocessing completed successfully",
             "orders_processed": len(raw_transactions),
             "orders_saved": len(raw_transactions),
             "chains_created": len(all_chains),
             "chains_saved": len(all_chains),
-            "debug": debug_info
+            "merges_reapplied": merges_applied
         }
-        
+
     except Exception as e:
         logger.error(f"Error during reprocessing: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -3665,23 +3960,14 @@ async def websocket_quotes(websocket: WebSocket):
 
 
 
-def create_initial_files():
-    """Create initial HTML/CSS/JS files if they don't exist"""
-    # This will be called to create the beautiful UI files
-    pass
-
-
 if __name__ == "__main__":
-    # Create initial files if needed
-    create_initial_files()
-    
-    # Start the server
-    logger.info("Starting OptionEdge on http://localhost:8000")
+    logger.info("Starting OptionLedger on http://localhost:8000")
     logger.info("From Windows, also try: http://127.0.0.1:8000")
     uvicorn.run(
-        "app:app",  # Use string import to enable reload
-        host="0.0.0.0",  # This ensures it binds to all interfaces
+        "app:app",
+        host="0.0.0.0",
         port=8000,
         reload=True,
         log_level="info"
     )
+# END OF FILE
