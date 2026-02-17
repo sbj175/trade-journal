@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptionEdge - Positions</title>
+    <title>OptionLedger - Positions</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
 
     <!-- Tailwind CSS -->
@@ -47,6 +47,28 @@
 
     <!-- Inline positions app -->
     <script>
+        function buildOptionStratUrl(strategyType, underlying, legs) {
+            const SLUGS = {
+                'Bull Put Spread':  'bull-put-spread',
+                'Bull Call Spread':  'bull-call-spread',
+                'Bear Put Spread':  'bear-put-spread',
+                'Bear Call Spread':  'bear-call-spread',
+            };
+            const slug = SLUGS[strategyType];
+            if (!slug || !underlying || !legs || legs.length !== 2) return null;
+            if (legs.some(l => !l.expiration || !l.option_type || l.strike == null)) return null;
+
+            const encodeLeg = (leg) => {
+                const sign = leg.isShort ? '-' : '';
+                const d = leg.expiration.replace(/-/g, '').slice(2, 8);
+                const type = leg.option_type.toUpperCase().startsWith('P') ? 'P' : 'C';
+                const strike = leg.strike % 1 === 0 ? String(Math.trunc(leg.strike)) : String(leg.strike);
+                return `${sign}.${underlying}${d}${type}${strike}`;
+            };
+
+            return `https://optionstrat.com/build/${slug}/${underlying}/${legs.map(encodeLeg).join(',')}`;
+        }
+
         function positionsApp() {
             return {
                 // State
@@ -302,6 +324,9 @@
                                 });
                             });
                         }
+                        // Migrate comment keys from chain_ to group_ prefix
+                        this._migrateCommentKeys();
+
                         this.applyFilters();
                     } catch (error) {
                         console.error('Failed to load positions:', error);
@@ -669,6 +694,20 @@
                     return 'Unknown';
                 },
 
+                getOptionStratUrl(group) {
+                    if (!group.strategy_type || !group.underlying) return null;
+                    const optionLegs = (group.positions || []).filter(l =>
+                        l.instrument_type && l.instrument_type.includes('OPTION'));
+                    if (optionLegs.length !== 2) return null;
+                    const legs = optionLegs.map(l => ({
+                        expiration: l.expiration,
+                        option_type: l.option_type,
+                        strike: l.strike,
+                        isShort: l.quantity_direction === 'Short',
+                    }));
+                    return buildOptionStratUrl(group.strategy_type, group.underlying, legs);
+                },
+
                 // ===== Leg display helpers =====
                 getOptionType(leg) {
                     if (leg.option_type === 'Call' || leg.option_type === 'C') return 'C';
@@ -857,24 +896,22 @@
                     // Badges
                     const badges = [];
                     const targets = this.strategyTargets[strategy] || {};
-                    const profitTarget = targets.profitTarget || 50;
-                    const lossLimit = targets.lossLimit || 100;
+                    const profitTarget = targets.profit_target_pct || 50;
+                    const lossLimit = targets.loss_target_pct || 100;
 
                     if (this.rollAlertSettings.profitTarget && parseFloat(pctMaxProfit) >= profitTarget) {
-                        badges.push({ label: `${pctMaxProfit}% Profit`, color: 'green' });
+                        badges.push({ label: 'Profit Target', color: 'green' });
                     }
                     if (this.rollAlertSettings.lossLimit) {
-                        if (isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
-                            badges.push({ label: `${pctMaxLoss}% Loss`, color: 'red' });
-                        } else if (!isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
-                            badges.push({ label: `${pctMaxLoss}% Loss`, color: 'red' });
+                        // Credit spreads: loss as % of credit received (|pctMaxProfit|)
+                        // Debit spreads: loss as % of debit paid (pctMaxLoss)
+                        const lossMetric = isCredit ? Math.abs(parseFloat(pctMaxProfit)) : parseFloat(pctMaxLoss);
+                        if (currentPnL < 0 && lossMetric >= lossLimit) {
+                            badges.push({ label: 'Loss Limit', color: 'red' });
                         }
                     }
                     if (this.rollAlertSettings.lateStage && dte <= 21 && dte > 0) {
                         badges.push({ label: `${dte}d Left`, color: 'yellow' });
-                    }
-                    if (this.rollAlertSettings.deltaSaturation && parseFloat(deltaSaturation) >= 65) {
-                        badges.push({ label: `${deltaSaturation}% Delta`, color: isCredit ? 'red' : 'orange' });
                     }
                     if (this.rollAlertSettings.lowRewardToRisk && rewardToRiskRaw < (isCredit ? 0.3 : 0.6)) {
                         badges.push({ label: `R:R ${rewardToRisk}`, color: 'orange' });
@@ -903,11 +940,10 @@
                         suggestion = `Consider closing: ${pctMaxProfit}% of max profit captured.`;
                         urgency = 'medium';
                     }
-                    if (isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
-                        suggestion = `Loss limit hit: ${pctMaxLoss}% of max loss. Consider closing or rolling.`;
-                        urgency = 'high';
-                    } else if (!isCredit && parseFloat(pctMaxLoss) >= lossLimit) {
-                        suggestion = `Loss limit hit: ${pctMaxLoss}% of max loss. Consider closing or rolling.`;
+                    const suggestionLossMetric = isCredit ? Math.abs(parseFloat(pctMaxProfit)) : parseFloat(pctMaxLoss);
+                    if (currentPnL < 0 && suggestionLossMetric >= lossLimit) {
+                        const lossDesc = isCredit ? 'of credit received' : 'of debit paid';
+                        suggestion = `Loss limit hit: ${suggestionLossMetric.toFixed(1)}% ${lossDesc}. Consider closing or rolling.`;
                         urgency = 'high';
                     }
 
@@ -943,7 +979,11 @@
                         const response = await fetch('/api/settings/targets');
                         if (response.ok) {
                             const data = await response.json();
-                            this.strategyTargets = data.targets || {};
+                            // API returns a list of {strategy_name, profit_target_pct, loss_target_pct}
+                            const list = Array.isArray(data) ? data : (data.targets || []);
+                            const mapped = {};
+                            list.forEach(t => { if (t.strategy_name) mapped[t.strategy_name] = t; });
+                            this.strategyTargets = mapped;
                         }
                     } catch (error) { console.error('Failed to load strategy targets:', error); }
                 },
@@ -990,11 +1030,46 @@
                         }
                     } catch (e) { /* ignore migration errors */ }
                 },
+                _migrateCommentKeys() {
+                    // Migrate notes from old chain_{source_chain_id} keys to new group_{group_id} keys
+                    try {
+                        for (const item of this.allItems) {
+                            if (item._isShareRow || item._isSubtotal) continue;
+                            const groupId = item.group_id || item.chain_id;
+                            const sourceChainId = item.source_chain_id;
+                            if (!groupId || !sourceChainId || groupId === sourceChainId) continue;
+
+                            const newKey = `group_${groupId}`;
+                            const oldKey = `chain_${sourceChainId}`;
+
+                            // If note exists under old key but not new key, migrate it
+                            if (this.positionComments[oldKey] && !this.positionComments[newKey]) {
+                                this.positionComments[newKey] = this.positionComments[oldKey];
+                                fetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ note: this.positionComments[oldKey] })
+                                }).catch(err => console.error('Comment key migration error:', err));
+                            }
+
+                            // Also check the old chain_{chain_id} key (chain_id === group_id now)
+                            const oldChainKey = `chain_${groupId}`;
+                            if (this.positionComments[oldChainKey] && !this.positionComments[newKey]) {
+                                this.positionComments[newKey] = this.positionComments[oldChainKey];
+                                fetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ note: this.positionComments[oldChainKey] })
+                                }).catch(err => console.error('Comment key migration error:', err));
+                            }
+                        }
+                    } catch (e) { /* ignore migration errors */ }
+                },
                 getCommentKey(group) {
                     if (group._isSubtotal) return null;
                     if (group._isShareRow) return `shares_${group.underlying}_${group.accountNumber || 'default'}`;
-                    const chainId = group.chain_id || group.chainId;
-                    if (chainId && !chainId.startsWith('shares_')) return `chain_${chainId}`;
+                    const groupId = group.group_id || group.chain_id || group.chainId;
+                    if (groupId && !groupId.startsWith('shares_')) return `group_${groupId}`;
                     return `pos_${group.underlying}_${group.accountNumber || 'default'}`;
                 },
                 getPositionComment(group) {
@@ -1035,37 +1110,7 @@
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="positionsApp()" x-init="init()">
 
-    <!-- Compact Nav Bar -->
-    <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-        <div class="flex items-center justify-between h-16 px-4">
-            <!-- Left: Logo & Nav -->
-            <div class="flex items-center gap-8">
-                <span class="text-tv-blue font-semibold text-2xl">
-                    <i class="fas fa-chart-line mr-2"></i>OptionEdge
-                </span>
-                <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-                    <a href="/positions" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">Positions</a>
-                    <a href="/chains" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Chains</a>
-                    <a href="/reports" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Reports</a>
-                    <a href="/risk" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Risk</a>
-                </div>
-            </div>
-
-            <!-- Right: Account & User -->
-            <div class="flex items-center gap-6 text-base">
-                <select x-model="selectedAccount" @change="onAccountChange()"
-                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-                    <option value="">All Accounts</option>
-                    <template x-for="account in accounts" :key="account.account_number">
-                        <option :value="account.account_number" x-text="'(' + getAccountSymbol(account.account_number) + ') ' + (account.account_name || account.account_number)"></option>
-                    </template>
-                </select>
-                <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-                    <i class="fas fa-cog"></i>
-                </a>
-            </div>
-        </div>
-    </nav>
+    {% include 'partials/nav.html' %}
 
     <!-- Action Bar -->
     <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
@@ -1319,16 +1364,14 @@
                                     </template>
                                 </div>
 
-                                <!-- Chain Link -->
+                                <!-- Ledger Link -->
                                 <div class="w-12">
                                     <template x-if="!group._isShareRow">
-                                        <a :href="group.chain_id
-                                               ? '/chains?chain_id=' + encodeURIComponent(group.chain_id)
-                                               : '/chains?underlying=' + encodeURIComponent(group.underlying) + '&status=open'"
+                                        <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying)"
                                            @click.stop
                                            class="text-tv-blue hover:text-blue-400"
-                                           title="View chain">
-                                            <i class="fas fa-link"></i>
+                                           title="View in Ledger">
+                                            <i class="fas fa-book"></i>
                                             <span x-show="group.roll_count > 0" class="text-xs text-tv-muted ml-0.5" x-text="'R' + group.roll_count"></span>
                                         </a>
                                     </template>
