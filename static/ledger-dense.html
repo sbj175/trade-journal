@@ -313,7 +313,7 @@
                     <template x-if="groupViewMode(group) === 'positions'">
                         <div>
                             <!-- Lots Table Header -->
-                            <div class="flex items-center text-xs text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
+                            <div class="flex items-center text-sm text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
                                 <span class="w-5"></span>
                                 <span x-show="group._movingLots" class="w-8"></span>
                                 <span class="w-32">Entry Date</span>
@@ -324,7 +324,7 @@
                                 <span class="w-10">Type</span>
                                 <span class="w-20 text-center ml-3">Status</span>
                                 <span class="w-20 text-right">Entry $</span>
-                                <span class="w-24 text-right">Cost Basis</span>
+                                <span class="w-24 text-right ml-2">Cost Basis</span>
                                 <span class="w-24 text-right ml-4">Realized</span>
                             </div>
 
@@ -392,7 +392,7 @@
                                               x-text="lot.entry_price ? '$' + formatNumber(lot.entry_price) : ''"></span>
 
                                         <!-- Cost Basis (blank when closed) -->
-                                        <span class="w-24 text-right text-tv-muted"
+                                        <span class="w-24 text-right text-tv-muted ml-2"
                                               x-text="lot.status === 'CLOSED' ? '' : (lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '')"></span>
 
                                         <!-- Realized P&L -->
@@ -423,7 +423,7 @@
                                             <!-- Per-share price -->
                                             <span class="w-20 text-right" x-text="lot.entry_price ? '$' + formatNumber(lot.entry_price) : ''"></span>
                                             <!-- Total credit/debit -->
-                                            <span class="w-24 text-right"
+                                            <span class="w-24 text-right ml-2"
                                                   :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'"
                                                   x-text="lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : ''"></span>
                                             <span class="w-24 ml-4"></span>
@@ -455,7 +455,7 @@
                                                 <!-- Per-share price -->
                                                 <span class="w-20 text-right" x-text="closing.closing_price ? '$' + formatNumber(closing.closing_price) : ''"></span>
                                                 <!-- Total credit/debit -->
-                                                <span class="w-24 text-right"
+                                                <span class="w-24 text-right ml-2"
                                                       :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'"
                                                       x-text="closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : ''"></span>
                                                 <!-- Realized P&L shown at leg level only -->
