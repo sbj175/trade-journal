@@ -1,4 +1,4 @@
-# OptionEdge
+# OptionLedger
 
 A beautiful, local web application for tracking and analyzing options trades from Tastytrade.
 

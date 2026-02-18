@@ -1,7 +1,7 @@
 @echo off
-REM Start OptionEdge Web Application
+REM Start OptionLedger Web Application
 
-echo Starting OptionEdge...
+echo Starting OptionLedger...
 
 REM Activate virtual environment if it exists
 if exist venv\Scripts\activate.bat (
@@ -20,7 +20,7 @@ if errorlevel 1 (
 )
 
 REM Start the application
-echo Opening OptionEdge in your browser...
+echo Opening OptionLedger in your browser...
 echo Dashboard: http://localhost:8000
 echo.
 echo Press Ctrl+C to stop the server

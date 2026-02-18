@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptionEdge - Reports</title>
+    <title>OptionLedger - Reports</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
 
     <!-- Tailwind CSS -->
@@ -60,37 +60,7 @@
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="reportsApp()" x-init="init()">
 
-    <!-- Compact Nav Bar -->
-    <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-        <div class="flex items-center justify-between h-16 px-4">
-            <!-- Left: Logo & Nav -->
-            <div class="flex items-center gap-8">
-                <span class="text-tv-blue font-semibold text-2xl">
-                    <i class="fas fa-chart-line mr-2"></i>OptionEdge
-                </span>
-                <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-                    <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
-                    <a href="/chains" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Chains</a>
-                    <a href="/reports" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">Reports</a>
-                    <a href="/risk" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Risk</a>
-                </div>
-            </div>
-
-            <!-- Right: Account & User -->
-            <div class="flex items-center gap-6 text-base">
-                <select x-model="selectedAccount" @change="saveAccountSelection(); fetchReport()"
-                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-                    <option value="">All Accounts</option>
-                    <template x-for="account in accounts" :key="account.account_number">
-                        <option :value="account.account_number" x-text="account.account_name || account.account_number"></option>
-                    </template>
-                </select>
-                <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-                    <i class="fas fa-cog"></i>
-                </a>
-            </div>
-        </div>
-    </nav>
+    {% include 'partials/nav.html' %}
 
     <!-- Filters Bar -->
     <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center gap-8">
@@ -444,6 +414,21 @@
                 saveAccountSelection() {
                     // Save to shared localStorage (synced across all pages)
                     localStorage.setItem('trade_journal_selected_account', this.selectedAccount);
+                },
+
+                onAccountChange() {
+                    this.saveAccountSelection();
+                    this.fetchReport();
+                },
+
+                getAccountSymbol(accountNumber) {
+                    const account = this.accounts.find(a => a.account_number === accountNumber);
+                    if (!account) return '?';
+                    const name = (account.account_name || '').toUpperCase();
+                    if (name.includes('ROTH')) return 'R';
+                    if (name.includes('INDIVIDUAL')) return 'I';
+                    if (name.includes('TRADITIONAL')) return 'T';
+                    return name.charAt(0) || '?';
                 },
 
                 saveTimePeriod() {

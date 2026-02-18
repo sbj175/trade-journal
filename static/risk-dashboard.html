@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptionEdge - Portfolio Risk X-Ray</title>
+    <title>OptionLedger - Portfolio Risk X-Ray</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
 
     <!-- Tailwind CSS -->
@@ -61,34 +61,7 @@
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="riskApp()" x-init="init()">
 
-    <!-- Nav Bar -->
-    <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-        <div class="flex items-center justify-between h-16 px-4">
-            <div class="flex items-center gap-8">
-                <span class="text-tv-blue font-semibold text-2xl">
-                    <i class="fas fa-chart-line mr-2"></i>OptionEdge
-                </span>
-                <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-                    <a href="/positions" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Positions</a>
-                    <a href="/chains" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Chains</a>
-                    <a href="/reports" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">Reports</a>
-                    <a href="/risk" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">Risk</a>
-                </div>
-            </div>
-            <div class="flex items-center gap-6 text-base">
-                <select x-model="selectedAccount" @change="onAccountChange()"
-                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-                    <option value="">All Accounts</option>
-                    <template x-for="account in accounts" :key="account.account_number">
-                        <option :value="account.account_number" x-text="'(' + getAccountSymbol(account.account_number) + ') ' + (account.account_name || account.account_number)"></option>
-                    </template>
-                </select>
-                <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-                    <i class="fas fa-cog"></i>
-                </a>
-            </div>
-        </div>
-    </nav>
+    {% include 'partials/nav.html' %}
 
     <!-- Status Bar -->
     <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center justify-between text-sm">
@@ -122,7 +95,7 @@
     <div x-show="!isLoading && allPositions.length === 0" x-cloak class="text-center py-24">
         <i class="fas fa-shield-halved text-6xl text-tv-border mb-6"></i>
         <p class="text-tv-muted text-xl mb-2">No open positions found</p>
-        <p class="text-tv-muted">Sync your data from the <a href="/positions" class="text-tv-blue hover:underline">Positions</a> or <a href="/chains" class="text-tv-blue hover:underline">Chains</a> page first.</p>
+        <p class="text-tv-muted">Sync your data from the <a href="/positions" class="text-tv-blue hover:underline">Positions</a> page first.</p>
     </div>
 
     <!-- Main Content -->

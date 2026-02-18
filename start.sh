@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting OptionEdge..."
+echo "Starting OptionLedger..."
 echo "===================="
 
 # Get the directory where this script is located

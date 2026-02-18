@@ -1,0 +1,51 @@
+<nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
+    <div class="flex items-center justify-between h-16 px-4">
+        <!-- Left: Logo & Nav -->
+        <div class="flex items-center gap-8">
+            <span class="text-tv-blue font-semibold text-2xl">
+                <i class="fas fa-chart-line mr-2"></i>OptionLedger
+            </span>
+            <div class="flex items-center border-l border-tv-border pl-8 gap-4">
+                {% for link in nav_links %}
+                {% if link.href == active_path %}
+                <a href="{{ link.href }}" class="text-tv-text bg-tv-border px-4 py-2 text-lg rounded-sm">{{ link.label }}</a>
+                {% else %}
+                <a href="{{ link.href }}" class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">{{ link.label }}</a>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        {% if nav_variant == 'settings' %}
+        <!-- Settings variant: connection status -->
+        <div class="flex items-center gap-4 text-base">
+            <div class="flex items-center gap-2 text-sm" x-show="connectionStatus">
+                <template x-if="connectionStatus?.connected">
+                    <span class="text-tv-green"><i class="fas fa-circle text-[8px] mr-1"></i>Connected</span>
+                </template>
+                <template x-if="!connectionStatus?.connected">
+                    <span class="text-tv-red"><i class="fas fa-circle text-[8px] mr-1"></i>Disconnected</span>
+                </template>
+            </div>
+            <a href="/settings" class="text-tv-blue hover:text-tv-text px-3 py-1 border border-tv-blue rounded text-sm">
+                <i class="fas fa-cog mr-1"></i>Settings
+            </a>
+        </div>
+        {% else %}
+        <!-- Standard variant: account selector + settings icon -->
+        <div class="flex items-center gap-6 text-base">
+            <select x-model="selectedAccount" @change="onAccountChange()"
+                    class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
+                <option value="">All Accounts</option>
+                <template x-for="account in accounts" :key="account.account_number">
+                    <option :value="account.account_number"
+                            x-text="'(' + getAccountSymbol(account.account_number) + ') ' + (account.account_name || account.account_number)"></option>
+                </template>
+            </select>
+            <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
+                <i class="fas fa-cog"></i>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</nav>

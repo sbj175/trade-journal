@@ -311,6 +311,45 @@ class DatabaseManager:
                 )
             """)
             
+            # Chain merge records — survives reprocessing so merges can be re-applied
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chain_merges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    merged_chain_id TEXT NOT NULL,
+                    source_chain_id TEXT NOT NULL,
+                    underlying TEXT NOT NULL,
+                    account_number TEXT NOT NULL,
+                    merged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Position groups — user-curated groups of position lots (Ledger page)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS position_groups (
+                    group_id TEXT PRIMARY KEY,
+                    account_number TEXT NOT NULL,
+                    underlying TEXT NOT NULL,
+                    strategy_label TEXT,
+                    status TEXT DEFAULT 'OPEN',
+                    source_chain_id TEXT,
+                    opening_date DATE,
+                    closing_date DATE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Position group lots — links lots to groups via transaction_id (survives reprocessing)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS position_group_lots (
+                    group_id TEXT NOT NULL,
+                    transaction_id TEXT NOT NULL,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (group_id, transaction_id),
+                    FOREIGN KEY (group_id) REFERENCES position_groups(group_id) ON DELETE CASCADE
+                )
+            """)
+
             # Create strategic indexes for performance
             # Core position and account queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_number)")
@@ -352,6 +391,13 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(is_active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_account ON account_balances(account_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_timestamp ON account_balances(timestamp)")
+
+            # Position groups indexes - for Ledger page queries
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_account ON position_groups(account_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_underlying ON position_groups(underlying)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_status ON position_groups(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_source_chain ON position_groups(source_chain_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_group_lots_txn ON position_group_lots(transaction_id)")
 
             # Note: Position lots indexes are created in _add_transaction_columns()
             # after ensuring all V3 columns exist

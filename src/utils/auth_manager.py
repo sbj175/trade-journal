@@ -1,5 +1,5 @@
 """
-Connection management for OptionEdge.
+Connection management for OptionLedger.
 
 Manages a shared, app-level TastytradeClient that authenticates via OAuth2
 on startup and is reused across all requests.

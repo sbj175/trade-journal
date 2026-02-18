@@ -1,6 +1,6 @@
 # Tastytrade API Documentation
 
-This document describes the Tastytrade APIs used by OptionEdge and the data available from each.
+This document describes the Tastytrade APIs used by OptionLedger and the data available from each.
 
 **SDK:** `tastytrade` (unofficial Python SDK)
 **Client:** `src/api/tastytrade_client.py`

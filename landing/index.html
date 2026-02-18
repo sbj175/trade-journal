@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionLedger — The Options Trade Journal That Actually Understands Options</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f4ff',
+                            100: '#dbe4ff',
+                            200: '#bac8ff',
+                            300: '#91a7ff',
+                            400: '#748ffc',
+                            500: '#5c7cfa',
+                            600: '#4c6ef5',
+                            700: '#4263eb',
+                            800: '#3b5bdb',
+                            900: '#364fc7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+    </style>
+</head>
+<body class="bg-white text-gray-900 font-sans antialiased">
+
+    <!-- Nav -->
+    <nav class="fixed top-0 w-full bg-white/90 backdrop-blur-sm border-b border-gray-100 z-50">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <span class="text-xl font-bold text-gray-900">OptionLedger</span>
+            <a href="#signup" class="bg-brand-700 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-brand-800 transition-colors">
+                Get Early Access
+            </a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="pt-32 pb-20 px-6">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight text-gray-900">
+                The options trade journal that actually understands options.
+            </h1>
+            <p class="mt-6 text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+                Automatically import, organize, and analyze your Tastytrade options trades. Track rolls, multi-leg strategies, and real P&L across entire trade chains &mdash; no spreadsheets required.
+            </p>
+            <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="#signup" class="bg-brand-700 text-white px-8 py-3.5 rounded-lg text-base font-semibold hover:bg-brand-800 transition-colors shadow-sm">
+                    Get Early Access
+                </a>
+            </div>
+            <p class="mt-4 text-sm text-gray-500">Free during beta. Built by an options trader, for options traders.</p>
+        </div>
+    </section>
+
+    <!-- Problem -->
+    <section class="py-20 px-6 bg-gray-50">
+        <div class="max-w-3xl mx-auto">
+            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
+                Trade journals weren't built for options traders.
+            </h2>
+            <div class="mt-10 space-y-6 text-gray-600 text-lg leading-relaxed">
+                <p>
+                    You've tried the alternatives. TradesViz, TradeZella, TraderSync, WealthBee &mdash; they all treat options as an afterthought. They can't track your Iron Condor through three rolls. They don't link your opening trade to the adjustment you made two weeks later. And Tastytrade itself? You can't even add a comment to a trade.
+                </p>
+                <p>
+                    So you end up in a spreadsheet, manually logging every entry, every roll, every closing. Then hoping you calculated P&L correctly across the entire chain.
+                </p>
+                <p class="font-semibold text-gray-900">
+                    There's a better way.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solution -->
+    <section class="py-20 px-6">
+        <div class="max-w-3xl mx-auto text-center">
+            <h2 class="text-3xl sm:text-4xl font-bold text-gray-900">
+                Your trades, automatically organized.
+            </h2>
+            <p class="mt-6 text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
+                OptionLedger connects directly to your Tastytrade account and imports your entire trade history. It automatically groups related transactions into chains &mdash; openings, rolls, adjustments, closings &mdash; so you can see the full story of every trade.
+            </p>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="py-20 px-6 bg-gray-50">
+        <div class="max-w-5xl mx-auto">
+            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
+                Built for how you actually trade.
+            </h2>
+            <div class="mt-14 grid sm:grid-cols-2 gap-8">
+
+                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
+                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Automatic Chain Tracking</h3>
+                    <p class="mt-2 text-gray-600 leading-relaxed">
+                        Every opening, roll, and closing linked together. See the complete lifecycle of a trade &mdash; not isolated transactions.
+                    </p>
+                </div>
+
+                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
+                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Strategy Recognition</h3>
+                    <p class="mt-2 text-gray-600 leading-relaxed">
+                        Iron Condors, verticals, covered calls &mdash; automatically identified. No manual tagging required.
+                    </p>
+                </div>
+
+                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
+                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Real P&L Across Rolls</h3>
+                    <p class="mt-2 text-gray-600 leading-relaxed">
+                        Know your actual profit or loss across an entire chain, not just individual legs. Rolling a position doesn't mean starting over.
+                    </p>
+                </div>
+
+                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
+                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Live Portfolio View</h3>
+                    <p class="mt-2 text-gray-600 leading-relaxed">
+                        See all open positions with real-time P&L, days to expiration, and price-relative indicators. Add notes to any position.
+                    </p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-20 px-6">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
+                Up and running in minutes.
+            </h2>
+            <div class="mt-14 grid sm:grid-cols-3 gap-10">
+
+                <div class="text-center">
+                    <div class="w-12 h-12 bg-brand-700 text-white rounded-full flex items-center justify-center text-lg font-bold mx-auto">1</div>
+                    <h3 class="mt-5 text-lg font-semibold text-gray-900">Connect</h3>
+                    <p class="mt-2 text-gray-600">Link your Tastytrade account in seconds with secure OAuth.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-12 h-12 bg-brand-700 text-white rounded-full flex items-center justify-center text-lg font-bold mx-auto">2</div>
+                    <h3 class="mt-5 text-lg font-semibold text-gray-900">Sync</h3>
+                    <p class="mt-2 text-gray-600">One click imports your complete trade history.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-12 h-12 bg-brand-700 text-white rounded-full flex items-center justify-center text-lg font-bold mx-auto">3</div>
+                    <h3 class="mt-5 text-lg font-semibold text-gray-900">Analyze</h3>
+                    <p class="mt-2 text-gray-600">See your trades organized into chains with accurate P&L across every roll.</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Trust / Security -->
+    <section class="py-20 px-6 bg-gray-50">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
+                Your account stays safe.
+            </h2>
+            <p class="mt-6 text-lg text-gray-600 text-center max-w-2xl mx-auto leading-relaxed">
+                We take security seriously. OptionLedger uses Tastytrade's official OAuth system and needs only <strong class="text-gray-900">read-only permissions</strong>. We never have access to place trades, move money, or modify your account in any way.
+            </p>
+            <div class="mt-12 grid sm:grid-cols-3 gap-8">
+
+                <div class="text-center">
+                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto">
+                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-3 font-semibold text-gray-900">Read-Only Access</h3>
+                    <p class="mt-1 text-sm text-gray-600">Tastytrade OAuth with no "Trade" permission. We can view your history but never place orders or move funds.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto">
+                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-3 font-semibold text-gray-900">Official OAuth</h3>
+                    <p class="mt-1 text-sm text-gray-600">We never see your Tastytrade password. Authentication goes directly through Tastytrade's official API.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto">
+                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-3 font-semibold text-gray-900">Revoke Anytime</h3>
+                    <p class="mt-1 text-sm text-gray-600">You control access. Disconnect OptionLedger from your Tastytrade account at any time with one click.</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Signup CTA -->
+    <section id="signup" class="py-24 px-6">
+        <div class="max-w-xl mx-auto text-center">
+            <h2 class="text-3xl sm:text-4xl font-bold text-gray-900">
+                Stop wrestling with spreadsheets.
+            </h2>
+            <p class="mt-4 text-lg text-gray-600">
+                Join the early access list and be the first to try OptionLedger when it launches.
+            </p>
+
+            <!-- Email signup form -->
+            <form class="mt-8 flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onsubmit="handleSignup(event)">
+                <input
+                    type="email"
+                    required
+                    placeholder="you@example.com"
+                    class="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                >
+                <button
+                    type="submit"
+                    class="bg-brand-700 text-white px-6 py-3 rounded-lg text-base font-semibold hover:bg-brand-800 transition-colors shadow-sm whitespace-nowrap"
+                >
+                    Get Early Access
+                </button>
+            </form>
+
+            <p class="mt-4 text-sm text-gray-400">We'll only email you about launch updates. No spam.</p>
+
+            <!-- Success message (hidden by default) -->
+            <div id="signup-success" class="hidden mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p class="text-green-800 font-medium">You're on the list! We'll be in touch when early access opens.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-100 py-8 px-6">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <span class="text-sm text-gray-500">&copy; 2026 OptionLedger. All rights reserved.</span>
+            <span class="text-sm text-gray-400">Built by an options trader, for options traders.</span>
+        </div>
+    </footer>
+
+    <script>
+        function handleSignup(e) {
+            e.preventDefault();
+            // TODO: Connect to email service (Mailchimp, ConvertKit, Buttondown, etc.)
+            // For now, just show the success message
+            document.getElementById('signup-success').classList.remove('hidden');
+            e.target.reset();
+        }
+    </script>
+
+</body>
+</html>
