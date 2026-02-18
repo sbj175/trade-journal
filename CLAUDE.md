@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## High-Level Application Overview
 
-### What is OptionEdge?
+### What is OptionLedger?
 
-OptionEdge is a comprehensive local web application designed for options traders who use Tastytrade. It automatically imports, organizes, and analyzes your trading data to provide insights into your trading performance and current positions.
+OptionLedger is a comprehensive local web application designed for options traders who use Tastytrade. It automatically imports, organizes, and analyzes your trading data to provide insights into your trading performance and current positions.
 
 ### Core Purpose
 
@@ -69,7 +69,7 @@ The system maintains two main views:
 
 ## Project Overview
 
-OptionEdge is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLite for local data storage.
+OptionLedger is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLite for local data storage.
 
 ## Common Development Commands
 
@@ -163,6 +163,7 @@ python test_expiration.py
 
 - **Open Positions Page** (default): `static/positions-dense.html` with live quotes and position management
 - **Order Chains Dashboard**: `static/chains-dense.html` at `/chains` with `static/js/app.js` (advanced strategy detection)
+- **Position Ledger**: `static/ledger-dense.html` at `/ledger` with position-group model, lot lifecycle view, action/order toggle, and group management using inline `ledgerApp()` Alpine component
 - **Performance Reports**: `static/reports-dense.html` at `/reports` with strategy breakdown and historical performance
 - **Portfolio Risk X-Ray**: `static/risk-dashboard.html` at `/risk` with real-time portfolio Greeks, Black-Scholes engine, and ApexCharts visualizations (delta exposure, theta projection, treemap, scenario analysis)
 - **Settings**: `static/settings.html` at `/settings` for OAuth credential management, connection status, and app configuration
@@ -272,12 +273,25 @@ Key tables:
 6. **Incorrect P&L for rolls**: The system properly tracks roll chains and calculates cumulative P&L
 7. **Expired positions showing as open**: The system handles expirations, assignments, and exercises as closing events
 
-## "Issues"
+## Development Workflow
+
+Every code change must follow this process:
+
+### 1. Linear Issue Required
+- Every change must be associated with a Linear issue — use an existing one or create a new one before starting work
 - When I refer to "Issues" I am referring to the issues, bugs, enhancements, etc. that are kept in Linear
-  - Don't ask for permission to read or write to Linear - just do it
-  - When creating a new issue, always assign it to me (Steve Johnson)
-  - When working on an issue, update its status to In-Process
-  - When you make code changes associated with an issue, update the comments in Linear
-  - change the status to "In Review" if you believe the issue is fixed or completed
-  - sometimes there will be issues labeled "Research"
-    - update Research issues with your findings in the comments
+- Don't ask for permission to read or write to Linear - just do it
+- When creating a new issue, always assign it to me (Steve Johnson)
+- Sometimes there will be issues labeled "Research"
+  - Update Research issues with your findings in the comments
+
+### 2. Git Workflow
+- **Branch per task**: Create a feature branch from `main` for each issue (e.g., `opt-70-feature-name`)
+- **Commit frequently**: Make meaningful commits as you work, not one giant commit at the end
+- **Merge to main when done**: After changes are tested, merge the branch back to `main`
+
+### 3. Linear Issue Lifecycle
+- **Starting work**: Update the issue status to "In Progress"
+- **During work**: Update the issue comments in Linear with progress notes or decisions made
+- **Code complete**: Change status to "In Review" if you believe the issue is fixed or completed
+- **After merge to main**: Mark the issue as "Done"
