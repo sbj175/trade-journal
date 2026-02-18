@@ -181,7 +181,8 @@ class LotManager:
         closing_transaction_id: Optional[str],
         closing_date: datetime,
         closing_type: str = 'MANUAL',
-        chain_id: Optional[str] = None
+        chain_id: Optional[str] = None,
+        close_long: Optional[bool] = None
     ) -> Tuple[float, List[int]]:
         """
         Close lots using FIFO matching.
@@ -196,6 +197,10 @@ class LotManager:
             closing_date: When the close occurred
             closing_type: MANUAL, EXPIRATION, ASSIGNMENT, EXERCISE
             chain_id: Optional chain to limit matching to
+            close_long: Direction filter for equity lots.
+                True = only match lots where quantity > 0 (STC closes long).
+                False = only match lots where quantity < 0 (BTC closes short).
+                None = match any direction (default, backward-compatible).
 
         Returns:
             Tuple of (total realized P&L, list of affected lot IDs)
@@ -208,20 +213,28 @@ class LotManager:
             cursor = conn.cursor()
 
             # Get open lots using FIFO (ordered by entry date)
+            direction_clause = ""
+            if close_long is True:
+                direction_clause = " AND quantity > 0"
+            elif close_long is False:
+                direction_clause = " AND quantity < 0"
+
             if chain_id:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT id, quantity, entry_price, remaining_quantity, option_type
                     FROM position_lots
                     WHERE account_number = ? AND symbol = ? AND chain_id = ?
                     AND remaining_quantity != 0 AND status != 'CLOSED'
+                    {direction_clause}
                     ORDER BY entry_date ASC
                 """, (account_number, symbol, chain_id))
             else:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT id, quantity, entry_price, remaining_quantity, option_type
                     FROM position_lots
                     WHERE account_number = ? AND symbol = ?
                     AND remaining_quantity != 0 AND status != 'CLOSED'
+                    {direction_clause}
                     ORDER BY entry_date ASC
                 """, (account_number, symbol))
 
