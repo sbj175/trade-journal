@@ -410,7 +410,7 @@
                                     <!-- Expanded Events (opening + closings) -->
                                     <div x-show="lot._expanded" x-cloak>
                                         <!-- Opening Event -->
-                                        <div class="flex items-center text-xs px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
+                                        <div class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
                                             <span class="w-5"></span>
                                             <span x-show="group._movingLots" class="w-8"></span>
                                             <span class="w-8"></span>
@@ -438,7 +438,7 @@
 
                                         <!-- Closing Events (sub-rows) -->
                                         <template x-for="closing in (lot.closings || [])" :key="closing.closing_id">
-                                            <div class="flex items-center text-xs px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
+                                            <div class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
                                                 <span class="w-5"></span>
                                                 <span x-show="group._movingLots" class="w-8"></span>
                                                 <span class="w-8"></span>
