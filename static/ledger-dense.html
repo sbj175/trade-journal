@@ -74,14 +74,14 @@
                 <input type="text"
                        x-model="filterUnderlying"
                        @focus="$event.target.select()"
-                       @keyup.enter="applyFilters(); localStorage.setItem('trade_journal_selected_underlying', filterUnderlying || '')"
-                       @blur="applyFilters(); localStorage.setItem('trade_journal_selected_underlying', filterUnderlying || '')"
+                       @keyup.enter="applyFilters(); localStorage.setItem('trade_journal_selected_underlying', filterUnderlying || ''); cleanUrlParams()"
+                       @blur="applyFilters(); localStorage.setItem('trade_journal_selected_underlying', filterUnderlying || ''); cleanUrlParams()"
                        @input="filterUnderlying = filterUnderlying.toUpperCase()"
                        placeholder="Symbol"
                        class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
                        :class="filterUnderlying ? 'pr-8' : ''">
                 <button x-show="filterUnderlying"
-                        @click="filterUnderlying = ''; applyFilters(); localStorage.setItem('trade_journal_selected_underlying', '')"
+                        @click="filterUnderlying = ''; applyFilters(); localStorage.setItem('trade_journal_selected_underlying', ''); cleanUrlParams()"
                         class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text">
                     <i class="fas fa-times-circle"></i>
                 </button>
@@ -184,7 +184,7 @@
     <div x-show="!loading && filteredGroups.length === 0" class="text-center py-20">
         <i class="fas fa-book-open text-4xl text-tv-muted mb-4"></i>
         <p class="text-tv-muted text-lg">No position groups found.</p>
-        <p class="text-tv-muted mt-2">Sync your data from the <a href="/chains" class="text-tv-blue hover:underline">Chains</a> page first.</p>
+        <p class="text-tv-muted mt-2">Sync your data from the <a href="/positions" class="text-tv-blue hover:underline">Positions</a> page first.</p>
     </div>
 
     <!-- Group List -->
@@ -283,7 +283,8 @@
 
                     <!-- P&L (pushed right) -->
                     <span class="ml-auto text-base font-medium"
-                          :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                          :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                          x-show="group.realized_pnl">
                         $<span x-text="formatNumber(group.realized_pnl)"></span>
                     </span>
                 </div>
@@ -389,21 +390,21 @@
 
                                         <!-- Entry Price -->
                                         <span class="w-20 text-right text-tv-muted"
-                                              x-text="'$' + formatNumber(lot.entry_price)"></span>
+                                              x-text="lot.entry_price ? '$' + formatNumber(lot.entry_price) : ''"></span>
 
-                                        <!-- Cost Basis -->
+                                        <!-- Cost Basis (blank when closed) -->
                                         <span class="w-24 text-right text-tv-muted"
-                                              x-text="'$' + formatNumber(lot.cost_basis)"></span>
+                                              x-text="lot.status === 'CLOSED' ? '' : (lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '')"></span>
 
                                         <!-- Realized P&L -->
                                         <span class="w-24 text-right ml-4"
                                               :class="lot.realized_pnl > 0 ? 'text-tv-green' : lot.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                              x-text="'$' + formatNumber(lot.realized_pnl)"></span>
+                                              x-text="lot.realized_pnl ? '$' + formatNumber(lot.realized_pnl) : ''"></span>
 
                                         <!-- Total P&L -->
                                         <span class="w-24 text-right"
                                               :class="lot.total_pnl > 0 ? 'text-tv-green' : lot.total_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                              x-text="'$' + formatNumber(lot.total_pnl)"></span>
+                                              x-text="lot.total_pnl ? '$' + formatNumber(lot.total_pnl) : ''"></span>
                                     </div>
 
                                     <!-- Expanded Events (opening + closings) -->
@@ -425,11 +426,11 @@
                                                   :class="lot.quantity > 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-red/20 text-tv-red border-tv-red/50'"
                                                   x-text="lot.quantity > 0 ? 'BTO' : 'STO'"></span>
                                             <!-- Per-share price -->
-                                            <span class="w-20 text-right" x-text="'$' + formatNumber(lot.entry_price)"></span>
+                                            <span class="w-20 text-right" x-text="lot.entry_price ? '$' + formatNumber(lot.entry_price) : ''"></span>
                                             <!-- Total credit/debit -->
                                             <span class="w-24 text-right"
                                                   :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                  x-text="'$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')"></span>
+                                                  x-text="lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : ''"></span>
                                             <span class="w-24 ml-4"></span>
                                             <span class="w-24"></span>
                                         </div>
@@ -457,15 +458,13 @@
                                                       }"
                                                       x-text="closing.closing_type === 'MANUAL' ? (lot.quantity < 0 ? 'BTC' : 'STC') : closing.closing_type === 'EXPIRATION' ? 'EXPIRED' : closing.closing_type"></span>
                                                 <!-- Per-share price -->
-                                                <span class="w-20 text-right" x-text="'$' + formatNumber(closing.closing_price)"></span>
+                                                <span class="w-20 text-right" x-text="closing.closing_price ? '$' + formatNumber(closing.closing_price) : ''"></span>
                                                 <!-- Total credit/debit -->
                                                 <span class="w-24 text-right"
                                                       :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'"
-                                                      x-text="'$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')"></span>
-                                                <!-- Closing realized P&L -->
-                                                <span class="w-24 text-right ml-4"
-                                                      :class="closing.realized_pnl > 0 ? 'text-tv-green' : closing.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                                      x-text="'$' + formatNumber(closing.realized_pnl)"></span>
+                                                      x-text="closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : ''"></span>
+                                                <!-- Realized P&L shown at leg level only -->
+                                                <span class="w-24 ml-4"></span>
                                                 <span class="w-24"></span>
                                             </div>
                                         </template>
@@ -675,10 +674,20 @@
                     this.selectedAccount = savedAccount;
                 }
 
-                // Sync symbol filter from other pages
-                const savedUnderlying = localStorage.getItem('trade_journal_selected_underlying');
-                if (savedUnderlying) {
-                    this.filterUnderlying = savedUnderlying;
+                // URL params override saved state
+                const urlParams = new URLSearchParams(window.location.search);
+                const underlyingParam = urlParams.get('underlying');
+                if (underlyingParam) {
+                    this.filterUnderlying = underlyingParam.toUpperCase();
+                    this.timePeriod = 'all';
+                    this.showOpen = true;
+                    this.showClosed = true;
+                } else {
+                    // Sync symbol filter from other pages
+                    const savedUnderlying = localStorage.getItem('trade_journal_selected_underlying');
+                    if (savedUnderlying) {
+                        this.filterUnderlying = savedUnderlying;
+                    }
                 }
 
                 await this.fetchLedger();
@@ -849,6 +858,14 @@
                 const directionMatch = noDirectionFilter || this.filterDirection.includes(cat.direction);
                 const typeMatch = noTypeFilter || this.filterType.includes(cat.type);
                 return directionMatch && typeMatch;
+            },
+
+            cleanUrlParams() {
+                const url = new URL(window.location);
+                if (url.searchParams.has('underlying')) {
+                    url.searchParams.delete('underlying');
+                    window.history.replaceState({}, '', url.pathname + (url.search || ''));
+                }
             },
 
             onAccountChange() {
