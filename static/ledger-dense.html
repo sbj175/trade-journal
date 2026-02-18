@@ -337,7 +337,7 @@
                                     </template>
                                     <div @click="toggleLotExpand(lot)"
                                          class="flex items-center text-sm px-4 py-1.5 hover:bg-tv-panel/50 font-mono cursor-pointer"
-                                         :class="[lot.derivation_type ? 'ml-6' : '', lot._expanded ? 'bg-tv-panel/30' : '']">
+                                         :class="lot._expanded ? 'bg-tv-panel/30' : ''">
                                         <!-- Expand chevron -->
                                         <i class="fas fa-chevron-right w-5 text-tv-muted text-xs transition-transform duration-200"
                                            :class="lot._expanded ? 'rotate-90' : ''"></i>
@@ -352,13 +352,13 @@
                                             </span>
                                         </template>
 
-                                        <!-- Derivation indicator -->
-                                        <template x-if="lot.derivation_type">
-                                            <span class="text-tv-muted mr-1">&#8627;</span>
-                                        </template>
-
-                                        <!-- Entry Date -->
-                                        <span class="w-32 text-tv-muted" x-text="formatOrderDate(lot.entry_date)"></span>
+                                        <!-- Entry Date (with derivation indicator for derived lots) -->
+                                        <span class="w-32 text-tv-muted">
+                                            <template x-if="lot.derivation_type">
+                                                <span class="text-tv-muted mr-1">&#8627;</span>
+                                            </template>
+                                            <span x-text="formatOrderDate(lot.entry_date)"></span>
+                                        </span>
 
                                         <!-- Qty -->
                                         <span class="w-10 text-right font-medium"
@@ -375,7 +375,8 @@
                                               x-text="lot.expiration ? calculateDTE(lot.expiration) + 'd' : '—'"></span>
 
                                         <!-- Strike -->
-                                        <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text"
+                                        <span class="w-16 text-center mx-2 py-0.5 rounded"
+                                              :class="lot.strike ? 'bg-tv-panel text-tv-text' : 'text-tv-muted'"
                                               x-text="lot.strike || '—'"></span>
 
                                         <!-- Option Type -->
@@ -423,7 +424,7 @@
                                             <!-- Per-share price -->
                                             <span class="w-20 text-right" x-text="lot.entry_price ? '$' + formatNumber(lot.entry_price) : ''"></span>
                                             <!-- Total credit/debit -->
-                                            <span class="w-24 text-right ml-2"
+                                            <span class="w-24 text-right ml-2 whitespace-nowrap"
                                                   :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'"
                                                   x-text="lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : ''"></span>
                                             <span class="w-24 ml-4"></span>
@@ -455,7 +456,7 @@
                                                 <!-- Per-share price -->
                                                 <span class="w-20 text-right" x-text="closing.closing_price ? '$' + formatNumber(closing.closing_price) : ''"></span>
                                                 <!-- Total credit/debit -->
-                                                <span class="w-24 text-right ml-2"
+                                                <span class="w-24 text-right ml-2 whitespace-nowrap"
                                                       :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'"
                                                       x-text="closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : ''"></span>
                                                 <!-- Realized P&L shown at leg level only -->
