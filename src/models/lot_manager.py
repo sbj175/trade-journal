@@ -308,15 +308,12 @@ class LotManager:
         symbol = stock_transaction.get('symbol', '')
         underlying = stock_transaction.get('underlying_symbol', symbol)
 
-        quantity = int(stock_transaction.get('quantity', 0))
-        # For assignment of short put, we receive stock (positive)
-        # For assignment of short call, we deliver stock (negative)
-        # The transaction already has the correct sign
+        raw_quantity = abs(int(stock_transaction.get('quantity', 0)))
 
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Get source lot info
+            # Get source lot info to determine direction and entry price
             cursor.execute("""
                 SELECT option_type, strike FROM position_lots WHERE id = ?
             """, (source_lot_id,))
@@ -324,6 +321,15 @@ class LotManager:
 
             # The strike price becomes the stock entry price
             entry_price = float(source_info[1]) if source_info and source_info[1] else float(stock_transaction.get('price', 0))
+
+            # Determine direction from source option type:
+            #   Short put assigned  → user buys shares  → positive quantity
+            #   Short call assigned → user sells/delivers shares → negative quantity
+            source_option_type = source_info[0] if source_info else None
+            if source_option_type and source_option_type.upper() == 'CALL':
+                quantity = -raw_quantity
+            else:
+                quantity = raw_quantity
 
             cursor.execute("""
                 INSERT INTO position_lots (
@@ -407,6 +413,121 @@ class LotManager:
                 params.append(underlying)
 
             query += " ORDER BY entry_date ASC"
+
+            cursor.execute(query, params)
+
+            lots = []
+            for row in cursor.fetchall():
+                lots.append(self._row_to_lot(row))
+
+            return lots
+
+    def get_lots_for_groups_batch(self, group_ids: List[str]) -> Dict[str, List[Lot]]:
+        """
+        Get lots for multiple position groups in a single query.
+        Joins position_lots with position_group_lots using transaction_id.
+
+        Returns:
+            Dict keyed by group_id, each value a list of Lot objects
+        """
+        if not group_ids:
+            return {}
+
+        result = {gid: [] for gid in group_ids}
+
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join(['?' for _ in group_ids])
+            cursor.execute(f"""
+                SELECT pgl.group_id,
+                       pl.id, pl.transaction_id, pl.account_number, pl.symbol, pl.underlying,
+                       pl.instrument_type, pl.option_type, pl.strike, pl.expiration,
+                       pl.quantity, pl.entry_price, pl.entry_date, pl.remaining_quantity,
+                       pl.original_quantity, pl.chain_id, pl.leg_index, pl.opening_order_id,
+                       pl.derived_from_lot_id, pl.derivation_type, pl.status
+                FROM position_group_lots pgl
+                JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
+                WHERE pgl.group_id IN ({placeholders})
+                ORDER BY pl.entry_date ASC, pl.leg_index ASC
+            """, group_ids)
+
+            for row in cursor.fetchall():
+                group_id = row[0]
+                lot = self._row_to_lot(row[1:])  # Skip group_id column
+                result[group_id].append(lot)
+
+        return result
+
+    def get_lot_closings_batch(self, lot_ids: List[int]) -> Dict[int, List[LotClosing]]:
+        """
+        Get closings for multiple lots in a single query.
+
+        Returns:
+            Dict keyed by lot_id, each value a list of LotClosing objects
+        """
+        if not lot_ids:
+            return {}
+
+        result = {lid: [] for lid in lot_ids}
+
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join(['?' for _ in lot_ids])
+            cursor.execute(f"""
+                SELECT closing_id, lot_id, closing_order_id, closing_transaction_id,
+                       quantity_closed, closing_price, closing_date, closing_type,
+                       realized_pnl, resulting_lot_id
+                FROM lot_closings
+                WHERE lot_id IN ({placeholders})
+                ORDER BY closing_date ASC
+            """, lot_ids)
+
+            for row in cursor.fetchall():
+                closing_date = row[6]
+                if isinstance(closing_date, str):
+                    closing_date = datetime.fromisoformat(closing_date.replace('Z', '+00:00'))
+
+                closing = LotClosing(
+                    closing_id=row[0],
+                    lot_id=row[1],
+                    closing_order_id=row[2],
+                    closing_transaction_id=row[3],
+                    quantity_closed=row[4],
+                    closing_price=row[5],
+                    closing_date=closing_date,
+                    closing_type=row[7],
+                    realized_pnl=row[8],
+                    resulting_lot_id=row[9]
+                )
+                result[row[1]].append(closing)
+
+        return result
+
+    def get_unassigned_lots(self, account_number: Optional[str] = None) -> List[Lot]:
+        """
+        Find lots whose transaction_id is NOT in position_group_lots.
+        Used for seeding new lots into groups.
+        """
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            query = """
+                SELECT pl.id, pl.transaction_id, pl.account_number, pl.symbol, pl.underlying,
+                       pl.instrument_type, pl.option_type, pl.strike, pl.expiration,
+                       pl.quantity, pl.entry_price, pl.entry_date, pl.remaining_quantity,
+                       pl.original_quantity, pl.chain_id, pl.leg_index, pl.opening_order_id,
+                       pl.derived_from_lot_id, pl.derivation_type, pl.status
+                FROM position_lots pl
+                LEFT JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
+                WHERE pgl.transaction_id IS NULL
+            """
+            params = []
+
+            if account_number:
+                query += " AND pl.account_number = ?"
+                params.append(account_number)
+
+            query += " ORDER BY pl.entry_date ASC"
 
             cursor.execute(query, params)
 
@@ -533,13 +654,24 @@ class LotManager:
                 UPDATE position_lots SET chain_id = ? WHERE id = ?
             """, (chain_id, lot_id))
 
-    def clear_all_lots(self):
-        """Clear all lots - use with caution during reprocessing"""
+    def clear_all_lots(self, underlyings: set = None):
+        """Clear lots. If underlyings is provided, only clear lots for those symbols."""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM lot_closings")
-            cursor.execute("DELETE FROM position_lots")
-            logger.warning("Cleared all lots and closings")
+            if underlyings:
+                placeholders = ','.join(['?' for _ in underlyings])
+                cursor.execute(f"""
+                    DELETE FROM lot_closings WHERE lot_id IN (
+                        SELECT id FROM position_lots WHERE underlying IN ({placeholders})
+                    )
+                """, list(underlyings))
+                cursor.execute(f"DELETE FROM position_lots WHERE underlying IN ({placeholders})",
+                               list(underlyings))
+                logger.info(f"Cleared lots and closings for {len(underlyings)} underlyings")
+            else:
+                cursor.execute("DELETE FROM lot_closings")
+                cursor.execute("DELETE FROM position_lots")
+                logger.warning("Cleared all lots and closings")
 
     def _row_to_lot(self, row) -> Lot:
         """Convert database row to Lot object"""
