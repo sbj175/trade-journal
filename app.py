@@ -622,6 +622,122 @@ def seed_position_groups():
     return groups_created
 
 
+def process_equity_transactions(account_number: Optional[str] = None):
+    """Create/close equity lots from raw stock transactions.
+
+    Runs after OrderProcessor (which handles options + assignment equity).
+    Processes explicit buy/sell equity trades from raw_transactions.
+
+    Returns:
+        Tuple of (lots_created, lots_closed)
+    """
+    lots_created = 0
+    lots_closed = 0
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # 1. Query equity trade transactions
+        query = """
+            SELECT id, account_number, order_id, transaction_type,
+                   transaction_sub_type, executed_at, action, symbol,
+                   instrument_type, underlying_symbol, quantity, price, value
+            FROM raw_transactions
+            WHERE instrument_type = 'InstrumentType.EQUITY'
+              AND transaction_type = 'Trade'
+              AND action IS NOT NULL
+        """
+        params = []
+        if account_number:
+            query += " AND account_number = ?"
+            params.append(account_number)
+        query += " ORDER BY executed_at ASC, id ASC"
+        cursor.execute(query, params)
+        equity_txns = [dict(row) for row in cursor.fetchall()]
+
+        if not equity_txns:
+            return (0, 0)
+
+        # 2. Get existing lot transaction_ids to skip already-processed
+        cursor.execute("""
+            SELECT transaction_id FROM position_lots WHERE instrument_type = 'EQUITY'
+        """)
+        existing_lot_txn_ids = {row[0] for row in cursor.fetchall()}
+
+        cursor.execute("""
+            SELECT closing_transaction_id FROM lot_closings
+            WHERE closing_transaction_id IS NOT NULL
+        """)
+        existing_closing_txn_ids = {row[0] for row in cursor.fetchall()}
+
+    # 3. Process each transaction chronologically
+    for txn in equity_txns:
+        txn_id = txn['id']
+        action = (txn.get('action') or '').upper()
+        symbol = txn.get('underlying_symbol') or txn.get('symbol', '')
+
+        # Normalize instrument_type for lot creation
+        txn['instrument_type'] = 'EQUITY'
+
+        if 'BUY_TO_OPEN' in action or 'SELL_TO_OPEN' in action:
+            # Opening transaction — create a lot
+            if txn_id in existing_lot_txn_ids:
+                continue
+            lot_manager.create_lot(
+                transaction=txn,
+                chain_id='',
+                leg_index=0,
+                opening_order_id=txn.get('order_id', '')
+            )
+            existing_lot_txn_ids.add(txn_id)
+            lots_created += 1
+
+        elif 'SELL_TO_CLOSE' in action:
+            # STC closes long positions
+            if txn_id in existing_closing_txn_ids:
+                continue
+            qty = abs(int(txn.get('quantity', 0)))
+            if qty > 0:
+                pnl, affected = lot_manager.close_lot_fifo(
+                    account_number=txn['account_number'],
+                    symbol=symbol,
+                    quantity_to_close=qty,
+                    closing_price=float(txn.get('price', 0)),
+                    closing_order_id=txn.get('order_id', ''),
+                    closing_transaction_id=txn_id,
+                    closing_date=txn.get('executed_at', ''),
+                    closing_type='MANUAL',
+                    close_long=True
+                )
+                if affected:
+                    existing_closing_txn_ids.add(txn_id)
+                    lots_closed += len(affected)
+
+        elif 'BUY_TO_CLOSE' in action:
+            # BTC closes short positions
+            if txn_id in existing_closing_txn_ids:
+                continue
+            qty = abs(int(txn.get('quantity', 0)))
+            if qty > 0:
+                pnl, affected = lot_manager.close_lot_fifo(
+                    account_number=txn['account_number'],
+                    symbol=symbol,
+                    quantity_to_close=qty,
+                    closing_price=float(txn.get('price', 0)),
+                    closing_order_id=txn.get('order_id', ''),
+                    closing_transaction_id=txn_id,
+                    closing_date=txn.get('executed_at', ''),
+                    closing_type='MANUAL',
+                    close_long=False
+                )
+                if affected:
+                    existing_closing_txn_ids.add(txn_id)
+                    lots_closed += len(affected)
+
+    logger.info(f"Equity lot processing: {lots_created} lots created, {lots_closed} lots closed")
+    return (lots_created, lots_closed)
+
+
 def seed_new_lots_into_groups():
     """After reprocessing, assign new lots (not in any group) to their chain's group or create new groups."""
     import uuid as _uuid
@@ -2414,7 +2530,7 @@ async def reconcile_positions_vs_chains():
             key = (pos.get('account_number', ''), (pos.get('symbol') or '').strip())
             tt_by_key[key] = pos
 
-        # 2. Get open option legs from position_lots (single query, no per-chain iteration)
+        # 2. Get open legs from position_lots — options and equity (single query)
         lot_legs_by_key = {}  # (account, symbol) -> { quantity, group_id }
         with db.get_connection() as conn:
             cursor = conn.cursor()
@@ -2425,7 +2541,7 @@ async def reconcile_positions_vs_chains():
                 FROM position_lots pl
                 LEFT JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
                 WHERE pl.remaining_quantity != 0 AND pl.status != 'CLOSED'
-                  AND pl.instrument_type = 'EQUITY_OPTION'
+                  AND pl.instrument_type IN ('EQUITY_OPTION', 'EQUITY')
                 GROUP BY pl.account_number, pl.symbol
             """)
             for row in cursor.fetchall():
@@ -2454,7 +2570,7 @@ async def reconcile_positions_vs_chains():
             acct, symbol = key
             tt_pos = tt_by_key[key]
             instrument = tt_pos.get('instrument_type', '').upper()
-            if 'OPTION' not in instrument:
+            if 'OPTION' not in instrument and 'EQUITY' not in instrument:
                 continue
 
             tt_qty = tt_pos.get('quantity', 0)
@@ -2519,7 +2635,7 @@ async def reconcile_positions_vs_chains():
                                 SELECT pgl.transaction_id FROM position_group_lots pgl
                                 JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
                                 WHERE pgl.group_id = ? AND pl.remaining_quantity != 0
-                                  AND pl.status != 'CLOSED' AND pl.instrument_type = 'EQUITY_OPTION'
+                                  AND pl.status != 'CLOSED' AND pl.instrument_type IN ('EQUITY_OPTION', 'EQUITY')
                             )
                         """, (group_id,))
                         if cursor.rowcount > 0:
@@ -2564,7 +2680,7 @@ async def reconcile_positions_vs_chains():
                     SELECT COUNT(*) FROM position_group_lots pgl
                     JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
                     WHERE pgl.group_id = ? AND pl.remaining_quantity != 0
-                      AND pl.status != 'CLOSED' AND pl.instrument_type = 'EQUITY_OPTION'
+                      AND pl.status != 'CLOSED' AND pl.instrument_type IN ('EQUITY_OPTION', 'EQUITY')
                 """, (group_id,))
                 has_open_lots = cursor.fetchone()[0] > 0
 
@@ -2846,6 +2962,7 @@ async def sync_unified():
                     logger.info("Running strategy detection on chains...")
                     try:
                         await update_chain_cache(all_chains, affected_underlyings)
+                        process_equity_transactions()
                         seed_new_lots_into_groups()
                         _reconcile_stale_groups()
                         logger.info("Strategy detection and cache update completed")
@@ -3038,6 +3155,7 @@ async def initial_sync():
             for account, chains in chains_by_account.items():
                 all_chains.extend(chains)
             await update_chain_cache(all_chains)
+            process_equity_transactions()
             seed_new_lots_into_groups()
             _reconcile_stale_groups()
             logger.info(f"Chain reprocessing completed: {len(all_chains)} chains with strategy detection")
@@ -3086,6 +3204,7 @@ async def reprocess_chains():
         # Update cache with fresh data
         logger.info(f"About to update cache with {len(all_chains)} chains...")
         await update_chain_cache(all_chains)
+        process_equity_transactions()
         logger.info("Cache update completed")
 
         # Assign new lots into position groups
