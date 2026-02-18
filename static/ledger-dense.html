@@ -326,7 +326,6 @@
                                 <span class="w-20 text-right">Entry $</span>
                                 <span class="w-24 text-right">Cost Basis</span>
                                 <span class="w-24 text-right ml-4">Realized</span>
-                                <span class="w-24 text-right">Total P&L</span>
                             </div>
 
                             <!-- Lot Rows -->
@@ -400,11 +399,6 @@
                                         <span class="w-24 text-right ml-4"
                                               :class="lot.realized_pnl > 0 ? 'text-tv-green' : lot.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'"
                                               x-text="lot.realized_pnl ? '$' + formatNumber(lot.realized_pnl) : ''"></span>
-
-                                        <!-- Total P&L -->
-                                        <span class="w-24 text-right"
-                                              :class="lot.total_pnl > 0 ? 'text-tv-green' : lot.total_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                              x-text="lot.total_pnl ? '$' + formatNumber(lot.total_pnl) : ''"></span>
                                     </div>
 
                                     <!-- Expanded Events (opening + closings) -->
@@ -433,7 +427,6 @@
                                                   :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'"
                                                   x-text="lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : ''"></span>
                                             <span class="w-24 ml-4"></span>
-                                            <span class="w-24"></span>
                                         </div>
 
                                         <!-- Closing Events (sub-rows) -->
@@ -467,7 +460,6 @@
                                                       x-text="closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : ''"></span>
                                                 <!-- Realized P&L shown at leg level only -->
                                                 <span class="w-24 ml-4"></span>
-                                                <span class="w-24"></span>
                                             </div>
                                         </template>
                                     </div>
