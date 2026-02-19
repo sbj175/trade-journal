@@ -548,9 +548,9 @@
                 },
 
                 shouldShowMaxPercent(group) {
-                    if (this._isEquityOnly(group) || group._isSubtotal) return false;
+                    if (this._hasEquity(group) || group._isSubtotal) return false;
                     const optionLegs = (group.positions || []).filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
-                    return optionLegs.length >= 2;
+                    return optionLegs.length === 2;
                 },
 
                 getMaxPercentColor(value) {
