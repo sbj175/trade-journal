@@ -664,7 +664,7 @@
                 }
 
                 // Sync account selection from other pages
-                const savedAccount = localStorage.getItem('selectedAccount');
+                const savedAccount = localStorage.getItem('trade_journal_selected_account');
                 if (savedAccount) {
                     this.selectedAccount = savedAccount;
                 }
@@ -864,7 +864,7 @@
             },
 
             onAccountChange() {
-                localStorage.setItem('selectedAccount', this.selectedAccount);
+                localStorage.setItem('trade_journal_selected_account', this.selectedAccount);
                 this.fetchLedger();
             },
 
