@@ -2390,7 +2390,8 @@ async def get_open_chains(account_number: Optional[str] = None):
     Returns groups by account_number with:
     - Each group's realized_pnl, cost_basis_total, roll_count
     - open_legs: currently open option legs (from lots with remaining_quantity != 0)
-    - shares: equity positions separated out per underlying
+    - equity_legs: currently open equity legs (from lots with remaining_quantity != 0)
+    - equity_summary: aggregated equity quantity/average_price/cost_basis
     """
     import json as _json
 
@@ -2418,7 +2419,6 @@ async def get_open_chains(account_number: Optional[str] = None):
             groups_raw = [dict(row) for row in cursor.fetchall()]
 
         if not groups_raw:
-            # Still need to check for equity positions even with no option groups
             result = {}
         else:
             group_ids = [g['group_id'] for g in groups_raw]
@@ -2462,19 +2462,20 @@ async def get_open_chains(account_number: Optional[str] = None):
                         except Exception:
                             pass
 
-            result = {}  # account_number -> { chains: [...], shares: {...} }
+            result = {}  # account_number -> { chains: [...] }
 
             for g in groups_raw:
                 gid = g['group_id']
                 acct = g['account_number']
 
                 if acct not in result:
-                    result[acct] = {"chains": [], "shares": {}}
+                    result[acct] = {"chains": []}
 
                 lots = lots_by_group.get(gid, [])
 
-                # Build open_legs from lots with remaining_quantity != 0 and option instrument
+                # Build open_legs from lots with remaining_quantity != 0
                 open_option_legs = []
+                open_equity_legs = []
                 cost_basis_total = 0.0
                 realized_pnl = 0.0
                 has_assignment = False
@@ -2515,29 +2516,41 @@ async def get_open_chains(account_number: Optional[str] = None):
                                 # Closing a long = selling (credit)
                                 cost_basis_total += c_amount
 
-                    # Only include open option lots in open_legs
-                    if (lot.remaining_quantity != 0 and lot.status != 'CLOSED'
-                            and lot.instrument_type == 'EQUITY_OPTION'):
+                    # Include open lots in the appropriate leg list
+                    if lot.remaining_quantity != 0 and lot.status != 'CLOSED':
                         qty = abs(lot.remaining_quantity)
-                        # quantity < 0 = short position
                         qty_direction = 'Short' if lot.quantity < 0 else 'Long'
-                        price = abs(lot.entry_price)
-                        leg_amount = price * qty * 100 if price else 0
-                        leg_cost = leg_amount if qty_direction == 'Short' else -leg_amount
+                        price = abs(lot.entry_price) if lot.entry_price else 0
 
-                        open_option_legs.append({
-                            "symbol": lot.symbol,
-                            "underlying": lot.underlying or g['underlying'],
-                            "instrument_type": lot.instrument_type,
-                            "option_type": lot.option_type,
-                            "strike": lot.strike,
-                            "expiration": str(lot.expiration) if lot.expiration else None,
-                            "quantity": qty,
-                            "quantity_direction": qty_direction,
-                            "opening_price": price,
-                            "cost_basis": leg_cost,
-                            "lot_id": lot.id,
-                        })
+                        if lot.instrument_type == 'EQUITY_OPTION':
+                            leg_amount = price * qty * 100 if price else 0
+                            leg_cost = leg_amount if qty_direction == 'Short' else -leg_amount
+                            open_option_legs.append({
+                                "symbol": lot.symbol,
+                                "underlying": lot.underlying or g['underlying'],
+                                "instrument_type": lot.instrument_type,
+                                "option_type": lot.option_type,
+                                "strike": lot.strike,
+                                "expiration": str(lot.expiration) if lot.expiration else None,
+                                "quantity": qty,
+                                "quantity_direction": qty_direction,
+                                "opening_price": price,
+                                "cost_basis": leg_cost,
+                                "lot_id": lot.id,
+                            })
+                        elif lot.instrument_type == 'EQUITY':
+                            leg_cost = (price * qty) if qty_direction == 'Short' else -(price * qty)
+                            open_equity_legs.append({
+                                "symbol": lot.symbol,
+                                "underlying": lot.underlying or g['underlying'],
+                                "instrument_type": "EQUITY",
+                                "quantity": qty,
+                                "quantity_direction": qty_direction,
+                                "entry_price": price,
+                                "cost_basis": leg_cost,
+                                "lot_id": lot.id,
+                                "derivation_type": lot.derivation_type,
+                            })
 
                 # Derive roll_count and order_count from cached orders
                 roll_count = 0
@@ -2547,14 +2560,32 @@ async def get_open_chains(account_number: Optional[str] = None):
                     if od.get('order_type') == 'ROLLING':
                         roll_count += 1
 
+                # Aggregate equity summary
+                equity_summary = None
+                if open_equity_legs:
+                    total_eq_qty = sum(
+                        l['quantity'] * (1 if l['quantity_direction'] == 'Long' else -1)
+                        for l in open_equity_legs
+                    )
+                    total_eq_cost = sum(abs(l['cost_basis']) for l in open_equity_legs)
+                    equity_summary = {
+                        "quantity": total_eq_qty,
+                        "average_price": total_eq_cost / abs(total_eq_qty) if total_eq_qty != 0 else 0,
+                        "cost_basis": total_eq_cost,
+                    }
+
                 # Build group object for frontend (response shape matches old chain format)
+                strategy_type = g['strategy_label'] or 'Unknown'
+                if not open_option_legs and open_equity_legs:
+                    strategy_type = "Shares"
+
                 group_obj = {
                     "chain_id": gid,  # alias group_id as chain_id for frontend compat
                     "group_id": gid,
                     "source_chain_id": g.get('source_chain_id'),
                     "underlying": g['underlying'],
                     "account_number": acct,
-                    "strategy_type": g['strategy_label'] or 'Unknown',
+                    "strategy_type": strategy_type,
                     "opening_date": g['opening_date'],
                     "chain_status": g['status'],
                     "realized_pnl": realized_pnl,
@@ -2563,67 +2594,14 @@ async def get_open_chains(account_number: Optional[str] = None):
                     "order_count": len(order_ids),
                     "has_assignment": has_assignment,
                     "open_legs": open_option_legs,
+                    "equity_legs": open_equity_legs,
+                    "equity_summary": equity_summary,
                 }
-                # Only include groups that have open option legs
-                if open_option_legs:
+                # Include groups that have any open legs (option or equity)
+                if open_option_legs or open_equity_legs:
                     result[acct]["chains"].append(group_obj)
 
-        # Source equity positions from TT API positions table (reliable for shares)
-        tt_positions = db.get_open_positions()
-        for pos in tt_positions:
-            instrument = pos.get('instrument_type', '')
-            if 'OPTION' in instrument.upper():
-                continue
-            if 'EQUITY' not in instrument.upper():
-                continue
-
-            acct = pos.get('account_number', '')
-            if account_number and account_number != '' and acct != account_number:
-                continue
-
-            if acct not in result:
-                result[acct] = {"chains": [], "shares": {}}
-
-            sym = pos.get('underlying') or pos.get('symbol', '')
-            qty = pos.get('quantity', 0)
-            direction = pos.get('quantity_direction', 'Long')
-            signed_qty = qty if direction == 'Long' else -qty
-            avg_price = abs(pos.get('average_open_price', 0) or 0)
-            raw_cost = pos.get('cost_basis', 0) or 0
-            cost_basis = abs(raw_cost) if raw_cost else (avg_price * qty)
-
-            shares_map = result[acct]["shares"]
-            if sym not in shares_map:
-                shares_map[sym] = {
-                    "symbol": sym,
-                    "underlying": sym,
-                    "instrument_type": "EQUITY",
-                    "quantity": 0,
-                    "total_cost": 0.0,
-                    "average_open_price": 0.0,
-                    "positions": [],
-                }
-            shares_map[sym]["quantity"] += signed_qty
-            shares_map[sym]["total_cost"] += cost_basis
-            shares_map[sym]["positions"].append({
-                "symbol": pos.get('symbol', sym),
-                "underlying": sym,
-                "instrument_type": "EQUITY",
-                "quantity": signed_qty,
-                "quantity_direction": direction,
-                "average_open_price": avg_price,
-                "cost_basis": cost_basis,
-                "account_number": acct,
-            })
-
-        # Compute weighted average price for each share group
-        for acct_data in result.values():
-            for sym, share_data in acct_data["shares"].items():
-                if share_data["quantity"] != 0:
-                    share_data["average_open_price"] = share_data["total_cost"] / abs(share_data["quantity"])
-                share_data["cost_basis"] = share_data["total_cost"]
-
-        logger.info(f"/api/open-chains: Returning {sum(len(a['chains']) for a in result.values())} groups, {sum(len(a['shares']) for a in result.values())} equity groups across {len(result)} accounts")
+        logger.info(f"/api/open-chains: Returning {sum(len(a['chains']) for a in result.values())} groups across {len(result)} accounts")
         return result
 
     except Exception as e:

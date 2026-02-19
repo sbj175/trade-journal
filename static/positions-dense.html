@@ -73,8 +73,7 @@
             return {
                 // State
                 allChains: [],        // chain objects from /api/open-chains
-                allShares: {},        // underlying -> share data, keyed by account
-                allItems: [],         // flat list of displayable items (chains + share rows)
+                allItems: [],         // flat list of displayable items (chains)
                 filteredItems: [],
                 accounts: [],
                 accountBalances: {},
@@ -194,17 +193,12 @@
 
                             if (aVal < bVal) return self.sortDirection === 'asc' ? -1 : 1;
                             if (aVal > bVal) return self.sortDirection === 'asc' ? 1 : -1;
-                            // Within same underlying, shares sort before options
-                            if (a._isShareRow && !b._isShareRow) return -1;
-                            if (!a._isShareRow && b._isShareRow) return 1;
                             return 0;
                         });
 
                         // Attach roll analysis to each group for reactive badge display
                         sorted.forEach(group => {
-                            if (!group._isShareRow) {
-                                group.rollAnalysis = this.getRollAnalysis(group);
-                            }
+                            group.rollAnalysis = this.getRollAnalysis(group);
                         });
 
                         // Phase 3: Insert subtotal rows when sorted by underlying
@@ -273,53 +267,24 @@
                         const data = await response.json();
 
                         this.allChains = [];
-                        this.allShares = {};
                         this.allItems = [];
 
                         if (typeof data === 'object' && !Array.isArray(data)) {
                             Object.entries(data).forEach(([accountNumber, accountData]) => {
                                 const chains = accountData.chains || [];
-                                const shares = accountData.shares || {};
 
-                                // Process chains
                                 chains.forEach(chain => {
                                     chain.account_number = accountNumber;
                                     this.allChains.push(chain);
 
-                                    // Create a display item for each chain
                                     this.allItems.push({
                                         ...chain,
                                         groupKey: `${accountNumber}|${chain.chain_id}`,
                                         displayKey: chain.underlying,
                                         accountNumber: accountNumber,
                                         positions: chain.open_legs || [],
-                                        _isShareRow: false,
-                                    });
-                                });
-
-                                // Process shares — create one display item per underlying
-                                Object.entries(shares).forEach(([underlying, shareData]) => {
-                                    this.allShares[`${accountNumber}|${underlying}`] = shareData;
-                                    this.allItems.push({
-                                        groupKey: `${accountNumber}|shares_${underlying}`,
-                                        displayKey: underlying,
-                                        underlying: underlying,
-                                        accountNumber: accountNumber,
-                                        chain_id: `shares_${underlying}`,
-                                        chainId: `shares_${underlying}`,
-                                        strategy_type: 'Shares',
-                                        strategyType: 'Shares',
-                                        opening_date: null,
-                                        chain_status: 'OPEN',
-                                        realized_pnl: 0,
-                                        cost_basis_total: shareData.cost_basis || 0,
-                                        roll_count: 0,
-                                        order_count: 0,
-                                        has_assignment: false,
-                                        positions: [],  // shares don't have option legs
-                                        open_legs: [],
-                                        _isShareRow: true,
-                                        _shareData: shareData,
+                                        equityLegs: chain.equity_legs || [],
+                                        equitySummary: chain.equity_summary || null,
                                     });
                                 });
                             });
@@ -504,21 +469,21 @@
 
                 getGroupCostBasis(group) {
                     if (group._isSubtotal) return group._subtotalCostBasis;
-                    if (group._isShareRow) return group.cost_basis_total || 0;
-                    // For chains: sum of open leg cost bases
-                    const legs = group.positions || [];
-                    if (legs.length === 0) return 0;
-                    return legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
+                    const optionTotal = (group.positions || []).reduce((s, l) => s + (l.cost_basis || 0), 0);
+                    const equityTotal = (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0);
+                    return optionTotal + equityTotal;
                 },
 
                 // Open P/L: unrealized P&L on current legs (net_liq - cost_basis)
                 getGroupOpenPnL(group) {
                     this.quoteUpdateCounter;
                     if (group._isSubtotal) return group._subtotalOpenPnL;
-                    if (group._isShareRow) return this._getShareOpenPnL(group);
-                    const legs = group.positions || [];
-                    if (legs.length === 0) return 0;
-                    return legs.reduce((sum, leg) => sum + this._calculateLegPnL(leg), 0);
+                    const optionPnL = (group.positions || []).reduce((sum, leg) => sum + this._calculateLegPnL(leg), 0);
+                    const eqLegs = group.equityLegs || [];
+                    if (eqLegs.length === 0) return optionPnL;
+                    const eqCost = eqLegs.reduce((s, l) => s + (l.cost_basis || 0), 0);
+                    const eqMV = this._calculateEquityMarketValue(group);
+                    return optionPnL + eqMV + eqCost;
                 },
 
                 // Realized P/L: banked P&L from rolls/partial closes
@@ -542,10 +507,9 @@
                 getGroupNetLiqWithLiveQuotes(group) {
                     this.quoteUpdateCounter;
                     if (group._isSubtotal) return group._subtotalNetLiq;
-                    if (group._isShareRow) return this._getShareMarketValue(group);
-                    const legs = group.positions || [];
-                    if (legs.length === 0) return 0;
-                    return legs.reduce((sum, leg) => sum + this._calculateLegMarketValue(leg), 0);
+                    const optionMV = (group.positions || []).reduce((sum, leg) => sum + this._calculateLegMarketValue(leg), 0);
+                    const equityMV = this._calculateEquityMarketValue(group);
+                    return optionMV + equityMV;
                 },
 
                 getGroupPnLPercent(group) {
@@ -556,7 +520,7 @@
                 },
 
                 getGroupMaxPercent(group) {
-                    if (group._isShareRow || group._isSubtotal) return '—';
+                    if (this._isEquityOnly(group) || group._isSubtotal) return '—';
                     const legs = group.positions || [];
                     const totalCostBasis = legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
                     if (totalCostBasis === 0) return '—';
@@ -584,9 +548,9 @@
                 },
 
                 shouldShowMaxPercent(group) {
-                    if (group._isShareRow || group._isSubtotal) return false;
+                    if (this._hasEquity(group) || group._isSubtotal) return false;
                     const optionLegs = (group.positions || []).filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
-                    return optionLegs.length >= 2;
+                    return optionLegs.length === 2;
                 },
 
                 getMaxPercentColor(value) {
@@ -609,7 +573,6 @@
 
                 getMinDTE(group) {
                     if (group._isSubtotal) return null;
-                    if (group._isShareRow) return null;
                     const legs = group.positions || [];
                     let minDTE = null;
                     for (const leg of legs) {
@@ -651,22 +614,23 @@
                     }
                 },
 
-                _getShareMarketValue(group) {
-                    this.quoteUpdateCounter;
-                    const shareData = group._shareData;
-                    if (!shareData) return 0;
-                    const quote = this.underlyingQuotes[group.underlying];
-                    if (quote && quote.price) {
-                        return quote.price * shareData.quantity;
-                    }
-                    // Fallback: use cost basis as market value
-                    return shareData.cost_basis || 0;
+                _hasEquity(group) {
+                    return (group.equityLegs || []).length > 0;
                 },
-
-                _getShareOpenPnL(group) {
-                    const marketValue = this._getShareMarketValue(group);
-                    const costBasis = group.cost_basis_total || 0;
-                    return marketValue - costBasis;
+                _isEquityOnly(group) {
+                    return this._hasEquity(group) && (group.positions || []).length === 0;
+                },
+                _calculateEquityMarketValue(group) {
+                    const eqLegs = group.equityLegs || [];
+                    if (eqLegs.length === 0) return 0;
+                    const quote = this.underlyingQuotes[group.underlying];
+                    if (!quote || !quote.price) return 0;
+                    let total = 0;
+                    eqLegs.forEach(leg => {
+                        const signed = leg.quantity_direction === 'Short' ? -leg.quantity : leg.quantity;
+                        total += quote.price * signed;
+                    });
+                    return total;
                 },
 
                 // ===== Sort =====
@@ -689,7 +653,6 @@
 
                 getGroupStrategyLabel(group) {
                     if (group._isSubtotal) return '';
-                    if (group._isShareRow) return 'Shares';
                     if (group.strategy_type && group.strategy_type !== 'Unknown') return group.strategy_type;
                     return 'Unknown';
                 },
@@ -1034,7 +997,7 @@
                     // Migrate notes from old chain_{source_chain_id} keys to new group_{group_id} keys
                     try {
                         for (const item of this.allItems) {
-                            if (item._isShareRow || item._isSubtotal) continue;
+                            if (item._isSubtotal) continue;
                             const groupId = item.group_id || item.chain_id;
                             const sourceChainId = item.source_chain_id;
                             if (!groupId || !sourceChainId || groupId === sourceChainId) continue;
@@ -1067,9 +1030,8 @@
                 },
                 getCommentKey(group) {
                     if (group._isSubtotal) return null;
-                    if (group._isShareRow) return `shares_${group.underlying}_${group.accountNumber || 'default'}`;
                     const groupId = group.group_id || group.chain_id || group.chainId;
-                    if (groupId && !groupId.startsWith('shares_')) return `group_${groupId}`;
+                    if (groupId) return `group_${groupId}`;
                     return `pos_${group.underlying}_${group.accountNumber || 'default'}`;
                 },
                 getPositionComment(group) {
@@ -1325,12 +1287,10 @@
                             <!-- Group Row -->
                             <div class="flex items-center px-4 py-2 hover:bg-tv-border/30 cursor-pointer transition-colors"
                                  @click="expanded = !expanded"
-                                 :class="group._isShareRow ? 'bg-tv-panel/30' : ''">
                                 <!-- Chevron -->
                                 <div class="w-8">
                                     <i class="fas fa-chevron-right text-tv-muted transition-transform duration-200"
-                                       :class="{ 'rotate-90': expanded }"
-                                       x-show="!group._isShareRow || group._shareData?.quantity"></i>
+                                       :class="{ 'rotate-90': expanded }"></i>
                                 </div>
 
                                 <!-- Account Symbol (only when All Accounts selected) -->
@@ -1342,7 +1302,7 @@
                                 <div class="w-24">
                                     <div class="font-semibold text-base text-tv-text">
                                         <span x-text="group.displayKey || group.underlying"></span>
-                                        <span x-show="group._isShareRow" class="text-xs text-tv-muted ml-1">shares</span>
+                                        <span x-show="_hasEquity(group) && (group.positions || []).length > 0" class="text-[10px] text-tv-muted ml-1 bg-tv-border/50 px-1 rounded">+stk</span>
                                     </div>
                                 </div>
 
@@ -1372,15 +1332,13 @@
 
                                 <!-- Ledger Link -->
                                 <div class="w-12">
-                                    <template x-if="!group._isShareRow">
-                                        <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying)"
-                                           @click.stop
-                                           class="text-tv-blue hover:text-blue-400"
-                                           title="View in Ledger">
-                                            <i class="fas fa-book"></i>
-                                            <span x-show="group.roll_count > 0" class="text-xs text-tv-muted ml-0.5" x-text="'R' + group.roll_count"></span>
-                                        </a>
-                                    </template>
+                                    <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying)"
+                                       @click.stop
+                                       class="text-tv-blue hover:text-blue-400"
+                                       title="View in Ledger">
+                                        <i class="fas fa-book"></i>
+                                        <span x-show="group.roll_count > 0" class="text-xs text-tv-muted ml-0.5" x-text="'R' + group.roll_count"></span>
+                                    </a>
                                 </div>
 
                                 <!-- Strategy -->
@@ -1468,96 +1426,97 @@
                             <div x-show="expanded" class="bg-tv-bg border-t border-tv-border">
                                 <div class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border font-mono">
                                     <div class="flex gap-4">
-                                        <!-- Leg data (options) -->
-                                        <template x-if="!group._isShareRow">
-                                            <div class="flex-shrink-0 space-y-1">
-                                                <!-- Header row -->
-                                                <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
-                                                    <span class="w-10 text-right">Qty</span>
-                                                    <span class="w-16 text-center mx-2">Exp</span>
-                                                    <span class="w-10">DTE</span>
-                                                    <span class="w-16 text-center mx-2">Strike</span>
-                                                    <span class="w-6">Type</span>
-                                                    <span class="w-24 text-right ml-4">Cost Basis</span>
-                                                    <span class="w-20 text-right">Net Liq</span>
-                                                    <span class="w-20 text-right">Open P/L</span>
-                                                </div>
+                                        <div class="flex-shrink-0 space-y-1">
+                                            <!-- Option legs section -->
+                                            <template x-if="(group.positions || []).length > 0">
+                                                <div>
+                                                    <!-- Header row -->
+                                                    <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
+                                                        <span class="w-10 text-right">Qty</span>
+                                                        <span class="w-16 text-center mx-2">Exp</span>
+                                                        <span class="w-10">DTE</span>
+                                                        <span class="w-16 text-center mx-2">Strike</span>
+                                                        <span class="w-6">Type</span>
+                                                        <span class="w-24 text-right ml-4">Cost Basis</span>
+                                                        <span class="w-20 text-right">Net Liq</span>
+                                                        <span class="w-20 text-right">Open P/L</span>
+                                                    </div>
 
-                                                <!-- Option legs -->
-                                                <template x-for="leg in [...(group.positions || [])].sort((a, b) => {
-                                                    const expA = a.expiration || '';
-                                                    const expB = b.expiration || '';
-                                                    if (expA !== expB) return expA.localeCompare(expB);
-                                                    return (a.strike || 0) - (b.strike || 0);
-                                                })" :key="leg.symbol">
+                                                    <!-- Option legs -->
+                                                    <template x-for="leg in [...(group.positions || [])].sort((a, b) => {
+                                                        const expA = a.expiration || '';
+                                                        const expB = b.expiration || '';
+                                                        if (expA !== expB) return expA.localeCompare(expB);
+                                                        return (a.strike || 0) - (b.strike || 0);
+                                                    })" :key="leg.symbol">
+                                                        <div class="flex items-center text-sm py-0.5">
+                                                            <span class="w-10 text-right font-medium"
+                                                                  :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                                  x-text="getSignedQuantity(leg)"></span>
+                                                            <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
+                                                                  x-text="getExpirationDate(leg)"></span>
+                                                            <span class="w-10 text-tv-muted"
+                                                                  :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 30 ? 'text-yellow-400' : ''"
+                                                                  x-text="getDTE(leg) !== null ? getDTE(leg) + 'd' : ''"></span>
+                                                            <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
+                                                                  x-text="getStrikePrice(leg)"></span>
+                                                            <span class="w-6 text-tv-muted"
+                                                                  x-text="getOptionType(leg)"></span>
+                                                            <span class="w-24 text-right ml-4"
+                                                                  :class="(leg.cost_basis || 0) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                                  x-text="'$' + formatNumber(leg.cost_basis || 0)"></span>
+                                                            <span class="w-20 text-right text-tv-muted"
+                                                                  x-text="'$' + formatNumber(_calculateLegMarketValue(leg))"></span>
+                                                            <span class="w-20 text-right font-medium"
+                                                                  :class="_calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                                  x-text="'$' + formatNumber(_calculateLegPnL(leg))"></span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+
+                                            <!-- Equity section -->
+                                            <template x-if="(group.equityLegs || []).length > 0">
+                                                <div :class="(group.positions || []).length > 0 ? 'mt-2 pt-2 border-t border-tv-border/30' : ''">
+                                                    <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
+                                                        <span class="w-16">Shares</span>
+                                                        <span class="w-20 text-right">Avg Price</span>
+                                                        <span class="w-24 text-right ml-4">Cost Basis</span>
+                                                        <span class="w-20 text-right">Mkt Value</span>
+                                                        <span class="w-20 text-right">Open P/L</span>
+                                                    </div>
                                                     <div class="flex items-center text-sm py-0.5">
-                                                        <span class="w-10 text-right font-medium"
-                                                              :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                              x-text="getSignedQuantity(leg)"></span>
-                                                        <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
-                                                              x-text="getExpirationDate(leg)"></span>
-                                                        <span class="w-10 text-tv-muted"
-                                                              :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 30 ? 'text-yellow-400' : ''"
-                                                              x-text="getDTE(leg) !== null ? getDTE(leg) + 'd' : ''"></span>
-                                                        <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text"
-                                                              x-text="getStrikePrice(leg)"></span>
-                                                        <span class="w-6 text-tv-muted"
-                                                              x-text="getOptionType(leg)"></span>
-                                                        <span class="w-24 text-right ml-4"
-                                                              :class="(leg.cost_basis || 0) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                              x-text="'$' + formatNumber(leg.cost_basis || 0)"></span>
+                                                        <span class="w-16 font-medium text-tv-text" x-text="group.equitySummary?.quantity || 0"></span>
+                                                        <span class="w-20 text-right text-tv-muted" x-text="'$' + formatNumber(group.equitySummary?.average_price || 0)"></span>
+                                                        <span class="w-24 text-right ml-4 text-tv-muted"
+                                                              x-text="'$' + formatNumber(group.equitySummary?.cost_basis || 0)"></span>
                                                         <span class="w-20 text-right text-tv-muted"
-                                                              x-text="'$' + formatNumber(_calculateLegMarketValue(leg))"></span>
+                                                              x-text="'$' + formatNumber(_calculateEquityMarketValue(group))"></span>
                                                         <span class="w-20 text-right font-medium"
-                                                              :class="_calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                              x-text="'$' + formatNumber(_calculateLegPnL(leg))"></span>
+                                                              :class="(_calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                              x-text="'$' + formatNumber(_calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0))"></span>
                                                     </div>
-                                                </template>
-
-                                                <!-- No legs message for assigned chains -->
-                                                <template x-if="(group.positions || []).length === 0">
-                                                    <div class="text-xs text-tv-muted py-1">
-                                                        <span x-show="group.has_assignment">All options assigned/exercised — see shares row above</span>
-                                                        <span x-show="!group.has_assignment">No open option legs</span>
-                                                    </div>
-                                                </template>
-
-                                                <!-- Chain summary -->
-                                                <div class="flex items-center text-xs text-tv-muted mt-2 pt-1 border-t border-tv-border/30 gap-4">
-                                                    <span x-text="'Opened: ' + (group.opening_date || 'N/A')"></span>
-                                                    <span x-text="'Orders: ' + (group.order_count || 1)"></span>
-                                                    <span x-show="group.roll_count > 0" x-text="'Rolls: ' + group.roll_count" class="text-tv-blue"></span>
-                                                    <span x-show="group.realized_pnl !== 0"
-                                                          :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                          x-text="'Realized: $' + formatNumber(group.realized_pnl)"></span>
                                                 </div>
+                                            </template>
+
+                                            <!-- No legs message for assigned chains -->
+                                            <template x-if="(group.positions || []).length === 0 && (group.equityLegs || []).length === 0">
+                                                <div class="text-xs text-tv-muted py-1">
+                                                    <span x-show="group.has_assignment">All positions assigned/exercised</span>
+                                                    <span x-show="!group.has_assignment">No open legs</span>
+                                                </div>
+                                            </template>
+
+                                            <!-- Chain summary -->
+                                            <div class="flex items-center text-xs text-tv-muted mt-2 pt-1 border-t border-tv-border/30 gap-4">
+                                                <span x-text="'Opened: ' + (group.opening_date || 'N/A')"></span>
+                                                <span x-text="'Orders: ' + (group.order_count || 1)"></span>
+                                                <span x-show="group.roll_count > 0" x-text="'Rolls: ' + group.roll_count" class="text-tv-blue"></span>
+                                                <span x-show="group.realized_pnl !== 0"
+                                                      :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                      x-text="'Realized: $' + formatNumber(group.realized_pnl)"></span>
                                             </div>
-                                        </template>
-
-                                        <!-- Share detail (equity positions) -->
-                                        <template x-if="group._isShareRow && group._shareData">
-                                            <div class="flex-shrink-0 space-y-1">
-                                                <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
-                                                    <span class="w-16">Shares</span>
-                                                    <span class="w-20 text-right">Avg Price</span>
-                                                    <span class="w-24 text-right ml-4">Cost Basis</span>
-                                                    <span class="w-20 text-right">Mkt Value</span>
-                                                    <span class="w-20 text-right">Open P/L</span>
-                                                </div>
-                                                <div class="flex items-center text-sm py-0.5">
-                                                    <span class="w-16 font-medium text-tv-text" x-text="group._shareData.quantity"></span>
-                                                    <span class="w-20 text-right text-tv-muted" x-text="'$' + formatNumber(group._shareData.average_open_price)"></span>
-                                                    <span class="w-24 text-right ml-4"
-                                                          :class="(group.cost_basis_total || 0) >= 0 ? 'text-tv-muted' : 'text-tv-red'"
-                                                          x-text="'$' + formatNumber(group.cost_basis_total || 0)"></span>
-                                                    <span class="w-20 text-right text-tv-muted"
-                                                          x-text="'$' + formatNumber(_getShareMarketValue(group))"></span>
-                                                    <span class="w-20 text-right font-medium"
-                                                          :class="_getShareOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                          x-text="'$' + formatNumber(_getShareOpenPnL(group))"></span>
-                                                </div>
-                                            </div>
-                                        </template>
+                                        </div>
 
                                         <!-- Comments -->
                                         <div class="flex-1 min-w-0">
