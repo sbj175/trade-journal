@@ -380,8 +380,8 @@
                                                         <span x-text="formatOrderDate(lot.entry_date)"></span>
                                                     </span>
                                                     <span class="w-10 text-right font-medium"
-                                                          :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                          x-text="lot.quantity"></span>
+                                                          :class="(lot.remaining_quantity ?? lot.quantity) > 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="lot.remaining_quantity ?? lot.quantity"></span>
                                                     <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text">Shares</span>
                                                     <span class="w-10 text-tv-muted">&mdash;</span>
                                                     <span class="w-16 text-center mx-2 py-0.5 rounded text-tv-muted">&mdash;</span>
@@ -1068,7 +1068,7 @@
             equityAggregate(group) {
                 const lots = this.openEquityLots(group);
                 if (lots.length === 0) return null;
-                const totalQty = lots.reduce((s, l) => s + l.quantity, 0);
+                const totalQty = lots.reduce((s, l) => s + (l.remaining_quantity ?? l.quantity), 0);
                 const totalCost = lots.reduce((s, l) => s + (l.cost_basis || 0), 0);
                 return {
                     quantity: totalQty,
