@@ -796,6 +796,19 @@ def _net_opposing_equity_lots() -> int:
         for neg_id, neg_remaining, neg_price, neg_date in neg_lots:
             qty_to_close = abs(neg_remaining)
 
+            # Determine closing date: use the latest of (negative lot date, latest positive lot date)
+            # so that closing dates never appear before the lots they close
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT MAX(entry_date) FROM position_lots
+                    WHERE account_number = ? AND symbol = ? AND instrument_type = 'EQUITY'
+                      AND remaining_quantity > 0 AND status != 'CLOSED'
+                """, (acct, symbol))
+                latest_pos_date = cursor.fetchone()[0]
+
+            closing_date = max(neg_date, latest_pos_date) if latest_pos_date else neg_date
+
             # Close matching long lots at the negative lot's entry price
             pnl, affected = lot_manager.close_lot_fifo(
                 account_number=acct,
@@ -804,7 +817,7 @@ def _net_opposing_equity_lots() -> int:
                 closing_price=neg_price,
                 closing_order_id='EQUITY_NETTING',
                 closing_transaction_id=None,
-                closing_date=neg_date,
+                closing_date=closing_date,
                 closing_type='MANUAL',
                 close_long=True
             )
@@ -838,7 +851,7 @@ def _net_opposing_equity_lots() -> int:
                             quantity_closed, closing_price, closing_date,
                             closing_type, realized_pnl
                         ) VALUES (?, 'EQUITY_NETTING', NULL, ?, ?, ?, 'MANUAL', 0)
-                    """, (neg_id, total_closed, neg_price, neg_date))
+                    """, (neg_id, total_closed, neg_price, closing_date))
 
                     conn.commit()
                     netted += len(affected) + 1  # positive lots closed + negative lot
