@@ -550,9 +550,9 @@
 
                 getGroupPnLPercent(group) {
                     const costBasis = this.getGroupCostBasis(group);
-                    const totalPnL = this.getGroupTotalPnL(group);
+                    const openPnL = this.getGroupOpenPnL(group);
                     if (costBasis === 0) return null;
-                    return ((totalPnL / Math.abs(costBasis)) * 100).toFixed(1);
+                    return ((openPnL / Math.abs(costBasis)) * 100).toFixed(1);
                 },
 
                 getGroupMaxPercent(group) {
