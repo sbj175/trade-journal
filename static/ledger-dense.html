@@ -911,7 +911,11 @@
                     const aOpen = a.status !== 'CLOSED' ? 0 : 1;
                     const bOpen = b.status !== 'CLOSED' ? 0 : 1;
                     if (aOpen !== bOpen) return aOpen - bOpen;
-                    // Within same status: expiration desc, then strike desc
+                    // Within same status: entry date desc (most recent first)
+                    const aDate = a.entry_date || '';
+                    const bDate = b.entry_date || '';
+                    if (aDate !== bDate) return bDate.localeCompare(aDate);
+                    // Tie-break: expiration desc, then strike desc
                     const aExp = a.expiration || '';
                     const bExp = b.expiration || '';
                     if (aExp !== bExp) return bExp.localeCompare(aExp);
