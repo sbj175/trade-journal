@@ -1254,6 +1254,10 @@
                 Total
                 <span x-show="sortColumn === 'total_pnl'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
+            <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
+                % Rtn
+                <span x-show="sortColumn === 'pnl_percent'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
+            </span>
             <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('max_percent')">
                 % Max
                 <span x-show="sortColumn === 'max_percent'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
@@ -1308,6 +1312,8 @@
                                  :class="(group._subtotalTotalPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalTotalPnL)">
                                 <span x-show="group._subtotalTotalPnL < 0">-</span>$<span x-text="formatDollar(group._subtotalTotalPnL)"></span>
                             </div>
+                            <!-- % Rtn -->
+                            <div class="w-14"></div>
                             <!-- % Max -->
                             <div class="w-14"></div>
                         </div>
@@ -1440,6 +1446,11 @@
                                      :class="(getGroupTotalPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupTotalPnL(group))">
                                     <span x-show="getGroupTotalPnL(group) < 0">-</span>$<span x-text="formatDollar(getGroupTotalPnL(group))"></span>
                                 </div>
+
+                                <!-- % Rtn -->
+                                <div class="w-14 text-right"
+                                     :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'"
+                                     x-text="getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : '—'"></div>
 
                                 <!-- % Max -->
                                 <div class="w-14 text-right"
