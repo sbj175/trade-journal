@@ -337,23 +337,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     logger.info(f"Using preserved strategy for chain {chain.chain_id}: {detected_strategy}")
                 else:
                     try:
-                        if chain.underlying in ["CSX", "GOOG", "USO"]:
-                            logger.warning(f"[DEBUG] Processing {chain.underlying} chain {chain.chain_id}")
-                            if chain.orders:
-                                opening_orders = [o for o in chain.orders if o.order_type.value == 'OPENING']
-                                if opening_orders:
-                                    logger.warning(f"  Found {len(opening_orders)} opening orders")
-                                    for tx in opening_orders[0].transactions[:2]:
-                                        logger.warning(f"    TX: symbol={tx.symbol}, option_type={tx.option_type}, strike={tx.strike}, action={tx.action}")
-                                else:
-                                    logger.warning(f"  No opening orders found")
-                            else:
-                                logger.warning(f"  No orders in chain")
-
                         detected_strategy = strategy_detector.detect_chain_strategy(chain)
-
-                        if chain.underlying in ["CSX", "GOOG", "USO"]:
-                            logger.warning(f"  Detected strategy: {detected_strategy}")
 
                         if detected_strategy is None:
                             detected_strategy = "Unknown"
@@ -393,9 +377,6 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 if has_rolls:
                     realized_pnl = total_pnl
                     unrealized_pnl = 0.0
-
-                if chain.underlying in ["CSX", "GOOG", "USO"]:
-                    logger.warning(f"[INSERT] About to insert chain {chain.chain_id} with strategy_type = {repr(detected_strategy)}")
 
                 # V3: Calculate lot-based chain metadata
                 has_assignment = any(
