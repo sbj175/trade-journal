@@ -92,6 +92,8 @@
                 <span class="text-tv-muted">Time:</span>
                 <select x-model="timePeriod" @change="applyFilters(); saveState()"
                         class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2">
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
                     <option value="7">7D</option>
                     <option value="30">30D</option>
                     <option value="60">60D</option>
@@ -893,14 +895,32 @@
 
                 // Time period filter
                 if (this.timePeriod !== 'all') {
-                    const days = parseInt(this.timePeriod);
-                    if (!isNaN(days)) {
-                        const cutoff = new Date();
-                        cutoff.setDate(cutoff.getDate() - days);
+                    let cutoffStart, cutoffEnd;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    if (this.timePeriod === 'today') {
+                        cutoffStart = today;
+                        cutoffEnd = null;
+                    } else if (this.timePeriod === 'yesterday') {
+                        cutoffStart = new Date(today);
+                        cutoffStart.setDate(cutoffStart.getDate() - 1);
+                        cutoffEnd = today;
+                    } else {
+                        const days = parseInt(this.timePeriod);
+                        if (!isNaN(days)) {
+                            cutoffStart = new Date(today);
+                            cutoffStart.setDate(cutoffStart.getDate() - days);
+                        }
+                        cutoffEnd = null;
+                    }
+
+                    if (cutoffStart) {
                         filtered = filtered.filter(g => {
                             const opened = g.opening_date ? new Date(g.opening_date) : null;
                             const closed = g.closing_date ? new Date(g.closing_date) : null;
-                            return (opened && opened >= cutoff) || (closed && closed >= cutoff);
+                            const inRange = (d) => d && d >= cutoffStart && (!cutoffEnd || d < cutoffEnd);
+                            return inRange(opened) || inRange(closed);
                         });
                     }
                 }
