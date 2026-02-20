@@ -898,8 +898,9 @@
                         const cutoff = new Date();
                         cutoff.setDate(cutoff.getDate() - days);
                         filtered = filtered.filter(g => {
-                            const d = g.opening_date ? new Date(g.opening_date) : null;
-                            return d && d >= cutoff;
+                            const opened = g.opening_date ? new Date(g.opening_date) : null;
+                            const closed = g.closing_date ? new Date(g.closing_date) : null;
+                            return (opened && opened >= cutoff) || (closed && closed >= cutoff);
                         });
                     }
                 }
