@@ -118,7 +118,7 @@ def seed_position_groups():
                     INSERT INTO position_groups
                         (group_id, account_number, underlying, strategy_label, status,
                          source_chain_id, opening_date, closing_date)
-                    VALUES (?, ?, ?, 'Ungrouped', 'OPEN', NULL, NULL, NULL)
+                    VALUES (?, ?, ?, 'Shares', 'OPEN', NULL, NULL, NULL)
                 """, (group_id, acct, und))
                 for txn_id in txn_ids:
                     cursor.execute("""
@@ -443,7 +443,7 @@ def seed_new_lots_into_groups():
                     cursor.execute("""
                         SELECT group_id FROM position_groups
                         WHERE account_number = ? AND underlying = ? AND source_chain_id IS NULL
-                        AND strategy_label = 'Ungrouped'
+                        AND strategy_label = 'Shares'
                     """, (acct, und))
                     row = cursor.fetchone()
                     if row:
@@ -454,7 +454,7 @@ def seed_new_lots_into_groups():
                             INSERT INTO position_groups
                                 (group_id, account_number, underlying, strategy_label, status,
                                  source_chain_id, opening_date, closing_date)
-                            VALUES (?, ?, ?, 'Ungrouped', 'OPEN', NULL, NULL, NULL)
+                            VALUES (?, ?, ?, 'Shares', 'OPEN', NULL, NULL, NULL)
                         """, (group_id, acct, und))
 
                     for lot in blots:
