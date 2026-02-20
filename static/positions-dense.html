@@ -1353,7 +1353,7 @@
                                 <!-- DTE -->
                                 <div class="w-12 text-center"
                                      :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'"
-                                     x-text="getMinDTE(group) || ''"></div>
+                                     x-text="getMinDTE(group) !== null ? getMinDTE(group) : ''"></div>
 
                                 <!-- Days -->
                                 <div class="w-12 text-center text-tv-text" x-text="getGroupDaysOpen(group) || ''"></div>
