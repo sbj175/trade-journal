@@ -57,6 +57,10 @@
             100% { transform: rotate(360deg); }
         }
     </style>
+
+    <!-- Shared utilities and constants -->
+    <script src="/static/js/constants.js"></script>
+    <script src="/static/js/utils.js"></script>
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="ledgerApp()" x-init="init()">
 
@@ -758,26 +762,6 @@
             stats: { totalPnl: 0, openCount: 0, closedCount: 0 },
             filterDirection: [],
             filterType: [],
-            strategyCategories: {
-                'Bull Put Spread': { direction: 'bullish', type: 'credit' },
-                'Bear Call Spread': { direction: 'bearish', type: 'credit' },
-                'Iron Condor': { direction: 'neutral', type: 'credit' },
-                'Iron Butterfly': { direction: 'neutral', type: 'credit' },
-                'Cash Secured Put': { direction: 'bullish', type: 'credit' },
-                'Covered Call': { direction: 'bullish', type: 'credit' },
-                'Short Put': { direction: 'bullish', type: 'credit' },
-                'Short Call': { direction: 'bearish', type: 'credit' },
-                'Short Strangle': { direction: 'neutral', type: 'credit' },
-                'Short Straddle': { direction: 'neutral', type: 'credit' },
-                'Bull Call Spread': { direction: 'bullish', type: 'debit' },
-                'Bear Put Spread': { direction: 'bearish', type: 'debit' },
-                'Long Call': { direction: 'bullish', type: 'debit' },
-                'Long Put': { direction: 'bearish', type: 'debit' },
-                'Long Strangle': { direction: 'neutral', type: 'debit' },
-                'Long Straddle': { direction: 'neutral', type: 'debit' },
-                'Shares': { direction: null, type: null, isShares: true }
-            },
-
             async init() {
                 await this.loadAccounts();
 
@@ -1000,7 +984,7 @@
                 const noDirectionFilter = this.filterDirection.length === 0;
                 const noTypeFilter = this.filterType.length === 0;
                 if (noDirectionFilter && noTypeFilter) return true;
-                const cat = this.strategyCategories[strategy];
+                const cat = STRATEGY_CATEGORIES[strategy];
                 if (!cat) return noDirectionFilter && noTypeFilter;
                 if (cat.isShares) return noDirectionFilter && noTypeFilter;
                 const directionMatch = noDirectionFilter || this.filterDirection.includes(cat.direction);
@@ -1213,52 +1197,6 @@
                 } catch (error) {
                     console.error('Error updating strategy:', error);
                 }
-            },
-
-            // ========== Format Helpers ==========
-
-            formatNumber(num) {
-                if (num === null || num === undefined) return '0.00';
-                return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-            },
-
-            formatDate(dateStr) {
-                if (!dateStr) return '';
-                const parts = dateStr.split('-');
-                if (parts.length === 3) {
-                    const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-                    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-                }
-                return dateStr;
-            },
-
-            formatOrderDate(isoString) {
-                if (!isoString) return '';
-                const d = new Date(isoString);
-                const month = d.getMonth() + 1;
-                const day = d.getDate();
-                let hours = d.getHours();
-                const minutes = d.getMinutes().toString().padStart(2, '0');
-                const ampm = hours >= 12 ? 'p' : 'a';
-                hours = hours % 12 || 12;
-                return `${month}/${day} ${hours}:${minutes}${ampm}`;
-            },
-
-            formatExpirationShort(expiration) {
-                if (!expiration) return '';
-                const date = new Date(expiration + 'T00:00:00');
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                return `${months[date.getMonth()]} ${date.getDate()}`;
-            },
-
-            calculateDTE(expiration) {
-                if (!expiration) return 0;
-                const expDate = new Date(expiration + 'T00:00:00');
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const diffTime = expDate - today;
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                return Math.max(0, diffDays);
             },
 
             getAccountSymbol(accountNumber) {

@@ -58,6 +58,9 @@
         .pulse-dot { width: 8px; height: 8px; border-radius: 50%; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
+
+    <!-- Shared utilities -->
+    <script src="/static/js/utils.js"></script>
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="riskApp()" x-init="init()">
 
@@ -882,7 +885,7 @@
                     grid: { borderColor: '#2a2e39', xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } },
                     tooltip: {
                         theme: 'dark',
-                        y: { formatter: v => (v >= 0 ? '+$' : '-$') + this.formatNumber(Math.abs(v)) + ' delta exposure' }
+                        y: { formatter: v => (v >= 0 ? '+$' : '-$') + formatNumber(Math.abs(v)) + ' delta exposure' }
                     },
                     dataLabels: { enabled: false },
                 };
@@ -930,7 +933,7 @@
                     tooltip: {
                         theme: 'dark',
                         x: { formatter: (v) => 'Day ' + v },
-                        y: { formatter: v => '+$' + this.formatNumber(v) + ' projected income' }
+                        y: { formatter: v => '+$' + formatNumber(v) + ' projected income' }
                     },
                     annotations: {
                         xaxis: projection.expirationMarkers.map(m => ({
@@ -976,9 +979,9 @@
                         y: {
                             formatter: (v, { dataPointIndex }) => {
                                 const g = groups[dataPointIndex];
-                                if (!g) return '$' + this.formatNumber(v);
-                                return '$' + this.formatNumber(v) + ' max risk | P&L: ' +
-                                    (g.unrealizedPnl >= 0 ? '+$' : '-$') + this.formatNumber(Math.abs(g.unrealizedPnl));
+                                if (!g) return '$' + formatNumber(v);
+                                return '$' + formatNumber(v) + ' max risk | P&L: ' +
+                                    (g.unrealizedPnl >= 0 ? '+$' : '-$') + formatNumber(Math.abs(g.unrealizedPnl));
                             }
                         }
                     },
@@ -1032,7 +1035,7 @@
                     },
                     tooltip: {
                         theme: 'dark',
-                        y: { formatter: v => (v >= 0 ? '+$' : '-$') + this.formatNumber(Math.abs(v)) }
+                        y: { formatter: v => (v >= 0 ? '+$' : '-$') + formatNumber(Math.abs(v)) }
                     },
                     dataLabels: { enabled: false },
                 };
@@ -1139,11 +1142,6 @@
                     this.sortColumn = col;
                     this.sortDirection = 'desc';
                 }
-            },
-
-            formatNumber(v) {
-                if (v == null || isNaN(v)) return '0.00';
-                return Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             },
 
             formatDelta(v) {

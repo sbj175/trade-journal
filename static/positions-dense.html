@@ -45,6 +45,9 @@
         [x-cloak] { display: none !important; }
     </style>
 
+    <!-- Shared utilities -->
+    <script src="/static/js/utils.js"></script>
+
     <!-- Inline positions app -->
     <script>
         function buildOptionStratUrl(strategyType, underlying, legs) {
@@ -447,17 +450,10 @@
                 },
 
                 // Utility methods
-                formatNumber(value, decimals = 2) {
-                    if (value === null || value === undefined || isNaN(value)) return '0';
-                    return new Intl.NumberFormat('en-US', {
-                        minimumFractionDigits: decimals,
-                        maximumFractionDigits: decimals
-                    }).format(value);
-                },
                 // Format dollar amounts: drop decimals for large numbers to prevent overflow
                 formatDollar(value) {
                     const abs = Math.abs(value || 0);
-                    return this.formatNumber(abs, abs >= 100000 ? 0 : 2);
+                    return formatNumber(abs, abs >= 100000 ? 0 : 2);
                 },
                 // Return smaller font class for very large dollar amounts
                 dollarSizeClass(value) {
@@ -913,8 +909,8 @@
                     return {
                         pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
                         deltaSaturation, proximityToShort, convexity, isCredit,
-                        maxProfit: this.formatNumber(maxProfit, 0),
-                        maxLoss: this.formatNumber(maxLoss, 0),
+                        maxProfit: formatNumber(maxProfit, 0),
+                        maxLoss: formatNumber(maxLoss, 0),
                         badges, borderColor, suggestion, urgency
                     };
                 },

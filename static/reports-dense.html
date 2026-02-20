@@ -57,6 +57,10 @@
             100% { transform: rotate(360deg); }
         }
     </style>
+
+    <!-- Shared utilities and constants -->
+    <script src="/static/js/constants.js"></script>
+    <script src="/static/js/utils.js"></script>
 </head>
 <body class="min-h-screen tv-scrollbar" x-data="reportsApp()" x-init="init()">
 
@@ -124,7 +128,7 @@
         </div>
 
         <!-- Active filter summary -->
-        <div class="flex-1 text-right text-sm text-tv-muted" x-show="getActiveStrategies().length < Object.keys(strategyCategories).length">
+        <div class="flex-1 text-right text-sm text-tv-muted" x-show="getActiveStrategies().length < Object.keys(STRATEGY_CATEGORIES).length">
             <span x-text="getActiveStrategies().length"></span> strategies selected
         </div>
     </div>
@@ -311,27 +315,6 @@
                 filterType: [],       // 'credit', 'debit'
                 filterShares: false,
 
-                // Strategy to category mapping
-                strategyCategories: {
-                    'Bull Put Spread': { direction: 'bullish', type: 'credit' },
-                    'Bear Call Spread': { direction: 'bearish', type: 'credit' },
-                    'Iron Condor': { direction: 'neutral', type: 'credit' },
-                    'Iron Butterfly': { direction: 'neutral', type: 'credit' },
-                    'Cash Secured Put': { direction: 'bullish', type: 'credit' },
-                    'Covered Call': { direction: 'bullish', type: 'credit' },
-                    'Short Put': { direction: 'bullish', type: 'credit' },
-                    'Short Call': { direction: 'bearish', type: 'credit' },
-                    'Short Strangle': { direction: 'neutral', type: 'credit' },
-                    'Short Straddle': { direction: 'neutral', type: 'credit' },
-                    'Bull Call Spread': { direction: 'bullish', type: 'debit' },
-                    'Bear Put Spread': { direction: 'bearish', type: 'debit' },
-                    'Long Call': { direction: 'bullish', type: 'debit' },
-                    'Long Put': { direction: 'bearish', type: 'debit' },
-                    'Long Strangle': { direction: 'neutral', type: 'debit' },
-                    'Long Straddle': { direction: 'neutral', type: 'debit' },
-                    'Shares': { direction: null, type: null, isShares: true }
-                },
-
                 // Sorting
                 sortColumn: 'totalPnl',
                 sortDirection: 'desc',
@@ -464,7 +447,7 @@
                     const noDirectionFilter = this.filterDirection.length === 0;
                     const noTypeFilter = this.filterType.length === 0;
 
-                    for (const [strategy, cat] of Object.entries(this.strategyCategories)) {
+                    for (const [strategy, cat] of Object.entries(STRATEGY_CATEGORIES)) {
                         // Handle Shares separately
                         if (cat.isShares) {
                             if (this.filterShares) {
@@ -582,14 +565,6 @@
                         if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
                         if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
                         return 0;
-                    });
-                },
-
-                formatNumber(value) {
-                    if (value === null || value === undefined) return '0.00';
-                    return Math.abs(value).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
                     });
                 },
 
