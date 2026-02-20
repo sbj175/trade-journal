@@ -488,16 +488,10 @@
                     return group.realized_pnl || 0;
                 },
 
-                // Total P/L = Realized + Open (or Realized + Net Liq for rolled chains)
+                // Total P/L = Realized + Open
                 getGroupTotalPnL(group) {
                     if (group._isSubtotal) return group._subtotalTotalPnL;
-                    const realized = this.getGroupRealizedPnL(group);
-                    if (group.roll_count > 0) {
-                        // For rolled chains, cost basis is already in realized,
-                        // so use net liq to avoid double-counting
-                        return realized + this.getGroupNetLiqWithLiveQuotes(group);
-                    }
-                    return realized + this.getGroupOpenPnL(group);
+                    return this.getGroupRealizedPnL(group) + this.getGroupOpenPnL(group);
                 },
 
                 getGroupNetLiqWithLiveQuotes(group) {
