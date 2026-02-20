@@ -864,10 +864,10 @@
             applyFilters() {
                 let filtered = [...this.groups];
 
-                // Underlying filter (client-side, supports partial match)
+                // Underlying filter (client-side, prefix match)
                 if (this.filterUnderlying) {
                     const sym = this.filterUnderlying.toUpperCase();
-                    filtered = filtered.filter(g => (g.underlying || '').toUpperCase().includes(sym));
+                    filtered = filtered.filter(g => (g.underlying || '').toUpperCase().startsWith(sym));
                 }
 
                 // Direction/Type category filter
