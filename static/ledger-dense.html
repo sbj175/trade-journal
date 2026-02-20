@@ -905,7 +905,7 @@
                     } else if (this.timePeriod === 'yesterday') {
                         cutoffStart = new Date(today);
                         cutoffStart.setDate(cutoffStart.getDate() - 1);
-                        cutoffEnd = today;
+                        cutoffEnd = null;
                     } else {
                         const days = parseInt(this.timePeriod);
                         if (!isNaN(days)) {
