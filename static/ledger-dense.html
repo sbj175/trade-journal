@@ -344,7 +344,12 @@
                                         <i class="fas fa-chevron-right w-5 text-tv-muted text-xs transition-transform duration-200"
                                            :class="eqExpanded ? 'rotate-90' : ''"></i>
                                         <template x-if="group._movingLots">
-                                            <span class="w-8"></span>
+                                            <span class="w-8">
+                                                <input type="checkbox"
+                                                       :checked="openEquityLots(group).every(l => selectedLots.includes(l.transaction_id))"
+                                                       @click.stop="toggleAllEquityLots(group); if (!eqExpanded) eqExpanded = true"
+                                                       class="w-4 h-4">
+                                            </span>
                                         </template>
                                         <span class="w-32 text-tv-muted" x-text="equityAggregate(group).lotCount + ' lots'"></span>
                                         <span class="w-10 text-right font-medium"
@@ -1081,6 +1086,18 @@
                     costBasis: totalCost,
                     lotCount: lots.length,
                 };
+            },
+
+            toggleAllEquityLots(group) {
+                const ids = this.openEquityLots(group).map(l => l.transaction_id);
+                const allSelected = ids.every(id => this.selectedLots.includes(id));
+                if (allSelected) {
+                    this.selectedLots = this.selectedLots.filter(id => !ids.includes(id));
+                } else {
+                    for (const id of ids) {
+                        if (!this.selectedLots.includes(id)) this.selectedLots.push(id);
+                    }
+                }
             },
 
             toggleLotSelection(transactionId) {
