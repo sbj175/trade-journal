@@ -174,8 +174,8 @@
                                 case 'max_percent':
                                     const aMax = self.getGroupMaxPercent(a);
                                     const bMax = self.getGroupMaxPercent(b);
-                                    aVal = aMax === '—' ? -1 : parseFloat(aMax) || 0;
-                                    bVal = bMax === '—' ? -1 : parseFloat(bMax) || 0;
+                                    aVal = !aMax ? -1 : parseFloat(aMax) || 0;
+                                    bVal = !bMax ? -1 : parseFloat(bMax) || 0;
                                     break;
                                 case 'days':
                                     aVal = self.getGroupDaysOpen(a) || 0;
@@ -510,14 +510,14 @@
                 },
 
                 getGroupMaxPercent(group) {
-                    if (this._isEquityOnly(group) || group._isSubtotal) return '—';
+                    if (this._isEquityOnly(group) || group._isSubtotal) return '';
                     const legs = group.positions || [];
                     const totalCostBasis = legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
-                    if (totalCostBasis === 0) return '—';
+                    if (totalCostBasis === 0) return '';
 
                     const optionLegs = legs.filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
                     const strikes = optionLegs.map(l => l.strike).filter(s => s !== null && s > 0).sort((a, b) => a - b);
-                    if (strikes.length < 2) return '—';
+                    if (strikes.length < 2) return '';
 
                     const spreadWidth = strikes[strikes.length - 1] - strikes[0];
                     const numContracts = Math.abs(legs[0].quantity || 0);
@@ -529,10 +529,10 @@
                     } else {
                         maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis);
                     }
-                    if (maxProfit <= 0) return '—';
+                    if (maxProfit <= 0) return '';
 
                     const currentPnL = this.getGroupOpenPnL(group);
-                    if (!isCreditSpread && currentPnL <= 0) return '—';
+                    if (!isCreditSpread && currentPnL <= 0) return '';
 
                     return ((currentPnL / maxProfit) * 100).toFixed(1) + '%';
                 },
@@ -544,7 +544,7 @@
                 },
 
                 getMaxPercentColor(value) {
-                    if (typeof value !== 'string' || value === '—') return 'text-tv-muted';
+                    if (typeof value !== 'string' || !value) return 'text-tv-muted';
                     const numVal = parseFloat(value);
                     if (numVal >= 50) return 'text-yellow-400 font-bold';
                     if (numVal >= 30) return 'text-tv-text';
@@ -1379,7 +1379,7 @@
                                         </span>
                                     </template>
                                     <template x-if="getGroupRealizedPnL(group) === 0">
-                                        <span class="text-tv-muted">—</span>
+                                        <span></span>
                                     </template>
                                 </div>
 
@@ -1398,12 +1398,12 @@
                                 <!-- % Rtn -->
                                 <div class="w-14 text-right"
                                      :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'"
-                                     x-text="getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : '—'"></div>
+                                     x-text="getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : ''"></div>
 
                                 <!-- % Max -->
                                 <div class="w-14 text-right"
                                      :class="getMaxPercentColor(getGroupMaxPercent(group))"
-                                     x-text="shouldShowMaxPercent(group) ? getGroupMaxPercent(group) : '—'"></div>
+                                     x-text="shouldShowMaxPercent(group) ? getGroupMaxPercent(group) : ''"></div>
 
                                 <!-- Comment indicator -->
                                 <div class="flex-1 text-tv-muted text-sm truncate pl-2"
