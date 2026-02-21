@@ -1305,7 +1305,8 @@
                                 <div class="w-40 flex items-center gap-2">
                                     <template x-if="getUnderlyingQuote(group.underlying)">
                                         <div class="flex items-center gap-2">
-                                            <div class="px-2 py-1 rounded-sm text-base font-medium border"
+                                            <div class="w-20 px-2 py-1 rounded-sm text-base font-medium border text-right"
+                                                 style="font-variant-numeric: tabular-nums"
                                                  :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-green-900/60 text-green-400 border-green-700/50' : 'bg-tv-border text-tv-muted border-tv-border'">
                                                 <span x-text="formatNumber(getUnderlyingQuote(group.underlying).price || 0)"></span>
                                             </div>
