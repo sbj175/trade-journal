@@ -1310,7 +1310,8 @@
                                                  :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-green-900/60 text-green-400 border-green-700/50' : 'bg-tv-border text-tv-muted border-tv-border'">
                                                 <span x-text="formatNumber(getUnderlyingQuote(group.underlying).price || 0)"></span>
                                             </div>
-                                            <div class="text-sm"
+                                            <div class="w-16 text-right text-sm"
+                                                 style="font-variant-numeric: tabular-nums"
                                                  :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-green-400' : 'text-tv-muted'">
                                                 <span x-text="((getUnderlyingQuote(group.underlying).change || 0) >= 0 ? '+' : '') + (getUnderlyingQuote(group.underlying).changePercent || 0).toFixed(2) + '%'"></span>
                                             </div>
