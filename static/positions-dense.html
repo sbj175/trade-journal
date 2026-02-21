@@ -1165,7 +1165,7 @@
                 Symbol
                 <span x-show="sortColumn === 'underlying'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-12 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('ivr')">
+            <span class="w-8 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
                 IVR
                 <span x-show="sortColumn === 'ivr'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
@@ -1228,7 +1228,7 @@
                             <div class="w-24">
                                 <div class="font-bold text-base text-tv-text" x-text="group.displayKey"></div>
                             </div>
-                            <div class="w-12"></div>
+                            <div class="w-8 mr-1"></div>
                             <div class="w-40"></div>
                             <div class="w-12"></div>
                             <!-- Strategy -->
@@ -1297,7 +1297,7 @@
                                 </div>
 
                                 <!-- IVR -->
-                                <div class="w-12 text-right"
+                                <div class="w-8 text-right mr-1"
                                      :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-yellow-400' : 'text-tv-muted'"
                                      x-text="getUnderlyingIVR(group.underlying) !== null ? getUnderlyingIVR(group.underlying) : ''"></div>
 
