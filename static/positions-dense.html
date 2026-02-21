@@ -1161,11 +1161,11 @@
         <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16">
             <span class="w-8"></span>
             <span class="w-6 text-center" x-show="selectedAccount === ''"></span>
-            <span class="w-24 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
+            <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
                 Symbol
                 <span x-show="sortColumn === 'underlying'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('ivr')">
+            <span class="w-8 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
                 IVR
                 <span x-show="sortColumn === 'ivr'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
@@ -1225,10 +1225,10 @@
                         <div class="flex items-center px-4 py-2 bg-blue-500/10 border-l-2 border-tv-blue">
                             <div class="w-8"></div>
                             <div class="w-6" x-show="selectedAccount === ''"></div>
-                            <div class="w-24">
+                            <div class="w-14">
                                 <div class="font-bold text-base text-tv-text" x-text="group.displayKey"></div>
                             </div>
-                            <div class="w-12"></div>
+                            <div class="w-8 mr-1"></div>
                             <div class="w-40"></div>
                             <div class="w-12"></div>
                             <!-- Strategy -->
@@ -1289,7 +1289,7 @@
                                 </div>
 
                                 <!-- Symbol -->
-                                <div class="w-24">
+                                <div class="w-14">
                                     <div class="font-semibold text-base text-tv-text">
                                         <span x-text="group.displayKey || group.underlying"></span>
                                         <span x-show="_hasEquity(group) && (group.positions || []).length > 0" class="text-[10px] text-tv-muted ml-1 bg-tv-border/50 px-1 rounded">+stk</span>
@@ -1297,7 +1297,7 @@
                                 </div>
 
                                 <!-- IVR -->
-                                <div class="w-12 text-center"
+                                <div class="w-8 text-right mr-1"
                                      :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-yellow-400' : 'text-tv-muted'"
                                      x-text="getUnderlyingIVR(group.underlying) !== null ? getUnderlyingIVR(group.underlying) : ''"></div>
 
@@ -1305,11 +1305,13 @@
                                 <div class="w-40 flex items-center gap-2">
                                     <template x-if="getUnderlyingQuote(group.underlying)">
                                         <div class="flex items-center gap-2">
-                                            <div class="px-2 py-1 rounded-sm text-base font-medium border"
+                                            <div class="w-20 px-2 py-1 rounded-sm text-base font-medium border text-right"
+                                                 style="font-variant-numeric: tabular-nums"
                                                  :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-green-900/60 text-green-400 border-green-700/50' : 'bg-tv-border text-tv-muted border-tv-border'">
                                                 <span x-text="formatNumber(getUnderlyingQuote(group.underlying).price || 0)"></span>
                                             </div>
-                                            <div class="text-sm"
+                                            <div class="w-16 text-right text-sm"
+                                                 style="font-variant-numeric: tabular-nums"
                                                  :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-green-400' : 'text-tv-muted'">
                                                 <span x-text="((getUnderlyingQuote(group.underlying).change || 0) >= 0 ? '+' : '') + (getUnderlyingQuote(group.underlying).changePercent || 0).toFixed(2) + '%'"></span>
                                             </div>
