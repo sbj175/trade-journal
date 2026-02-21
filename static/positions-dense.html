@@ -1161,7 +1161,7 @@
         <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16">
             <span class="w-8"></span>
             <span class="w-6 text-center" x-show="selectedAccount === ''"></span>
-            <span class="w-24 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
+            <span class="w-16 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
                 Symbol
                 <span x-show="sortColumn === 'underlying'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
@@ -1225,7 +1225,7 @@
                         <div class="flex items-center px-4 py-2 bg-blue-500/10 border-l-2 border-tv-blue">
                             <div class="w-8"></div>
                             <div class="w-6" x-show="selectedAccount === ''"></div>
-                            <div class="w-24">
+                            <div class="w-16">
                                 <div class="font-bold text-base text-tv-text" x-text="group.displayKey"></div>
                             </div>
                             <div class="w-8 mr-1"></div>
@@ -1289,7 +1289,7 @@
                                 </div>
 
                                 <!-- Symbol -->
-                                <div class="w-24">
+                                <div class="w-16">
                                     <div class="font-semibold text-base text-tv-text">
                                         <span x-text="group.displayKey || group.underlying"></span>
                                         <span x-show="_hasEquity(group) && (group.positions || []).length > 0" class="text-[10px] text-tv-muted ml-1 bg-tv-border/50 px-1 rounded">+stk</span>
