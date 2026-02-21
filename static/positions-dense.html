@@ -38,7 +38,6 @@
     <style>
         * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
         body { background: #131722; color: #d1d4dc; font-size: 16px; }
-        .tabnum { font-variant-numeric: tabular-nums; }
         .tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
         .tv-scrollbar::-webkit-scrollbar-track { background: #1e222d; }
         .tv-scrollbar::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
@@ -1096,7 +1095,7 @@
 
             <!-- Account Balances -->
             <template x-if="currentAccountBalance">
-                <div class="flex items-center gap-6 ml-6 text-base tabnum">
+                <div class="flex items-center gap-6 ml-6 text-base">
                     <div>
                         <span class="text-tv-muted text-sm">Net Liq:</span>
                         <span class="font-medium ml-1" x-text="privacyMode !== 'off' ? '••••••' : '$' + formatNumber(currentAccountBalance.net_liquidating_value)"></span>
@@ -1157,7 +1156,7 @@
     </div>
 
     <!-- Main Content -->
-    <main x-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" x-cloak class="p-2 tabnum">
+    <main x-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" x-cloak class="p-2">
         <!-- Column Headers -->
         <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16">
             <span class="w-8"></span>
