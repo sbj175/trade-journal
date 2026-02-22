@@ -1,7 +1,7 @@
 """Position routes — current positions and open chains."""
 
 import json as _json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -198,6 +198,9 @@ async def get_open_chains(account_number: Optional[str] = None):
                         price = abs(lot.entry_price) if lot.entry_price else 0
 
                         if lot.instrument_type == 'EQUITY_OPTION':
+                            # Skip expired option legs (they'll vanish on next sync)
+                            if lot.expiration and lot.expiration < date.today():
+                                continue
                             leg_amount = price * qty * 100 if price else 0
                             leg_cost = leg_amount if qty_direction == 'Short' else -leg_amount
                             open_option_legs.append({
