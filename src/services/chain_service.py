@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 from sqlalchemy import func
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from src.database.engine import dialect_insert
 
 from src.database.models import (
     OrderChain as OrderChainModel, OrderChainMember, OrderChainCache,
@@ -437,7 +437,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     created_at=current_time,
                     updated_at=current_time,
                 )
-                stmt = sqlite_insert(OrderChainModel).values(**chain_values)
+                stmt = dialect_insert(OrderChainModel).values(**chain_values)
                 stmt = stmt.on_conflict_do_update(
                     index_elements=[OrderChainModel.chain_id],
                     set_={k: stmt.excluded[k] for k in chain_values},
@@ -473,7 +473,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     member_values = dict(
                         chain_id=chain.chain_id, order_id=order.order_id,
                     )
-                    stmt = sqlite_insert(OrderChainMember).values(**member_values)
+                    stmt = dialect_insert(OrderChainMember).values(**member_values)
                     stmt = stmt.on_conflict_do_nothing()
                     session.execute(stmt)
 
@@ -579,7 +579,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         order_id=order.order_id,
                         order_data=json.dumps(order_data),
                     )
-                    stmt = sqlite_insert(OrderChainCache).values(**cache_values)
+                    stmt = dialect_insert(OrderChainCache).values(**cache_values)
                     stmt = stmt.on_conflict_do_update(
                         index_elements=['chain_id', 'order_id'],
                         set_={'order_data': stmt.excluded.order_data},

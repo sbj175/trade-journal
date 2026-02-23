@@ -1309,13 +1309,13 @@ class OrderManager:
     
     def save_order_to_database(self, order: Order) -> bool:
         """Save an Order and its positions to the database"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import Order as OrderModel, OrderPosition as OP
 
         try:
             with self.db.get_session() as session:
                 # Upsert order
-                stmt = sqlite_insert(OrderModel).values(
+                stmt = dialect_insert(OrderModel).values(
                     order_id=order.order_id, account_number=order.account_number,
                     underlying=order.underlying, order_type=order.order_type.value,
                     strategy_type=order.strategy_type, order_date=order.order_date,
@@ -1991,13 +1991,13 @@ class OrderManager:
     
     def save_order_chain_to_database(self, chain: Dict) -> bool:
         """Save an order chain to the database"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import OrderChain as OC, OrderChainMember as OCM
 
         try:
             with self.db.get_session() as session:
                 # Upsert chain
-                stmt = sqlite_insert(OC).values(
+                stmt = dialect_insert(OC).values(
                     chain_id=chain['chain_id'], underlying=chain['underlying'],
                     account_number=chain['account_number'],
                     opening_order_id=chain['opening_order_id'],

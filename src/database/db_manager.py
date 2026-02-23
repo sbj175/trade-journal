@@ -303,12 +303,12 @@ class DatabaseManager:
     
     def save_account(self, account_number: str, account_name: str = None, account_type: str = None) -> bool:
         """Save account information"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import Account
 
         try:
             with self.get_session() as session:
-                stmt = sqlite_insert(Account).values(
+                stmt = dialect_insert(Account).values(
                     account_number=account_number, account_name=account_name,
                     account_type=account_type,
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -350,7 +350,7 @@ class DatabaseManager:
 
     def save_raw_transactions(self, transactions: List[Dict]) -> int:
         """Save raw transactions to database for order-based grouping"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import RawTransaction
         self.ensure_initialized()
         saved_count = 0
@@ -358,7 +358,7 @@ class DatabaseManager:
         with self.get_session() as session:
             for txn in transactions:
                 try:
-                    stmt = sqlite_insert(RawTransaction).values(
+                    stmt = dialect_insert(RawTransaction).values(
                         id=txn.get('id'), account_number=txn.get('account_number'),
                         order_id=txn.get('order_id'), transaction_type=txn.get('transaction_type'),
                         transaction_sub_type=txn.get('transaction_sub_type'),
@@ -482,11 +482,11 @@ class DatabaseManager:
 
     def set_sync_metadata(self, key: str, value: str) -> bool:
         """Set a sync metadata value"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import SyncMetadata
         try:
             with self.get_session() as session:
-                stmt = sqlite_insert(SyncMetadata).values(
+                stmt = dialect_insert(SyncMetadata).values(
                     key=key, value=value,
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
@@ -536,7 +536,7 @@ class DatabaseManager:
     
     def cache_quote(self, symbol: str, quote_data: Dict[str, Any]) -> bool:
         """Cache a quote in the database"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import QuoteCache
         try:
             with self.get_session() as session:
@@ -551,7 +551,7 @@ class DatabaseManager:
                     iv_percentile=quote_data.get('iv_percentile'),
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
-                stmt = sqlite_insert(QuoteCache).values(**vals)
+                stmt = dialect_insert(QuoteCache).values(**vals)
                 update_vals = {k: v for k, v in vals.items() if k != 'symbol'}
                 session.execute(stmt.on_conflict_do_update(
                     index_elements=['symbol'], set_=update_vals,
@@ -618,13 +618,13 @@ class DatabaseManager:
 
     def save_strategy_targets(self, targets: List[Dict[str, Any]]) -> bool:
         """Save strategy targets (upsert pattern)"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import StrategyTarget
         try:
             with self.get_session() as session:
                 for target in targets:
                     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    stmt = sqlite_insert(StrategyTarget).values(
+                    stmt = dialect_insert(StrategyTarget).values(
                         strategy_name=target['strategy_name'],
                         profit_target_pct=target['profit_target_pct'],
                         loss_target_pct=target['loss_target_pct'],
@@ -657,12 +657,12 @@ class DatabaseManager:
 
     def save_order_comment(self, order_id: str, comment: str) -> bool:
         """Save or delete a comment for an order"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import OrderComment
         try:
             with self.get_session() as session:
                 if comment.strip():
-                    stmt = sqlite_insert(OrderComment).values(
+                    stmt = dialect_insert(OrderComment).values(
                         order_id=order_id, comment=comment,
                         updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     )
@@ -690,12 +690,12 @@ class DatabaseManager:
 
     def save_position_note(self, note_key: str, note: str) -> bool:
         """Save or delete a note for a position"""
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         from src.database.models import PositionNote
         try:
             with self.get_session() as session:
                 if note.strip():
-                    stmt = sqlite_insert(PositionNote).values(
+                    stmt = dialect_insert(PositionNote).values(
                         note_key=note_key, note=note,
                         updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     )

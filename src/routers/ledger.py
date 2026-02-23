@@ -231,9 +231,9 @@ async def move_lots(body: LedgerMoveLots):
             PositionGroupLot.transaction_id.in_(body.transaction_ids),
         ).delete(synchronize_session='fetch')
 
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.engine import dialect_insert
         for txn_id in body.transaction_ids:
-            stmt = sqlite_insert(PositionGroupLot).values(
+            stmt = dialect_insert(PositionGroupLot).values(
                 group_id=body.target_group_id, transaction_id=txn_id,
             )
             session.execute(stmt.on_conflict_do_nothing())

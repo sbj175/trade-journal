@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 from decimal import Decimal
 import logging
 
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from src.database.engine import dialect_insert
 from src.database.models import PositionLot as PositionLotModel
 
 if TYPE_CHECKING:
@@ -88,7 +88,7 @@ class PnLCalculator:
         )
 
         with self.db.get_session() as session:
-            stmt = sqlite_insert(PositionLotModel).values(**values)
+            stmt = dialect_insert(PositionLotModel).values(**values)
             stmt = stmt.on_conflict_do_update(
                 index_elements=[PositionLotModel.transaction_id],
                 set_={k: stmt.excluded[k] for k in values},
