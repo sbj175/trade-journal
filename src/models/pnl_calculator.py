@@ -10,6 +10,9 @@ from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 from decimal import Decimal
 import logging
 
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from src.database.models import PositionLot as PositionLotModel
+
 if TYPE_CHECKING:
     from src.models.lot_manager import LotManager
 
@@ -53,7 +56,12 @@ class PnLCalculator:
         self._create_lots_table_if_not_exists()
     
     def _create_lots_table_if_not_exists(self):
-        """Create table to track position lots for FIFO"""
+        """Ensure position_lots table exists (legacy DDL fallback).
+
+        Table is also defined in models.py and created by the main
+        initialize_database() flow.  This is kept as a safety net for
+        standalone scripts.
+        """
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -70,40 +78,39 @@ class PnLCalculator:
                     UNIQUE(transaction_id)
                 )
             """)
-            
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_lots_account_symbol 
+                CREATE INDEX IF NOT EXISTS idx_lots_account_symbol
                 ON position_lots(account_number, symbol)
             """)
     
     def record_opening_lot(self, transaction: Dict):
         """Record a new opening lot for FIFO tracking"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            quantity = int(transaction.get('quantity', 0))
-            action = transaction.get('action', '').upper()
-            
-            # Determine quantity sign based on action
-            if 'SELL_TO_OPEN' in action:
-                quantity = -abs(quantity)  # Short position
-            else:
-                quantity = abs(quantity)  # Long position
-            
-            cursor.execute("""
-                INSERT OR REPLACE INTO position_lots 
-                (transaction_id, account_number, symbol, quantity, 
-                 entry_price, entry_date, remaining_quantity)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                transaction.get('id', ''),
-                transaction.get('account_number', ''),
-                transaction.get('symbol', ''),
-                quantity,
-                float(transaction.get('price', 0)),
-                transaction.get('executed_at', ''),
-                quantity  # Initially, remaining = total
-            ))
+        quantity = int(transaction.get('quantity', 0))
+        action = transaction.get('action', '').upper()
+
+        # Determine quantity sign based on action
+        if 'SELL_TO_OPEN' in action:
+            quantity = -abs(quantity)  # Short position
+        else:
+            quantity = abs(quantity)  # Long position
+
+        values = dict(
+            transaction_id=transaction.get('id', ''),
+            account_number=transaction.get('account_number', ''),
+            symbol=transaction.get('symbol', ''),
+            quantity=quantity,
+            entry_price=float(transaction.get('price', 0)),
+            entry_date=transaction.get('executed_at', ''),
+            remaining_quantity=quantity,  # Initially, remaining = total
+        )
+
+        with self.db.get_session() as session:
+            stmt = sqlite_insert(PositionLotModel).values(**values)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[PositionLotModel.transaction_id],
+                set_={k: stmt.excluded[k] for k in values},
+            )
+            session.execute(stmt)
     
     def calculate_realized_pnl_for_closing(self, closing_transaction: Dict) -> float:
         """
@@ -125,62 +132,50 @@ class PnLCalculator:
         
         total_realized_pnl = 0.0
         remaining_to_close = closing_quantity
-        
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
+
+        with self.db.get_session() as session:
             # Get open lots using FIFO (ordered by entry date)
-            cursor.execute("""
-                SELECT id, transaction_id, quantity, entry_price, remaining_quantity
-                FROM position_lots
-                WHERE account_number = ? AND symbol = ? AND remaining_quantity != 0
-                ORDER BY entry_date ASC
-            """, (account, symbol))
-            
-            lots = cursor.fetchall()
-            
-            for lot_id, tx_id, lot_quantity, entry_price, remaining_quantity in lots:
+            lots = session.query(PositionLotModel).filter(
+                PositionLotModel.account_number == account,
+                PositionLotModel.symbol == symbol,
+                PositionLotModel.remaining_quantity != 0,
+            ).order_by(PositionLotModel.entry_date.asc()).all()
+
+            for lot in lots:
                 if remaining_to_close <= 0:
                     break
-                
+
                 # Check if this lot matches what we're closing
-                if is_closing_long and lot_quantity < 0:
+                if is_closing_long and lot.quantity < 0:
                     continue  # Skip short lots when closing long
-                if is_closing_short and lot_quantity > 0:
+                if is_closing_short and lot.quantity > 0:
                     continue  # Skip long lots when closing short
-                
+
                 # Calculate how much of this lot to close
-                lot_available = abs(remaining_quantity)
+                lot_available = abs(lot.remaining_quantity)
                 close_amount = min(remaining_to_close, lot_available)
-                
+
                 # Calculate P&L for this portion
                 if is_closing_long:
-                    # Closing long: P&L = (sell price - buy price) * quantity
-                    pnl = (closing_price - entry_price) * close_amount * 100  # *100 for options
+                    pnl = (closing_price - lot.entry_price) * close_amount * 100
                 else:
-                    # Closing short: P&L = (sell price - buy price) * quantity
-                    # But since we opened with STO, it's (entry - closing) * quantity
-                    pnl = (entry_price - closing_price) * close_amount * 100  # *100 for options
-                
+                    pnl = (lot.entry_price - closing_price) * close_amount * 100
+
                 total_realized_pnl += pnl
-                
+
                 # Update the lot's remaining quantity
-                new_remaining = abs(remaining_quantity) - close_amount
-                if lot_quantity < 0:
+                new_remaining = abs(lot.remaining_quantity) - close_amount
+                if lot.quantity < 0:
                     new_remaining = -new_remaining  # Maintain sign for shorts
-                
-                cursor.execute("""
-                    UPDATE position_lots
-                    SET remaining_quantity = ?
-                    WHERE id = ?
-                """, (new_remaining, lot_id))
-                
+
+                lot.remaining_quantity = new_remaining
+
                 remaining_to_close -= close_amount
-                
-                logger.debug(f"Closed {close_amount} contracts from lot {tx_id} "
-                           f"at entry price {entry_price}, closing price {closing_price}, "
+
+                logger.debug(f"Closed {close_amount} contracts from lot {lot.transaction_id} "
+                           f"at entry price {lot.entry_price}, closing price {closing_price}, "
                            f"P&L: ${pnl:.2f}")
-        
+
         return total_realized_pnl
     
     def calculate_unrealized_pnl_for_position(self, position, current_price: float) -> float:
