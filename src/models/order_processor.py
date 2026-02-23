@@ -653,20 +653,20 @@ class OrderProcessor:
 
             # Find the option lot that was closed by this assignment
             # Query lot_closings for this symbol with type='ASSIGNMENT'
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT pl.id, pl.chain_id, pl.option_type, pl.strike
-                    FROM position_lots pl
-                    JOIN lot_closings lc ON pl.id = lc.lot_id
-                    WHERE pl.account_number = ?
-                    AND pl.symbol = ?
-                    AND lc.closing_type = 'ASSIGNMENT'
-                    AND lc.resulting_lot_id IS NULL
-                    ORDER BY lc.closing_date DESC
-                    LIMIT 1
-                """, (assignment_tx.account_number, assignment_tx.symbol))
-                result = cursor.fetchone()
+            from src.database.models import PositionLot as PL, LotClosing as LC
+            with self.db.get_session() as session:
+                result = (
+                    session.query(PL.id, PL.chain_id, PL.option_type, PL.strike)
+                    .join(LC, PL.id == LC.lot_id)
+                    .filter(
+                        PL.account_number == assignment_tx.account_number,
+                        PL.symbol == assignment_tx.symbol,
+                        LC.closing_type == 'ASSIGNMENT',
+                        LC.resulting_lot_id.is_(None),
+                    )
+                    .order_by(LC.closing_date.desc())
+                    .first()
+                )
 
             if not result:
                 logger.warning(f"No closed option lot found for assignment: {assignment_tx.symbol}")

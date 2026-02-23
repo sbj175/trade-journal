@@ -2,11 +2,14 @@
 
 import json as _json
 import uuid as _uuid
+from datetime import datetime
 from typing import Dict
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+from sqlalchemy import func
 
+from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionLot as PositionLotModel
 from src.dependencies import db, lot_manager
 from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup
 from src.services.ledger_service import seed_position_groups, _refresh_group_status
@@ -18,31 +21,23 @@ router = APIRouter()
 async def get_ledger(account_number: str = '', underlying: str = ''):
     """Main Ledger data endpoint — returns position groups with lots and derived orders."""
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
-        # Auto-seed if position_groups is empty
-        cursor.execute("SELECT COUNT(*) FROM position_groups")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("SELECT COUNT(*) FROM position_lots")
-            if cursor.fetchone()[0] > 0:
+    # Auto-seed if position_groups is empty
+    with db.get_session() as session:
+        group_count = session.query(func.count()).select_from(PositionGroup).scalar()
+        if group_count == 0:
+            lot_count = session.query(func.count()).select_from(PositionLotModel).scalar()
+            if lot_count > 0:
                 seed_position_groups()
 
     # Query groups with filters
-    query = "SELECT * FROM position_groups WHERE 1=1"
-    params = []
-    if account_number:
-        query += " AND account_number = ?"
-        params.append(account_number)
-    if underlying:
-        query += " AND underlying = ?"
-        params.append(underlying)
-    query += " ORDER BY underlying ASC, opening_date DESC"
-
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(query, params)
-        groups_raw = [dict(row) for row in cursor.fetchall()]
+    with db.get_session() as session:
+        q = session.query(PositionGroup)
+        if account_number:
+            q = q.filter(PositionGroup.account_number == account_number)
+        if underlying:
+            q = q.filter(PositionGroup.underlying == underlying)
+        q = q.order_by(PositionGroup.underlying.asc(), PositionGroup.opening_date.desc())
+        groups_raw = [row.to_dict() for row in q.all()]
 
     if not groups_raw:
         return []
@@ -77,18 +72,16 @@ async def get_ledger(account_number: str = '', underlying: str = ''):
     # Fetch order data from cache
     order_cache: Dict[str, Dict] = {}
     if all_order_ids:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            oid_list = list(all_order_ids)
-            placeholders = ','.join(['?' for _ in oid_list])
-            cursor.execute(f"""
-                SELECT order_id, order_data FROM order_chain_cache
-                WHERE order_id IN ({placeholders})
-            """, oid_list)
-            for row in cursor.fetchall():
+        with db.get_session() as session:
+            rows = session.query(
+                OrderChainCache.order_id, OrderChainCache.order_data,
+            ).filter(
+                OrderChainCache.order_id.in_(list(all_order_ids)),
+            ).all()
+            for row in rows:
                 try:
                     order_cache[row[0]] = _json.loads(row[1])
-                except:
+                except Exception:
                     pass
 
     # Build response
@@ -187,25 +180,16 @@ async def seed_ledger():
 @router.put("/api/ledger/groups/{group_id}")
 async def update_ledger_group(group_id: str, body: LedgerGroupUpdate):
     """Update group metadata (strategy label)."""
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT group_id FROM position_groups WHERE group_id = ?", (group_id,))
-        if not cursor.fetchone():
+    with db.get_session() as session:
+        row = session.query(PositionGroup).filter(
+            PositionGroup.group_id == group_id,
+        ).first()
+        if not row:
             raise HTTPException(status_code=404, detail="Group not found")
 
-        updates = []
-        params = []
         if body.strategy_label is not None:
-            updates.append("strategy_label = ?")
-            params.append(body.strategy_label)
-
-        if updates:
-            updates.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(group_id)
-            cursor.execute(
-                f"UPDATE position_groups SET {', '.join(updates)} WHERE group_id = ?",
-                params
-            )
+            row.strategy_label = body.strategy_label
+            row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     return {"message": "Group updated"}
 
@@ -216,25 +200,19 @@ async def move_lots(body: LedgerMoveLots):
     if not body.transaction_ids:
         raise HTTPException(status_code=400, detail="No transaction_ids provided")
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT account_number, underlying FROM position_groups WHERE group_id = ?",
-            (body.target_group_id,)
-        )
-        target = cursor.fetchone()
+    with db.get_session() as session:
+        target = session.query(
+            PositionGroup.account_number, PositionGroup.underlying,
+        ).filter(PositionGroup.group_id == body.target_group_id).first()
         if not target:
             raise HTTPException(status_code=404, detail="Target group not found")
         target_account, target_underlying = target
 
-        placeholders = ','.join(['?' for _ in body.transaction_ids])
-        cursor.execute(f"""
-            SELECT DISTINCT pl.account_number, pl.underlying
-            FROM position_lots pl
-            WHERE pl.transaction_id IN ({placeholders})
-        """, body.transaction_ids)
-        lot_accounts = cursor.fetchall()
+        lot_accounts = session.query(
+            PositionLotModel.account_number, PositionLotModel.underlying,
+        ).filter(
+            PositionLotModel.transaction_id.in_(body.transaction_ids),
+        ).distinct().all()
 
         for row in lot_accounts:
             if row[0] != target_account or (row[1] or '') != (target_underlying or ''):
@@ -243,28 +221,26 @@ async def move_lots(body: LedgerMoveLots):
                     detail="All lots must share the same underlying and account as the target group"
                 )
 
-        cursor.execute(f"""
-            SELECT DISTINCT group_id FROM position_group_lots
-            WHERE transaction_id IN ({placeholders})
-        """, body.transaction_ids)
-        source_groups = [row[0] for row in cursor.fetchall()]
+        source_groups = [r[0] for r in session.query(
+            PositionGroupLot.group_id,
+        ).filter(
+            PositionGroupLot.transaction_id.in_(body.transaction_ids),
+        ).distinct().all()]
 
-        cursor.execute(f"""
-            DELETE FROM position_group_lots
-            WHERE transaction_id IN ({placeholders})
-        """, body.transaction_ids)
+        session.query(PositionGroupLot).filter(
+            PositionGroupLot.transaction_id.in_(body.transaction_ids),
+        ).delete(synchronize_session='fetch')
 
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
         for txn_id in body.transaction_ids:
-            cursor.execute("""
-                INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
-                VALUES (?, ?)
-            """, (body.target_group_id, txn_id))
+            stmt = sqlite_insert(PositionGroupLot).values(
+                group_id=body.target_group_id, transaction_id=txn_id,
+            )
+            session.execute(stmt.on_conflict_do_nothing())
 
         all_affected = set(source_groups + [body.target_group_id])
         for gid in all_affected:
-            _refresh_group_status(cursor, gid)
-
-        conn.commit()
+            _refresh_group_status(gid, session=session)
 
     return {"message": f"Moved {len(body.transaction_ids)} lots"}
 
@@ -274,13 +250,14 @@ async def create_ledger_group(body: LedgerCreateGroup):
     """Create a new empty position group."""
     group_id = str(_uuid.uuid4())
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO position_groups
-                (group_id, account_number, underlying, strategy_label, status)
-            VALUES (?, ?, ?, ?, 'OPEN')
-        """, (group_id, body.account_number, body.underlying, body.strategy_label))
+    with db.get_session() as session:
+        session.add(PositionGroup(
+            group_id=group_id,
+            account_number=body.account_number,
+            underlying=body.underlying,
+            strategy_label=body.strategy_label,
+            status='OPEN',
+        ))
 
     return {"group_id": group_id, "message": "Group created"}
 
@@ -288,12 +265,13 @@ async def create_ledger_group(body: LedgerCreateGroup):
 @router.delete("/api/ledger/groups/{group_id}")
 async def delete_ledger_group(group_id: str):
     """Delete a group. Orphaned lots become unassigned (picked up by next seed)."""
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT group_id FROM position_groups WHERE group_id = ?", (group_id,))
-        if not cursor.fetchone():
+    with db.get_session() as session:
+        row = session.query(PositionGroup).filter(
+            PositionGroup.group_id == group_id,
+        ).first()
+        if not row:
             raise HTTPException(status_code=404, detail="Group not found")
 
-        cursor.execute("DELETE FROM position_groups WHERE group_id = ?", (group_id,))
+        session.delete(row)
 
     return {"message": "Group deleted"}

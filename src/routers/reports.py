@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
+from src.database.models import OrderChain
 from src.dependencies import db, order_manager
 from src.services.report_service import calculate_max_risk_reward
 
@@ -142,15 +143,12 @@ async def get_monthly_performance(year: int = None):
 async def get_available_strategies():
     """Get list of strategies that have been used in closed trades"""
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT DISTINCT strategy_type
-                FROM order_chains
-                WHERE chain_status = 'CLOSED' AND strategy_type IS NOT NULL
-                ORDER BY strategy_type
-            """)
-            strategies = [row['strategy_type'] for row in cursor.fetchall()]
+        with db.get_session() as session:
+            rows = session.query(OrderChain.strategy_type).filter(
+                OrderChain.chain_status == "CLOSED",
+                OrderChain.strategy_type.isnot(None),
+            ).distinct().order_by(OrderChain.strategy_type).all()
+            strategies = [row[0] for row in rows]
 
         return {"strategies": strategies}
     except HTTPException:
@@ -170,41 +168,26 @@ async def get_performance_report(
     try:
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = """
-                SELECT
-                    chain_id,
-                    strategy_type,
-                    total_pnl,
-                    account_number,
-                    closing_date
-                FROM order_chains
-                WHERE chain_status = 'CLOSED'
-            """
-            params = []
+        with db.get_session() as session:
+            q = session.query(OrderChain).filter(OrderChain.chain_status == 'CLOSED')
 
             if account_number:
-                query += " AND account_number = ?"
-                params.append(account_number)
+                q = q.filter(OrderChain.account_number == account_number)
 
             if days != 'all':
                 try:
                     days_int = int(days)
                     cutoff_date = (datetime.now() - timedelta(days=days_int)).strftime('%Y-%m-%d')
-                    query += " AND closing_date >= ?"
-                    params.append(cutoff_date)
+                    q = q.filter(OrderChain.closing_date >= cutoff_date)
                 except ValueError:
                     pass
 
-            cursor.execute(query, params)
-            chains = cursor.fetchall()
+            chains = [row.to_dict() for row in q.all()]
 
             chain_risk_reward = {}
             for chain in chains:
                 max_risk, max_reward = calculate_max_risk_reward(
-                    cursor, chain['chain_id'], chain['strategy_type']
+                    session, chain['chain_id'], chain['strategy_type']
                 )
                 chain_risk_reward[chain['chain_id']] = (max_risk, max_reward)
 

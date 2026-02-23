@@ -7,6 +7,9 @@ from typing import Dict, List, Optional
 from datetime import datetime, date
 import logging
 
+from sqlalchemy import case, func
+from src.database.models import RawTransaction
+
 logger = logging.getLogger(__name__)
 
 
@@ -216,34 +219,31 @@ class StrategyDetector:
             return False
         
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Get stock position at the time of the option order
-                cursor.execute("""
-                    SELECT SUM(CASE 
-                        WHEN action LIKE '%BUY%' THEN quantity 
-                        WHEN action LIKE '%SELL%' THEN -quantity 
-                        ELSE 0 
-                    END) as net_position
-                    FROM raw_transactions 
-                    WHERE underlying_symbol = ?
-                    AND account_number = ?
-                    AND instrument_type LIKE '%EQUITY'
-                    AND instrument_type NOT LIKE '%OPTION%'
-                    AND date(executed_at) <= ?
-                """, (underlying, account_number, option_date.isoformat()))
-                
-                result = cursor.fetchone()
-                net_stock_position = result[0] if result and result[0] else 0
-                
+            with self.db.get_session() as session:
+                net_position_expr = func.sum(
+                    case(
+                        (RawTransaction.action.like('%BUY%'), RawTransaction.quantity),
+                        (RawTransaction.action.like('%SELL%'), -RawTransaction.quantity),
+                        else_=0,
+                    )
+                )
+                result = session.query(net_position_expr).filter(
+                    RawTransaction.underlying_symbol == underlying,
+                    RawTransaction.account_number == account_number,
+                    RawTransaction.instrument_type.like('%EQUITY'),
+                    ~RawTransaction.instrument_type.like('%OPTION%'),
+                    func.date(RawTransaction.executed_at) <= option_date.isoformat(),
+                ).scalar()
+
+                net_stock_position = result if result else 0
+
                 # Need 100 shares per call contract
                 shares_needed = call_contracts * 100
-                
+
                 logger.debug(f"Coverage check for {underlying}: {net_stock_position} shares vs {shares_needed} needed")
-                
+
                 return net_stock_position >= shares_needed
-                
+
         except Exception as e:
             logger.error(f"Error checking stock coverage: {str(e)}")
             return False

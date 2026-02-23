@@ -2,38 +2,48 @@
 
 from loguru import logger
 
+from src.database.models import OrderChainMember as OCM, Order as OrderModel, OrderPosition as OP
 
-def calculate_max_risk_reward(cursor, chain_id: str, strategy_type: str) -> tuple:
+
+def calculate_max_risk_reward(session, chain_id: str, strategy_type: str) -> tuple:
     """
     Calculate max risk and max reward for a chain based on its opening positions.
     Returns (max_risk, max_reward) as positive numbers, or (None, None) if cannot calculate.
     """
     # Get the opening order for this chain (first order)
-    cursor.execute("""
-        SELECT ocm.order_id
-        FROM order_chain_members ocm
-        JOIN orders o ON o.order_id = ocm.order_id
-        WHERE ocm.chain_id = ?
-        ORDER BY o.order_date ASC
-        LIMIT 1
-    """, (chain_id,))
-    row = cursor.fetchone()
+    row = (
+        session.query(OCM.order_id)
+        .join(OrderModel, OrderModel.order_id == OCM.order_id)
+        .filter(OCM.chain_id == chain_id)
+        .order_by(OrderModel.order_date.asc())
+        .first()
+    )
     if not row:
         return None, None
 
-    opening_order_id = row['order_id']
+    opening_order_id = row[0]
 
     # Get positions for the opening order
-    cursor.execute("""
-        SELECT symbol, instrument_type, option_type, strike, quantity,
-               opening_price, opening_action
-        FROM order_positions
-        WHERE order_id = ?
-    """, (opening_order_id,))
-    positions = cursor.fetchall()
+    pos_rows = (
+        session.query(
+            OP.symbol, OP.instrument_type, OP.option_type, OP.strike,
+            OP.quantity, OP.opening_price, OP.opening_action,
+        )
+        .filter(OP.order_id == opening_order_id)
+        .all()
+    )
 
-    if not positions:
+    if not pos_rows:
         return None, None
+
+    # Convert to dicts for compatibility with calculation logic
+    positions = []
+    for r in pos_rows:
+        positions.append({
+            'symbol': r[0], 'instrument_type': r[1], 'option_type': r[2],
+            'strike': r[3], 'quantity': r[4], 'opening_price': r[5],
+            'opening_action': r[6],
+        })
 
     # Separate by instrument type
     options = [p for p in positions if 'OPTION' in (p['instrument_type'] or '').upper()]

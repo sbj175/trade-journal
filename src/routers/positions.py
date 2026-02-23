@@ -7,6 +7,9 @@ from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
+from sqlalchemy import func
+
+from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionLot as PositionLotModel
 from src.dependencies import db, lot_manager, order_manager
 from src.services.ledger_service import seed_position_groups
 
@@ -81,26 +84,22 @@ async def get_open_chains(account_number: Optional[str] = None):
 
     try:
         # Auto-seed position_groups if empty
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM position_groups")
-            if cursor.fetchone()[0] == 0:
-                cursor.execute("SELECT COUNT(*) FROM position_lots")
-                if cursor.fetchone()[0] > 0:
+        with db.get_session() as session:
+            group_count = session.query(func.count()).select_from(PositionGroup).scalar()
+            if group_count == 0:
+                lot_count = session.query(func.count()).select_from(PositionLotModel).scalar()
+                if lot_count > 0:
                     seed_position_groups()
 
         # Query open position groups
-        query = "SELECT * FROM position_groups WHERE status IN ('OPEN', 'ASSIGNED')"
-        params = []
-        if account_number and account_number != '':
-            query += " AND account_number = ?"
-            params.append(account_number)
-        query += " ORDER BY underlying ASC, opening_date DESC"
-
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            groups_raw = [dict(row) for row in cursor.fetchall()]
+        with db.get_session() as session:
+            q = session.query(PositionGroup).filter(
+                PositionGroup.status.in_(['OPEN', 'ASSIGNED']),
+            )
+            if account_number and account_number != '':
+                q = q.filter(PositionGroup.account_number == account_number)
+            q = q.order_by(PositionGroup.underlying.asc(), PositionGroup.opening_date.desc())
+            groups_raw = [row.to_dict() for row in q.all()]
 
         if not groups_raw:
             result = {}
@@ -132,15 +131,13 @@ async def get_open_chains(account_number: Optional[str] = None):
 
             order_cache: Dict[str, Dict] = {}
             if all_order_ids:
-                with db.get_connection() as conn:
-                    cursor = conn.cursor()
-                    oid_list = list(all_order_ids)
-                    placeholders = ','.join(['?' for _ in oid_list])
-                    cursor.execute(f"""
-                        SELECT order_id, order_data FROM order_chain_cache
-                        WHERE order_id IN ({placeholders})
-                    """, oid_list)
-                    for row in cursor.fetchall():
+                with db.get_session() as session:
+                    rows = session.query(
+                        OrderChainCache.order_id, OrderChainCache.order_data,
+                    ).filter(
+                        OrderChainCache.order_id.in_(list(all_order_ids)),
+                    ).all()
+                    for row in rows:
                         try:
                             order_cache[row[0]] = _json.loads(row[1])
                         except Exception:

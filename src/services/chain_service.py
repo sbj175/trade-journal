@@ -5,28 +5,36 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from loguru import logger
+from sqlalchemy import func
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from src.database.models import (
+    OrderChain as OrderChainModel, OrderChainMember, OrderChainCache,
+    RawTransaction, PositionLot as PositionLotModel,
+)
 from src.dependencies import db, strategy_detector, lot_manager
 
 
 async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
     """Check if cached chain data exists for the requested account"""
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
+        with db.get_session() as session:
             if account_number == '' or account_number is None:
                 # "All Accounts" → verify cache covers all accounts that have transactions
-                cursor.execute("SELECT COUNT(DISTINCT account_number) FROM order_chains")
-                cached_accounts = cursor.fetchone()[0]
-                cursor.execute("SELECT COUNT(DISTINCT account_number) FROM raw_transactions")
-                total_accounts = cursor.fetchone()[0]
+                cached_accounts = session.query(
+                    func.count(OrderChainModel.account_number.distinct()),
+                ).scalar()
+                total_accounts = session.query(
+                    func.count(RawTransaction.account_number.distinct()),
+                ).scalar()
                 has_cache = cached_accounts > 0 and cached_accounts >= total_accounts
             elif account_number:
-                # Specific account number → check for chains in that account
-                cursor.execute("SELECT COUNT(*) FROM order_chains WHERE account_number = ? LIMIT 1", (account_number,))
-                has_cache = cursor.fetchone()[0] > 0
+                has_cache = session.query(OrderChainModel.chain_id).filter(
+                    OrderChainModel.account_number == account_number,
+                ).first() is not None
             else:
                 has_cache = False
+
             if has_cache:
                 account_display = account_number if account_number is not None else "unspecified"
                 logger.debug(f"Using cached chains for account {account_display} (derivation path temporarily disabled)")
@@ -40,73 +48,64 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
                           limit: int = 10000, offset: int = 0, chain_id: Optional[str] = None):
     """Get chains from cached data in order_chains table"""
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-
+        with db.get_session() as session:
             # Build query with filters
-            query = """
-                SELECT oc.chain_id, oc.underlying, oc.strategy_type, oc.opening_date,
-                       oc.closing_date, oc.chain_status, oc.order_count, oc.total_pnl,
-                       oc.realized_pnl, oc.unrealized_pnl, oc.account_number
-                FROM order_chains oc
-            """
-            params = []
-            where_conditions = []
+            q = session.query(OrderChainModel)
+            filters = []
 
             if chain_id:
-                where_conditions.append("oc.chain_id = ?")
-                params.append(chain_id)
-
-            # Only filter by account if it's a non-empty string (specific account)
+                filters.append(OrderChainModel.chain_id == chain_id)
             if account_number and account_number != '':
-                where_conditions.append("oc.account_number = ?")
-                params.append(account_number)
-
+                filters.append(OrderChainModel.account_number == account_number)
             if underlying:
-                where_conditions.append("oc.underlying = ?")
-                params.append(underlying)
+                filters.append(OrderChainModel.underlying == underlying)
 
-            if where_conditions:
-                query += " WHERE " + " AND ".join(where_conditions)
+            if filters:
+                q = q.filter(*filters)
 
-            query += " ORDER BY oc.opening_date DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
+            total_count = q.count()
 
-            cursor.execute(query, params)
-            chain_rows = cursor.fetchall()
+            chain_rows = q.order_by(
+                OrderChainModel.opening_date.desc(),
+            ).limit(limit).offset(offset).all()
 
             if not chain_rows:
                 return {"chains": [], "total": 0}
 
-            # Get total count for pagination
-            count_query = "SELECT COUNT(*) FROM order_chains oc"
-            count_params = []
-            if where_conditions:
-                count_query += " WHERE " + " AND ".join(where_conditions)
-                count_params = params[:-2]  # Remove limit and offset
+            # Batch-load all order data for these chains
+            chain_ids = [row.chain_id for row in chain_rows]
+            cache_rows = session.query(
+                OrderChainCache.chain_id, OrderChainCache.order_data,
+            ).filter(
+                OrderChainCache.chain_id.in_(chain_ids),
+            ).order_by(OrderChainCache.chain_id, OrderChainCache.order_id).all()
 
-            cursor.execute(count_query, count_params)
-            total_count = cursor.fetchone()[0]
+            order_data_by_chain: Dict[str, list] = {}
+            for cid, od in cache_rows:
+                order_data_by_chain.setdefault(cid, []).append(od)
 
             # Format cached chains for frontend with complete order data
             formatted_chains = []
             for row in chain_rows:
-                chain_id_val, underlying_val, strategy_type, opening_date, closing_date, chain_status = row[:6]
-                order_count, total_pnl, realized_pnl, unrealized_pnl, account_number_val = row[6:]
+                chain_id_val = row.chain_id
+                underlying_val = row.underlying
+                strategy_type = row.strategy_type
+                opening_date = row.opening_date
+                closing_date = row.closing_date
+                chain_status = row.chain_status
+                order_count = row.order_count
+                total_pnl = row.total_pnl
+                realized_pnl = row.realized_pnl
+                unrealized_pnl = row.unrealized_pnl
+                account_number_val = row.account_number
 
-                # Load complete order data from cache
-                cursor.execute("""
-                    SELECT order_data FROM order_chain_cache
-                    WHERE chain_id = ?
-                    ORDER BY order_id
-                """, (chain_id_val,))
-
-                order_rows = cursor.fetchall()
+                # Load complete order data from batch cache
+                raw_order_data_list = order_data_by_chain.get(chain_id_val, [])
                 orders = []
 
-                for order_row in order_rows:
+                for raw_order_data in raw_order_data_list:
                     try:
-                        order_data = json.loads(order_row[0])
+                        order_data = json.loads(raw_order_data)
 
                         # Clean up system-generated order IDs and types for display
                         order_id = order_data.get('order_id', '')
@@ -279,61 +278,69 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
         logger.info(f"[CACHE UPDATE] Account-scoped update for account: {affected_account}")
     logger.info(f"[CACHE UPDATE] Starting update with {len(chains)} chains")
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-
+        with db.get_session() as session:
             # Preserve existing working strategies before clearing cache
-            cursor.execute("""
-                CREATE TEMP TABLE IF NOT EXISTS preserved_strategies AS
-                SELECT chain_id, strategy_type
-                FROM order_chains
-                WHERE strategy_type IS NOT NULL AND strategy_type != 'Unknown' AND strategy_type != 'None'
-                AND chain_id LIKE '%MERGED%'
-            """)
+            preserved = {}
+            pres_rows = session.query(
+                OrderChainModel.chain_id, OrderChainModel.strategy_type,
+            ).filter(
+                OrderChainModel.strategy_type.isnot(None),
+                OrderChainModel.strategy_type != 'Unknown',
+                OrderChainModel.strategy_type != 'None',
+                OrderChainModel.chain_id.like('%MERGED%'),
+            ).all()
+            for cid, st in pres_rows:
+                preserved[cid] = st
 
             if affected_underlyings:
-                placeholders = ','.join('?' * len(affected_underlyings))
-                cursor.execute(f"""
-                    DELETE FROM order_chain_cache WHERE chain_id IN (
-                        SELECT chain_id FROM order_chains WHERE underlying IN ({placeholders})
-                    )
-                """, tuple(affected_underlyings))
-                cursor.execute(f"""
-                    DELETE FROM order_chain_members WHERE chain_id IN (
-                        SELECT chain_id FROM order_chains WHERE underlying IN ({placeholders})
-                    )
-                """, tuple(affected_underlyings))
-                cursor.execute(f"DELETE FROM order_chains WHERE underlying IN ({placeholders})",
-                              tuple(affected_underlyings))
+                underlying_list = list(affected_underlyings)
+                # Get chain_ids for affected underlyings
+                affected_chain_ids = [r[0] for r in session.query(
+                    OrderChainModel.chain_id,
+                ).filter(
+                    OrderChainModel.underlying.in_(underlying_list),
+                ).all()]
+
+                if affected_chain_ids:
+                    session.query(OrderChainCache).filter(
+                        OrderChainCache.chain_id.in_(affected_chain_ids),
+                    ).delete(synchronize_session='fetch')
+                    session.query(OrderChainMember).filter(
+                        OrderChainMember.chain_id.in_(affected_chain_ids),
+                    ).delete(synchronize_session='fetch')
+                session.query(OrderChainModel).filter(
+                    OrderChainModel.underlying.in_(underlying_list),
+                ).delete(synchronize_session='fetch')
                 logger.info(f"[CACHE UPDATE] Cleared cache for underlyings: {affected_underlyings}")
             elif affected_account:
-                cursor.execute("""
-                    DELETE FROM order_chain_cache WHERE chain_id IN (
-                        SELECT chain_id FROM order_chains WHERE account_number = ?
-                    )
-                """, (affected_account,))
-                cursor.execute("""
-                    DELETE FROM order_chain_members WHERE chain_id IN (
-                        SELECT chain_id FROM order_chains WHERE account_number = ?
-                    )
-                """, (affected_account,))
-                cursor.execute("DELETE FROM order_chains WHERE account_number = ?",
-                              (affected_account,))
+                affected_chain_ids = [r[0] for r in session.query(
+                    OrderChainModel.chain_id,
+                ).filter(
+                    OrderChainModel.account_number == affected_account,
+                ).all()]
+
+                if affected_chain_ids:
+                    session.query(OrderChainCache).filter(
+                        OrderChainCache.chain_id.in_(affected_chain_ids),
+                    ).delete(synchronize_session='fetch')
+                    session.query(OrderChainMember).filter(
+                        OrderChainMember.chain_id.in_(affected_chain_ids),
+                    ).delete(synchronize_session='fetch')
+                session.query(OrderChainModel).filter(
+                    OrderChainModel.account_number == affected_account,
+                ).delete(synchronize_session='fetch')
                 logger.info(f"[CACHE UPDATE] Cleared cache for account: {affected_account}")
             else:
-                cursor.execute("DELETE FROM order_chains")
-                cursor.execute("DELETE FROM order_chain_members")
-                cursor.execute("DELETE FROM order_chain_cache")
+                session.query(OrderChainModel).delete()
+                session.query(OrderChainMember).delete()
+                session.query(OrderChainCache).delete()
 
             current_time = datetime.now()
 
             for chain in chains:
                 # Check for preserved strategy first
-                cursor.execute("SELECT strategy_type FROM preserved_strategies WHERE chain_id = ?", (chain.chain_id,))
-                preserved_result = cursor.fetchone()
-
-                if preserved_result:
-                    detected_strategy = preserved_result[0]
+                if chain.chain_id in preserved:
+                    detected_strategy = preserved[chain.chain_id]
                     logger.info(f"Using preserved strategy for chain {chain.chain_id}: {detected_strategy}")
                 else:
                     try:
@@ -409,43 +416,66 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     logger.debug(f"Could not get lot metadata for chain {chain.chain_id}: {lot_err}")
 
                 # Insert chain data with V3 columns
-                cursor.execute("""
-                    INSERT OR REPLACE INTO order_chains (
-                        chain_id, underlying, account_number, opening_order_id,
-                        strategy_type, opening_date, closing_date, chain_status,
-                        order_count, total_pnl, realized_pnl, unrealized_pnl,
-                        leg_count, original_quantity, remaining_quantity,
-                        has_assignment, assignment_date,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    chain.chain_id,
-                    chain.underlying,
-                    chain.account_number,
-                    chain.orders[0].order_id if chain.orders else None,
-                    detected_strategy,
-                    chain.opening_date,
-                    chain.closing_date,
-                    chain.status,
-                    len(chain.orders),
-                    total_pnl,
-                    realized_pnl,
-                    unrealized_pnl,
-                    leg_count,
-                    original_quantity,
-                    remaining_quantity,
-                    has_assignment,
-                    assignment_date,
-                    current_time,
-                    current_time
-                ))
+                chain_values = dict(
+                    chain_id=chain.chain_id,
+                    underlying=chain.underlying,
+                    account_number=chain.account_number,
+                    opening_order_id=chain.orders[0].order_id if chain.orders else None,
+                    strategy_type=detected_strategy,
+                    opening_date=chain.opening_date,
+                    closing_date=chain.closing_date,
+                    chain_status=chain.status,
+                    order_count=len(chain.orders),
+                    total_pnl=total_pnl,
+                    realized_pnl=realized_pnl,
+                    unrealized_pnl=unrealized_pnl,
+                    leg_count=leg_count,
+                    original_quantity=original_quantity,
+                    remaining_quantity=remaining_quantity,
+                    has_assignment=has_assignment,
+                    assignment_date=assignment_date,
+                    created_at=current_time,
+                    updated_at=current_time,
+                )
+                stmt = sqlite_insert(OrderChainModel).values(**chain_values)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=[OrderChainModel.chain_id],
+                    set_={k: stmt.excluded[k] for k in chain_values},
+                )
+                session.execute(stmt)
+
+                # Batch-load lot data for all opening transactions in this chain
+                opening_tx_ids = []
+                for order in chain.orders:
+                    for tx in order.transactions:
+                        if tx.is_opening:
+                            opening_tx_ids.append(tx.id)
+
+                lot_by_txn = {}
+                derived_by_lot = {}
+                if opening_tx_ids:
+                    lot_rows = session.query(PositionLotModel).filter(
+                        PositionLotModel.transaction_id.in_(opening_tx_ids),
+                    ).all()
+                    for lr in lot_rows:
+                        lot_by_txn[lr.transaction_id] = lr
+
+                    lot_ids = [lr.id for lr in lot_rows]
+                    if lot_ids:
+                        derived_rows = session.query(PositionLotModel).filter(
+                            PositionLotModel.derived_from_lot_id.in_(lot_ids),
+                        ).all()
+                        for dr in derived_rows:
+                            derived_by_lot.setdefault(dr.derived_from_lot_id, []).append(dr)
 
                 # Insert chain membership links and cache complete order data
                 for order in chain.orders:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO order_chain_members (chain_id, order_id)
-                        VALUES (?, ?)
-                    """, (chain.chain_id, order.order_id))
+                    member_values = dict(
+                        chain_id=chain.chain_id, order_id=order.order_id,
+                    )
+                    stmt = sqlite_insert(OrderChainMember).values(**member_values)
+                    stmt = stmt.on_conflict_do_nothing()
+                    session.execute(stmt)
 
                     # Calculate total P&L for this order
                     order_pnl = 0.0
@@ -484,44 +514,29 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         derived_positions = []
 
                         if tx.is_opening:
-                            with db.get_connection() as lot_conn:
-                                lot_cursor = lot_conn.cursor()
-                                lot_cursor.execute("""
-                                    SELECT id, remaining_quantity, original_quantity, status, leg_index
-                                    FROM position_lots
-                                    WHERE transaction_id = ?
-                                """, (tx.id,))
-                                lot_row = lot_cursor.fetchone()
+                            lot_row = lot_by_txn.get(tx.id)
+                            if lot_row:
+                                lot_id = lot_row.id
+                                lot_data = {
+                                    "lot_id": lot_id,
+                                    "leg_index": lot_row.leg_index if lot_row.leg_index is not None else idx,
+                                    "original_quantity": lot_row.original_quantity or abs(tx.quantity),
+                                    "remaining_quantity": lot_row.remaining_quantity or abs(tx.quantity),
+                                    "status": lot_row.status or "OPEN"
+                                }
 
-                                if lot_row:
-                                    lot_id = lot_row[0]
-                                    lot_data = {
-                                        "lot_id": lot_id,
-                                        "leg_index": lot_row[4] or idx,
-                                        "original_quantity": lot_row[2] or abs(tx.quantity),
-                                        "remaining_quantity": lot_row[1] or abs(tx.quantity),
-                                        "status": lot_row[3] or "OPEN"
-                                    }
-
-                                    # Check for derived positions (from assignment/exercise)
-                                    lot_cursor.execute("""
-                                        SELECT id, symbol, underlying, quantity, entry_price,
-                                               remaining_quantity, status, derivation_type
-                                        FROM position_lots
-                                        WHERE derived_from_lot_id = ?
-                                    """, (lot_id,))
-
-                                    for derived_row in lot_cursor.fetchall():
-                                        derived_positions.append({
-                                            "lot_id": derived_row[0],
-                                            "symbol": derived_row[1],
-                                            "underlying": derived_row[2],
-                                            "derivation_type": derived_row[7],
-                                            "quantity": derived_row[3],
-                                            "entry_price": derived_row[4],
-                                            "remaining_quantity": derived_row[5],
-                                            "status": derived_row[6]
-                                        })
+                                # Check for derived positions (from assignment/exercise)
+                                for derived_row in derived_by_lot.get(lot_id, []):
+                                    derived_positions.append({
+                                        "lot_id": derived_row.id,
+                                        "symbol": derived_row.symbol,
+                                        "underlying": derived_row.underlying,
+                                        "derivation_type": derived_row.derivation_type,
+                                        "quantity": derived_row.quantity,
+                                        "entry_price": derived_row.entry_price,
+                                        "remaining_quantity": derived_row.remaining_quantity,
+                                        "status": derived_row.status
+                                    })
 
                         position_data = {
                             "position_id": f"{order.order_id}_{len(order_data['positions']) + 1}",
@@ -559,12 +574,18 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
 
                         order_data["positions"].append(position_data)
 
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO order_chain_cache (chain_id, order_id, order_data)
-                        VALUES (?, ?, ?)
-                    """, (chain.chain_id, order.order_id, json.dumps(order_data)))
+                    cache_values = dict(
+                        chain_id=chain.chain_id,
+                        order_id=order.order_id,
+                        order_data=json.dumps(order_data),
+                    )
+                    stmt = sqlite_insert(OrderChainCache).values(**cache_values)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=['chain_id', 'order_id'],
+                        set_={'order_data': stmt.excluded.order_data},
+                    )
+                    session.execute(stmt)
 
-            conn.commit()
             logger.info(f"[CACHE UPDATE] Successfully updated cache with {len(chains)} chains")
 
     except Exception as e:

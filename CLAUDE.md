@@ -100,8 +100,8 @@ The application runs on http://localhost:8000 with auto-reload enabled during de
 # Query specific trades
 python query_db.py
 
-# Migrate database schema
-python migrate_database.py
+# Database schema managed by SQLAlchemy ORM models in src/database/models.py
+# Schema created via Base.metadata.create_all() in DatabaseManager.initialize_database()
 ```
 
 ### Managing Trades
@@ -129,11 +129,11 @@ python test_expiration.py
    - WebSocket endpoint for real-time quotes at `/ws/quotes`
    - System components initialized on startup
 
-2. **Database Layer** (`src/database/db_manager.py`):
-   - SQLite database with tables for trades, option_legs, stock_legs, accounts, transactions, positions, orders, order_legs, order_chains
-   - Context manager pattern for safe database operations
+2. **Database Layer** (`src/database/db_manager.py`, `src/database/models.py`, `src/database/engine.py`):
+   - SQLite database via SQLAlchemy 2.0 ORM (declarative models in `models.py`)
+   - Engine factory + session context manager in `engine.py`
+   - `db.get_session()` for all database operations (ORM-based)
    - All trades stored locally in `trade_journal.db`
-   - Row factory returns sqlite3.Row objects for dict-like access
 
 3. **Order Processing System**:
    - **OrderProcessor** (`src/models/order_processor.py`): Core processing engine for transaction grouping

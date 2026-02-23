@@ -89,16 +89,17 @@ class TestPositionQueries:
         missing = position_manager.get_position("ACCT1", "NONEXISTENT")
         assert missing is None
 
-    def test_get_positions_for_underlying(self, position_manager):
-        """Multiple symbols, same underlying."""
+    def test_get_open_positions_for_underlying(self, position_manager):
+        """Multiple symbols, same underlying — verified via get_open_positions."""
         tx1 = _make_tx("BUY_TO_OPEN", 1, 1.00, symbol="AAPL 250321C00170000")
         tx2 = _make_tx("SELL_TO_OPEN", 1, 2.00, symbol="AAPL 250321P00160000")
 
         position_manager.update_position_from_transaction(tx1)
         position_manager.update_position_from_transaction(tx2)
 
-        positions = position_manager.get_positions_for_account("ACCT1", underlying="AAPL")
-        assert len(positions) == 2
+        positions = position_manager.get_open_positions("ACCT1")
+        aapl_positions = [p for p in positions if p.underlying == "AAPL"]
+        assert len(aapl_positions) == 2
 
 
 # ---------------------------------------------------------------------------

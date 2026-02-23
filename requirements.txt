@@ -7,7 +7,8 @@ uvicorn[standard]>=0.24.0
 pydantic>=2.4.0
 
 # Database
-# SQLite is built-in, no additional package needed
+sqlalchemy>=2.0
+alembic>=1.13
 
 # Utilities
 python-dotenv>=1.0.0

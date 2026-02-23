@@ -4,7 +4,9 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+from sqlalchemy import func
 
+from src.database.models import AccountBalance
 from src.dependencies import db, connection_manager
 
 router = APIRouter()
@@ -25,35 +27,25 @@ async def get_accounts():
 async def get_account_balances(account_number: Optional[str] = None):
     """Get account balances for specified account or all accounts"""
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-
+        with db.get_session() as session:
             if account_number:
-                query = """
-                    SELECT * FROM account_balances
-                    WHERE account_number = ?
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-                """
-                cursor.execute(query, (account_number,))
+                rows = session.query(AccountBalance).filter(
+                    AccountBalance.account_number == account_number
+                ).order_by(AccountBalance.timestamp.desc()).limit(1).all()
             else:
-                query = """
-                    SELECT * FROM account_balances
-                    WHERE timestamp = (
-                        SELECT MAX(timestamp)
-                        FROM account_balances ab2
-                        WHERE ab2.account_number = account_balances.account_number
-                    )
-                    ORDER BY account_number
-                """
-                cursor.execute(query)
+                # Subquery for latest timestamp per account
+                latest = session.query(
+                    AccountBalance.account_number,
+                    func.max(AccountBalance.timestamp).label("max_ts"),
+                ).group_by(AccountBalance.account_number).subquery()
 
-            columns = [desc[0] for desc in cursor.description]
-            balances = []
-            for row in cursor.fetchall():
-                balance = dict(zip(columns, row))
-                balances.append(balance)
+                rows = session.query(AccountBalance).join(
+                    latest,
+                    (AccountBalance.account_number == latest.c.account_number)
+                    & (AccountBalance.timestamp == latest.c.max_ts),
+                ).order_by(AccountBalance.account_number).all()
 
+            balances = [row.to_dict() for row in rows]
             return {"balances": balances}
     except Exception as e:
         logger.error(f"Error getting account balances: {str(e)}")

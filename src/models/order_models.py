@@ -365,116 +365,93 @@ class OrderManager:
     def __init__(self, db_manager):
         self.db = db_manager
     
-    def get_order_chains(self, account_number: Optional[str] = None, 
+    def get_order_chains(self, account_number: Optional[str] = None,
                         limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         """Get order chains with their orders and positions"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            query = """
-                SELECT 
-                    oc.chain_id,
-                    oc.underlying,
-                    oc.account_number,
-                    oc.opening_order_id,
-                    oc.strategy_type,
-                    oc.chain_status,
-                    oc.total_pnl,
-                    oc.realized_pnl,
-                    oc.unrealized_pnl,
-                    oc.created_at,
-                    oc.updated_at
-                FROM order_chains oc
-            """
-            params = []
-            
+        from src.database.models import OrderChain as OC, Order as OrderModel, OrderChainMember as OCM, OrderPosition as OP
+
+        with self.db.get_session() as session:
+            q = session.query(OC)
             if account_number:
-                query += " WHERE oc.account_number = ?"
-                params.append(account_number)
-            
-            query += " ORDER BY oc.created_at DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            
-            cursor.execute(query, params)
-            chains_data = cursor.fetchall()
-            
+                q = q.filter(OC.account_number == account_number)
+            q = q.order_by(OC.created_at.desc()).limit(limit).offset(offset)
+            chains_data = q.all()
+
+            chain_ids = [c.chain_id for c in chains_data]
+            if not chain_ids:
+                return []
+
+            # Batch-load members (chain_id → list of order_ids in sequence order)
+            member_rows = (
+                session.query(OCM.chain_id, OCM.order_id, OCM.sequence_number)
+                .filter(OCM.chain_id.in_(chain_ids))
+                .order_by(OCM.chain_id, OCM.sequence_number)
+                .all()
+            )
+            members_by_chain: Dict[str, list] = {cid: [] for cid in chain_ids}
+            all_order_ids = set()
+            for cid, oid, _seq in member_rows:
+                members_by_chain[cid].append(oid)
+                all_order_ids.add(oid)
+
+            # Batch-load orders
+            order_rows = session.query(OrderModel).filter(
+                OrderModel.order_id.in_(list(all_order_ids)),
+            ).all()
+            order_by_id = {o.order_id: o.to_dict() for o in order_rows}
+
+            # Batch-load positions
+            pos_rows = session.query(OP).filter(
+                OP.order_id.in_(list(all_order_ids)),
+            ).order_by(OP.symbol).all()
+            pos_by_order: Dict[str, list] = {}
+            for p in pos_rows:
+                pos_by_order.setdefault(p.order_id, []).append(p.to_dict())
+
+            # Assemble result
             chains = []
-            for chain_row in chains_data:
-                chain_dict = dict(chain_row)
-                
-                # Get orders for this chain
-                cursor.execute("""
-                    SELECT o.*, ocm.sequence_number
-                    FROM orders o
-                    JOIN order_chain_members ocm ON o.order_id = ocm.order_id
-                    WHERE ocm.chain_id = ?
-                    ORDER BY ocm.sequence_number
-                """, (chain_dict['chain_id'],))
-                
-                orders_data = cursor.fetchall()
+            for c in chains_data:
+                chain_dict = c.to_dict()
                 orders = []
-                
-                for order_row in orders_data:
-                    order_dict = dict(order_row)
-                    
-                    # Get positions for this order
-                    cursor.execute("""
-                        SELECT * FROM order_positions WHERE order_id = ?
-                        ORDER BY symbol
-                    """, (order_dict['order_id'],))
-                    
-                    positions_data = cursor.fetchall()
-                    positions = [dict(pos) for pos in positions_data]
-                    
-                    order_dict['positions'] = positions
-                    orders.append(order_dict)
-                
+                for oid in members_by_chain.get(c.chain_id, []):
+                    od = order_by_id.get(oid)
+                    if od:
+                        od['positions'] = pos_by_order.get(oid, [])
+                        orders.append(od)
                 chain_dict['orders'] = orders
                 chains.append(chain_dict)
-            
+
             return chains
     
     def get_order_by_id(self, order_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific order with its positions"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
-            order_row = cursor.fetchone()
-            
-            if not order_row:
+        from src.database.models import Order as OrderModel, OrderPosition as OP
+
+        with self.db.get_session() as session:
+            row = session.get(OrderModel, order_id)
+            if not row:
                 return None
-            
-            order_dict = dict(order_row)
-            
-            # Get positions
-            cursor.execute("""
-                SELECT * FROM order_positions WHERE order_id = ?
-                ORDER BY symbol
-            """, (order_id,))
-            
-            positions_data = cursor.fetchall()
-            order_dict['positions'] = [dict(pos) for pos in positions_data]
-            
+            order_dict = row.to_dict()
+            positions = (
+                session.query(OP)
+                .filter(OP.order_id == order_id)
+                .order_by(OP.symbol)
+                .all()
+            )
+            order_dict['positions'] = [p.to_dict() for p in positions]
             return order_dict
     
-    def get_positions_by_account(self, account_number: str, 
+    def get_positions_by_account(self, account_number: str,
                                status: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get positions for an account, optionally filtered by status"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            query = "SELECT * FROM order_positions WHERE account_number = ?"
-            params = [account_number]
-            
+        from src.database.models import OrderPosition as OP
+
+        with self.db.get_session() as session:
+            q = session.query(OP).filter(OP.account_number == account_number)
             if status:
-                query += " AND status = ?"
-                params.append(status)
-            
-            query += " ORDER BY created_at DESC"
-            
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+                q = q.filter(OP.status == status)
+            q = q.order_by(OP.created_at.desc())
+            return [row.to_dict() for row in q.all()]
     
     def calculate_realized_position_pnl(self, position: Dict[str, Any]) -> float:
         """Calculate realized P&L for a position based on actual cash flows"""
@@ -522,323 +499,240 @@ class OrderManager:
 
     def update_order_pnl(self, order_id: str) -> float:
         """Recalculate and update P&L for an order using realized P&L"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Get all positions for this order
-            cursor.execute("""
-                SELECT * FROM order_positions WHERE order_id = ?
-            """, (order_id,))
-            
-            positions = cursor.fetchall()
+        from src.database.models import Order as OrderModel, OrderPosition as OP
+
+        with self.db.get_session() as session:
+            pos_rows = session.query(OP).filter(OP.order_id == order_id).all()
             total_pnl = 0.0
-            
-            # Calculate realized P&L for each position
-            for pos_row in positions:
-                position = dict(pos_row)
+
+            for pos_row in pos_rows:
+                position = pos_row.to_dict()
                 realized_pnl = self.calculate_realized_position_pnl(position)
                 total_pnl += realized_pnl
-                
-                # Update position P&L if different
-                if abs(realized_pnl - (position.get('pnl') or 0.0)) > 0.01:
-                    cursor.execute("""
-                        UPDATE order_positions SET pnl = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE position_id = ?
-                    """, (realized_pnl, position['position_id']))
-            
-            # Update order
-            cursor.execute("""
-                UPDATE orders SET total_pnl = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE order_id = ?
-            """, (total_pnl, order_id))
-            
-            conn.commit()
+
+                if abs(realized_pnl - (pos_row.pnl or 0.0)) > 0.01:
+                    pos_row.pnl = realized_pnl
+                    pos_row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            order_row = session.get(OrderModel, order_id)
+            if order_row:
+                order_row.total_pnl = total_pnl
+                order_row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
             return total_pnl
     
     def calculate_chain_realized_pnl(self, chain_id: str, chain_status: str) -> float:
         """Calculate truly realized P&L based on completed round trips
-        
+
         Logic:
         - Closed chains: All P&L is realized
         - Open chains: Sum net P&L from completed round trips (STO + matching BTC)
         """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
+        from sqlalchemy import func as sa_func
+        from src.database.models import OrderPosition as OP, OrderChainMember as OCM
+
+        with self.db.get_session() as session:
             if chain_status == 'CLOSED':
-                # All P&L is realized for closed chains - sum all positions
-                cursor.execute("""
-                    SELECT COALESCE(SUM(p.pnl), 0)
-                    FROM order_positions p
-                    JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                    WHERE ocm.chain_id = ?
-                """, (chain_id,))
-                return cursor.fetchone()[0] or 0.0
-            
-            # For open chains, calculate net P&L from completed round trips
-            # Get all positions for this chain
-            cursor.execute("""
-                SELECT p.symbol, p.opening_action, p.status, p.pnl, p.strike, p.expiration
-                FROM order_positions p
-                JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                WHERE ocm.chain_id = ?
-                ORDER BY p.strike, p.expiration
-            """, (chain_id,))
-            
-            positions = cursor.fetchall()
-            
-            # Group positions by strike and expiration to find completed round trips
+                total = (
+                    session.query(sa_func.coalesce(sa_func.sum(OP.pnl), 0))
+                    .join(OCM, OP.order_id == OCM.order_id)
+                    .filter(OCM.chain_id == chain_id)
+                    .scalar()
+                )
+                return total or 0.0
+
+            # Batch-load all positions for this chain (symbol, action, status, pnl, strike, expiration, quantity)
+            rows = (
+                session.query(
+                    OP.symbol, OP.opening_action, OP.status, OP.pnl,
+                    OP.strike, OP.expiration, OP.quantity,
+                )
+                .join(OCM, OP.order_id == OCM.order_id)
+                .filter(OCM.chain_id == chain_id)
+                .order_by(OP.strike, OP.expiration)
+                .all()
+            )
+
             from collections import defaultdict
             position_groups = defaultdict(list)
-            
-            for pos in positions:
-                symbol, action, status, pnl, strike, expiration = pos
+            for symbol, action, status, pnl, strike, expiration, quantity in rows:
                 key = (symbol, strike, expiration)
                 position_groups[key].append({
-                    'action': action,
-                    'status': status,
-                    'pnl': pnl
+                    'action': action, 'status': status, 'pnl': pnl, 'quantity': quantity,
                 })
-            
+
             realized_pnl = 0.0
-            
-            # For each strike/expiration group, calculate proportional realized P&L
             for key, group_positions in position_groups.items():
                 opening_quantity = 0
                 closing_quantity = 0
                 opening_pnl = 0.0
                 closing_pnl = 0.0
-                
-                # First pass: collect quantities and P&L for opening and closing positions
+
                 for pos in group_positions:
-                    action = pos['action'] or ''  # Handle None action
+                    action = pos['action'] or ''
+                    qty = abs(pos['quantity'] or 0)
                     if 'TO_OPEN' in action:
-                        # Get the actual quantity for this position
-                        cursor.execute("""
-                            SELECT quantity FROM order_positions p
-                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
-                            AND p.opening_action = ?
-                        """, (chain_id, key[0], key[1], key[2], action))
-                        qty_result = cursor.fetchone()
-                        if qty_result:
-                            opening_quantity += abs(qty_result[0])
-                            opening_pnl += pos['pnl']
+                        opening_quantity += qty
+                        opening_pnl += pos['pnl'] or 0.0
                     elif 'TO_CLOSE' in action:
-                        # Get the actual quantity for this position  
-                        cursor.execute("""
-                            SELECT quantity FROM order_positions p
-                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
-                            AND p.opening_action = ?
-                        """, (chain_id, key[0], key[1], key[2], action))
-                        qty_result = cursor.fetchone()
-                        if qty_result:
-                            closing_quantity += abs(qty_result[0])
-                            closing_pnl += pos['pnl']
-                
-                # Calculate realized P&L based on actual quantities involved in round trips
+                        closing_quantity += qty
+                        closing_pnl += pos['pnl'] or 0.0
+
                 if opening_quantity > 0 and closing_quantity > 0:
-                    # Determine how many contracts actually completed round trips
                     completed_quantity = min(opening_quantity, closing_quantity)
-                    
-                    # Calculate proportional P&L for completed round trips
-                    if opening_quantity > 0:
-                        opening_ratio = completed_quantity / opening_quantity
-                        realized_opening_pnl = opening_pnl * opening_ratio
-                    else:
-                        realized_opening_pnl = 0.0
-                    
-                    if closing_quantity > 0:
-                        closing_ratio = completed_quantity / closing_quantity  
-                        realized_closing_pnl = closing_pnl * closing_ratio
-                    else:
-                        realized_closing_pnl = 0.0
-                    
-                    realized_pnl += realized_opening_pnl + realized_closing_pnl
-            
+                    opening_ratio = completed_quantity / opening_quantity
+                    closing_ratio = completed_quantity / closing_quantity
+                    realized_pnl += opening_pnl * opening_ratio + closing_pnl * closing_ratio
+
             return realized_pnl
 
     def calculate_chain_unrealized_pnl(self, chain_id: str, chain_status: str) -> float:
         """Calculate unrealized P&L from truly open positions (not part of completed round trips)
-        
+
         Logic:
         - Closed chains: No unrealized P&L
         - Open chains: Sum only OPEN positions that don't have matching closing positions
         """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            if chain_status == 'CLOSED':
-                # No unrealized P&L for closed chains
-                return 0.0
-            
-            # Get all positions for this chain
-            cursor.execute("""
-                SELECT p.symbol, p.opening_action, p.status, p.pnl, p.strike, p.expiration
-                FROM order_positions p
-                JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                WHERE ocm.chain_id = ?
-                ORDER BY p.strike, p.expiration
-            """, (chain_id,))
-            
-            positions = cursor.fetchall()
-            
-            # Group positions by strike and expiration
+        from src.database.models import OrderPosition as OP, OrderChainMember as OCM
+
+        if chain_status == 'CLOSED':
+            return 0.0
+
+        with self.db.get_session() as session:
+            rows = (
+                session.query(
+                    OP.symbol, OP.opening_action, OP.status, OP.pnl,
+                    OP.strike, OP.expiration, OP.quantity,
+                )
+                .join(OCM, OP.order_id == OCM.order_id)
+                .filter(OCM.chain_id == chain_id)
+                .order_by(OP.strike, OP.expiration)
+                .all()
+            )
+
             from collections import defaultdict
             position_groups = defaultdict(list)
-            
-            for pos in positions:
-                symbol, action, status, pnl, strike, expiration = pos
+            for symbol, action, status, pnl, strike, expiration, quantity in rows:
                 key = (symbol, strike, expiration)
                 position_groups[key].append({
-                    'action': action,
-                    'status': status,
-                    'pnl': pnl
+                    'action': action, 'status': status, 'pnl': pnl, 'quantity': quantity,
                 })
-            
+
             unrealized_pnl = 0.0
-            
-            # For each strike/expiration group, calculate unrealized P&L for remaining open positions
             for key, group_positions in position_groups.items():
                 opening_quantity = 0
                 closing_quantity = 0
                 opening_pnl = 0.0
-                
-                # First pass: collect quantities and P&L for opening and closing positions
+
                 for pos in group_positions:
-                    action = pos['action'] or ''  # Handle None action
+                    action = pos['action'] or ''
+                    qty = abs(pos['quantity'] or 0)
                     if 'TO_OPEN' in action:
-                        # Get the actual quantity for this position
-                        cursor.execute("""
-                            SELECT quantity FROM order_positions p
-                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
-                            AND p.opening_action = ?
-                        """, (chain_id, key[0], key[1], key[2], action))
-                        qty_result = cursor.fetchone()
-                        if qty_result:
-                            opening_quantity += abs(qty_result[0])
-                            opening_pnl += pos['pnl']
+                        opening_quantity += qty
+                        opening_pnl += pos['pnl'] or 0.0
                     elif 'TO_CLOSE' in action:
-                        # Get the actual quantity for this position  
-                        cursor.execute("""
-                            SELECT quantity FROM order_positions p
-                            JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                            WHERE ocm.chain_id = ? AND p.symbol = ? AND p.strike = ? AND p.expiration = ?
-                            AND p.opening_action = ?
-                        """, (chain_id, key[0], key[1], key[2], action))
-                        qty_result = cursor.fetchone()
-                        if qty_result:
-                            closing_quantity += abs(qty_result[0])
-                
-                # Calculate unrealized P&L for remaining open positions
+                        closing_quantity += qty
+
                 if opening_quantity > 0:
-                    # Determine remaining open quantity after partial closes
                     remaining_open_quantity = max(0, opening_quantity - closing_quantity)
-                    
                     if remaining_open_quantity > 0:
-                        # Calculate proportional P&L for remaining open positions
                         unrealized_ratio = remaining_open_quantity / opening_quantity
                         unrealized_pnl += opening_pnl * unrealized_ratio
-            
+
             return unrealized_pnl
 
     def update_chain_pnl(self, chain_id: str) -> float:
         """Recalculate and update total, realized, and unrealized P&L for an order chain"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Get chain status first
-            cursor.execute("SELECT chain_status FROM order_chains WHERE chain_id = ?", (chain_id,))
-            result = cursor.fetchone()
-            if not result:
+        from sqlalchemy import func as sa_func
+        from src.database.models import OrderChain as OC, Order as OrderModel, OrderChainMember as OCM
+
+        with self.db.get_session() as session:
+            chain_row = session.get(OC, chain_id)
+            if not chain_row:
                 return 0.0
-            chain_status = result[0]
-            
-            # Calculate total P&L from all orders in the chain
-            cursor.execute("""
-                SELECT COALESCE(SUM(o.total_pnl), 0)
-                FROM orders o
-                JOIN order_chain_members ocm ON o.order_id = ocm.order_id
-                WHERE ocm.chain_id = ?
-            """, (chain_id,))
-            
-            total_pnl = cursor.fetchone()[0]
-            
-            # Calculate realized and unrealized P&L
-            realized_pnl = self.calculate_chain_realized_pnl(chain_id, chain_status)
-            unrealized_pnl = self.calculate_chain_unrealized_pnl(chain_id, chain_status)
-            
-            # Update chain with all three values
-            cursor.execute("""
-                UPDATE order_chains 
-                SET total_pnl = ?, realized_pnl = ?, unrealized_pnl = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE chain_id = ?
-            """, (total_pnl, realized_pnl, unrealized_pnl, chain_id))
-            
-            conn.commit()
-            return total_pnl
+            chain_status = chain_row.chain_status
+
+            total_pnl = (
+                session.query(sa_func.coalesce(sa_func.sum(OrderModel.total_pnl), 0))
+                .join(OCM, OrderModel.order_id == OCM.order_id)
+                .filter(OCM.chain_id == chain_id)
+                .scalar()
+            ) or 0.0
+
+        # These methods open their own sessions
+        realized_pnl = self.calculate_chain_realized_pnl(chain_id, chain_status)
+        unrealized_pnl = self.calculate_chain_unrealized_pnl(chain_id, chain_status)
+
+        with self.db.get_session() as session:
+            chain_row = session.get(OC, chain_id)
+            if chain_row:
+                chain_row.total_pnl = total_pnl
+                chain_row.realized_pnl = realized_pnl
+                chain_row.unrealized_pnl = unrealized_pnl
+                chain_row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        return total_pnl
     
     def get_order_statistics(self, account_number: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics for orders and chains"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            where_clause = "WHERE account_number = ?" if account_number else ""
-            params = [account_number] if account_number else []
-            
+        from sqlalchemy import func as sa_func, case
+        from src.database.models import (
+            Order as OrderModel, OrderChain as OC, OrderChainMember as OCM, OrderPosition as OP,
+        )
+
+        with self.db.get_session() as session:
             # Order stats
-            cursor.execute(f"""
-                SELECT 
-                    COUNT(*) as total_orders,
-                    COUNT(CASE WHEN status = 'OPEN' THEN 1 END) as open_orders,
-                    COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) as closed_orders,
-                    COALESCE(SUM(total_pnl), 0) as total_pnl
-                FROM orders {where_clause}
-            """, params)
-            
-            order_stats = dict(cursor.fetchone())
-            
-            # Chain stats - filter through order_chain_members since order_chains doesn't have account_number
+            oq = session.query(
+                sa_func.count().label('total_orders'),
+                sa_func.count(case((OrderModel.status == 'OPEN', 1))).label('open_orders'),
+                sa_func.count(case((OrderModel.status == 'CLOSED', 1))).label('closed_orders'),
+                sa_func.coalesce(sa_func.sum(OrderModel.total_pnl), 0).label('total_pnl'),
+            )
             if account_number:
-                cursor.execute("""
-                    SELECT 
-                        COUNT(DISTINCT oc.chain_id) as total_chains,
-                        COUNT(CASE WHEN oc.chain_status = 'OPEN' THEN 1 END) as open_chains,
-                        COUNT(CASE WHEN oc.chain_status = 'CLOSED' THEN 1 END) as closed_chains
-                    FROM order_chains oc
-                    JOIN order_chain_members ocm ON oc.chain_id = ocm.chain_id
-                    JOIN orders o ON ocm.order_id = o.order_id
-                    WHERE o.account_number = ?
-                """, [account_number])
-            else:
-                cursor.execute("""
-                    SELECT 
-                        COUNT(*) as total_chains,
-                        COUNT(CASE WHEN chain_status = 'OPEN' THEN 1 END) as open_chains,
-                        COUNT(CASE WHEN chain_status = 'CLOSED' THEN 1 END) as closed_chains
-                    FROM order_chains
-                """, [])
-            
-            chain_stats = dict(cursor.fetchone())
-            
-            # Position stats
-            cursor.execute(f"""
-                SELECT 
-                    COUNT(*) as total_positions,
-                    COUNT(CASE WHEN status = 'OPEN' THEN 1 END) as open_positions,
-                    COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) as closed_positions
-                FROM order_positions {where_clause}
-            """, params)
-            
-            position_stats = dict(cursor.fetchone())
-            
-            return {
-                **order_stats,
-                **chain_stats,
-                **position_stats
+                oq = oq.filter(OrderModel.account_number == account_number)
+            order_row = oq.one()
+            order_stats = {
+                'total_orders': order_row[0], 'open_orders': order_row[1],
+                'closed_orders': order_row[2], 'total_pnl': order_row[3],
             }
+
+            # Chain stats
+            if account_number:
+                cq = (
+                    session.query(
+                        sa_func.count(sa_func.distinct(OC.chain_id)).label('total_chains'),
+                        sa_func.count(case((OC.chain_status == 'OPEN', 1))).label('open_chains'),
+                        sa_func.count(case((OC.chain_status == 'CLOSED', 1))).label('closed_chains'),
+                    )
+                    .join(OCM, OC.chain_id == OCM.chain_id)
+                    .join(OrderModel, OCM.order_id == OrderModel.order_id)
+                    .filter(OrderModel.account_number == account_number)
+                )
+            else:
+                cq = session.query(
+                    sa_func.count().label('total_chains'),
+                    sa_func.count(case((OC.chain_status == 'OPEN', 1))).label('open_chains'),
+                    sa_func.count(case((OC.chain_status == 'CLOSED', 1))).label('closed_chains'),
+                )
+            chain_row = cq.one()
+            chain_stats = {
+                'total_chains': chain_row[0], 'open_chains': chain_row[1], 'closed_chains': chain_row[2],
+            }
+
+            # Position stats
+            pq = session.query(
+                sa_func.count().label('total_positions'),
+                sa_func.count(case((OP.status == 'OPEN', 1))).label('open_positions'),
+                sa_func.count(case((OP.status == 'CLOSED', 1))).label('closed_positions'),
+            )
+            if account_number:
+                pq = pq.filter(OP.account_number == account_number)
+            pos_row = pq.one()
+            position_stats = {
+                'total_positions': pos_row[0], 'open_positions': pos_row[1], 'closed_positions': pos_row[2],
+            }
+
+            return {**order_stats, **chain_stats, **position_stats}
     
     def group_transactions_by_order_id(self, transactions: List[Dict]) -> Dict[str, List[Dict]]:
         """Group transactions by order ID to handle partial fills and system events"""
@@ -1349,59 +1243,53 @@ class OrderManager:
     
     def update_chain_positions_in_database(self, chain_id: str, consolidated_positions: List[Position]):
         """Update positions in database with consolidated versions"""
+        from src.database.models import OrderChainMember as OCM, OrderPosition as OP
+
         try:
             logger.info(f"Updating database for chain {chain_id} with {len(consolidated_positions)} consolidated positions")
-            
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Get all order IDs in this chain
-                cursor.execute("""
-                    SELECT order_id FROM order_chain_members WHERE chain_id = ?
-                """, (chain_id,))
-                order_ids = [row[0] for row in cursor.fetchall()]
-                
+
+            with self.db.get_session() as session:
+                order_ids = [
+                    row[0] for row in
+                    session.query(OCM.order_id).filter(OCM.chain_id == chain_id).all()
+                ]
+
                 if not order_ids:
                     logger.warning(f"No order IDs found for chain {chain_id}")
                     return
-                
+
                 logger.info(f"Found order IDs for chain {chain_id}: {order_ids}")
-                
-                # Delete existing positions for these orders
-                placeholders = ','.join(['?' for _ in order_ids])
-                delete_query = f"DELETE FROM order_positions WHERE order_id IN ({placeholders})"
-                logger.info(f"Deleting existing positions: {delete_query}")
-                cursor.execute(delete_query, order_ids)
-                deleted_count = cursor.rowcount
+
+                deleted_count = (
+                    session.query(OP)
+                    .filter(OP.order_id.in_(order_ids))
+                    .delete(synchronize_session='fetch')
+                )
                 logger.info(f"Deleted {deleted_count} existing positions")
-                
-                # Insert consolidated positions
+
                 inserted_count = 0
                 for pos in consolidated_positions:
-                    cursor.execute("""
-                        INSERT INTO order_positions (
-                            order_id, account_number, symbol, underlying, instrument_type,
-                            option_type, strike, expiration, quantity, opening_price,
-                            closing_price, opening_transaction_id, closing_transaction_id,
-                            opening_action, closing_action, status, pnl,
-                            opening_order_id, closing_order_id, opening_amount, closing_amount,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        pos.order_id, pos.account_number, pos.symbol, pos.underlying,
-                        pos.instrument_type, pos.option_type, pos.strike, pos.expiration,
-                        pos.quantity, pos.opening_price, pos.closing_price,
-                        pos.opening_transaction_id, pos.closing_transaction_id,
-                        pos.opening_action, pos.closing_action, pos.status.value,
-                        pos.pnl, pos.opening_order_id, pos.closing_order_id,
-                        pos.opening_amount, pos.closing_amount, pos.created_at, pos.updated_at
+                    session.add(OP(
+                        order_id=pos.order_id, account_number=pos.account_number,
+                        symbol=pos.symbol, underlying=pos.underlying,
+                        instrument_type=pos.instrument_type, option_type=pos.option_type,
+                        strike=pos.strike, expiration=pos.expiration,
+                        quantity=pos.quantity, opening_price=pos.opening_price,
+                        closing_price=pos.closing_price,
+                        opening_transaction_id=pos.opening_transaction_id,
+                        closing_transaction_id=pos.closing_transaction_id,
+                        opening_action=pos.opening_action, closing_action=pos.closing_action,
+                        status=pos.status.value, pnl=pos.pnl,
+                        opening_order_id=pos.opening_order_id,
+                        closing_order_id=pos.closing_order_id,
+                        opening_amount=pos.opening_amount, closing_amount=pos.closing_amount,
+                        created_at=pos.created_at, updated_at=pos.updated_at,
                     ))
                     inserted_count += 1
-                
+
                 logger.info(f"Inserted {inserted_count} consolidated positions")
-                conn.commit()
                 logger.info(f"Database update committed for chain {chain_id}")
-                
+
         except Exception as e:
             logger.error(f"Error updating database for chain {chain_id}: {e}")
             raise e
@@ -1421,52 +1309,61 @@ class OrderManager:
     
     def save_order_to_database(self, order: Order) -> bool:
         """Save an Order and its positions to the database"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import Order as OrderModel, OrderPosition as OP
+
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Insert order
-                cursor.execute("""
-                    INSERT OR REPLACE INTO orders (
-                        order_id, account_number, underlying, order_type, strategy_type,
-                        order_date, status, total_quantity, total_pnl,
-                        has_assignment, has_expiration, has_exercise, linked_order_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    order.order_id, order.account_number, order.underlying,
-                    order.order_type.value, order.strategy_type, order.order_date,
-                    order.status.value, order.total_quantity, order.total_pnl,
-                    order.has_assignment, order.has_expiration, order.has_exercise,
-                    order.linked_order_id
+            with self.db.get_session() as session:
+                # Upsert order
+                stmt = sqlite_insert(OrderModel).values(
+                    order_id=order.order_id, account_number=order.account_number,
+                    underlying=order.underlying, order_type=order.order_type.value,
+                    strategy_type=order.strategy_type, order_date=order.order_date,
+                    status=order.status.value, total_quantity=order.total_quantity,
+                    total_pnl=order.total_pnl, has_assignment=order.has_assignment,
+                    has_expiration=order.has_expiration, has_exercise=order.has_exercise,
+                    linked_order_id=order.linked_order_id,
+                )
+                session.execute(stmt.on_conflict_do_update(
+                    index_elements=['order_id'],
+                    set_={
+                        'account_number': stmt.excluded.account_number,
+                        'underlying': stmt.excluded.underlying,
+                        'order_type': stmt.excluded.order_type,
+                        'strategy_type': stmt.excluded.strategy_type,
+                        'order_date': stmt.excluded.order_date,
+                        'status': stmt.excluded.status,
+                        'total_quantity': stmt.excluded.total_quantity,
+                        'total_pnl': stmt.excluded.total_pnl,
+                        'has_assignment': stmt.excluded.has_assignment,
+                        'has_expiration': stmt.excluded.has_expiration,
+                        'has_exercise': stmt.excluded.has_exercise,
+                        'linked_order_id': stmt.excluded.linked_order_id,
+                    },
                 ))
-                
-                # Delete existing positions for this order
-                cursor.execute("DELETE FROM order_positions WHERE order_id = ?", (order.order_id,))
-                
-                # Insert positions
+
+                # Delete existing positions for this order, then insert new
+                session.query(OP).filter(OP.order_id == order.order_id).delete()
+
                 for position in order.positions:
-                    cursor.execute("""
-                        INSERT INTO order_positions (
-                            order_id, account_number, symbol, underlying, instrument_type,
-                            option_type, strike, expiration, quantity, opening_price,
-                            closing_price, opening_transaction_id, closing_transaction_id,
-                            opening_action, closing_action, status, pnl,
-                            opening_order_id, closing_order_id, opening_amount, closing_amount
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        position.order_id, position.account_number, position.symbol,
-                        position.underlying, position.instrument_type, position.option_type,
-                        position.strike, position.expiration, position.quantity,
-                        position.opening_price, position.closing_price,
-                        position.opening_transaction_id, position.closing_transaction_id,
-                        position.opening_action, position.closing_action,
-                        position.status.value, position.pnl,
-                        position.opening_order_id, position.closing_order_id,
-                        position.opening_amount, position.closing_amount
+                    session.add(OP(
+                        order_id=position.order_id, account_number=position.account_number,
+                        symbol=position.symbol, underlying=position.underlying,
+                        instrument_type=position.instrument_type, option_type=position.option_type,
+                        strike=position.strike, expiration=position.expiration,
+                        quantity=position.quantity, opening_price=position.opening_price,
+                        closing_price=position.closing_price,
+                        opening_transaction_id=position.opening_transaction_id,
+                        closing_transaction_id=position.closing_transaction_id,
+                        opening_action=position.opening_action, closing_action=position.closing_action,
+                        status=position.status.value, pnl=position.pnl,
+                        opening_order_id=position.opening_order_id,
+                        closing_order_id=position.closing_order_id,
+                        opening_amount=position.opening_amount, closing_amount=position.closing_amount,
                     ))
-                
+
                 return True
-                
+
         except Exception as e:
             print(f"Error saving order {order.order_id}: {e}")
             return False
@@ -2094,35 +1991,47 @@ class OrderManager:
     
     def save_order_chain_to_database(self, chain: Dict) -> bool:
         """Save an order chain to the database"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import OrderChain as OC, OrderChainMember as OCM
+
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Insert chain
-                cursor.execute("""
-                    INSERT OR REPLACE INTO order_chains (
-                        chain_id, underlying, account_number, opening_order_id, strategy_type, 
-                        opening_date, closing_date, chain_status, order_count, total_pnl
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    chain['chain_id'], chain['underlying'], chain['account_number'],
-                    chain['opening_order_id'], chain['strategy_type'], chain['opening_date'], 
-                    chain['closing_date'], chain['chain_status'], chain['order_count'], chain['total_pnl']
+            with self.db.get_session() as session:
+                # Upsert chain
+                stmt = sqlite_insert(OC).values(
+                    chain_id=chain['chain_id'], underlying=chain['underlying'],
+                    account_number=chain['account_number'],
+                    opening_order_id=chain['opening_order_id'],
+                    strategy_type=chain['strategy_type'], opening_date=chain['opening_date'],
+                    closing_date=chain['closing_date'], chain_status=chain['chain_status'],
+                    order_count=chain['order_count'], total_pnl=chain['total_pnl'],
+                )
+                session.execute(stmt.on_conflict_do_update(
+                    index_elements=['chain_id'],
+                    set_={
+                        'underlying': stmt.excluded.underlying,
+                        'account_number': stmt.excluded.account_number,
+                        'opening_order_id': stmt.excluded.opening_order_id,
+                        'strategy_type': stmt.excluded.strategy_type,
+                        'opening_date': stmt.excluded.opening_date,
+                        'closing_date': stmt.excluded.closing_date,
+                        'chain_status': stmt.excluded.chain_status,
+                        'order_count': stmt.excluded.order_count,
+                        'total_pnl': stmt.excluded.total_pnl,
+                    },
                 ))
-                
+
                 # Delete existing chain members
-                cursor.execute("DELETE FROM order_chain_members WHERE chain_id = ?", (chain['chain_id'],))
-                
+                session.query(OCM).filter(OCM.chain_id == chain['chain_id']).delete()
+
                 # Insert chain members
                 for i, order in enumerate(chain['orders']):
-                    cursor.execute("""
-                        INSERT INTO order_chain_members (
-                            chain_id, order_id, sequence_number
-                        ) VALUES (?, ?, ?)
-                    """, (chain['chain_id'], order.order_id, i + 1))
-                
+                    session.add(OCM(
+                        chain_id=chain['chain_id'], order_id=order.order_id,
+                        sequence_number=i + 1,
+                    ))
+
                 return True
-                
+
         except Exception as e:
             print(f"Error saving order chain {chain['chain_id']}: {e}")
             return False
@@ -2195,45 +2104,43 @@ class OrderManager:
     
     def load_raw_transactions_from_database(self) -> List[Dict]:
         """Load raw transactions from database for reprocessing"""
+        from src.database.models import RawTransaction
+
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    SELECT * FROM raw_transactions 
-                    WHERE instrument_type IS NOT NULL 
-                    AND symbol IS NOT NULL
-                    ORDER BY executed_at
-                """)
-                
-                rows = cursor.fetchall()
-                
-                # Convert rows to dictionaries
-                transactions = []
-                for row in rows:
-                    transaction = dict(row)
-                    transactions.append(transaction)
-                
+            with self.db.get_session() as session:
+                rows = (
+                    session.query(RawTransaction)
+                    .filter(
+                        RawTransaction.instrument_type.isnot(None),
+                        RawTransaction.symbol.isnot(None),
+                    )
+                    .order_by(RawTransaction.executed_at)
+                    .all()
+                )
+                transactions = [row.to_dict() for row in rows]
                 print(f"Loaded {len(transactions)} raw transactions from database")
                 return transactions
-                
+
         except Exception as e:
             print(f"Error loading raw transactions: {e}")
             return []
     
     def reprocess_orders_and_chains_from_database(self) -> Dict:
         """Reprocess orders and chains using existing raw transactions"""
+        from src.database.models import (
+            Order as OrderModel, OrderChain as OC, OrderChainMember as OCM, OrderPosition as OP,
+        )
+
         try:
             print("Starting reprocessing from database...")
-            
-            # Clear existing orders and chains
+
+            # Clear existing orders and chains (order matters for FK constraints)
             print("Clearing existing orders and chains...")
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM order_chain_members")
-                cursor.execute("DELETE FROM order_chains") 
-                cursor.execute("DELETE FROM order_positions")
-                cursor.execute("DELETE FROM orders")
+            with self.db.get_session() as session:
+                session.query(OCM).delete()
+                session.query(OC).delete()
+                session.query(OP).delete()
+                session.query(OrderModel).delete()
                 print("Cleared existing data")
             
             # Load raw transactions from database
@@ -2307,17 +2214,9 @@ class OrderManager:
             
             chains_updated = 0
             for underlying, account in affected_underlyings:
-                # Reload orders for this underlying/account
-                with self.db.get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT * FROM orders 
-                        WHERE underlying = ? AND account_number = ?
-                        ORDER BY order_date
-                    """, (underlying, account))
-                    # Reconstruct chains for just this underlying/account
-                    # This is much faster than rebuilding everything
-                    chains_updated += 1
+                # Count affected underlyings for stats
+                # (The actual chain reconstruction happens via process_transactions_to_orders_and_chains)
+                chains_updated += 1
             
             return {
                 'orders_processed': len(new_orders),
@@ -2414,66 +2313,65 @@ class OrderManager:
         This addresses bugs in the chain creation logic that miss expiration closures.
         Returns the number of chains fixed.
         """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
+        from src.database.models import (
+            OrderChain as OC, OrderChainMember as OCM, Order as OrderModel, OrderPosition as OP,
+        )
+
+        with self.db.get_session() as session:
             # Find all chains that have expiration orders
-            cursor.execute('''
-                SELECT DISTINCT ocm.chain_id, oc.chain_status
-                FROM order_chain_members ocm
-                JOIN order_chains oc ON ocm.chain_id = oc.chain_id
-                JOIN orders o ON ocm.order_id = o.order_id
-                WHERE o.order_id LIKE 'SYSTEM_EXPIRATION_%'
-                ORDER BY ocm.chain_id
-            ''')
-            
-            chains_with_expiration = cursor.fetchall()
+            chains_with_exp = (
+                session.query(OCM.chain_id, OC.chain_status)
+                .join(OC, OCM.chain_id == OC.chain_id)
+                .join(OrderModel, OCM.order_id == OrderModel.order_id)
+                .filter(OrderModel.order_id.like('SYSTEM_EXPIRATION_%'))
+                .distinct()
+                .order_by(OCM.chain_id)
+                .all()
+            )
+
+            if not chains_with_exp:
+                return 0
+
+            # Batch-load all positions for affected chains
+            affected_chain_ids = [cid for cid, _ in chains_with_exp]
+            pos_rows = (
+                session.query(
+                    OCM.chain_id, OP.symbol, OP.quantity, OP.opening_action,
+                    OP.closing_action, OP.strike, OP.expiration, OrderModel.order_date,
+                )
+                .join(OCM, OP.order_id == OCM.order_id)
+                .join(OrderModel, OP.order_id == OrderModel.order_id)
+                .filter(OCM.chain_id.in_(affected_chain_ids))
+                .order_by(OrderModel.order_date, OP.order_id)
+                .all()
+            )
+
+            # Group by chain_id
+            pos_by_chain: Dict[str, list] = {}
+            for row in pos_rows:
+                pos_by_chain.setdefault(row[0], []).append(row[1:])
+
             fixed_count = 0
-            
-            for chain_id, current_status in chains_with_expiration:
-                # Calculate what the status should be
-                cursor.execute('''
-                    SELECT p.symbol, p.quantity, p.opening_action, p.closing_action, 
-                           p.strike, p.expiration, o.order_date
-                    FROM order_positions p
-                    JOIN order_chain_members ocm ON p.order_id = ocm.order_id
-                    JOIN orders o ON p.order_id = o.order_id
-                    WHERE ocm.chain_id = ?
-                    ORDER BY o.order_date, p.order_id
-                ''', (chain_id,))
-                
-                positions = cursor.fetchall()
-                
-                # Calculate position balances using the same logic as the main method
+            for chain_id, current_status in chains_with_exp:
+                positions = pos_by_chain.get(chain_id, [])
                 position_balances = {}
                 latest_order_date = None
-                
-                for pos in positions:
-                    symbol, qty, open_action, close_action, strike, exp, order_date = pos
-                    
-                    # Track latest order date for closing date
+
+                for symbol, qty, open_action, close_action, strike, exp, order_date in positions:
                     if order_date:
                         if isinstance(order_date, str):
                             try:
-                                from datetime import datetime
                                 order_date = datetime.strptime(order_date, '%Y-%m-%d').date()
-                            except:
+                            except Exception:
                                 pass
                         if latest_order_date is None or order_date > latest_order_date:
                             latest_order_date = order_date
-                    
-                    # Create position key
-                    if strike is not None and exp is not None:
-                        pos_key = f"{symbol}_{strike}_{exp}"
-                    else:
-                        pos_key = symbol
-                    
+
+                    pos_key = f"{symbol}_{strike}_{exp}" if strike is not None and exp is not None else symbol
                     if pos_key not in position_balances:
                         position_balances[pos_key] = 0
-                    
                     quantity = abs(qty)
-                    
-                    # Apply opening action
+
                     if open_action:
                         if 'SELL_TO_OPEN' in open_action:
                             position_balances[pos_key] += quantity
@@ -2483,30 +2381,23 @@ class OrderManager:
                             position_balances[pos_key] -= quantity
                         elif 'SELL_TO_CLOSE' in open_action:
                             position_balances[pos_key] += quantity
-                    
-                    # Apply closing action
+
                     if close_action and 'EXPIRED' in close_action:
                         current_balance = position_balances[pos_key]
                         if current_balance > 0:
                             position_balances[pos_key] -= quantity
                         elif current_balance < 0:
                             position_balances[pos_key] += quantity
-                
-                # Determine if chain should be closed
-                has_open_positions = any(abs(balance) > 1e-6 for balance in position_balances.values())
-                should_be_closed = not has_open_positions
-                correct_status = 'CLOSED' if should_be_closed else 'OPEN'
-                
+
+                has_open_positions = any(abs(b) > 1e-6 for b in position_balances.values())
+                correct_status = 'OPEN' if has_open_positions else 'CLOSED'
+
                 if correct_status != current_status:
-                    # Update the chain status
-                    closing_date = latest_order_date if should_be_closed else None
-                    cursor.execute('''
-                        UPDATE order_chains 
-                        SET chain_status = ?, closing_date = ?
-                        WHERE chain_id = ?
-                    ''', (correct_status, closing_date, chain_id))
-                    
+                    chain_row = session.get(OC, chain_id)
+                    if chain_row:
+                        chain_row.chain_status = correct_status
+                        chain_row.closing_date = latest_order_date if correct_status == 'CLOSED' else None
                     fixed_count += 1
-            
+
             return fixed_count
     
