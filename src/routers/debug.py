@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 from loguru import logger
 
+from src.database.models import OrderChain
 from src.dependencies import db, order_processor, strategy_detector
 from src.services.sync_service import reconcile_positions_vs_chains
 
@@ -139,11 +140,11 @@ async def debug_cache_update(chain_id: str):
             "order_count": len(target_chain.orders)
         }
 
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT strategy_type FROM order_chains WHERE chain_id = ?", (chain_id,))
-            current_db_result = cursor.fetchone()
-            current_db_strategy = current_db_result[0] if current_db_result else "NOT_FOUND"
+        with db.get_session() as session:
+            row = session.query(OrderChain.strategy_type).filter(
+                OrderChain.chain_id == chain_id
+            ).first()
+            current_db_strategy = row[0] if row else "NOT_FOUND"
 
         return {
             "chain_id": chain_id,

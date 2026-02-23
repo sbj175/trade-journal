@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
+from src.database.models import OrderChain
 from src.dependencies import db, order_manager
 from src.services.report_service import calculate_max_risk_reward
 
@@ -142,15 +143,12 @@ async def get_monthly_performance(year: int = None):
 async def get_available_strategies():
     """Get list of strategies that have been used in closed trades"""
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT DISTINCT strategy_type
-                FROM order_chains
-                WHERE chain_status = 'CLOSED' AND strategy_type IS NOT NULL
-                ORDER BY strategy_type
-            """)
-            strategies = [row['strategy_type'] for row in cursor.fetchall()]
+        with db.get_session() as session:
+            rows = session.query(OrderChain.strategy_type).filter(
+                OrderChain.chain_status == "CLOSED",
+                OrderChain.strategy_type.isnot(None),
+            ).distinct().order_by(OrderChain.strategy_type).all()
+            strategies = [row[0] for row in rows]
 
         return {"strategies": strategies}
     except HTTPException:
