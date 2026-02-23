@@ -8,6 +8,7 @@ import pytest
 from datetime import datetime, date
 
 from src.database.db_manager import DatabaseManager
+from src.database import engine as sa_engine
 from src.models.lot_manager import LotManager
 from src.models.pnl_calculator import PnLCalculator
 from src.models.position_inventory import PositionInventoryManager

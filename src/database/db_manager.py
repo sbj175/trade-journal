@@ -12,6 +12,8 @@ import json
 import time
 import logging
 
+from src.database import engine as sa_engine
+
 logger = logging.getLogger(__name__)
 
 # Add parent directory to path
@@ -45,11 +47,16 @@ class DatabaseManager:
             raise e
         finally:
             conn.close()
+
+    def get_session(self):
+        """Context manager for SQLAlchemy sessions (delegates to engine module)."""
+        return sa_engine.get_session()
     
     def initialize_database(self):
         """Create all necessary tables"""
         start_time = time.time()
         logger.info("Starting database initialization...")
+        sa_engine.init_engine(self.db_path)
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
