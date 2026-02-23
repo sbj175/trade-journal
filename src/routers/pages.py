@@ -30,13 +30,13 @@ def _nav_context(request: Request, active_path: str, variant: str = "standard") 
 @router.get("/positions", response_class=HTMLResponse)
 async def root(request: Request):
     """Serve the main application - Open Positions Page"""
-    return templates.TemplateResponse("positions-dense.html", _nav_context(request, "/positions"))
+    return templates.TemplateResponse("positions.html", _nav_context(request, "/positions"))
 
 
 @router.get("/reports", response_class=HTMLResponse)
 async def reports_page(request: Request):
     """Serve the Performance Reports page"""
-    return templates.TemplateResponse("reports-dense.html", _nav_context(request, "/reports"))
+    return templates.TemplateResponse("reports.html", _nav_context(request, "/reports"))
 
 
 @router.get("/risk", response_class=HTMLResponse)
@@ -48,7 +48,7 @@ async def risk_dashboard(request: Request):
 @router.get("/ledger", response_class=HTMLResponse)
 async def ledger_page(request: Request):
     """Serve the Position Ledger page"""
-    return templates.TemplateResponse("ledger-dense.html", _nav_context(request, "/ledger"))
+    return templates.TemplateResponse("ledger.html", _nav_context(request, "/ledger"))
 
 
 @router.get("/settings", response_class=HTMLResponse)

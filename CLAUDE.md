@@ -161,10 +161,10 @@ python test_expiration.py
 
 ### Frontend Structure
 
-- **Open Positions Page** (default): `static/positions-dense.html` with live quotes and position management
-- **Order Chains Dashboard**: `static/chains-dense.html` at `/chains` with `static/js/app.js` (advanced strategy detection)
-- **Position Ledger**: `static/ledger-dense.html` at `/ledger` with position-group model, lot lifecycle view, action/order toggle, and group management using inline `ledgerApp()` Alpine component
-- **Performance Reports**: `static/reports-dense.html` at `/reports` with strategy breakdown and historical performance
+- **Open Positions Page** (default): `static/positions.html` with live quotes and position management
+- **Order Chains Dashboard**: `static/chains.html` at `/chains` with `static/js/app.js` (advanced strategy detection)
+- **Position Ledger**: `static/ledger.html` at `/ledger` with position-group model, lot lifecycle view, action/order toggle, and group management using inline `ledgerApp()` Alpine component
+- **Performance Reports**: `static/reports.html` at `/reports` with strategy breakdown and historical performance
 - **Portfolio Risk X-Ray**: `static/risk-dashboard.html` at `/risk` with real-time portfolio Greeks, Black-Scholes engine, and ApexCharts visualizations (delta exposure, theta projection, treemap, scenario analysis)
 - **Settings**: `static/settings.html` at `/settings` for OAuth credential management, connection status, and app configuration
 - **Alpine.js** for reactivity (loaded from CDN)
