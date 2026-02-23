@@ -53,371 +53,50 @@ class DatabaseManager:
         return sa_engine.get_session()
     
     def initialize_database(self):
-        """Create all necessary tables"""
+        """Create all necessary tables using SQLAlchemy models + legacy migration support."""
+        from sqlalchemy import func as sa_func, inspect
+        from src.database.models import Base, StrategyTarget
+
         start_time = time.time()
         logger.info("Starting database initialization...")
         sa_engine.init_engine(self.db_path)
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Accounts table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS accounts (
-                    account_number TEXT PRIMARY KEY,
-                    account_name TEXT,
-                    account_type TEXT,
-                    is_active BOOLEAN DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
 
-            # Positions table (current positions)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS positions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    account_number TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    underlying TEXT,
-                    instrument_type TEXT NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    quantity_direction TEXT,
-                    average_open_price REAL,
-                    close_price REAL,
-                    market_value REAL,
-                    cost_basis REAL,
-                    realized_day_gain REAL,
-                    unrealized_pnl REAL,
-                    pnl_percent REAL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (account_number) REFERENCES accounts(account_number)
-                )
-            """)
-            
-            # Account balances table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS account_balances (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    account_number TEXT,
-                    cash_balance REAL,
-                    net_liquidating_value REAL,
-                    margin_equity REAL,
-                    equity_buying_power REAL,
-                    derivative_buying_power REAL,
-                    day_trading_buying_power REAL,
-                    maintenance_requirement REAL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Order-based system tables
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS orders (
-                    order_id TEXT PRIMARY KEY,
-                    account_number TEXT,
-                    underlying TEXT,
-                    order_type TEXT,
-                    strategy_type TEXT,
-                    order_date DATE,
-                    status TEXT,
-                    total_quantity INTEGER,
-                    total_pnl REAL,
-                    has_assignment BOOLEAN DEFAULT 0,
-                    has_expiration BOOLEAN DEFAULT 0,
-                    has_exercise BOOLEAN DEFAULT 0,
-                    linked_order_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS order_positions (
-                    position_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    order_id TEXT,
-                    account_number TEXT,
-                    symbol TEXT,
-                    underlying TEXT,
-                    instrument_type TEXT,
-                    option_type TEXT,
-                    strike REAL,
-                    expiration DATE,
-                    quantity INTEGER,
-                    opening_price REAL,
-                    closing_price REAL,
-                    opening_transaction_id TEXT,
-                    closing_transaction_id TEXT,
-                    opening_action TEXT,
-                    closing_action TEXT,
-                    status TEXT,
-                    pnl REAL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (order_id) REFERENCES orders (order_id)
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS order_chains (
-                    chain_id TEXT PRIMARY KEY,
-                    underlying TEXT,
-                    account_number TEXT,
-                    opening_order_id TEXT,
-                    strategy_type TEXT,
-                    opening_date DATE,
-                    closing_date DATE,
-                    chain_status TEXT,
-                    order_count INTEGER,
-                    total_pnl REAL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS order_chain_members (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chain_id TEXT,
-                    order_id TEXT,
-                    sequence_number INTEGER,
-                    FOREIGN KEY (chain_id) REFERENCES order_chains (chain_id),
-                    FOREIGN KEY (order_id) REFERENCES orders (order_id),
-                    UNIQUE(chain_id, order_id)
-                )
-            """)
-            
-            # Order chain cache - stores complete order details for fast display
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS order_chain_cache (
-                    chain_id TEXT,
-                    order_id TEXT,
-                    order_data TEXT,  -- JSON blob of complete order data
-                    PRIMARY KEY (chain_id, order_id),
-                    FOREIGN KEY (chain_id) REFERENCES order_chains (chain_id)
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS raw_transactions (
-                    id TEXT PRIMARY KEY,
-                    account_number TEXT NOT NULL,
-                    order_id TEXT,
-                    transaction_type TEXT,
-                    transaction_sub_type TEXT,
-                    description TEXT,
-                    executed_at TEXT,
-                    transaction_date TEXT,
-                    action TEXT,
-                    symbol TEXT,
-                    instrument_type TEXT,
-                    underlying_symbol TEXT,
-                    quantity REAL,
-                    price REAL,
-                    value REAL,
-                    regulatory_fees REAL,
-                    clearing_fees REAL,
-                    commission REAL,
-                    net_value REAL,
-                    is_estimated_fee BOOLEAN,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Sync metadata table for tracking sync state
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS sync_metadata (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key TEXT UNIQUE NOT NULL,
-                    value TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Quote cache table for persisting WebSocket quotes
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS quote_cache (
-                    symbol TEXT PRIMARY KEY,
-                    mark REAL,
-                    bid REAL,
-                    ask REAL,
-                    last REAL,
-                    change REAL,
-                    change_percent REAL,
-                    volume INTEGER,
-                    prev_close REAL,
-                    day_high REAL,
-                    day_low REAL,
-                    iv REAL,
-                    ivr REAL,
-                    iv_percentile REAL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        # Create all tables from ORM models (IF NOT EXISTS semantics)
+        engine = sa_engine._engine
+        Base.metadata.create_all(engine)
 
-            # Strategy targets table for P&L targets per strategy
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS strategy_targets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    strategy_name TEXT UNIQUE NOT NULL,
-                    profit_target_pct REAL NOT NULL,
-                    loss_target_pct REAL NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        # Seed default strategy targets if table is empty
+        with self.get_session() as session:
+            count = session.query(sa_func.count()).select_from(StrategyTarget).scalar()
+            if count == 0:
+                self._seed_default_strategy_targets_orm(session)
 
-            # Seed default strategy targets if table is empty
-            cursor.execute("SELECT COUNT(*) FROM strategy_targets")
-            if cursor.fetchone()[0] == 0:
-                self._seed_default_strategy_targets(cursor)
+        # Legacy: add columns that may be missing from older databases
+        self._add_transaction_columns()
 
-            # Position lots table for V3 lot-based tracking
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS position_lots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    transaction_id TEXT NOT NULL,
-                    account_number TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    underlying TEXT,
-                    instrument_type TEXT,
-                    option_type TEXT,
-                    strike REAL,
-                    expiration DATE,
-                    quantity INTEGER NOT NULL,
-                    entry_price REAL NOT NULL,
-                    entry_date TIMESTAMP NOT NULL,
-                    remaining_quantity INTEGER NOT NULL,
-                    original_quantity INTEGER,
-                    chain_id TEXT,
-                    leg_index INTEGER DEFAULT 0,
-                    opening_order_id TEXT,
-                    derived_from_lot_id INTEGER,
-                    derivation_type TEXT,
-                    status TEXT DEFAULT 'OPEN',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(transaction_id),
-                    FOREIGN KEY (derived_from_lot_id) REFERENCES position_lots(id)
-                )
-            """)
+        self._initialized = True
+        elapsed_time = time.time() - start_time
+        logger.info(f"Database initialized successfully in {elapsed_time:.2f} seconds")
 
-            # Lot closings table for tracking partial/full closures
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS lot_closings (
-                    closing_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    lot_id INTEGER NOT NULL,
-                    closing_order_id TEXT NOT NULL,
-                    closing_transaction_id TEXT,
-                    quantity_closed INTEGER NOT NULL,
-                    closing_price REAL NOT NULL,
-                    closing_date TIMESTAMP NOT NULL,
-                    closing_type TEXT NOT NULL,
-                    realized_pnl REAL NOT NULL,
-                    resulting_lot_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (lot_id) REFERENCES position_lots(id),
-                    FOREIGN KEY (resulting_lot_id) REFERENCES position_lots(id)
-                )
-            """)
-            
-            # Chain merge records — survives reprocessing so merges can be re-applied
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS chain_merges (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    merged_chain_id TEXT NOT NULL,
-                    source_chain_id TEXT NOT NULL,
-                    underlying TEXT NOT NULL,
-                    account_number TEXT NOT NULL,
-                    merged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+    def _seed_default_strategy_targets_orm(self, session):
+        """Seed default strategy targets using SQLAlchemy ORM."""
+        from src.database.models import StrategyTarget
 
-            # Position groups — user-curated groups of position lots (Ledger page)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS position_groups (
-                    group_id TEXT PRIMARY KEY,
-                    account_number TEXT NOT NULL,
-                    underlying TEXT NOT NULL,
-                    strategy_label TEXT,
-                    status TEXT DEFAULT 'OPEN',
-                    source_chain_id TEXT,
-                    opening_date DATE,
-                    closing_date DATE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Position group lots — links lots to groups via transaction_id (survives reprocessing)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS position_group_lots (
-                    group_id TEXT NOT NULL,
-                    transaction_id TEXT NOT NULL,
-                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (group_id, transaction_id),
-                    FOREIGN KEY (group_id) REFERENCES position_groups(group_id) ON DELETE CASCADE
-                )
-            """)
-
-            # Create strategic indexes for performance
-            # Core position and account queries
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_underlying ON positions(underlying)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_instrument_type ON positions(instrument_type)")
-            
-            # Order system indexes - most frequently queried
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_account ON orders(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_underlying ON orders(underlying)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_account_underlying ON orders(account_number, underlying)")
-            
-            # Order chains - for chain linking and efficiency calculations
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_account ON order_chains(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_underlying ON order_chains(underlying)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_status ON order_chains(chain_status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_opening_date ON order_chains(opening_date)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_chains_account_underlying ON order_chains(account_number, underlying)")
-            
-            # Chain membership - critical for chain queries
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_chain ON order_chain_members(chain_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_order ON order_chain_members(order_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chain_members_sequence ON order_chain_members(chain_id, sequence_number)")
-            
-            # Raw transactions - for opening date calculations
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_order ON raw_transactions(order_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_account ON raw_transactions(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_symbol ON raw_transactions(symbol)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_executed_at ON raw_transactions(executed_at)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_raw_transactions_action ON raw_transactions(action)")
-            
-            # Quote cache - for live data performance
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_quote_cache_symbol ON quote_cache(symbol)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_quote_cache_updated ON quote_cache(updated_at)")
-            
-            # Account and balance lookups
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(is_active)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_account ON account_balances(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_balances_timestamp ON account_balances(timestamp)")
-
-            # Position groups indexes - for Ledger page queries
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_account ON position_groups(account_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_underlying ON position_groups(underlying)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_status ON position_groups(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_groups_source_chain ON position_groups(source_chain_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_position_group_lots_txn ON position_group_lots(transaction_id)")
-
-            # Note: Position lots indexes are created in _add_transaction_columns()
-            # after ensuring all V3 columns exist
-            
-            # Add transaction action and timestamp columns if they don't exist
-            self._add_transaction_columns()
-            
-            # Enable foreign key constraints
-            cursor.execute("PRAGMA foreign_keys = ON")
-            
-            self._initialized = True
-            elapsed_time = time.time() - start_time
-            logger.info(f"Database initialized successfully in {elapsed_time:.2f} seconds")
+        defaults = [
+            ('Bull Put Spread', 50.0, 100.0), ('Bear Call Spread', 50.0, 100.0),
+            ('Iron Condor', 50.0, 100.0), ('Cash Secured Put', 50.0, 100.0),
+            ('Covered Call', 50.0, 100.0), ('Short Put', 50.0, 100.0),
+            ('Short Call', 50.0, 100.0), ('Short Strangle', 50.0, 100.0),
+            ('Iron Butterfly', 25.0, 100.0), ('Short Straddle', 25.0, 100.0),
+            ('Bull Call Spread', 100.0, 50.0), ('Bear Put Spread', 100.0, 50.0),
+            ('Long Call', 100.0, 50.0), ('Long Put', 100.0, 50.0),
+            ('Long Strangle', 100.0, 50.0), ('Long Straddle', 100.0, 50.0),
+            ('Shares', 20.0, 10.0),
+        ]
+        for name, profit, loss in defaults:
+            session.add(StrategyTarget(
+                strategy_name=name, profit_target_pct=profit, loss_target_pct=loss,
+            ))
     
     def _add_transaction_columns(self):
         """Add transaction action and timestamp columns to existing tables"""
@@ -612,15 +291,24 @@ class DatabaseManager:
     
     def save_account(self, account_number: str, account_name: str = None, account_type: str = None) -> bool:
         """Save account information"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import Account
+
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    INSERT OR REPLACE INTO accounts (account_number, account_name, account_type, updated_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                """, (account_number, account_name, account_type))
-                
+            with self.get_session() as session:
+                stmt = sqlite_insert(Account).values(
+                    account_number=account_number, account_name=account_name,
+                    account_type=account_type,
+                    updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                )
+                session.execute(stmt.on_conflict_do_update(
+                    index_elements=['account_number'],
+                    set_={
+                        'account_name': stmt.excluded.account_name,
+                        'account_type': stmt.excluded.account_type,
+                        'updated_at': stmt.excluded.updated_at,
+                    },
+                ))
                 return True
         except Exception as e:
             logger.error(f"Error saving account {account_number}: {str(e)}")
@@ -628,83 +316,58 @@ class DatabaseManager:
     
     def get_accounts(self) -> List[Dict[str, Any]]:
         """Get all accounts"""
+        from src.database.models import Account
         self.ensure_initialized()
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM accounts WHERE is_active = 1 ORDER BY account_number")
-            return [dict(row) for row in cursor.fetchall()]
-    
+        with self.get_session() as session:
+            rows = (
+                session.query(Account)
+                .filter(Account.is_active == True)
+                .order_by(Account.account_number)
+                .all()
+            )
+            return [row.to_dict() for row in rows]
+
     def get_account(self, account_number: str) -> Optional[Dict[str, Any]]:
         """Get specific account"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM accounts WHERE account_number = ?", (account_number,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
+        from src.database.models import Account
+        with self.get_session() as session:
+            row = session.get(Account, account_number)
+            return row.to_dict() if row else None
     
     # Legacy trade methods removed - use order system instead
 
     def save_raw_transactions(self, transactions: List[Dict]) -> int:
         """Save raw transactions to database for order-based grouping"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import RawTransaction
         self.ensure_initialized()
         saved_count = 0
-        
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
+
+        with self.get_session() as session:
             for txn in transactions:
                 try:
-                    # Check if transaction already exists
-                    cursor.execute(
-                        "SELECT id FROM raw_transactions WHERE id = ?",
-                        (txn.get('id'),)
+                    stmt = sqlite_insert(RawTransaction).values(
+                        id=txn.get('id'), account_number=txn.get('account_number'),
+                        order_id=txn.get('order_id'), transaction_type=txn.get('transaction_type'),
+                        transaction_sub_type=txn.get('transaction_sub_type'),
+                        description=txn.get('description'), executed_at=txn.get('executed_at'),
+                        transaction_date=txn.get('transaction_date'), action=txn.get('action'),
+                        symbol=txn.get('symbol'), instrument_type=txn.get('instrument_type'),
+                        underlying_symbol=txn.get('underlying_symbol'),
+                        quantity=txn.get('quantity'), price=txn.get('price'),
+                        value=txn.get('value'), regulatory_fees=txn.get('regulatory_fees'),
+                        clearing_fees=txn.get('clearing_fees'), commission=txn.get('commission'),
+                        net_value=txn.get('net_value'), is_estimated_fee=txn.get('is_estimated_fee'),
                     )
-                    
-                    if cursor.fetchone():
-                        continue  # Skip duplicates
-                    
-                    # Insert raw transaction (match schema from migration)
-                    cursor.execute("""
-                        INSERT INTO raw_transactions (
-                            id, account_number, order_id, transaction_type,
-                            transaction_sub_type, description, executed_at,
-                            transaction_date, action, symbol, instrument_type,
-                            underlying_symbol, quantity, price, value,
-                            regulatory_fees, clearing_fees, commission,
-                            net_value, is_estimated_fee
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        txn.get('id'),
-                        txn.get('account_number'),
-                        txn.get('order_id'),
-                        txn.get('transaction_type'),
-                        txn.get('transaction_sub_type'),
-                        txn.get('description'),
-                        txn.get('executed_at'),
-                        txn.get('transaction_date'),
-                        txn.get('action'),
-                        txn.get('symbol'),
-                        txn.get('instrument_type'),
-                        txn.get('underlying_symbol'),
-                        txn.get('quantity'),
-                        txn.get('price'),
-                        txn.get('value'),
-                        txn.get('regulatory_fees'),
-                        txn.get('clearing_fees'),
-                        txn.get('commission'),
-                        txn.get('net_value'),
-                        txn.get('is_estimated_fee')
-                    ))
-                    
+                    # Skip duplicates (on conflict do nothing)
+                    session.execute(stmt.on_conflict_do_nothing(index_elements=['id']))
                     saved_count += 1
-                    
                 except Exception as e:
                     logger.error(f"Failed to save transaction {txn.get('id')}: {e}")
                     continue
-            
-            conn.commit()
+
             logger.info(f"Saved {saved_count} raw transactions to database")
-            
+
         return saved_count
     
     def get_raw_transactions(
@@ -715,95 +378,63 @@ class DatabaseManager:
         underlying: Optional[str] = None
     ) -> List[Dict]:
         """Get raw transactions with optional filters"""
-        
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            query = "SELECT * FROM raw_transactions WHERE 1=1"
-            params = []
-            
+        from src.database.models import RawTransaction
+
+        with self.get_session() as session:
+            q = session.query(RawTransaction)
             if account_number:
-                query += " AND account_number = ?"
-                params.append(account_number)
-                
+                q = q.filter(RawTransaction.account_number == account_number)
             if start_date:
-                query += " AND executed_at >= ?"
-                params.append(start_date)
-                
+                q = q.filter(RawTransaction.executed_at >= start_date)
             if end_date:
-                query += " AND executed_at <= ?"
-                params.append(end_date)
-                
+                q = q.filter(RawTransaction.executed_at <= end_date)
             if underlying:
-                query += " AND underlying_symbol = ?"
-                params.append(underlying)
-            
-            query += " ORDER BY executed_at DESC"
-            
-            cursor.execute(query, params)
-            transactions = []
-            
-            for row in cursor.fetchall():
-                transactions.append(dict(row))
-                
-            return transactions
+                q = q.filter(RawTransaction.underlying_symbol == underlying)
+            q = q.order_by(RawTransaction.executed_at.desc())
+            return [row.to_dict() for row in q.all()]
     
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get current open positions"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM positions ORDER BY market_value DESC")
-            return [dict(row) for row in cursor.fetchall()]
+        from src.database.models import Position as PositionModel
+        with self.get_session() as session:
+            rows = session.query(PositionModel).order_by(PositionModel.market_value.desc()).all()
+            return [row.to_dict() for row in rows]
     
     def save_positions(self, positions: List[Dict[str, Any]], account_number: str) -> bool:
-        """Save current positions for an account - OPTIMIZED with batch insert"""
+        """Save current positions for an account - batch insert via ORM"""
+        from src.database.models import Position as PositionModel
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
+            with self.get_session() as session:
                 # Clear existing positions for this account
-                cursor.execute("DELETE FROM positions WHERE account_number = ?", (account_number,))
-                
-                # Prepare batch insert data
-                if positions:
-                    # Use executemany for batch insert (much faster)
-                    insert_data = [
-                        (
-                            account_number,
-                            pos.get('symbol'),
-                            pos.get('underlying_symbol'),
-                            pos.get('instrument_type'),
-                            pos.get('quantity'),
-                            pos.get('quantity_direction'),
-                            pos.get('average_open_price'),
-                            pos.get('close_price'),
-                            pos.get('market_value'),
-                            pos.get('cost_basis'),
-                            pos.get('realized_day_gain'),
-                            pos.get('unrealized_pnl'),
-                            pos.get('pnl_percent'),
-                            pos.get('opened_at'),
-                            pos.get('expires_at'),
-                            pos.get('strike_price'),
-                            pos.get('option_type'),
-                            pos.get('chain_id'),
-                            pos.get('strategy_type')
-                        )
-                        for pos in positions
-                    ]
+                session.query(PositionModel).filter(
+                    PositionModel.account_number == account_number,
+                ).delete()
 
-                    cursor.executemany("""
-                        INSERT INTO positions (
-                            account_number, symbol, underlying, instrument_type, quantity,
-                            quantity_direction, average_open_price, close_price,
-                            market_value, cost_basis, realized_day_gain,
-                            unrealized_pnl, pnl_percent, opened_at, expires_at,
-                            strike_price, option_type, chain_id, strategy_type
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, insert_data)
-                
+                for pos in positions:
+                    session.add(PositionModel(
+                        account_number=account_number,
+                        symbol=pos.get('symbol'),
+                        underlying=pos.get('underlying_symbol'),
+                        instrument_type=pos.get('instrument_type'),
+                        quantity=pos.get('quantity'),
+                        quantity_direction=pos.get('quantity_direction'),
+                        average_open_price=pos.get('average_open_price'),
+                        close_price=pos.get('close_price'),
+                        market_value=pos.get('market_value'),
+                        cost_basis=pos.get('cost_basis'),
+                        realized_day_gain=pos.get('realized_day_gain'),
+                        unrealized_pnl=pos.get('unrealized_pnl'),
+                        pnl_percent=pos.get('pnl_percent'),
+                        opened_at=pos.get('opened_at'),
+                        expires_at=pos.get('expires_at'),
+                        strike_price=pos.get('strike_price'),
+                        option_type=pos.get('option_type'),
+                        chain_id=pos.get('chain_id'),
+                        strategy_type=pos.get('strategy_type'),
+                    ))
+
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error saving positions: {str(e)}")
             return False
@@ -812,24 +443,18 @@ class DatabaseManager:
 
     def save_account_balance(self, balance: Dict[str, Any]) -> bool:
         """Save account balance snapshot"""
+        from src.database.models import AccountBalance
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO account_balances (
-                        account_number, cash_balance, net_liquidating_value,
-                        margin_equity, equity_buying_power, derivative_buying_power,
-                        day_trading_buying_power, maintenance_requirement
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    balance.get('account_number'),
-                    balance.get('cash_balance'),
-                    balance.get('net_liquidating_value'),
-                    balance.get('margin_equity'),
-                    balance.get('equity_buying_power'),
-                    balance.get('derivative_buying_power'),
-                    balance.get('day_trading_buying_power'),
-                    balance.get('maintenance_requirement')
+            with self.get_session() as session:
+                session.add(AccountBalance(
+                    account_number=balance.get('account_number'),
+                    cash_balance=balance.get('cash_balance'),
+                    net_liquidating_value=balance.get('net_liquidating_value'),
+                    margin_equity=balance.get('margin_equity'),
+                    equity_buying_power=balance.get('equity_buying_power'),
+                    derivative_buying_power=balance.get('derivative_buying_power'),
+                    day_trading_buying_power=balance.get('day_trading_buying_power'),
+                    maintenance_requirement=balance.get('maintenance_requirement'),
                 ))
                 return True
         except Exception as e:
@@ -838,23 +463,25 @@ class DatabaseManager:
     
     def get_sync_metadata(self, key: str) -> Optional[str]:
         """Get a sync metadata value by key"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT value FROM sync_metadata WHERE key = ?
-            """, (key,))
-            result = cursor.fetchone()
-            return result['value'] if result else None
-    
+        from src.database.models import SyncMetadata
+        with self.get_session() as session:
+            row = session.query(SyncMetadata).filter(SyncMetadata.key == key).first()
+            return row.value if row else None
+
     def set_sync_metadata(self, key: str, value: str) -> bool:
         """Set a sync metadata value"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import SyncMetadata
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
-                """, (key, value))
+            with self.get_session() as session:
+                stmt = sqlite_insert(SyncMetadata).values(
+                    key=key, value=value,
+                    updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                )
+                session.execute(stmt.on_conflict_do_update(
+                    index_elements=['key'],
+                    set_={'value': stmt.excluded.value, 'updated_at': stmt.excluded.updated_at},
+                ))
                 return True
         except Exception as e:
             logger.error(f"Error setting sync metadata: {str(e)}")
@@ -886,10 +513,10 @@ class DatabaseManager:
     
     def reset_sync_metadata(self) -> bool:
         """Reset sync metadata (for initial sync)"""
+        from src.database.models import SyncMetadata
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM sync_metadata")
+            with self.get_session() as session:
+                session.query(SyncMetadata).delete()
                 return True
         except Exception as e:
             logger.error(f"Error resetting sync metadata: {str(e)}")
@@ -897,33 +524,26 @@ class DatabaseManager:
     
     def cache_quote(self, symbol: str, quote_data: Dict[str, Any]) -> bool:
         """Cache a quote in the database"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import QuoteCache
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    INSERT OR REPLACE INTO quote_cache (
-                        symbol, mark, bid, ask, last, change, change_percent,
-                        volume, prev_close, day_high, day_low, iv, ivr, iv_percentile,
-                        updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (
-                    symbol,
-                    quote_data.get('mark'),
-                    quote_data.get('bid'),
-                    quote_data.get('ask'),
-                    quote_data.get('last'),
-                    quote_data.get('change'),
-                    quote_data.get('change_percent'),
-                    quote_data.get('volume'),
-                    quote_data.get('prev_close'),
-                    quote_data.get('day_high'),
-                    quote_data.get('day_low'),
-                    quote_data.get('iv'),
-                    quote_data.get('ivr'),
-                    quote_data.get('iv_percentile')
+            with self.get_session() as session:
+                vals = dict(
+                    symbol=symbol, mark=quote_data.get('mark'),
+                    bid=quote_data.get('bid'), ask=quote_data.get('ask'),
+                    last=quote_data.get('last'), change=quote_data.get('change'),
+                    change_percent=quote_data.get('change_percent'),
+                    volume=quote_data.get('volume'), prev_close=quote_data.get('prev_close'),
+                    day_high=quote_data.get('day_high'), day_low=quote_data.get('day_low'),
+                    iv=quote_data.get('iv'), ivr=quote_data.get('ivr'),
+                    iv_percentile=quote_data.get('iv_percentile'),
+                    updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                )
+                stmt = sqlite_insert(QuoteCache).values(**vals)
+                update_vals = {k: v for k, v in vals.items() if k != 'symbol'}
+                session.execute(stmt.on_conflict_do_update(
+                    index_elements=['symbol'], set_=update_vals,
                 ))
-                
                 return True
         except Exception as e:
             logger.error(f"Error caching quote for {symbol}: {str(e)}")
@@ -931,22 +551,17 @@ class DatabaseManager:
     
     def get_cached_quotes(self, symbols: List[str] = None) -> Dict[str, Dict[str, Any]]:
         """Get cached quotes from database"""
+        from src.database.models import QuoteCache
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
+            with self.get_session() as session:
+                q = session.query(QuoteCache)
                 if symbols:
-                    placeholders = ','.join(['?' for _ in symbols])
-                    cursor.execute(f"SELECT * FROM quote_cache WHERE symbol IN ({placeholders})", symbols)
-                else:
-                    cursor.execute("SELECT * FROM quote_cache")
-                
+                    q = q.filter(QuoteCache.symbol.in_(symbols))
                 quotes = {}
-                for row in cursor.fetchall():
-                    row_dict = dict(row)
-                    symbol = row_dict.pop('symbol')
-                    quotes[symbol] = row_dict
-                
+                for row in q.all():
+                    d = row.to_dict()
+                    sym = d.pop('symbol')
+                    quotes[sym] = d
                 return quotes
         except Exception as e:
             logger.error(f"Error getting cached quotes: {str(e)}")
@@ -984,25 +599,33 @@ class DatabaseManager:
 
     def get_strategy_targets(self) -> List[Dict[str, Any]]:
         """Get all strategy P&L targets"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM strategy_targets ORDER BY id")
-            return [dict(row) for row in cursor.fetchall()]
+        from src.database.models import StrategyTarget
+        with self.get_session() as session:
+            rows = session.query(StrategyTarget).order_by(StrategyTarget.id).all()
+            return [row.to_dict() for row in rows]
 
     def save_strategy_targets(self, targets: List[Dict[str, Any]]) -> bool:
         """Save strategy targets (upsert pattern)"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import StrategyTarget
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
+            with self.get_session() as session:
                 for target in targets:
-                    cursor.execute("""
-                        INSERT INTO strategy_targets (strategy_name, profit_target_pct, loss_target_pct, updated_at)
-                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                        ON CONFLICT(strategy_name) DO UPDATE SET
-                            profit_target_pct = excluded.profit_target_pct,
-                            loss_target_pct = excluded.loss_target_pct,
-                            updated_at = CURRENT_TIMESTAMP
-                    """, (target['strategy_name'], target['profit_target_pct'], target['loss_target_pct']))
+                    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    stmt = sqlite_insert(StrategyTarget).values(
+                        strategy_name=target['strategy_name'],
+                        profit_target_pct=target['profit_target_pct'],
+                        loss_target_pct=target['loss_target_pct'],
+                        updated_at=now,
+                    )
+                    session.execute(stmt.on_conflict_do_update(
+                        index_elements=['strategy_name'],
+                        set_={
+                            'profit_target_pct': stmt.excluded.profit_target_pct,
+                            'loss_target_pct': stmt.excluded.loss_target_pct,
+                            'updated_at': now,
+                        },
+                    ))
                 return True
         except Exception as e:
             logger.error(f"Error saving strategy targets: {str(e)}")
@@ -1010,11 +633,11 @@ class DatabaseManager:
 
     def reset_strategy_targets(self) -> bool:
         """Reset strategy targets to defaults"""
+        from src.database.models import StrategyTarget
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM strategy_targets")
-                self._seed_default_strategy_targets(cursor)
+            with self.get_session() as session:
+                session.query(StrategyTarget).delete()
+                self._seed_default_strategy_targets_orm(session)
                 return True
         except Exception as e:
             logger.error(f"Error resetting strategy targets: {str(e)}")
@@ -1022,16 +645,21 @@ class DatabaseManager:
 
     def save_order_comment(self, order_id: str, comment: str) -> bool:
         """Save or delete a comment for an order"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import OrderComment
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
+            with self.get_session() as session:
                 if comment.strip():
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO order_comments (order_id, comment, updated_at)
-                        VALUES (?, ?, CURRENT_TIMESTAMP)
-                    """, (order_id, comment))
+                    stmt = sqlite_insert(OrderComment).values(
+                        order_id=order_id, comment=comment,
+                        updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    )
+                    session.execute(stmt.on_conflict_do_update(
+                        index_elements=['order_id'],
+                        set_={'comment': stmt.excluded.comment, 'updated_at': stmt.excluded.updated_at},
+                    ))
                 else:
-                    cursor.execute("DELETE FROM order_comments WHERE order_id = ?", (order_id,))
+                    session.query(OrderComment).filter(OrderComment.order_id == order_id).delete()
                 return True
         except Exception as e:
             logger.error(f"Error saving order comment: {str(e)}")
@@ -1039,27 +667,32 @@ class DatabaseManager:
 
     def get_all_order_comments(self) -> Dict[str, str]:
         """Get all order comments as a dict of order_id -> comment"""
+        from src.database.models import OrderComment
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT order_id, comment FROM order_comments")
-                return {row['order_id']: row['comment'] for row in cursor.fetchall()}
+            with self.get_session() as session:
+                rows = session.query(OrderComment.order_id, OrderComment.comment).all()
+                return {oid: c for oid, c in rows}
         except Exception as e:
             logger.error(f"Error getting order comments: {str(e)}")
             return {}
 
     def save_position_note(self, note_key: str, note: str) -> bool:
         """Save or delete a note for a position"""
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from src.database.models import PositionNote
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
+            with self.get_session() as session:
                 if note.strip():
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO position_notes (note_key, note, updated_at)
-                        VALUES (?, ?, CURRENT_TIMESTAMP)
-                    """, (note_key, note))
+                    stmt = sqlite_insert(PositionNote).values(
+                        note_key=note_key, note=note,
+                        updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    )
+                    session.execute(stmt.on_conflict_do_update(
+                        index_elements=['note_key'],
+                        set_={'note': stmt.excluded.note, 'updated_at': stmt.excluded.updated_at},
+                    ))
                 else:
-                    cursor.execute("DELETE FROM position_notes WHERE note_key = ?", (note_key,))
+                    session.query(PositionNote).filter(PositionNote.note_key == note_key).delete()
                 return True
         except Exception as e:
             logger.error(f"Error saving position note: {str(e)}")
@@ -1067,11 +700,11 @@ class DatabaseManager:
 
     def get_all_position_notes(self) -> Dict[str, str]:
         """Get all position notes as a dict of note_key -> note"""
+        from src.database.models import PositionNote
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT note_key, note FROM position_notes")
-                return {row['note_key']: row['note'] for row in cursor.fetchall()}
+            with self.get_session() as session:
+                rows = session.query(PositionNote.note_key, PositionNote.note).all()
+                return {nk: n for nk, n in rows}
         except Exception as e:
             logger.error(f"Error getting position notes: {str(e)}")
             return {}
