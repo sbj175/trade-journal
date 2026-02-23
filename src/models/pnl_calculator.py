@@ -56,32 +56,15 @@ class PnLCalculator:
         self._create_lots_table_if_not_exists()
     
     def _create_lots_table_if_not_exists(self):
-        """Ensure position_lots table exists (legacy DDL fallback).
+        """Ensure position_lots table exists (safety net for standalone scripts).
 
-        Table is also defined in models.py and created by the main
-        initialize_database() flow.  This is kept as a safety net for
-        standalone scripts.
+        Table is defined in models.py and created by initialize_database().
+        This uses Base.metadata.create_all() which is a no-op if tables exist.
         """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS position_lots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    transaction_id TEXT NOT NULL,
-                    account_number TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    entry_price REAL NOT NULL,
-                    entry_date TIMESTAMP NOT NULL,
-                    remaining_quantity INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(transaction_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_lots_account_symbol
-                ON position_lots(account_number, symbol)
-            """)
+        from src.database.models import Base
+        from src.database import engine as sa_engine
+        if sa_engine._engine is not None:
+            Base.metadata.create_all(sa_engine._engine)
     
     def record_opening_lot(self, transaction: Dict):
         """Record a new opening lot for FIFO tracking"""

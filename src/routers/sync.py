@@ -207,15 +207,20 @@ async def initial_sync():
         logger.info("Skipping user data preservation (moving to order-based system)")
 
         logger.info("Clearing existing database and recreating tables...")
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DROP TABLE IF EXISTS order_chain_members")
-            cursor.execute("DROP TABLE IF EXISTS order_chains")
-            cursor.execute("DROP TABLE IF EXISTS positions_new")
-            cursor.execute("DROP TABLE IF EXISTS orders")
-            cursor.execute("DELETE FROM positions")
-            cursor.execute("DELETE FROM account_balances")
-            cursor.execute("DELETE FROM raw_transactions")
+        from src.database.models import (
+            Base, OrderChainMember, OrderChainCache,
+            OrderPosition, OrderChain as OrderChainModel, Position as PositionModel,
+            AccountBalance, RawTransaction,
+        )
+        from src.database.models import Order as OrderModel
+        with db.get_session() as session:
+            # Drop dependent tables first (FK order)
+            for model in [OrderChainMember, OrderChainCache, OrderChainModel, OrderPosition, OrderModel]:
+                session.execute(model.__table__.delete())
+            # Clear (not drop) data tables
+            session.query(PositionModel).delete()
+            session.query(AccountBalance).delete()
+            session.query(RawTransaction).delete()
             logger.info("Database cleared successfully")
 
         db.initialize_database()

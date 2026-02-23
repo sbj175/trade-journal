@@ -54,38 +54,15 @@ class PositionInventoryManager:
         self._create_table_if_not_exists()
 
     def _create_table_if_not_exists(self):
-        """Create the positions_inventory table if it doesn't exist"""
-        # Table is defined in models.py and created by Base.metadata.create_all()
-        # or by the legacy DDL in db_manager. Keep raw DDL as a fallback for
-        # standalone scripts that bypass SQLAlchemy init.
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS positions_inventory (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    account_number TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    underlying TEXT NOT NULL,
-                    option_type TEXT,
-                    strike REAL,
-                    expiration DATE,
-                    current_quantity INTEGER NOT NULL,
-                    cost_basis REAL NOT NULL,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(account_number, symbol)
-                )
-            """)
+        """Ensure positions_inventory table exists (safety net for standalone scripts).
 
-            # Create indexes for efficient lookups
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_positions_account_underlying
-                ON positions_inventory(account_number, underlying)
-            """)
-
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_positions_symbol
-                ON positions_inventory(symbol)
-            """)
+        Table is defined in models.py and created by initialize_database().
+        This uses Base.metadata.create_all() which is a no-op if tables exist.
+        """
+        from src.database.models import Base
+        from src.database import engine as sa_engine
+        if sa_engine._engine is not None:
+            Base.metadata.create_all(sa_engine._engine)
 
     # -------------------------------------------------------------------
     # Helpers

@@ -168,41 +168,26 @@ async def get_performance_report(
     try:
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = """
-                SELECT
-                    chain_id,
-                    strategy_type,
-                    total_pnl,
-                    account_number,
-                    closing_date
-                FROM order_chains
-                WHERE chain_status = 'CLOSED'
-            """
-            params = []
+        with db.get_session() as session:
+            q = session.query(OrderChain).filter(OrderChain.chain_status == 'CLOSED')
 
             if account_number:
-                query += " AND account_number = ?"
-                params.append(account_number)
+                q = q.filter(OrderChain.account_number == account_number)
 
             if days != 'all':
                 try:
                     days_int = int(days)
                     cutoff_date = (datetime.now() - timedelta(days=days_int)).strftime('%Y-%m-%d')
-                    query += " AND closing_date >= ?"
-                    params.append(cutoff_date)
+                    q = q.filter(OrderChain.closing_date >= cutoff_date)
                 except ValueError:
                     pass
 
-            cursor.execute(query, params)
-            chains = cursor.fetchall()
+            chains = [row.to_dict() for row in q.all()]
 
             chain_risk_reward = {}
             for chain in chains:
                 max_risk, max_reward = calculate_max_risk_reward(
-                    cursor, chain['chain_id'], chain['strategy_type']
+                    session, chain['chain_id'], chain['strategy_type']
                 )
                 chain_risk_reward[chain['chain_id']] = (max_risk, max_reward)
 
