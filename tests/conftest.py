@@ -22,20 +22,17 @@ from src.models.order_processor import OrderProcessor
 @pytest.fixture
 def db(tmp_path):
     """Temporary SQLite database, fully initialized and auto-cleaned."""
-    import sqlite3
     db_path = str(tmp_path / "test.db")
-    # Enable WAL journal mode so the nested connections inside
-    # initialize_database (specifically _add_transaction_columns) can
-    # write concurrently without "database is locked" errors.
-    pre = sqlite3.connect(db_path)
-    pre.execute("PRAGMA journal_mode=WAL")
-    pre.close()
-
     db_manager = DatabaseManager(db_path=db_path)
+
+    # initialize_database() calls _add_transaction_columns() internally,
+    # but that nested call opens a second connection while the first still
+    # holds the write lock, causing a 5-second timeout per test.
+    # Fix: stub it out during init, then call it once the connection closes.
+    original = db_manager._add_transaction_columns
+    db_manager._add_transaction_columns = lambda: None
     db_manager.initialize_database()
-    # _add_transaction_columns() is called inside initialize_database()
-    # but can fail due to SQLite's nested-write limitations. Re-run it
-    # now that the outer connection from initialize_database is closed.
+    db_manager._add_transaction_columns = original
     db_manager._add_transaction_columns()
     return db_manager
 
