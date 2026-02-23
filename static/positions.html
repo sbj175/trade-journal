@@ -108,16 +108,16 @@
     <!-- Reconciliation Banner -->
     <div x-show="reconciliation && !isLoading" x-cloak class="mx-2 mt-2">
         <div class="px-4 py-2 rounded text-sm flex items-center justify-between"
-             :class="(reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length)
+             :class="reconciliation && (reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length)
                      ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
                      : 'bg-tv-green/10 border border-tv-green/30 text-tv-green'">
             <span>
-                <i class="fas fa-check-circle mr-1" x-show="!reconciliation.unlinked?.length && !reconciliation.quantity_mismatch?.length && !reconciliation.stale?.length"></i>
-                <i class="fas fa-exclamation-triangle mr-1" x-show="reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length"></i>
-                <span x-text="reconciliation.matched + '/' + reconciliation.total + ' options matched'"></span>
-                <span x-show="reconciliation.unlinked?.length" class="ml-2" x-text="reconciliation.unlinked.length + ' unlinked'"></span>
-                <span x-show="reconciliation.stale?.length" class="ml-2" x-text="reconciliation.stale.length + ' stale'"></span>
-                <span x-show="reconciliation.auto_closed?.length" class="ml-2 text-tv-green" x-text="reconciliation.auto_closed.length + ' auto-closed'"></span>
+                <i class="fas fa-check-circle mr-1" x-show="reconciliation && !reconciliation.unlinked?.length && !reconciliation.quantity_mismatch?.length && !reconciliation.stale?.length"></i>
+                <i class="fas fa-exclamation-triangle mr-1" x-show="reconciliation && (reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length)"></i>
+                <span x-text="reconciliation ? reconciliation.matched + '/' + reconciliation.total + ' options matched' : ''"></span>
+                <span x-show="reconciliation?.unlinked?.length" class="ml-2" x-text="reconciliation?.unlinked?.length + ' unlinked'"></span>
+                <span x-show="reconciliation?.stale?.length" class="ml-2" x-text="reconciliation?.stale?.length + ' stale'"></span>
+                <span x-show="reconciliation?.auto_closed?.length" class="ml-2 text-tv-green" x-text="reconciliation?.auto_closed?.length + ' auto-closed'"></span>
             </span>
             <button @click="reconciliation = null" class="text-tv-muted hover:text-tv-text text-xs ml-4">
                 <i class="fas fa-times"></i>
