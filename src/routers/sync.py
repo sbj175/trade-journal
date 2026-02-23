@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
+from src.database.models import OrderChain
 from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
@@ -169,10 +170,8 @@ async def migrate_realized_pnl():
     try:
         logger.info("Starting realized P&L migration...")
 
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT chain_id FROM order_chains")
-            chain_ids = [row[0] for row in cursor.fetchall()]
+        with db.get_session() as session:
+            chain_ids = [row[0] for row in session.query(OrderChain.chain_id).all()]
 
         updated_count = 0
         for chain_id in chain_ids:

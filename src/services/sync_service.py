@@ -4,7 +4,12 @@ from datetime import datetime, date as _date
 from typing import Dict, List, Any, Optional
 
 from loguru import logger
+from sqlalchemy import func
 
+from src.database.models import (
+    RawTransaction, OrderChain, OrderChainCache,
+    PositionLot as PositionLotModel, PositionGroupLot, PositionGroup,
+)
 from src.dependencies import db, connection_manager, order_processor, position_manager, lot_manager, order_manager
 from src.services import chain_service, ledger_service
 
@@ -20,21 +25,20 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
     opening_dates = {}
 
     if position_symbols:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            # Batch query for all symbols at once - much more efficient
-            placeholders = ','.join(['?' for _ in position_symbols])
-            cursor.execute(f"""
-                SELECT symbol, MIN(executed_at) as earliest_date
-                FROM raw_transactions
-                WHERE account_number = ?
-                AND symbol IN ({placeholders})
-                AND action IN ('OrderAction.BUY_TO_OPEN', 'OrderAction.SELL_TO_OPEN')
-                GROUP BY symbol
-            """, [account_number] + position_symbols)
+        with db.get_session() as session:
+            rows = session.query(
+                RawTransaction.symbol,
+                func.min(RawTransaction.executed_at).label('earliest_date'),
+            ).filter(
+                RawTransaction.account_number == account_number,
+                RawTransaction.symbol.in_(position_symbols),
+                RawTransaction.action.in_([
+                    'OrderAction.BUY_TO_OPEN', 'OrderAction.SELL_TO_OPEN',
+                ]),
+            ).group_by(RawTransaction.symbol).all()
 
-            for row in cursor.fetchall():
-                opening_dates[row['symbol']] = row['earliest_date']
+            for row in rows:
+                opening_dates[row[0]] = row[1]
 
     # Apply opening dates to positions
     for position in positions:
@@ -59,15 +63,19 @@ def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: s
     # Get open chains for this account
     open_chains = []
     try:
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT chain_id, underlying, account_number, strategy_type, chain_status
-                FROM order_chains
-                WHERE chain_status = 'OPEN' AND account_number = ?
-            """, (account_number,))
-            for row in cursor.fetchall():
-                open_chains.append(dict(row))
+        with db.get_session() as session:
+            rows = session.query(OrderChain).filter(
+                OrderChain.chain_status == 'OPEN',
+                OrderChain.account_number == account_number,
+            ).all()
+            for row in rows:
+                open_chains.append({
+                    'chain_id': row.chain_id,
+                    'underlying': row.underlying,
+                    'account_number': row.account_number,
+                    'strategy_type': row.strategy_type,
+                    'chain_status': row.chain_status,
+                })
     except Exception as e:
         logger.warning(f"Could not fetch chains for position enrichment: {e}")
 
@@ -78,14 +86,13 @@ def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: s
             import json as _json
             chain_ids = [c['chain_id'] for c in open_chains]
             chain_map = {c['chain_id']: c for c in open_chains}
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                placeholders = ','.join('?' * len(chain_ids))
-                cursor.execute(f"""
-                    SELECT chain_id, order_data FROM order_chain_cache
-                    WHERE chain_id IN ({placeholders})
-                """, chain_ids)
-                for row in cursor.fetchall():
+            with db.get_session() as session:
+                rows = session.query(
+                    OrderChainCache.chain_id, OrderChainCache.order_data,
+                ).filter(
+                    OrderChainCache.chain_id.in_(chain_ids),
+                ).all()
+                for row in rows:
                     cid = row[0]
                     try:
                         order_data = _json.loads(row[1])
@@ -295,19 +302,25 @@ async def reconcile_positions_vs_chains():
 
         # 2. Get open legs from position_lots — options and equity (single query)
         lot_legs_by_key = {}
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT pl.account_number, pl.symbol, pl.underlying,
-                       SUM(pl.remaining_quantity) as net_qty,
-                       pgl.group_id
-                FROM position_lots pl
-                LEFT JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
-                WHERE pl.remaining_quantity != 0 AND pl.status != 'CLOSED'
-                  AND pl.instrument_type IN ('EQUITY_OPTION', 'EQUITY')
-                GROUP BY pl.account_number, pl.symbol
-            """)
-            for row in cursor.fetchall():
+        with db.get_session() as session:
+            rows = session.query(
+                PositionLotModel.account_number,
+                PositionLotModel.symbol,
+                PositionLotModel.underlying,
+                func.sum(PositionLotModel.remaining_quantity).label('net_qty'),
+                PositionGroupLot.group_id,
+            ).outerjoin(
+                PositionGroupLot,
+                PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(
+                PositionLotModel.remaining_quantity != 0,
+                PositionLotModel.status != 'CLOSED',
+                PositionLotModel.instrument_type.in_(['EQUITY_OPTION', 'EQUITY']),
+            ).group_by(
+                PositionLotModel.account_number,
+                PositionLotModel.symbol,
+            ).all()
+            for row in rows:
                 acct = row[0]
                 symbol = (row[1] or '').strip()
                 net_qty = row[3]
@@ -388,22 +401,30 @@ async def reconcile_positions_vs_chains():
 
             for group_id in stale_group_ids - matched_group_ids:
                 try:
-                    with db.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            UPDATE position_lots SET remaining_quantity = 0, status = 'CLOSED'
-                            WHERE transaction_id IN (
-                                SELECT pgl.transaction_id FROM position_group_lots pgl
-                                JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
-                                WHERE pgl.group_id = ? AND pl.remaining_quantity != 0
-                                  AND pl.status != 'CLOSED' AND pl.instrument_type IN ('EQUITY_OPTION', 'EQUITY')
-                            )
-                        """, (group_id,))
-                        if cursor.rowcount > 0:
+                    with db.get_session() as session:
+                        # Find transaction_ids to close
+                        txn_rows = session.query(
+                            PositionGroupLot.transaction_id,
+                        ).join(
+                            PositionLotModel,
+                            PositionGroupLot.transaction_id == PositionLotModel.transaction_id,
+                        ).filter(
+                            PositionGroupLot.group_id == group_id,
+                            PositionLotModel.remaining_quantity != 0,
+                            PositionLotModel.status != 'CLOSED',
+                            PositionLotModel.instrument_type.in_(['EQUITY_OPTION', 'EQUITY']),
+                        ).all()
+                        if txn_rows:
+                            txn_ids = [r[0] for r in txn_rows]
+                            session.query(PositionLotModel).filter(
+                                PositionLotModel.transaction_id.in_(txn_ids),
+                            ).update({
+                                PositionLotModel.remaining_quantity: 0,
+                                PositionLotModel.status: 'CLOSED',
+                            }, synchronize_session='fetch')
                             auto_closed.append(group_id)
                             affected_groups.add(group_id)
                             logger.info(f"Auto-closed stale lots in group {group_id}")
-                        conn.commit()
                 except Exception as e:
                     logger.error(f"Failed to auto-close lots in group {group_id}: {e}")
 
@@ -421,36 +442,52 @@ async def reconcile_positions_vs_chains():
             und = (pos.get('underlying') or pos.get('symbol', '')).strip()
             tt_underlyings_by_acct.setdefault(acct, set()).add(und)
 
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT pg.group_id, pg.account_number, pg.underlying
-                FROM position_groups pg
-                WHERE pg.status IN ('OPEN', 'ASSIGNED')
-            """)
-            open_groups = cursor.fetchall()
+        with db.get_session() as session:
+            open_groups = session.query(
+                PositionGroup.group_id,
+                PositionGroup.account_number,
+                PositionGroup.underlying,
+            ).filter(
+                PositionGroup.status.in_(['OPEN', 'ASSIGNED']),
+            ).all()
 
-            for row in open_groups:
-                group_id, acct, underlying = row[0], row[1], row[2]
-                if group_id in set(auto_closed):
-                    continue
+            # Batch query: count open lots per group
+            group_ids_to_check = [r[0] for r in open_groups if r[0] not in set(auto_closed)]
+            open_lot_counts = {}
+            if group_ids_to_check:
+                count_rows = session.query(
+                    PositionGroupLot.group_id,
+                    func.count(),
+                ).join(
+                    PositionLotModel,
+                    PositionGroupLot.transaction_id == PositionLotModel.transaction_id,
+                ).filter(
+                    PositionGroupLot.group_id.in_(group_ids_to_check),
+                    PositionLotModel.remaining_quantity != 0,
+                    PositionLotModel.status != 'CLOSED',
+                    PositionLotModel.instrument_type.in_(['EQUITY_OPTION', 'EQUITY']),
+                ).group_by(PositionGroupLot.group_id).all()
+                open_lot_counts = dict(count_rows)
 
-                cursor.execute("""
-                    SELECT COUNT(*) FROM position_group_lots pgl
-                    JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
-                    WHERE pgl.group_id = ? AND pl.remaining_quantity != 0
-                      AND pl.status != 'CLOSED' AND pl.instrument_type IN ('EQUITY_OPTION', 'EQUITY')
-                """, (group_id,))
-                has_open_lots = cursor.fetchone()[0] > 0
+        groups_to_close = []
+        for row in open_groups:
+            group_id, acct, underlying = row[0], row[1], row[2]
+            if group_id in set(auto_closed):
+                continue
+            has_open_lots = open_lot_counts.get(group_id, 0) > 0
+            if not has_open_lots:
+                tt_has_underlying = underlying in tt_underlyings_by_acct.get(acct, set())
+                if not tt_has_underlying:
+                    groups_to_close.append((group_id, underlying, acct))
 
-                if not has_open_lots:
-                    tt_has_underlying = underlying in tt_underlyings_by_acct.get(acct, set())
-                    if not tt_has_underlying:
-                        ledger_service._refresh_group_status(cursor, group_id)
-                        auto_closed.append(group_id)
-                        logger.info(f"Auto-closed ghost group {group_id} ({underlying}/{acct})")
-
-            conn.commit()
+        if groups_to_close:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                for gid, underlying, acct in groups_to_close:
+                    ledger_service._refresh_group_status(cursor, gid)
+                    auto_closed.append(gid)
+                    logger.info(f"Auto-closed ghost group {gid} ({underlying}/{acct})")
+                conn.commit()
 
         if auto_closed:
             stale = [s for s in stale if s.get('chain_id') not in auto_closed]
