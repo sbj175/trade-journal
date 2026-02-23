@@ -113,19 +113,30 @@ def seed_position_groups():
 
             for key, txn_ids in buckets.items():
                 acct, und = key.split('|', 1)
-                group_id = str(_uuid.uuid4())
+                # Check for any existing OPEN group for this account+underlying
                 cursor.execute("""
-                    INSERT INTO position_groups
-                        (group_id, account_number, underlying, strategy_label, status,
-                         source_chain_id, opening_date, closing_date)
-                    VALUES (?, ?, ?, 'Shares', 'OPEN', NULL, NULL, NULL)
-                """, (group_id, acct, und))
+                    SELECT group_id FROM position_groups
+                    WHERE account_number = ? AND underlying = ? AND status = 'OPEN'
+                    ORDER BY opening_date DESC
+                    LIMIT 1
+                """, (acct, und))
+                existing = cursor.fetchone()
+                if existing:
+                    group_id = existing[0]
+                else:
+                    group_id = str(_uuid.uuid4())
+                    cursor.execute("""
+                        INSERT INTO position_groups
+                            (group_id, account_number, underlying, strategy_label, status,
+                             source_chain_id, opening_date, closing_date)
+                        VALUES (?, ?, ?, 'Shares', 'OPEN', NULL, NULL, NULL)
+                    """, (group_id, acct, und))
+                    groups_created += 1
                 for txn_id in txn_ids:
                     cursor.execute("""
                         INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
                         VALUES (?, ?)
                     """, (group_id, txn_id))
-                groups_created += 1
 
         conn.commit()
 
@@ -439,11 +450,12 @@ def seed_new_lots_into_groups():
 
                 for key, blots in buckets.items():
                     acct, und = key.split('|', 1)
-                    # Find or create ungrouped group
+                    # Find any existing OPEN group for this account+underlying
                     cursor.execute("""
                         SELECT group_id FROM position_groups
-                        WHERE account_number = ? AND underlying = ? AND source_chain_id IS NULL
-                        AND strategy_label = 'Shares'
+                        WHERE account_number = ? AND underlying = ? AND status = 'OPEN'
+                        ORDER BY opening_date DESC
+                        LIMIT 1
                     """, (acct, und))
                     row = cursor.fetchone()
                     if row:
