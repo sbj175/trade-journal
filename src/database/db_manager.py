@@ -24,10 +24,22 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 
 class DatabaseManager:
-    def __init__(self, db_path: str = "trade_journal.db"):
-        self.db_path = db_path
+    def __init__(self, db_url: str = None):
+        self.db_url = db_url  # None → engine.py reads DATABASE_URL or defaults to SQLite
         self._initialized = False
+        # Legacy: extract path for get_connection() (removed in Phase 3)
+        self._sqlite_path = self._extract_sqlite_path(db_url)
         # Note: initialize_database() is called explicitly by FastAPI startup event
+
+    @staticmethod
+    def _extract_sqlite_path(db_url: str = None) -> str:
+        """Extract SQLite file path from a URL (legacy support for get_connection)."""
+        if db_url is None:
+            import os
+            db_url = os.environ.get("DATABASE_URL", "sqlite:///trade_journal.db")
+        if db_url.startswith("sqlite:///"):
+            return db_url[len("sqlite:///"):]
+        return "trade_journal.db"
     
     def ensure_initialized(self):
         """Ensure database is initialized (for standalone scripts)"""
@@ -37,7 +49,7 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self):
         """Context manager for database connections"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self._sqlite_path)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
@@ -59,7 +71,7 @@ class DatabaseManager:
 
         start_time = time.time()
         logger.info("Starting database initialization...")
-        sa_engine.init_engine(self.db_path)
+        sa_engine.init_engine(self.db_url)
 
         # Create all tables from ORM models (IF NOT EXISTS semantics)
         engine = sa_engine._engine

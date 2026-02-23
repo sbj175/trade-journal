@@ -24,7 +24,7 @@ from src.models.order_processor import OrderProcessor
 def db(tmp_path):
     """Temporary SQLite database, fully initialized and auto-cleaned."""
     db_path = str(tmp_path / "test.db")
-    db_manager = DatabaseManager(db_path=db_path)
+    db_manager = DatabaseManager(db_url=f"sqlite:///{db_path}")
 
     # initialize_database() calls _add_transaction_columns() internally,
     # but that nested call opens a second connection while the first still
