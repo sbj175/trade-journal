@@ -8,6 +8,13 @@ from datetime import datetime, date
 from typing import List, Dict, Optional, Tuple
 import logging
 
+from sqlalchemy import func
+from src.database.models import (
+    PositionLot as PositionLotModel,
+    LotClosing as LotClosingModel,
+    PositionGroupLot,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,6 +80,68 @@ class LotManager:
     def __init__(self, db_manager):
         self.db = db_manager
 
+    # -------------------------------------------------------------------
+    # Helpers
+    # -------------------------------------------------------------------
+
+    @staticmethod
+    def _orm_to_lot(row: PositionLotModel) -> Lot:
+        """Convert an ORM PositionLot to a Lot dataclass."""
+        expiration = row.expiration
+        if expiration and isinstance(expiration, str):
+            expiration = datetime.strptime(expiration, '%Y-%m-%d').date()
+
+        entry_date = row.entry_date
+        if isinstance(entry_date, str):
+            entry_date = datetime.fromisoformat(entry_date.replace('Z', '+00:00'))
+
+        return Lot(
+            id=row.id,
+            transaction_id=row.transaction_id,
+            account_number=row.account_number,
+            symbol=row.symbol,
+            underlying=row.underlying or '',
+            instrument_type=row.instrument_type or '',
+            option_type=row.option_type,
+            strike=row.strike,
+            expiration=expiration,
+            quantity=row.quantity,
+            entry_price=row.entry_price,
+            entry_date=entry_date,
+            remaining_quantity=row.remaining_quantity,
+            original_quantity=row.original_quantity or abs(row.quantity),
+            chain_id=row.chain_id,
+            leg_index=row.leg_index or 0,
+            opening_order_id=row.opening_order_id,
+            derived_from_lot_id=row.derived_from_lot_id,
+            derivation_type=row.derivation_type,
+            status=row.status or 'OPEN',
+        )
+
+    @staticmethod
+    def _orm_to_closing(row: LotClosingModel) -> LotClosing:
+        """Convert an ORM LotClosing to a LotClosing dataclass."""
+        closing_date = row.closing_date
+        if isinstance(closing_date, str):
+            closing_date = datetime.fromisoformat(closing_date.replace('Z', '+00:00'))
+
+        return LotClosing(
+            closing_id=row.closing_id,
+            lot_id=row.lot_id,
+            closing_order_id=row.closing_order_id,
+            closing_transaction_id=row.closing_transaction_id,
+            quantity_closed=row.quantity_closed,
+            closing_price=row.closing_price,
+            closing_date=closing_date,
+            closing_type=row.closing_type,
+            realized_pnl=row.realized_pnl,
+            resulting_lot_id=row.resulting_lot_id,
+        )
+
+    # -------------------------------------------------------------------
+    # Create
+    # -------------------------------------------------------------------
+
     def create_lot(
         self,
         transaction: Dict,
@@ -82,12 +151,6 @@ class LotManager:
     ) -> int:
         """
         Create a new lot from an opening transaction.
-
-        Args:
-            transaction: Transaction dict with id, account_number, symbol, action, quantity, price, etc.
-            chain_id: The chain this lot belongs to
-            leg_index: Index within multi-leg strategy (0 for single leg)
-            opening_order_id: The order that opened this lot
 
         Returns:
             The ID of the created lot
@@ -102,13 +165,12 @@ class LotManager:
         quantity = int(transaction.get('quantity', 0))
         action = (transaction.get('action') or '').upper()
 
-        # Determine quantity sign based on action
         if 'SELL_TO_OPEN' in action:
-            quantity = -abs(quantity)  # Short position
+            quantity = -abs(quantity)
         else:
-            quantity = abs(quantity)  # Long position
+            quantity = abs(quantity)
 
-        # Parse option details from symbol if available
+        # Parse option details from symbol
         option_type = None
         strike = None
         expiration = None
@@ -119,55 +181,42 @@ class LotManager:
             if len(parts) >= 2:
                 option_part = parts[1]
                 if len(option_part) >= 8:
-                    # Extract date (YYMMDD)
                     date_str = option_part[:6]
                     try:
                         expiration = datetime.strptime('20' + date_str, '%Y%m%d').date()
                     except:
                         pass
-
-                    # Extract type (C or P)
                     if len(option_part) > 6:
                         option_type = 'Call' if option_part[6] == 'C' else 'Put'
-
-                    # Extract strike
                     if len(option_part) > 7:
                         try:
                             strike = float(option_part[7:]) / 1000
                         except:
                             pass
 
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                INSERT INTO position_lots (
-                    transaction_id, account_number, symbol, underlying,
-                    instrument_type, option_type, strike, expiration,
-                    quantity, entry_price, entry_date, remaining_quantity,
-                    original_quantity, chain_id, leg_index, opening_order_id,
-                    status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
-            """, (
-                transaction.get('id', ''),
-                transaction.get('account_number', ''),
-                symbol,
-                underlying,
-                instrument_type,
-                option_type,
-                strike,
-                expiration,
-                quantity,
-                float(transaction.get('price', 0)),
-                transaction.get('executed_at', ''),
-                quantity,  # remaining = original initially
-                abs(quantity),  # original_quantity is always positive
-                chain_id,
-                leg_index,
-                opening_order_id
-            ))
-
-            lot_id = cursor.lastrowid
+        with self.db.get_session() as session:
+            new_lot = PositionLotModel(
+                transaction_id=transaction.get('id', ''),
+                account_number=transaction.get('account_number', ''),
+                symbol=symbol,
+                underlying=underlying,
+                instrument_type=instrument_type,
+                option_type=option_type,
+                strike=strike,
+                expiration=expiration.isoformat() if expiration else None,
+                quantity=quantity,
+                entry_price=float(transaction.get('price', 0)),
+                entry_date=transaction.get('executed_at', ''),
+                remaining_quantity=quantity,
+                original_quantity=abs(quantity),
+                chain_id=chain_id,
+                leg_index=leg_index,
+                opening_order_id=opening_order_id,
+                status='OPEN',
+            )
+            session.add(new_lot)
+            session.flush()
+            lot_id = new_lot.id
             logger.debug(f"Created lot {lot_id}: {symbol} qty={quantity} chain={chain_id}")
             return lot_id
 
@@ -187,21 +236,6 @@ class LotManager:
         """
         Close lots using FIFO matching.
 
-        Args:
-            account_number: Account to match against
-            symbol: Symbol to close
-            quantity_to_close: Absolute quantity to close
-            closing_price: Price at closing
-            closing_order_id: Order that's closing
-            closing_transaction_id: Transaction ID for the closing
-            closing_date: When the close occurred
-            closing_type: MANUAL, EXPIRATION, ASSIGNMENT, EXERCISE
-            chain_id: Optional chain to limit matching to
-            close_long: Direction filter for equity lots.
-                True = only match lots where quantity > 0 (STC closes long).
-                False = only match lots where quantity < 0 (BTC closes short).
-                None = match any direction (default, backward-compatible).
-
         Returns:
             Tuple of (total realized P&L, list of affected lot IDs)
         """
@@ -209,93 +243,66 @@ class LotManager:
         affected_lots = []
         remaining_to_close = abs(quantity_to_close)
 
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
+        with self.db.get_session() as session:
+            q = session.query(PositionLotModel).filter(
+                PositionLotModel.account_number == account_number,
+                PositionLotModel.symbol == symbol,
+                PositionLotModel.remaining_quantity != 0,
+                PositionLotModel.status != 'CLOSED',
+            )
 
-            # Get open lots using FIFO (ordered by entry date)
-            direction_clause = ""
             if close_long is True:
-                direction_clause = " AND quantity > 0"
+                q = q.filter(PositionLotModel.quantity > 0)
             elif close_long is False:
-                direction_clause = " AND quantity < 0"
+                q = q.filter(PositionLotModel.quantity < 0)
 
             if chain_id:
-                cursor.execute(f"""
-                    SELECT id, quantity, entry_price, remaining_quantity, option_type
-                    FROM position_lots
-                    WHERE account_number = ? AND symbol = ? AND chain_id = ?
-                    AND remaining_quantity != 0 AND status != 'CLOSED'
-                    {direction_clause}
-                    ORDER BY entry_date ASC
-                """, (account_number, symbol, chain_id))
-            else:
-                cursor.execute(f"""
-                    SELECT id, quantity, entry_price, remaining_quantity, option_type
-                    FROM position_lots
-                    WHERE account_number = ? AND symbol = ?
-                    AND remaining_quantity != 0 AND status != 'CLOSED'
-                    {direction_clause}
-                    ORDER BY entry_date ASC
-                """, (account_number, symbol))
+                q = q.filter(PositionLotModel.chain_id == chain_id)
 
-            lots = cursor.fetchall()
+            lots = q.order_by(PositionLotModel.entry_date.asc()).all()
 
-            for lot_id, lot_quantity, entry_price, remaining_qty, option_type in lots:
+            for lot in lots:
                 if remaining_to_close <= 0:
                     break
 
-                # Calculate how much of this lot to close
-                lot_available = abs(remaining_qty)
+                lot_available = abs(lot.remaining_quantity)
                 close_amount = min(remaining_to_close, lot_available)
 
-                # Determine multiplier (100 for options, 1 for stock)
-                multiplier = 100 if option_type else 1
+                multiplier = 100 if lot.option_type else 1
 
-                # Calculate P&L for this portion
-                if lot_quantity > 0:
-                    # Long position: P&L = (closing - entry) * quantity * multiplier
-                    pnl = (closing_price - entry_price) * close_amount * multiplier
+                if lot.quantity > 0:
+                    pnl = (closing_price - lot.entry_price) * close_amount * multiplier
                 else:
-                    # Short position: P&L = (entry - closing) * quantity * multiplier
-                    pnl = (entry_price - closing_price) * close_amount * multiplier
+                    pnl = (lot.entry_price - closing_price) * close_amount * multiplier
 
                 total_pnl += pnl
 
-                # Update lot remaining quantity
-                new_remaining = abs(remaining_qty) - close_amount
-                if lot_quantity < 0:
+                new_remaining = abs(lot.remaining_quantity) - close_amount
+                if lot.quantity < 0:
                     new_remaining = -new_remaining
 
                 new_status = 'CLOSED' if new_remaining == 0 else 'PARTIAL'
-
-                cursor.execute("""
-                    UPDATE position_lots
-                    SET remaining_quantity = ?, status = ?
-                    WHERE id = ?
-                """, (new_remaining, new_status, lot_id))
+                lot.remaining_quantity = new_remaining
+                lot.status = new_status
 
                 # Create lot_closings record
-                cursor.execute("""
-                    INSERT INTO lot_closings (
-                        lot_id, closing_order_id, closing_transaction_id,
-                        quantity_closed, closing_price, closing_date,
-                        closing_type, realized_pnl
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    lot_id,
-                    closing_order_id,
-                    closing_transaction_id,
-                    close_amount,
-                    closing_price,
-                    closing_date,
-                    closing_type,
-                    pnl
-                ))
+                closing_record = LotClosingModel(
+                    lot_id=lot.id,
+                    closing_order_id=closing_order_id,
+                    closing_transaction_id=closing_transaction_id,
+                    quantity_closed=close_amount,
+                    closing_price=closing_price,
+                    closing_date=(closing_date.isoformat()
+                                  if isinstance(closing_date, datetime) else str(closing_date)),
+                    closing_type=closing_type,
+                    realized_pnl=pnl,
+                )
+                session.add(closing_record)
 
-                affected_lots.append(lot_id)
+                affected_lots.append(lot.id)
                 remaining_to_close -= close_amount
 
-                logger.debug(f"Closed {close_amount} from lot {lot_id}, P&L: ${pnl:.2f}")
+                logger.debug(f"Closed {close_amount} from lot {lot.id}, P&L: ${pnl:.2f}")
 
         return total_pnl, affected_lots
 
@@ -303,82 +310,71 @@ class LotManager:
         self,
         source_lot_id: int,
         stock_transaction: Dict,
-        derivation_type: str,  # ASSIGNMENT or EXERCISE
+        derivation_type: str,
         chain_id: str
     ) -> int:
         """
         Create a derived lot (stock from option assignment/exercise).
-
-        Args:
-            source_lot_id: The option lot that was assigned/exercised
-            stock_transaction: The stock transaction created
-            derivation_type: ASSIGNMENT or EXERCISE
-            chain_id: Chain to link to
 
         Returns:
             ID of the newly created stock lot
         """
         symbol = stock_transaction.get('symbol', '')
         underlying = stock_transaction.get('underlying_symbol', symbol)
-
         raw_quantity = abs(int(stock_transaction.get('quantity', 0)))
 
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
+        with self.db.get_session() as session:
+            source_lot = session.get(PositionLotModel, source_lot_id)
+            entry_price = (float(source_lot.strike)
+                           if source_lot and source_lot.strike
+                           else float(stock_transaction.get('price', 0)))
 
-            # Get source lot info to determine direction and entry price
-            cursor.execute("""
-                SELECT option_type, strike FROM position_lots WHERE id = ?
-            """, (source_lot_id,))
-            source_info = cursor.fetchone()
-
-            # The strike price becomes the stock entry price
-            entry_price = float(source_info[1]) if source_info and source_info[1] else float(stock_transaction.get('price', 0))
-
-            # Determine direction from source option type:
-            #   Short put assigned  → user buys shares  → positive quantity
-            #   Short call assigned → user sells/delivers shares → negative quantity
-            source_option_type = source_info[0] if source_info else None
+            source_option_type = source_lot.option_type if source_lot else None
             if source_option_type and source_option_type.upper() == 'CALL':
                 quantity = -raw_quantity
             else:
                 quantity = raw_quantity
 
-            cursor.execute("""
-                INSERT INTO position_lots (
-                    transaction_id, account_number, symbol, underlying,
-                    instrument_type, option_type, strike, expiration,
-                    quantity, entry_price, entry_date, remaining_quantity,
-                    original_quantity, chain_id, leg_index, opening_order_id,
-                    derived_from_lot_id, derivation_type, status
-                ) VALUES (?, ?, ?, ?, 'EQUITY', NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, 'OPEN')
-            """, (
-                stock_transaction.get('id', ''),
-                stock_transaction.get('account_number', ''),
-                symbol,
-                underlying,
-                quantity,
-                entry_price,
-                stock_transaction.get('executed_at', ''),
-                quantity,  # remaining = original
-                abs(quantity),
-                chain_id,
-                source_lot_id,
-                derivation_type
-            ))
-
-            lot_id = cursor.lastrowid
+            new_lot = PositionLotModel(
+                transaction_id=stock_transaction.get('id', ''),
+                account_number=stock_transaction.get('account_number', ''),
+                symbol=symbol,
+                underlying=underlying,
+                instrument_type='EQUITY',
+                option_type=None,
+                strike=None,
+                expiration=None,
+                quantity=quantity,
+                entry_price=entry_price,
+                entry_date=stock_transaction.get('executed_at', ''),
+                remaining_quantity=quantity,
+                original_quantity=abs(quantity),
+                chain_id=chain_id,
+                leg_index=0,
+                opening_order_id=None,
+                derived_from_lot_id=source_lot_id,
+                derivation_type=derivation_type,
+                status='OPEN',
+            )
+            session.add(new_lot)
+            session.flush()
+            lot_id = new_lot.id
 
             # Update the lot_closings to reference the resulting lot
-            cursor.execute("""
-                UPDATE lot_closings
-                SET resulting_lot_id = ?
-                WHERE lot_id = ? AND closing_type = ?
-                ORDER BY closing_id DESC LIMIT 1
-            """, (lot_id, source_lot_id, derivation_type))
+            latest_closing = session.query(LotClosingModel).filter(
+                LotClosingModel.lot_id == source_lot_id,
+                LotClosingModel.closing_type == derivation_type,
+            ).order_by(LotClosingModel.closing_id.desc()).first()
+
+            if latest_closing:
+                latest_closing.resulting_lot_id = lot_id
 
             logger.info(f"Created derived lot {lot_id} from lot {source_lot_id} via {derivation_type}")
             return lot_id
+
+    # -------------------------------------------------------------------
+    # Queries
+    # -------------------------------------------------------------------
 
     def get_open_lots(
         self,
@@ -387,339 +383,146 @@ class LotManager:
         chain_id: Optional[str] = None,
         underlying: Optional[str] = None
     ) -> List[Lot]:
-        """
-        Get all open lots matching criteria.
-
-        Args:
-            account_number: Account to query
-            symbol: Optional symbol filter
-            chain_id: Optional chain filter
-            underlying: Optional underlying filter
-
-        Returns:
-            List of Lot objects
-        """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = """
-                SELECT id, transaction_id, account_number, symbol, underlying,
-                       instrument_type, option_type, strike, expiration,
-                       quantity, entry_price, entry_date, remaining_quantity,
-                       original_quantity, chain_id, leg_index, opening_order_id,
-                       derived_from_lot_id, derivation_type, status
-                FROM position_lots
-                WHERE account_number = ? AND remaining_quantity != 0 AND status != 'CLOSED'
-            """
-            params = [account_number]
-
+        """Get all open lots matching criteria."""
+        with self.db.get_session() as session:
+            q = session.query(PositionLotModel).filter(
+                PositionLotModel.account_number == account_number,
+                PositionLotModel.remaining_quantity != 0,
+                PositionLotModel.status != 'CLOSED',
+            )
             if symbol:
-                query += " AND symbol = ?"
-                params.append(symbol)
-
+                q = q.filter(PositionLotModel.symbol == symbol)
             if chain_id:
-                query += " AND chain_id = ?"
-                params.append(chain_id)
-
+                q = q.filter(PositionLotModel.chain_id == chain_id)
             if underlying:
-                query += " AND underlying = ?"
-                params.append(underlying)
+                q = q.filter(PositionLotModel.underlying == underlying)
 
-            query += " ORDER BY entry_date ASC"
-
-            cursor.execute(query, params)
-
-            lots = []
-            for row in cursor.fetchall():
-                lots.append(self._row_to_lot(row))
-
-            return lots
+            q = q.order_by(PositionLotModel.entry_date.asc())
+            return [self._orm_to_lot(row) for row in q.all()]
 
     def get_lots_for_groups_batch(self, group_ids: List[str]) -> Dict[str, List[Lot]]:
         """
         Get lots for multiple position groups in a single query.
         Joins position_lots with position_group_lots using transaction_id.
-
-        Returns:
-            Dict keyed by group_id, each value a list of Lot objects
         """
         if not group_ids:
             return {}
 
         result = {gid: [] for gid in group_ids}
 
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            placeholders = ','.join(['?' for _ in group_ids])
-            cursor.execute(f"""
-                SELECT pgl.group_id,
-                       pl.id, pl.transaction_id, pl.account_number, pl.symbol, pl.underlying,
-                       pl.instrument_type, pl.option_type, pl.strike, pl.expiration,
-                       pl.quantity, pl.entry_price, pl.entry_date, pl.remaining_quantity,
-                       pl.original_quantity, pl.chain_id, pl.leg_index, pl.opening_order_id,
-                       pl.derived_from_lot_id, pl.derivation_type, pl.status
-                FROM position_group_lots pgl
-                JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
-                WHERE pgl.group_id IN ({placeholders})
-                ORDER BY pl.entry_date ASC, pl.leg_index ASC
-            """, group_ids)
-
-            for row in cursor.fetchall():
-                group_id = row[0]
-                lot = self._row_to_lot(row[1:])  # Skip group_id column
-                result[group_id].append(lot)
+        with self.db.get_session() as session:
+            rows = (
+                session.query(PositionGroupLot.group_id, PositionLotModel)
+                .join(PositionLotModel,
+                      PositionGroupLot.transaction_id == PositionLotModel.transaction_id)
+                .filter(PositionGroupLot.group_id.in_(group_ids))
+                .order_by(PositionLotModel.entry_date.asc(),
+                          PositionLotModel.leg_index.asc())
+                .all()
+            )
+            for group_id, lot_row in rows:
+                result[group_id].append(self._orm_to_lot(lot_row))
 
         return result
 
     def get_lot_closings_batch(self, lot_ids: List[int]) -> Dict[int, List[LotClosing]]:
-        """
-        Get closings for multiple lots in a single query.
-
-        Returns:
-            Dict keyed by lot_id, each value a list of LotClosing objects
-        """
+        """Get closings for multiple lots in a single query."""
         if not lot_ids:
             return {}
 
         result = {lid: [] for lid in lot_ids}
 
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            placeholders = ','.join(['?' for _ in lot_ids])
-            cursor.execute(f"""
-                SELECT closing_id, lot_id, closing_order_id, closing_transaction_id,
-                       quantity_closed, closing_price, closing_date, closing_type,
-                       realized_pnl, resulting_lot_id
-                FROM lot_closings
-                WHERE lot_id IN ({placeholders})
-                ORDER BY closing_date ASC
-            """, lot_ids)
+        with self.db.get_session() as session:
+            rows = session.query(LotClosingModel).filter(
+                LotClosingModel.lot_id.in_(lot_ids),
+            ).order_by(LotClosingModel.closing_date.asc()).all()
 
-            for row in cursor.fetchall():
-                closing_date = row[6]
-                if isinstance(closing_date, str):
-                    closing_date = datetime.fromisoformat(closing_date.replace('Z', '+00:00'))
-
-                closing = LotClosing(
-                    closing_id=row[0],
-                    lot_id=row[1],
-                    closing_order_id=row[2],
-                    closing_transaction_id=row[3],
-                    quantity_closed=row[4],
-                    closing_price=row[5],
-                    closing_date=closing_date,
-                    closing_type=row[7],
-                    realized_pnl=row[8],
-                    resulting_lot_id=row[9]
-                )
-                result[row[1]].append(closing)
+            for row in rows:
+                result[row.lot_id].append(self._orm_to_closing(row))
 
         return result
 
     def get_unassigned_lots(self, account_number: Optional[str] = None) -> List[Lot]:
-        """
-        Find lots whose transaction_id is NOT in position_group_lots.
-        Used for seeding new lots into groups.
-        """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-
-            query = """
-                SELECT pl.id, pl.transaction_id, pl.account_number, pl.symbol, pl.underlying,
-                       pl.instrument_type, pl.option_type, pl.strike, pl.expiration,
-                       pl.quantity, pl.entry_price, pl.entry_date, pl.remaining_quantity,
-                       pl.original_quantity, pl.chain_id, pl.leg_index, pl.opening_order_id,
-                       pl.derived_from_lot_id, pl.derivation_type, pl.status
-                FROM position_lots pl
-                LEFT JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
-                WHERE pgl.transaction_id IS NULL
-            """
-            params = []
-
+        """Find lots whose transaction_id is NOT in position_group_lots."""
+        with self.db.get_session() as session:
+            q = (
+                session.query(PositionLotModel)
+                .outerjoin(PositionGroupLot,
+                           PositionLotModel.transaction_id == PositionGroupLot.transaction_id)
+                .filter(PositionGroupLot.transaction_id.is_(None))
+            )
             if account_number:
-                query += " AND pl.account_number = ?"
-                params.append(account_number)
+                q = q.filter(PositionLotModel.account_number == account_number)
 
-            query += " ORDER BY pl.entry_date ASC"
-
-            cursor.execute(query, params)
-
-            lots = []
-            for row in cursor.fetchall():
-                lots.append(self._row_to_lot(row))
-
-            return lots
+            q = q.order_by(PositionLotModel.entry_date.asc())
+            return [self._orm_to_lot(row) for row in q.all()]
 
     def get_lots_for_chain(self, chain_id: str, include_derived: bool = True) -> List[Lot]:
-        """
-        Get all lots belonging to a chain.
+        """Get all lots belonging to a chain."""
+        with self.db.get_session() as session:
+            q = session.query(PositionLotModel).filter(
+                PositionLotModel.chain_id == chain_id,
+            )
+            if not include_derived:
+                q = q.filter(PositionLotModel.derived_from_lot_id.is_(None))
 
-        Args:
-            chain_id: Chain ID to query
-            include_derived: Whether to include derived (assignment) lots
-
-        Returns:
-            List of Lot objects
-        """
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-
-            if include_derived:
-                cursor.execute("""
-                    SELECT id, transaction_id, account_number, symbol, underlying,
-                           instrument_type, option_type, strike, expiration,
-                           quantity, entry_price, entry_date, remaining_quantity,
-                           original_quantity, chain_id, leg_index, opening_order_id,
-                           derived_from_lot_id, derivation_type, status
-                    FROM position_lots
-                    WHERE chain_id = ?
-                    ORDER BY entry_date ASC, leg_index ASC
-                """, (chain_id,))
-            else:
-                cursor.execute("""
-                    SELECT id, transaction_id, account_number, symbol, underlying,
-                           instrument_type, option_type, strike, expiration,
-                           quantity, entry_price, entry_date, remaining_quantity,
-                           original_quantity, chain_id, leg_index, opening_order_id,
-                           derived_from_lot_id, derivation_type, status
-                    FROM position_lots
-                    WHERE chain_id = ? AND derived_from_lot_id IS NULL
-                    ORDER BY entry_date ASC, leg_index ASC
-                """, (chain_id,))
-
-            lots = []
-            for row in cursor.fetchall():
-                lots.append(self._row_to_lot(row))
-
-            return lots
+            q = q.order_by(PositionLotModel.entry_date.asc(),
+                           PositionLotModel.leg_index.asc())
+            return [self._orm_to_lot(row) for row in q.all()]
 
     def get_lot_by_id(self, lot_id: int) -> Optional[Lot]:
         """Get a specific lot by ID"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, transaction_id, account_number, symbol, underlying,
-                       instrument_type, option_type, strike, expiration,
-                       quantity, entry_price, entry_date, remaining_quantity,
-                       original_quantity, chain_id, leg_index, opening_order_id,
-                       derived_from_lot_id, derivation_type, status
-                FROM position_lots
-                WHERE id = ?
-            """, (lot_id,))
-
-            row = cursor.fetchone()
+        with self.db.get_session() as session:
+            row = session.get(PositionLotModel, lot_id)
             if row:
-                return self._row_to_lot(row)
+                return self._orm_to_lot(row)
             return None
 
     def get_lot_closings(self, lot_id: int) -> List[LotClosing]:
         """Get all closing records for a lot"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT closing_id, lot_id, closing_order_id, closing_transaction_id,
-                       quantity_closed, closing_price, closing_date, closing_type,
-                       realized_pnl, resulting_lot_id
-                FROM lot_closings
-                WHERE lot_id = ?
-                ORDER BY closing_date ASC
-            """, (lot_id,))
+        with self.db.get_session() as session:
+            rows = session.query(LotClosingModel).filter(
+                LotClosingModel.lot_id == lot_id,
+            ).order_by(LotClosingModel.closing_date.asc()).all()
 
-            closings = []
-            for row in cursor.fetchall():
-                closing_date = row[6]
-                if isinstance(closing_date, str):
-                    closing_date = datetime.fromisoformat(closing_date.replace('Z', '+00:00'))
-
-                closings.append(LotClosing(
-                    closing_id=row[0],
-                    lot_id=row[1],
-                    closing_order_id=row[2],
-                    closing_transaction_id=row[3],
-                    quantity_closed=row[4],
-                    closing_price=row[5],
-                    closing_date=closing_date,
-                    closing_type=row[7],
-                    realized_pnl=row[8],
-                    resulting_lot_id=row[9]
-                ))
-
-            return closings
+            return [self._orm_to_closing(row) for row in rows]
 
     def get_realized_pnl_for_chain(self, chain_id: str) -> float:
         """Calculate total realized P&L for a chain from lot closings"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT COALESCE(SUM(lc.realized_pnl), 0)
-                FROM lot_closings lc
-                JOIN position_lots pl ON lc.lot_id = pl.id
-                WHERE pl.chain_id = ?
-            """, (chain_id,))
-            result = cursor.fetchone()
-            return float(result[0]) if result else 0.0
+        with self.db.get_session() as session:
+            result = (
+                session.query(func.coalesce(func.sum(LotClosingModel.realized_pnl), 0))
+                .join(PositionLotModel, LotClosingModel.lot_id == PositionLotModel.id)
+                .filter(PositionLotModel.chain_id == chain_id)
+                .scalar()
+            )
+            return float(result) if result else 0.0
 
     def update_lot_chain(self, lot_id: int, chain_id: str):
         """Update the chain_id for a lot"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE position_lots SET chain_id = ? WHERE id = ?
-            """, (chain_id, lot_id))
+        with self.db.get_session() as session:
+            lot = session.get(PositionLotModel, lot_id)
+            if lot:
+                lot.chain_id = chain_id
 
     def clear_all_lots(self, underlyings: set = None):
         """Clear lots. If underlyings is provided, only clear lots for those symbols."""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
+        with self.db.get_session() as session:
             if underlyings:
-                placeholders = ','.join(['?' for _ in underlyings])
-                cursor.execute(f"""
-                    DELETE FROM lot_closings WHERE lot_id IN (
-                        SELECT id FROM position_lots WHERE underlying IN ({placeholders})
-                    )
-                """, list(underlyings))
-                cursor.execute(f"DELETE FROM position_lots WHERE underlying IN ({placeholders})",
-                               list(underlyings))
+                underlying_list = list(underlyings)
+                # Delete closings for matching lots first (FK constraint)
+                lot_ids_sub = session.query(PositionLotModel.id).filter(
+                    PositionLotModel.underlying.in_(underlying_list)
+                ).scalar_subquery()
+                session.query(LotClosingModel).filter(
+                    LotClosingModel.lot_id.in_(lot_ids_sub)
+                ).delete(synchronize_session='fetch')
+                # Then delete the lots themselves
+                session.query(PositionLotModel).filter(
+                    PositionLotModel.underlying.in_(underlying_list)
+                ).delete(synchronize_session='fetch')
                 logger.info(f"Cleared lots and closings for {len(underlyings)} underlyings")
             else:
-                cursor.execute("DELETE FROM lot_closings")
-                cursor.execute("DELETE FROM position_lots")
+                session.query(LotClosingModel).delete()
+                session.query(PositionLotModel).delete()
                 logger.warning("Cleared all lots and closings")
-
-    def _row_to_lot(self, row) -> Lot:
-        """Convert database row to Lot object"""
-        (id, transaction_id, account_number, symbol, underlying,
-         instrument_type, option_type, strike, expiration,
-         quantity, entry_price, entry_date, remaining_quantity,
-         original_quantity, chain_id, leg_index, opening_order_id,
-         derived_from_lot_id, derivation_type, status) = row
-
-        # Parse dates
-        if expiration and isinstance(expiration, str):
-            expiration = datetime.strptime(expiration, '%Y-%m-%d').date()
-
-        if isinstance(entry_date, str):
-            entry_date = datetime.fromisoformat(entry_date.replace('Z', '+00:00'))
-
-        return Lot(
-            id=id,
-            transaction_id=transaction_id,
-            account_number=account_number,
-            symbol=symbol,
-            underlying=underlying or '',
-            instrument_type=instrument_type or '',
-            option_type=option_type,
-            strike=strike,
-            expiration=expiration,
-            quantity=quantity,
-            entry_price=entry_price,
-            entry_date=entry_date,
-            remaining_quantity=remaining_quantity,
-            original_quantity=original_quantity or abs(quantity),
-            chain_id=chain_id,
-            leg_index=leg_index or 0,
-            opening_order_id=opening_order_id,
-            derived_from_lot_id=derived_from_lot_id,
-            derivation_type=derivation_type,
-            status=status or 'OPEN'
-        )
