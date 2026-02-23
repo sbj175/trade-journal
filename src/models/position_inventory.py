@@ -97,31 +97,6 @@ class PositionInventoryManager:
                 return self._row_to_position(row)
             return None
     
-    def get_positions_for_account(self, account_number: str, 
-                                  underlying: Optional[str] = None) -> List[PositionInventory]:
-        """Get all positions for an account, optionally filtered by underlying"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            if underlying:
-                cursor.execute("""
-                    SELECT id, account_number, symbol, underlying, option_type, 
-                           strike, expiration, current_quantity, cost_basis, last_updated
-                    FROM positions_inventory
-                    WHERE account_number = ? AND underlying = ?
-                    ORDER BY symbol
-                """, (account_number, underlying))
-            else:
-                cursor.execute("""
-                    SELECT id, account_number, symbol, underlying, option_type, 
-                           strike, expiration, current_quantity, cost_basis, last_updated
-                    FROM positions_inventory
-                    WHERE account_number = ?
-                    ORDER BY underlying, symbol
-                """, (account_number,))
-            
-            return [self._row_to_position(row) for row in cursor.fetchall()]
-    
     def get_open_positions(self, account_number: Optional[str] = None) -> List[PositionInventory]:
         """Get all open positions (quantity != 0)"""
         with self.db.get_connection() as conn:

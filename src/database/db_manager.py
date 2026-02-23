@@ -741,27 +741,6 @@ class DatabaseManager:
                 
             return transactions
     
-    def get_open_chain_summaries(self, account_number: str = None) -> List[Dict[str, Any]]:
-        """Get open/assigned chain summaries from order_chains table"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            query = """
-                SELECT chain_id, underlying, account_number, strategy_type,
-                       opening_date, closing_date, chain_status, order_count,
-                       total_pnl, realized_pnl, unrealized_pnl,
-                       leg_count, original_quantity, remaining_quantity,
-                       has_assignment, assignment_date
-                FROM order_chains
-                WHERE chain_status IN ('OPEN', 'ASSIGNED')
-            """
-            params = []
-            if account_number and account_number != '':
-                query += " AND account_number = ?"
-                params.append(account_number)
-            query += " ORDER BY underlying ASC, opening_date DESC"
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
-
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get current open positions"""
         with self.get_connection() as conn:
@@ -966,20 +945,6 @@ class DatabaseManager:
             logger.error(f"Error getting cached quotes: {str(e)}")
             return {}
     
-    def clear_old_quotes(self, hours_old: int = 24) -> bool:
-        """Clear quotes older than specified hours"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    DELETE FROM quote_cache
-                    WHERE updated_at < datetime('now', '-{} hours')
-                """.format(hours_old))
-                return True
-        except Exception as e:
-            logger.error(f"Error clearing old quotes: {str(e)}")
-            return False
-
     def _seed_default_strategy_targets(self, cursor):
         """Seed default strategy targets for all known strategies"""
         defaults = [
@@ -1104,38 +1069,3 @@ class DatabaseManager:
             logger.error(f"Error getting position notes: {str(e)}")
             return {}
 
-    def get_last_sync_timestamp(self) -> Optional[datetime]:
-        """Get the timestamp of the last incremental sync"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT value FROM sync_metadata
-                    WHERE key = 'last_sync_timestamp'
-                """)
-                row = cursor.fetchone()
-                if row:
-                    timestamp_str = row[0]
-                    return datetime.fromisoformat(timestamp_str)
-                return None
-        except Exception as e:
-            logger.warning(f"Error getting last sync timestamp: {str(e)}")
-            return None
-
-    def set_last_sync_timestamp(self, timestamp: datetime) -> bool:
-        """Set the timestamp of the last incremental sync"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                timestamp_str = timestamp.isoformat()
-                cursor.execute("""
-                    INSERT INTO sync_metadata (key, value)
-                    VALUES ('last_sync_timestamp', ?)
-                    ON CONFLICT(key) DO UPDATE SET
-                        value = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                """, (timestamp_str, timestamp_str))
-                return True
-        except Exception as e:
-            logger.error(f"Error setting last sync timestamp: {str(e)}")
-            return False

@@ -265,7 +265,7 @@ async def background_incremental_sync():
             if all_chains:
                 logger.info(f"Background sync: reprocessed {len(all_chains)} chains")
 
-            db.set_last_sync_timestamp(datetime.now())
+            db.update_last_sync_timestamp()
             logger.info("Background sync: completed successfully")
 
         except Exception as e:
