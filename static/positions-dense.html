@@ -171,12 +171,6 @@
                                     aVal = parseFloat(self.getGroupPnLPercent(a)) || 0;
                                     bVal = parseFloat(self.getGroupPnLPercent(b)) || 0;
                                     break;
-                                case 'max_percent':
-                                    const aMax = self.getGroupMaxPercent(a);
-                                    const bMax = self.getGroupMaxPercent(b);
-                                    aVal = !aMax ? -1 : parseFloat(aMax) || 0;
-                                    bVal = !bMax ? -1 : parseFloat(bMax) || 0;
-                                    break;
                                 case 'days':
                                     aVal = self.getGroupDaysOpen(a) || 0;
                                     bVal = self.getGroupDaysOpen(b) || 0;
@@ -509,48 +503,6 @@
                     return ((openPnL / Math.abs(costBasis)) * 100).toFixed(1);
                 },
 
-                getGroupMaxPercent(group) {
-                    if (this._isEquityOnly(group) || group._isSubtotal) return '';
-                    const legs = group.positions || [];
-                    const totalCostBasis = legs.reduce((sum, leg) => sum + (leg.cost_basis || 0), 0);
-                    if (totalCostBasis === 0) return '';
-
-                    const optionLegs = legs.filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
-                    const strikes = optionLegs.map(l => l.strike).filter(s => s !== null && s > 0).sort((a, b) => a - b);
-                    if (strikes.length < 2) return '';
-
-                    const spreadWidth = strikes[strikes.length - 1] - strikes[0];
-                    const numContracts = Math.abs(legs[0].quantity || 0);
-                    const isCreditSpread = totalCostBasis > 0;
-
-                    let maxProfit;
-                    if (isCreditSpread) {
-                        maxProfit = Math.abs(totalCostBasis);
-                    } else {
-                        maxProfit = (spreadWidth * 100 * numContracts) - Math.abs(totalCostBasis);
-                    }
-                    if (maxProfit <= 0) return '';
-
-                    const currentPnL = this.getGroupOpenPnL(group);
-                    if (!isCreditSpread && currentPnL <= 0) return '';
-
-                    return ((currentPnL / maxProfit) * 100).toFixed(1) + '%';
-                },
-
-                shouldShowMaxPercent(group) {
-                    if (this._hasEquity(group) || group._isSubtotal) return false;
-                    const optionLegs = (group.positions || []).filter(l => l.instrument_type && l.instrument_type.includes('OPTION'));
-                    return optionLegs.length === 2;
-                },
-
-                getMaxPercentColor(value) {
-                    if (typeof value !== 'string' || !value) return 'text-tv-muted';
-                    const numVal = parseFloat(value);
-                    if (numVal >= 50) return 'text-yellow-400 font-bold';
-                    if (numVal >= 30) return 'text-tv-text';
-                    return 'text-tv-muted';
-                },
-
                 getGroupDaysOpen(group) {
                     if (group._isSubtotal) return null;
                     const openDate = group.opening_date;
@@ -629,7 +581,7 @@
                         this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
                     } else {
                         this.sortColumn = column;
-                        if (['pnl', 'total_pnl', 'realized_pnl', 'open_pnl', 'pnl_percent', 'net_liq', 'price', 'ivr', 'max_percent'].includes(column)) {
+                        if (['pnl', 'total_pnl', 'realized_pnl', 'open_pnl', 'pnl_percent', 'net_liq', 'price', 'ivr'].includes(column)) {
                             this.sortDirection = 'desc';
                         } else {
                             this.sortDirection = 'asc';
@@ -1210,10 +1162,6 @@
                 % Rtn
                 <span x-show="sortColumn === 'pnl_percent'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
             </span>
-            <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('max_percent')">
-                % Max
-                <span x-show="sortColumn === 'max_percent'" x-text="sortDirection === 'asc' ? '▲' : '▼'" class="text-tv-blue"></span>
-            </span>
         </div>
 
         <!-- Position Groups -->
@@ -1265,8 +1213,6 @@
                                 <span x-show="group._subtotalTotalPnL < 0">-</span>$<span x-text="formatDollar(group._subtotalTotalPnL)"></span>
                             </div>
                             <!-- % Rtn -->
-                            <div class="w-14"></div>
-                            <!-- % Max -->
                             <div class="w-14"></div>
                         </div>
                     </template>
@@ -1401,11 +1347,6 @@
                                 <div class="w-14 text-right"
                                      :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'"
                                      x-text="getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : ''"></div>
-
-                                <!-- % Max -->
-                                <div class="w-14 text-right"
-                                     :class="getMaxPercentColor(getGroupMaxPercent(group))"
-                                     x-text="shouldShowMaxPercent(group) ? getGroupMaxPercent(group) : ''"></div>
 
                                 <!-- Comment indicator -->
                                 <div class="flex-1 text-tv-muted text-sm truncate pl-2"
