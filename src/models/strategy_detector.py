@@ -91,7 +91,7 @@ class StrategyDetector:
         # Basic single-leg strategies
         if option_type == 'Call':
             if is_buy:
-                base_strategy = "Long Call"
+                return "Long Call"
             else:  # is_sell
                 base_strategy = "Short Call"
                 
