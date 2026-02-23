@@ -200,25 +200,19 @@ async def move_lots(body: LedgerMoveLots):
     if not body.transaction_ids:
         raise HTTPException(status_code=400, detail="No transaction_ids provided")
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT account_number, underlying FROM position_groups WHERE group_id = ?",
-            (body.target_group_id,)
-        )
-        target = cursor.fetchone()
+    with db.get_session() as session:
+        target = session.query(
+            PositionGroup.account_number, PositionGroup.underlying,
+        ).filter(PositionGroup.group_id == body.target_group_id).first()
         if not target:
             raise HTTPException(status_code=404, detail="Target group not found")
         target_account, target_underlying = target
 
-        placeholders = ','.join(['?' for _ in body.transaction_ids])
-        cursor.execute(f"""
-            SELECT DISTINCT pl.account_number, pl.underlying
-            FROM position_lots pl
-            WHERE pl.transaction_id IN ({placeholders})
-        """, body.transaction_ids)
-        lot_accounts = cursor.fetchall()
+        lot_accounts = session.query(
+            PositionLotModel.account_number, PositionLotModel.underlying,
+        ).filter(
+            PositionLotModel.transaction_id.in_(body.transaction_ids),
+        ).distinct().all()
 
         for row in lot_accounts:
             if row[0] != target_account or (row[1] or '') != (target_underlying or ''):
@@ -227,28 +221,26 @@ async def move_lots(body: LedgerMoveLots):
                     detail="All lots must share the same underlying and account as the target group"
                 )
 
-        cursor.execute(f"""
-            SELECT DISTINCT group_id FROM position_group_lots
-            WHERE transaction_id IN ({placeholders})
-        """, body.transaction_ids)
-        source_groups = [row[0] for row in cursor.fetchall()]
+        source_groups = [r[0] for r in session.query(
+            PositionGroupLot.group_id,
+        ).filter(
+            PositionGroupLot.transaction_id.in_(body.transaction_ids),
+        ).distinct().all()]
 
-        cursor.execute(f"""
-            DELETE FROM position_group_lots
-            WHERE transaction_id IN ({placeholders})
-        """, body.transaction_ids)
+        session.query(PositionGroupLot).filter(
+            PositionGroupLot.transaction_id.in_(body.transaction_ids),
+        ).delete(synchronize_session='fetch')
 
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
         for txn_id in body.transaction_ids:
-            cursor.execute("""
-                INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
-                VALUES (?, ?)
-            """, (body.target_group_id, txn_id))
+            stmt = sqlite_insert(PositionGroupLot).values(
+                group_id=body.target_group_id, transaction_id=txn_id,
+            )
+            session.execute(stmt.on_conflict_do_nothing())
 
         all_affected = set(source_groups + [body.target_group_id])
         for gid in all_affected:
-            _refresh_group_status(cursor, gid)
-
-        conn.commit()
+            _refresh_group_status(gid, session=session)
 
     return {"message": f"Moved {len(body.transaction_ids)} lots"}
 

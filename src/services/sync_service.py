@@ -429,11 +429,8 @@ async def reconcile_positions_vs_chains():
                     logger.error(f"Failed to auto-close lots in group {group_id}: {e}")
 
             if affected_groups:
-                with db.get_connection() as conn:
-                    cursor = conn.cursor()
-                    for gid in affected_groups:
-                        ledger_service._refresh_group_status(cursor, gid)
-                    conn.commit()
+                for gid in affected_groups:
+                    ledger_service._refresh_group_status(gid)
 
         # Pass 2: Ghost groups — OPEN with no remaining lots and no TT positions
         tt_underlyings_by_acct = {}
@@ -481,13 +478,10 @@ async def reconcile_positions_vs_chains():
                     groups_to_close.append((group_id, underlying, acct))
 
         if groups_to_close:
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                for gid, underlying, acct in groups_to_close:
-                    ledger_service._refresh_group_status(cursor, gid)
-                    auto_closed.append(gid)
-                    logger.info(f"Auto-closed ghost group {gid} ({underlying}/{acct})")
-                conn.commit()
+            for gid, underlying, acct in groups_to_close:
+                ledger_service._refresh_group_status(gid)
+                auto_closed.append(gid)
+                logger.info(f"Auto-closed ghost group {gid} ({underlying}/{acct})")
 
         if auto_closed:
             stale = [s for s in stale if s.get('chain_id') not in auto_closed]

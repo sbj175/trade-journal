@@ -1,9 +1,17 @@
 """Ledger service — position group seeding, equity lot processing, group status management."""
 
 import uuid as _uuid
+from datetime import datetime
 from typing import Dict, Optional
-from loguru import logger
 
+from loguru import logger
+from sqlalchemy import func
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+from src.database.models import (
+    OrderChain, PositionLot as PositionLotModel, LotClosing as LotClosingModel,
+    PositionGroup, PositionGroupLot, RawTransaction,
+)
 from src.dependencies import db, lot_manager
 
 
@@ -11,98 +19,99 @@ def seed_position_groups():
     """Seed position_groups from existing chains. Idempotent — skips chains already seeded."""
     groups_created = 0
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
+    with db.get_session() as session:
         # Get all distinct chain_ids from position_lots
-        cursor.execute("""
-            SELECT DISTINCT chain_id, account_number, underlying
-            FROM position_lots
-            WHERE chain_id IS NOT NULL
-        """)
-        chain_rows = cursor.fetchall()
+        chain_rows = session.query(
+            PositionLotModel.chain_id,
+            PositionLotModel.account_number,
+            PositionLotModel.underlying,
+        ).filter(
+            PositionLotModel.chain_id.isnot(None),
+        ).distinct().all()
 
-        for row in chain_rows:
-            chain_id, account_number, underlying = row
+        for chain_id, account_number, underlying in chain_rows:
             if not chain_id:
                 continue
 
             # Check if group already exists for this chain
-            cursor.execute(
-                "SELECT group_id FROM position_groups WHERE source_chain_id = ?",
-                (chain_id,)
-            )
-            if cursor.fetchone():
+            exists = session.query(PositionGroup.group_id).filter(
+                PositionGroup.source_chain_id == chain_id,
+            ).first()
+            if exists:
                 continue
 
             # Get chain metadata
-            cursor.execute(
-                "SELECT strategy_type, opening_date, closing_date, chain_status FROM order_chains WHERE chain_id = ?",
-                (chain_id,)
-            )
-            chain_info = cursor.fetchone()
+            chain_info = session.query(
+                OrderChain.strategy_type,
+                OrderChain.opening_date,
+                OrderChain.closing_date,
+                OrderChain.chain_status,
+            ).filter(OrderChain.chain_id == chain_id).first()
+
             strategy_label = chain_info[0] if chain_info else None
             opening_date = chain_info[1] if chain_info else None
             closing_date = chain_info[2] if chain_info else None
-            chain_status = chain_info[3] if chain_info else 'OPEN'
 
             # Check actual lot statuses to determine group status
-            cursor.execute("""
-                SELECT COUNT(*) FROM position_lots
-                WHERE chain_id = ? AND remaining_quantity != 0 AND status != 'CLOSED'
-            """, (chain_id,))
-            open_count = cursor.fetchone()[0]
+            open_count = session.query(func.count()).select_from(
+                PositionLotModel,
+            ).filter(
+                PositionLotModel.chain_id == chain_id,
+                PositionLotModel.remaining_quantity != 0,
+                PositionLotModel.status != 'CLOSED',
+            ).scalar()
             status = 'OPEN' if open_count > 0 else 'CLOSED'
 
             # Compute opening/closing dates from lots if not available
             if not opening_date:
-                cursor.execute(
-                    "SELECT MIN(entry_date) FROM position_lots WHERE chain_id = ?",
-                    (chain_id,)
-                )
-                r = cursor.fetchone()
-                opening_date = r[0] if r else None
+                opening_date = session.query(
+                    func.min(PositionLotModel.entry_date),
+                ).filter(PositionLotModel.chain_id == chain_id).scalar()
 
             if status == 'CLOSED' and not closing_date:
-                cursor.execute("""
-                    SELECT MAX(lc.closing_date) FROM lot_closings lc
-                    JOIN position_lots pl ON lc.lot_id = pl.id
-                    WHERE pl.chain_id = ?
-                """, (chain_id,))
-                r = cursor.fetchone()
-                closing_date = r[0] if r else None
+                closing_date = session.query(
+                    func.max(LotClosingModel.closing_date),
+                ).join(
+                    PositionLotModel, LotClosingModel.lot_id == PositionLotModel.id,
+                ).filter(PositionLotModel.chain_id == chain_id).scalar()
 
             group_id = str(_uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO position_groups
-                    (group_id, account_number, underlying, strategy_label, status,
-                     source_chain_id, opening_date, closing_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (group_id, account_number, underlying or '', strategy_label,
-                  status, chain_id, opening_date, closing_date))
+            session.add(PositionGroup(
+                group_id=group_id,
+                account_number=account_number,
+                underlying=underlying or '',
+                strategy_label=strategy_label,
+                status=status,
+                source_chain_id=chain_id,
+                opening_date=opening_date,
+                closing_date=closing_date,
+            ))
 
             # Link lots to group via transaction_id
-            cursor.execute(
-                "SELECT transaction_id FROM position_lots WHERE chain_id = ?",
-                (chain_id,)
-            )
-            txn_ids = [r[0] for r in cursor.fetchall()]
+            txn_ids = [r[0] for r in session.query(
+                PositionLotModel.transaction_id,
+            ).filter(PositionLotModel.chain_id == chain_id).all()]
+
             for txn_id in txn_ids:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
-                    VALUES (?, ?)
-                """, (group_id, txn_id))
+                stmt = sqlite_insert(PositionGroupLot).values(
+                    group_id=group_id, transaction_id=txn_id,
+                )
+                session.execute(stmt.on_conflict_do_nothing())
 
             groups_created += 1
 
         # Handle lots with no chain_id — create "Ungrouped" groups per underlying/account
-        cursor.execute("""
-            SELECT pl.transaction_id, pl.account_number, pl.underlying
-            FROM position_lots pl
-            LEFT JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
-            WHERE pgl.transaction_id IS NULL AND pl.chain_id IS NULL
-        """)
-        ungrouped = cursor.fetchall()
+        ungrouped = session.query(
+            PositionLotModel.transaction_id,
+            PositionLotModel.account_number,
+            PositionLotModel.underlying,
+        ).outerjoin(
+            PositionGroupLot,
+            PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+        ).filter(
+            PositionGroupLot.transaction_id.is_(None),
+            PositionLotModel.chain_id.is_(None),
+        ).all()
 
         if ungrouped:
             # Group by account+underlying
@@ -114,31 +123,30 @@ def seed_position_groups():
             for key, txn_ids in buckets.items():
                 acct, und = key.split('|', 1)
                 # Check for any existing OPEN group for this account+underlying
-                cursor.execute("""
-                    SELECT group_id FROM position_groups
-                    WHERE account_number = ? AND underlying = ? AND status = 'OPEN'
-                    ORDER BY opening_date DESC
-                    LIMIT 1
-                """, (acct, und))
-                existing = cursor.fetchone()
+                existing = session.query(PositionGroup.group_id).filter(
+                    PositionGroup.account_number == acct,
+                    PositionGroup.underlying == und,
+                    PositionGroup.status == 'OPEN',
+                ).order_by(PositionGroup.opening_date.desc()).first()
+
                 if existing:
                     group_id = existing[0]
                 else:
                     group_id = str(_uuid.uuid4())
-                    cursor.execute("""
-                        INSERT INTO position_groups
-                            (group_id, account_number, underlying, strategy_label, status,
-                             source_chain_id, opening_date, closing_date)
-                        VALUES (?, ?, ?, 'Shares', 'OPEN', NULL, NULL, NULL)
-                    """, (group_id, acct, und))
+                    session.add(PositionGroup(
+                        group_id=group_id,
+                        account_number=acct,
+                        underlying=und,
+                        strategy_label='Shares',
+                        status='OPEN',
+                    ))
                     groups_created += 1
-                for txn_id in txn_ids:
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
-                        VALUES (?, ?)
-                    """, (group_id, txn_id))
 
-        conn.commit()
+                for txn_id in txn_ids:
+                    stmt = sqlite_insert(PositionGroupLot).values(
+                        group_id=group_id, transaction_id=txn_id,
+                    )
+                    session.execute(stmt.on_conflict_do_nothing())
 
     logger.info(f"Seeded {groups_created} position groups")
     return groups_created
@@ -161,41 +169,38 @@ def process_equity_transactions(account_number: Optional[str] = None):
     lots_created = 0
     lots_closed = 0
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
+    with db.get_session() as session:
         # 1. Query equity transactions: Trade + Receive Deliver (ACAT, etc.)
-        query = """
-            SELECT id, account_number, order_id, transaction_type,
-                   transaction_sub_type, executed_at, action, symbol,
-                   instrument_type, underlying_symbol, quantity, price, value
-            FROM raw_transactions
-            WHERE instrument_type = 'InstrumentType.EQUITY'
-              AND transaction_type IN ('Trade', 'Receive Deliver')
-              AND action IS NOT NULL
-        """
-        params = []
+        q = session.query(RawTransaction).filter(
+            RawTransaction.instrument_type == 'InstrumentType.EQUITY',
+            RawTransaction.transaction_type.in_(['Trade', 'Receive Deliver']),
+            RawTransaction.action.isnot(None),
+        )
         if account_number:
-            query += " AND account_number = ?"
-            params.append(account_number)
-        query += " ORDER BY executed_at ASC, id ASC"
-        cursor.execute(query, params)
-        equity_txns = [dict(row) for row in cursor.fetchall()]
+            q = q.filter(RawTransaction.account_number == account_number)
+        q = q.order_by(RawTransaction.executed_at.asc(), RawTransaction.id.asc())
+
+        equity_txns = [row.to_dict() for row in q.all()]
 
         if not equity_txns:
             return (0, 0)
 
         # 2. Get existing lot transaction_ids to skip already-processed
-        cursor.execute("""
-            SELECT transaction_id FROM position_lots WHERE instrument_type = 'EQUITY'
-        """)
-        existing_lot_txn_ids = {row[0] for row in cursor.fetchall()}
+        existing_lot_txn_ids = {
+            r[0] for r in session.query(
+                PositionLotModel.transaction_id,
+            ).filter(
+                PositionLotModel.instrument_type == 'EQUITY',
+            ).all()
+        }
 
-        cursor.execute("""
-            SELECT closing_transaction_id FROM lot_closings
-            WHERE closing_transaction_id IS NOT NULL
-        """)
-        existing_closing_txn_ids = {row[0] for row in cursor.fetchall()}
+        existing_closing_txn_ids = {
+            r[0] for r in session.query(
+                LotClosingModel.closing_transaction_id,
+            ).filter(
+                LotClosingModel.closing_transaction_id.isnot(None),
+            ).all()
+        }
 
     # 3. Process each transaction chronologically
     for txn in equity_txns:
@@ -287,45 +292,55 @@ def _net_opposing_equity_lots() -> int:
     """
     netted = 0
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
-        # Find (account, symbol) pairs that have BOTH positive and negative open equity lots
-        cursor.execute("""
-            SELECT account_number, symbol
-            FROM position_lots
-            WHERE instrument_type = 'EQUITY' AND remaining_quantity != 0 AND status != 'CLOSED'
-            GROUP BY account_number, symbol
-            HAVING MIN(remaining_quantity) < 0 AND MAX(remaining_quantity) > 0
-        """)
-        nettable = [(row[0], row[1]) for row in cursor.fetchall()]
+    # Find (account, symbol) pairs that have BOTH positive and negative open equity lots
+    with db.get_session() as session:
+        nettable = session.query(
+            PositionLotModel.account_number,
+            PositionLotModel.symbol,
+        ).filter(
+            PositionLotModel.instrument_type == 'EQUITY',
+            PositionLotModel.remaining_quantity != 0,
+            PositionLotModel.status != 'CLOSED',
+        ).group_by(
+            PositionLotModel.account_number,
+            PositionLotModel.symbol,
+        ).having(
+            func.min(PositionLotModel.remaining_quantity) < 0,
+            func.max(PositionLotModel.remaining_quantity) > 0,
+        ).all()
+        nettable = [(r[0], r[1]) for r in nettable]
 
     for acct, symbol in nettable:
         # Get negative (short) lots to net, ordered by entry date (FIFO)
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, remaining_quantity, entry_price, entry_date
-                FROM position_lots
-                WHERE account_number = ? AND symbol = ? AND instrument_type = 'EQUITY'
-                  AND remaining_quantity < 0 AND status != 'CLOSED'
-                ORDER BY entry_date ASC
-            """, (acct, symbol))
-            neg_lots = cursor.fetchall()
+        with db.get_session() as session:
+            neg_rows = session.query(
+                PositionLotModel.id,
+                PositionLotModel.remaining_quantity,
+                PositionLotModel.entry_price,
+                PositionLotModel.entry_date,
+            ).filter(
+                PositionLotModel.account_number == acct,
+                PositionLotModel.symbol == symbol,
+                PositionLotModel.instrument_type == 'EQUITY',
+                PositionLotModel.remaining_quantity < 0,
+                PositionLotModel.status != 'CLOSED',
+            ).order_by(PositionLotModel.entry_date.asc()).all()
+            neg_lots = [(r[0], r[1], r[2], r[3]) for r in neg_rows]
 
         for neg_id, neg_remaining, neg_price, neg_date in neg_lots:
             qty_to_close = abs(neg_remaining)
 
             # Determine closing date: use the latest of (negative lot date, latest positive lot date)
-            # so that closing dates never appear before the lots they close
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT MAX(entry_date) FROM position_lots
-                    WHERE account_number = ? AND symbol = ? AND instrument_type = 'EQUITY'
-                      AND remaining_quantity > 0 AND status != 'CLOSED'
-                """, (acct, symbol))
-                latest_pos_date = cursor.fetchone()[0]
+            with db.get_session() as session:
+                latest_pos_date = session.query(
+                    func.max(PositionLotModel.entry_date),
+                ).filter(
+                    PositionLotModel.account_number == acct,
+                    PositionLotModel.symbol == symbol,
+                    PositionLotModel.instrument_type == 'EQUITY',
+                    PositionLotModel.remaining_quantity > 0,
+                    PositionLotModel.status != 'CLOSED',
+                ).scalar()
 
             closing_date = max(neg_date, latest_pos_date) if latest_pos_date else neg_date
 
@@ -346,34 +361,34 @@ def _net_opposing_equity_lots() -> int:
                 continue
 
             # Determine how much was actually closed from positive lots
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                placeholders = ','.join(['?' for _ in affected])
-                cursor.execute(f"""
-                    SELECT COALESCE(SUM(quantity_closed), 0)
-                    FROM lot_closings
-                    WHERE lot_id IN ({placeholders}) AND closing_order_id = 'EQUITY_NETTING'
-                """, affected)
-                total_closed = cursor.fetchone()[0]
+            with db.get_session() as session:
+                total_closed = session.query(
+                    func.coalesce(func.sum(LotClosingModel.quantity_closed), 0),
+                ).filter(
+                    LotClosingModel.lot_id.in_(affected),
+                    LotClosingModel.closing_order_id == 'EQUITY_NETTING',
+                ).scalar()
 
                 if total_closed > 0:
                     # Close the negative lot by the same amount
+                    neg_lot = session.get(PositionLotModel, neg_id)
                     new_remaining = neg_remaining + total_closed  # e.g., -800 + 800 = 0
                     new_status = 'CLOSED' if new_remaining == 0 else 'PARTIAL'
-                    cursor.execute("""
-                        UPDATE position_lots SET remaining_quantity = ?, status = ? WHERE id = ?
-                    """, (new_remaining, new_status, neg_id))
+                    neg_lot.remaining_quantity = new_remaining
+                    neg_lot.status = new_status
 
                     # Create lot_closing record for the negative lot (P&L captured on positive side)
-                    cursor.execute("""
-                        INSERT INTO lot_closings (
-                            lot_id, closing_order_id, closing_transaction_id,
-                            quantity_closed, closing_price, closing_date,
-                            closing_type, realized_pnl
-                        ) VALUES (?, 'EQUITY_NETTING', NULL, ?, ?, ?, 'MANUAL', 0)
-                    """, (neg_id, total_closed, neg_price, closing_date))
+                    session.add(LotClosingModel(
+                        lot_id=neg_id,
+                        closing_order_id='EQUITY_NETTING',
+                        closing_transaction_id=None,
+                        quantity_closed=total_closed,
+                        closing_price=neg_price,
+                        closing_date=closing_date,
+                        closing_type='MANUAL',
+                        realized_pnl=0,
+                    ))
 
-                    conn.commit()
                     netted += len(affected) + 1  # positive lots closed + negative lot
                     logger.info(f"Netted {total_closed} shares of {symbol}: lot {neg_id} ({neg_remaining}) vs {len(affected)} long lots")
 
@@ -387,18 +402,13 @@ def seed_new_lots_into_groups():
     unassigned = lot_manager.get_unassigned_lots()
     if not unassigned:
         # Still refresh group statuses even if no new lots to assign
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            _refresh_all_group_statuses(cursor)
-            conn.commit()
+        _refresh_all_group_statuses()
         return 0
 
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
+    with db.get_session() as session:
         # Check if position_groups table has any rows — if empty, do full seed instead
-        cursor.execute("SELECT COUNT(*) FROM position_groups")
-        if cursor.fetchone()[0] == 0:
+        group_count = session.query(func.count()).select_from(PositionGroup).scalar()
+        if group_count == 0:
             return seed_position_groups()
 
         # Group unassigned lots by chain_id
@@ -409,37 +419,36 @@ def seed_new_lots_into_groups():
         for chain_id, lots in chain_lots.items():
             if chain_id:
                 # Check if a group exists for this chain
-                cursor.execute(
-                    "SELECT group_id FROM position_groups WHERE source_chain_id = ?",
-                    (chain_id,)
-                )
-                row = cursor.fetchone()
+                row = session.query(PositionGroup.group_id).filter(
+                    PositionGroup.source_chain_id == chain_id,
+                ).first()
                 if row:
                     group_id = row[0]
                 else:
                     # Create new group for this chain
-                    cursor.execute(
-                        "SELECT strategy_type, opening_date, closing_date FROM order_chains WHERE chain_id = ?",
-                        (chain_id,)
-                    )
-                    chain_info = cursor.fetchone()
+                    chain_info = session.query(
+                        OrderChain.strategy_type,
+                        OrderChain.opening_date,
+                        OrderChain.closing_date,
+                    ).filter(OrderChain.chain_id == chain_id).first()
+
                     group_id = str(_uuid.uuid4())
-                    cursor.execute("""
-                        INSERT INTO position_groups
-                            (group_id, account_number, underlying, strategy_label, status,
-                             source_chain_id, opening_date, closing_date)
-                        VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?)
-                    """, (group_id, lots[0].account_number, lots[0].underlying,
-                          chain_info[0] if chain_info else None,
-                          chain_id,
-                          chain_info[1] if chain_info else None,
-                          chain_info[2] if chain_info else None))
+                    session.add(PositionGroup(
+                        group_id=group_id,
+                        account_number=lots[0].account_number,
+                        underlying=lots[0].underlying,
+                        strategy_label=chain_info[0] if chain_info else None,
+                        status='OPEN',
+                        source_chain_id=chain_id,
+                        opening_date=chain_info[1] if chain_info else None,
+                        closing_date=chain_info[2] if chain_info else None,
+                    ))
 
                 for lot in lots:
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
-                        VALUES (?, ?)
-                    """, (group_id, lot.transaction_id))
+                    stmt = sqlite_insert(PositionGroupLot).values(
+                        group_id=group_id, transaction_id=lot.transaction_id,
+                    )
+                    session.execute(stmt.on_conflict_do_nothing())
                     assigned += 1
             else:
                 # No chain_id — add to ungrouped bucket per underlying/account
@@ -451,34 +460,33 @@ def seed_new_lots_into_groups():
                 for key, blots in buckets.items():
                     acct, und = key.split('|', 1)
                     # Find any existing OPEN group for this account+underlying
-                    cursor.execute("""
-                        SELECT group_id FROM position_groups
-                        WHERE account_number = ? AND underlying = ? AND status = 'OPEN'
-                        ORDER BY opening_date DESC
-                        LIMIT 1
-                    """, (acct, und))
-                    row = cursor.fetchone()
+                    row = session.query(PositionGroup.group_id).filter(
+                        PositionGroup.account_number == acct,
+                        PositionGroup.underlying == und,
+                        PositionGroup.status == 'OPEN',
+                    ).order_by(PositionGroup.opening_date.desc()).first()
+
                     if row:
                         group_id = row[0]
                     else:
                         group_id = str(_uuid.uuid4())
-                        cursor.execute("""
-                            INSERT INTO position_groups
-                                (group_id, account_number, underlying, strategy_label, status,
-                                 source_chain_id, opening_date, closing_date)
-                            VALUES (?, ?, ?, 'Shares', 'OPEN', NULL, NULL, NULL)
-                        """, (group_id, acct, und))
+                        session.add(PositionGroup(
+                            group_id=group_id,
+                            account_number=acct,
+                            underlying=und,
+                            strategy_label='Shares',
+                            status='OPEN',
+                        ))
 
                     for lot in blots:
-                        cursor.execute("""
-                            INSERT OR IGNORE INTO position_group_lots (group_id, transaction_id)
-                            VALUES (?, ?)
-                        """, (group_id, lot.transaction_id))
+                        stmt = sqlite_insert(PositionGroupLot).values(
+                            group_id=group_id, transaction_id=lot.transaction_id,
+                        )
+                        session.execute(stmt.on_conflict_do_nothing())
                         assigned += 1
 
-        # Update group statuses/dates for affected groups
-        _refresh_all_group_statuses(cursor)
-        conn.commit()
+    # Update group statuses/dates for affected groups (outside the session above)
+    _refresh_all_group_statuses()
 
     logger.info(f"Seeded {assigned} new lots into position groups")
     return assigned
@@ -492,102 +500,132 @@ def _reconcile_stale_groups():
     for future seeding.
     """
     reconciled = 0
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-
+    with db.get_session() as session:
         # Fix stale source_chain_id references
-        cursor.execute("""
-            SELECT pg.group_id, pg.source_chain_id
-            FROM position_groups pg
-            LEFT JOIN order_chains oc ON pg.source_chain_id = oc.chain_id
-            WHERE pg.source_chain_id IS NOT NULL AND oc.chain_id IS NULL
-        """)
-        stale_groups = cursor.fetchall()
-        for stale_row in stale_groups:
-            stale_gid = stale_row[0]
+        stale_groups = session.query(
+            PositionGroup.group_id,
+            PositionGroup.source_chain_id,
+        ).outerjoin(
+            OrderChain, PositionGroup.source_chain_id == OrderChain.chain_id,
+        ).filter(
+            PositionGroup.source_chain_id.isnot(None),
+            OrderChain.chain_id.is_(None),
+        ).all()
+
+        for stale_gid, stale_chain_id in stale_groups:
             # Find the actual chain_id(s) from the group's lots
-            cursor.execute("""
-                SELECT DISTINCT pl.chain_id
-                FROM position_group_lots pgl
-                JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
-                WHERE pgl.group_id = ? AND pl.chain_id IS NOT NULL
-                ORDER BY pl.entry_date ASC
-            """, (stale_gid,))
-            chain_rows = cursor.fetchall()
+            chain_rows = session.query(
+                PositionLotModel.chain_id,
+            ).join(
+                PositionGroupLot,
+                PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(
+                PositionGroupLot.group_id == stale_gid,
+                PositionLotModel.chain_id.isnot(None),
+            ).order_by(PositionLotModel.entry_date.asc()).distinct().all()
+
             if chain_rows:
                 # Use the earliest lot's chain_id (best-effort for future seeding)
                 new_chain_id = chain_rows[0][0]
-                cursor.execute("""
-                    SELECT underlying, strategy_type, opening_date, closing_date, chain_status
-                    FROM order_chains WHERE chain_id = ?
-                """, (new_chain_id,))
-                chain_info = cursor.fetchone()
-                if chain_info:
-                    cursor.execute("""
-                        UPDATE position_groups
-                        SET source_chain_id = ?, underlying = ?, strategy_label = ?,
-                            opening_date = ?, closing_date = ?, status = ?
-                        WHERE group_id = ?
-                    """, (new_chain_id, chain_info[0], chain_info[1],
-                          chain_info[2], chain_info[3], chain_info[4], stale_gid))
-                    reconciled += 1
-                    logger.info(f"Reconciled stale group {stale_gid}: "
-                                f"{stale_row[1]} -> {new_chain_id} ({chain_info[0]})")
+                chain_info = session.query(
+                    OrderChain.underlying,
+                    OrderChain.strategy_type,
+                    OrderChain.opening_date,
+                    OrderChain.closing_date,
+                    OrderChain.chain_status,
+                ).filter(OrderChain.chain_id == new_chain_id).first()
 
-        conn.commit()
+                if chain_info:
+                    group = session.query(PositionGroup).filter(
+                        PositionGroup.group_id == stale_gid,
+                    ).first()
+                    if group:
+                        group.source_chain_id = new_chain_id
+                        group.underlying = chain_info[0]
+                        group.strategy_label = chain_info[1]
+                        group.opening_date = chain_info[2]
+                        group.closing_date = chain_info[3]
+                        group.status = chain_info[4]
+                        reconciled += 1
+                        logger.info(f"Reconciled stale group {stale_gid}: "
+                                    f"{stale_chain_id} -> {new_chain_id} ({chain_info[0]})")
+
     if reconciled:
         logger.info(f"Reconciled {reconciled} stale position groups")
     return reconciled
 
 
-def _refresh_group_status(cursor, group_id: str):
-    """Recalculate status, opening_date, closing_date for a single group."""
-    cursor.execute("""
-        SELECT COUNT(*) FROM position_group_lots pgl
-        JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
-        WHERE pgl.group_id = ? AND pl.remaining_quantity != 0 AND pl.status != 'CLOSED'
-    """, (group_id,))
-    open_count = cursor.fetchone()[0]
+def _refresh_group_status(group_id: str, session=None):
+    """Recalculate status, opening_date, closing_date for a single group.
 
-    cursor.execute("""
-        SELECT COUNT(*) FROM position_group_lots WHERE group_id = ?
-    """, (group_id,))
-    total_count = cursor.fetchone()[0]
+    If session is provided, uses it (caller manages commit).
+    Otherwise opens its own session.
+    """
+    if session is None:
+        with db.get_session() as s:
+            return _refresh_group_status(group_id, session=s)
+
+    open_count = session.query(func.count()).select_from(
+        PositionGroupLot,
+    ).join(
+        PositionLotModel,
+        PositionGroupLot.transaction_id == PositionLotModel.transaction_id,
+    ).filter(
+        PositionGroupLot.group_id == group_id,
+        PositionLotModel.remaining_quantity != 0,
+        PositionLotModel.status != 'CLOSED',
+    ).scalar()
+
+    total_count = session.query(func.count()).select_from(
+        PositionGroupLot,
+    ).filter(PositionGroupLot.group_id == group_id).scalar()
 
     if total_count == 0:
         # Empty group — delete it
-        cursor.execute("DELETE FROM position_groups WHERE group_id = ?", (group_id,))
+        session.query(PositionGroup).filter(
+            PositionGroup.group_id == group_id,
+        ).delete()
         return
 
     status = 'OPEN' if open_count > 0 else 'CLOSED'
 
-    cursor.execute("""
-        SELECT MIN(pl.entry_date) FROM position_group_lots pgl
-        JOIN position_lots pl ON pgl.transaction_id = pl.transaction_id
-        WHERE pgl.group_id = ?
-    """, (group_id,))
-    opening_date = cursor.fetchone()[0]
+    opening_date = session.query(
+        func.min(PositionLotModel.entry_date),
+    ).join(
+        PositionGroupLot,
+        PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+    ).filter(PositionGroupLot.group_id == group_id).scalar()
 
     closing_date = None
     if status == 'CLOSED':
-        cursor.execute("""
-            SELECT MAX(lc.closing_date) FROM lot_closings lc
-            JOIN position_lots pl ON lc.lot_id = pl.id
-            JOIN position_group_lots pgl ON pl.transaction_id = pgl.transaction_id
-            WHERE pgl.group_id = ?
-        """, (group_id,))
-        r = cursor.fetchone()
-        closing_date = r[0] if r else None
+        closing_date = session.query(
+            func.max(LotClosingModel.closing_date),
+        ).join(
+            PositionLotModel, LotClosingModel.lot_id == PositionLotModel.id,
+        ).join(
+            PositionGroupLot,
+            PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+        ).filter(PositionGroupLot.group_id == group_id).scalar()
 
-    cursor.execute("""
-        UPDATE position_groups
-        SET status = ?, opening_date = ?, closing_date = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE group_id = ?
-    """, (status, opening_date, closing_date, group_id))
+    group = session.query(PositionGroup).filter(
+        PositionGroup.group_id == group_id,
+    ).first()
+    if group:
+        group.status = status
+        group.opening_date = opening_date
+        group.closing_date = closing_date
+        group.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
-def _refresh_all_group_statuses(cursor):
-    """Recalculate status for all groups."""
-    cursor.execute("SELECT group_id FROM position_groups")
-    for row in cursor.fetchall():
-        _refresh_group_status(cursor, row[0])
+def _refresh_all_group_statuses(session=None):
+    """Recalculate status for all groups.
+
+    If session is provided, uses it. Otherwise opens its own.
+    """
+    if session is None:
+        with db.get_session() as s:
+            return _refresh_all_group_statuses(session=s)
+
+    group_ids = [r[0] for r in session.query(PositionGroup.group_id).all()]
+    for gid in group_ids:
+        _refresh_group_status(gid, session=session)
