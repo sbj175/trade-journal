@@ -25,16 +25,7 @@ def db(tmp_path):
     """Temporary SQLite database, fully initialized and auto-cleaned."""
     db_path = str(tmp_path / "test.db")
     db_manager = DatabaseManager(db_url=f"sqlite:///{db_path}")
-
-    # initialize_database() calls _add_transaction_columns() internally,
-    # but that nested call opens a second connection while the first still
-    # holds the write lock, causing a 5-second timeout per test.
-    # Fix: stub it out during init, then call it once the connection closes.
-    original = db_manager._add_transaction_columns
-    db_manager._add_transaction_columns = lambda: None
     db_manager.initialize_database()
-    db_manager._add_transaction_columns = original
-    db_manager._add_transaction_columns()
     return db_manager
 
 

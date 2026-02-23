@@ -1,10 +1,8 @@
 """
 Database Manager for Trade Journal
-Handles all database operations using SQLite
+Handles all database operations via SQLAlchemy ORM.
 """
 
-import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
@@ -20,45 +18,17 @@ logger = logging.getLogger(__name__)
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-# Legacy imports removed
-
 
 class DatabaseManager:
     def __init__(self, db_url: str = None):
         self.db_url = db_url  # None → engine.py reads DATABASE_URL or defaults to SQLite
         self._initialized = False
-        # Legacy: extract path for get_connection() (removed in Phase 3)
-        self._sqlite_path = self._extract_sqlite_path(db_url)
         # Note: initialize_database() is called explicitly by FastAPI startup event
 
-    @staticmethod
-    def _extract_sqlite_path(db_url: str = None) -> str:
-        """Extract SQLite file path from a URL (legacy support for get_connection)."""
-        if db_url is None:
-            import os
-            db_url = os.environ.get("DATABASE_URL", "sqlite:///trade_journal.db")
-        if db_url.startswith("sqlite:///"):
-            return db_url[len("sqlite:///"):]
-        return "trade_journal.db"
-    
     def ensure_initialized(self):
         """Ensure database is initialized (for standalone scripts)"""
         if not self._initialized:
             self.initialize_database()
-    
-    @contextmanager
-    def get_connection(self):
-        """Context manager for database connections"""
-        conn = sqlite3.connect(self._sqlite_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            conn.close()
 
     def get_session(self):
         """Context manager for SQLAlchemy sessions (delegates to engine module)."""
@@ -83,9 +53,6 @@ class DatabaseManager:
             if count == 0:
                 self._seed_default_strategy_targets_orm(session)
 
-        # Legacy: add columns that may be missing from older databases
-        self._add_transaction_columns()
-
         self._initialized = True
         elapsed_time = time.time() - start_time
         logger.info(f"Database initialized successfully in {elapsed_time:.2f} seconds")
@@ -109,197 +76,6 @@ class DatabaseManager:
             session.add(StrategyTarget(
                 strategy_name=name, profit_target_pct=profit, loss_target_pct=loss,
             ))
-    
-    def _add_transaction_columns(self):
-        """Add transaction action and timestamp columns to existing tables"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            # Check if columns exist and add them if they don't
-            try:
-                # Check order_chains table for realized_pnl column
-                cursor.execute("PRAGMA table_info(order_chains)")
-                chain_columns = [column[1] for column in cursor.fetchall()]
-                
-                if 'realized_pnl' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN realized_pnl REAL DEFAULT 0.0")
-                    logger.info("Added realized_pnl column to order_chains")
-                
-                if 'unrealized_pnl' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN unrealized_pnl REAL DEFAULT 0.0")
-                    logger.info("Added unrealized_pnl column to order_chains")
-                
-                # Check positions table for opened_at column
-                cursor.execute("PRAGMA table_info(positions)")
-                position_columns = [column[1] for column in cursor.fetchall()]
-                
-                if 'opened_at' not in position_columns:
-                    cursor.execute("ALTER TABLE positions ADD COLUMN opened_at TIMESTAMP")
-                    logger.info("Added opened_at column to positions")
-                
-                if 'expires_at' not in position_columns:
-                    cursor.execute("ALTER TABLE positions ADD COLUMN expires_at TIMESTAMP")
-                    logger.info("Added expires_at column to positions")
-                
-                if 'strike_price' not in position_columns:
-                    cursor.execute("ALTER TABLE positions ADD COLUMN strike_price REAL")
-                    logger.info("Added strike_price column to positions")
-                
-                if 'option_type' not in position_columns:
-                    cursor.execute("ALTER TABLE positions ADD COLUMN option_type TEXT")
-                    logger.info("Added option_type column to positions")
-
-                if 'chain_id' not in position_columns:
-                    cursor.execute("ALTER TABLE positions ADD COLUMN chain_id TEXT")
-                    logger.info("Added chain_id column to positions")
-
-                if 'strategy_type' not in position_columns:
-                    cursor.execute("ALTER TABLE positions ADD COLUMN strategy_type TEXT")
-                    logger.info("Added strategy_type column to positions")
-
-                # Create index for chain_id lookups
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_chain_id ON positions(chain_id)")
-
-                # Check order_positions table for new enhanced fields
-                cursor.execute("PRAGMA table_info(order_positions)")
-                position_columns = [column[1] for column in cursor.fetchall()]
-
-                if 'opening_order_id' not in position_columns:
-                    cursor.execute("ALTER TABLE order_positions ADD COLUMN opening_order_id TEXT")
-                    logger.info("Added opening_order_id column to order_positions")
-
-                if 'closing_order_id' not in position_columns:
-                    cursor.execute("ALTER TABLE order_positions ADD COLUMN closing_order_id TEXT")
-                    logger.info("Added closing_order_id column to order_positions")
-
-                if 'opening_amount' not in position_columns:
-                    cursor.execute("ALTER TABLE order_positions ADD COLUMN opening_amount REAL")
-                    logger.info("Added opening_amount column to order_positions")
-
-                if 'closing_amount' not in position_columns:
-                    cursor.execute("ALTER TABLE order_positions ADD COLUMN closing_amount REAL")
-                    logger.info("Added closing_amount column to order_positions")
-
-                # Check order_chains table for V3 lot-based columns
-                cursor.execute("PRAGMA table_info(order_chains)")
-                chain_columns = [column[1] for column in cursor.fetchall()]
-
-                if 'leg_count' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN leg_count INTEGER DEFAULT 1")
-                    logger.info("Added leg_count column to order_chains")
-
-                if 'original_quantity' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN original_quantity INTEGER")
-                    logger.info("Added original_quantity column to order_chains")
-
-                if 'remaining_quantity' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN remaining_quantity INTEGER")
-                    logger.info("Added remaining_quantity column to order_chains")
-
-                if 'has_assignment' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN has_assignment BOOLEAN DEFAULT 0")
-                    logger.info("Added has_assignment column to order_chains")
-
-                if 'assignment_date' not in chain_columns:
-                    cursor.execute("ALTER TABLE order_chains ADD COLUMN assignment_date DATE")
-                    logger.info("Added assignment_date column to order_chains")
-
-                # Check position_lots table for V3 columns (in case old table exists)
-                cursor.execute("PRAGMA table_info(position_lots)")
-                lot_columns = [column[1] for column in cursor.fetchall()]
-
-                if lot_columns:  # Table exists
-                    if 'chain_id' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN chain_id TEXT")
-                        logger.info("Added chain_id column to position_lots")
-
-                    if 'leg_index' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN leg_index INTEGER DEFAULT 0")
-                        logger.info("Added leg_index column to position_lots")
-
-                    if 'original_quantity' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN original_quantity INTEGER")
-                        logger.info("Added original_quantity column to position_lots")
-
-                    if 'derived_from_lot_id' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN derived_from_lot_id INTEGER")
-                        logger.info("Added derived_from_lot_id column to position_lots")
-
-                    if 'derivation_type' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN derivation_type TEXT")
-                        logger.info("Added derivation_type column to position_lots")
-
-                    if 'status' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN status TEXT DEFAULT 'OPEN'")
-                        logger.info("Added status column to position_lots")
-
-                    if 'underlying' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN underlying TEXT")
-                        logger.info("Added underlying column to position_lots")
-
-                    if 'option_type' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN option_type TEXT")
-                        logger.info("Added option_type column to position_lots")
-
-                    if 'strike' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN strike REAL")
-                        logger.info("Added strike column to position_lots")
-
-                    if 'expiration' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN expiration DATE")
-                        logger.info("Added expiration column to position_lots")
-
-                    if 'opening_order_id' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN opening_order_id TEXT")
-                        logger.info("Added opening_order_id column to position_lots")
-
-                    if 'instrument_type' not in lot_columns:
-                        cursor.execute("ALTER TABLE position_lots ADD COLUMN instrument_type TEXT")
-                        logger.info("Added instrument_type column to position_lots")
-
-                    # Create V3 indexes after ensuring columns exist (inside if lot_columns block)
-                    # Position lots indexes - basic ones that always exist
-                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_account_symbol ON position_lots(account_number, symbol)")
-                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_entry_date ON position_lots(entry_date)")
-
-                    # Re-check columns after additions and create V3 indexes
-                    cursor.execute("PRAGMA table_info(position_lots)")
-                    lot_cols_after = [column[1] for column in cursor.fetchall()]
-
-                    if 'chain_id' in lot_cols_after:
-                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_chain ON position_lots(chain_id)")
-                    if 'status' in lot_cols_after:
-                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_status ON position_lots(status)")
-                    if 'derived_from_lot_id' in lot_cols_after:
-                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_derived ON position_lots(derived_from_lot_id)")
-                    if 'underlying' in lot_cols_after:
-                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lots_underlying ON position_lots(underlying)")
-
-                # Lot closings indexes (table created fresh in initialize_database, so columns always exist)
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_lot ON lot_closings(lot_id)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_order ON lot_closings(closing_order_id)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_lot_closings_date ON lot_closings(closing_date)")
-
-                # Order comments table for persistent per-order notes
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS order_comments (
-                        order_id TEXT PRIMARY KEY,
-                        comment TEXT NOT NULL,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-
-                # Position notes table for persistent per-position notes
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS position_notes (
-                        note_key TEXT PRIMARY KEY,
-                        note TEXT NOT NULL,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-
-            except Exception as e:
-                logger.error(f"Error adding transaction columns: {e}")
     
     def save_account(self, account_number: str, account_name: str = None, account_type: str = None) -> bool:
         """Save account information"""
@@ -579,36 +355,6 @@ class DatabaseManager:
             logger.error(f"Error getting cached quotes: {str(e)}")
             return {}
     
-    def _seed_default_strategy_targets(self, cursor):
-        """Seed default strategy targets for all known strategies"""
-        defaults = [
-            # Credit strategies: 50% profit / 100% loss
-            ('Bull Put Spread', 50.0, 100.0),
-            ('Bear Call Spread', 50.0, 100.0),
-            ('Iron Condor', 50.0, 100.0),
-            ('Cash Secured Put', 50.0, 100.0),
-            ('Covered Call', 50.0, 100.0),
-            ('Short Put', 50.0, 100.0),
-            ('Short Call', 50.0, 100.0),
-            ('Short Strangle', 50.0, 100.0),
-            # Tighter credit strategies: 25% profit / 100% loss
-            ('Iron Butterfly', 25.0, 100.0),
-            ('Short Straddle', 25.0, 100.0),
-            # Debit strategies: 100% profit / 50% loss
-            ('Bull Call Spread', 100.0, 50.0),
-            ('Bear Put Spread', 100.0, 50.0),
-            ('Long Call', 100.0, 50.0),
-            ('Long Put', 100.0, 50.0),
-            ('Long Strangle', 100.0, 50.0),
-            ('Long Straddle', 100.0, 50.0),
-            # Equity: 20% profit / 10% loss
-            ('Shares', 20.0, 10.0),
-        ]
-        cursor.executemany("""
-            INSERT INTO strategy_targets (strategy_name, profit_target_pct, loss_target_pct)
-            VALUES (?, ?, ?)
-        """, defaults)
-
     def get_strategy_targets(self) -> List[Dict[str, Any]]:
         """Get all strategy P&L targets"""
         from src.database.models import StrategyTarget

@@ -242,21 +242,15 @@ class TestStraddleStrangle:
 class TestCoveredCall:
     def test_covered_call(self, strategy_detector, db):
         """Short call + stock position in account → Covered Call"""
+        from src.database.models import RawTransaction
         # Insert a stock purchase into raw_transactions so coverage check passes
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO raw_transactions (
-                    id, account_number, order_id, transaction_type,
-                    transaction_sub_type, description, executed_at,
-                    action, symbol, instrument_type, underlying_symbol,
-                    quantity, price, value
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                "tx-stock-buy", "ACCT1", "ORD-STOCK", "Trade",
-                "Buy to Open", "Buy 100 AAPL", "2025-01-15T10:00:00",
-                "BUY_TO_OPEN", "AAPL", "EQUITY", "AAPL",
-                100, 150.00, 15000.00,
+        with db.get_session() as session:
+            session.add(RawTransaction(
+                id="tx-stock-buy", account_number="ACCT1", order_id="ORD-STOCK",
+                transaction_type="Trade", transaction_sub_type="Buy to Open",
+                description="Buy 100 AAPL", executed_at="2025-01-15T10:00:00",
+                action="BUY_TO_OPEN", symbol="AAPL", instrument_type="EQUITY",
+                underlying_symbol="AAPL", quantity=100, price=150.00, value=15000.00,
             ))
 
         chain = _make_chain({
