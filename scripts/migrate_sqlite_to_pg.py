@@ -30,6 +30,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database.models import (
     Base,
+    User,
     Account, AccountBalance, Position,
     Order, OrderPosition,
     OrderChain, OrderChainMember, OrderChainCache,
@@ -41,9 +42,11 @@ from src.database.models import (
 )
 
 # Tables in FK dependency order (parents before children).
+# User must come first since all other tables FK to users.id.
 # position_lots is self-referential — we insert with derived_from_lot_id=NULL
 # first, then do an UPDATE pass to set the FK.
 MIGRATION_ORDER = [
+    User,
     Account,
     AccountBalance,
     SyncMetadata,

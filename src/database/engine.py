@@ -71,6 +71,11 @@ def init_engine(db_url: str = None) -> Engine:
         _insert_func = _pg_insert
 
     _SessionFactory = sessionmaker(bind=_engine)
+
+    # Register multi-tenant event listeners (must happen after SessionFactory)
+    from src.database.tenant import register_tenant_events
+    register_tenant_events()
+
     logger.info("SQLAlchemy engine initialized (%s): %s", _dialect, db_url.split("@")[-1] if "@" in db_url else db_url)
     return _engine
 
@@ -101,15 +106,22 @@ def dialect_insert(model):
 
 
 @contextmanager
-def get_session():
+def get_session(user_id: str = None):
     """Context manager yielding a SQLAlchemy Session.
 
     Commits on clean exit, rolls back on exception.
+
+    Args:
+        user_id: Tenant user ID for automatic query scoping.
+                 Defaults to DEFAULT_USER_ID.  Pass explicitly to override.
     """
     if _SessionFactory is None:
         raise RuntimeError("SQLAlchemy engine not initialized — call init_engine() first")
 
+    from src.database.tenant import DEFAULT_USER_ID
+
     session: Session = _SessionFactory()
+    session.info["user_id"] = user_id if user_id is not None else DEFAULT_USER_ID
     try:
         yield session
         session.commit()

@@ -1311,9 +1311,11 @@ class OrderManager:
         """Save an Order and its positions to the database"""
         from src.database.engine import dialect_insert
         from src.database.models import Order as OrderModel, OrderPosition as OP
+        from src.database.tenant import DEFAULT_USER_ID
 
         try:
             with self.db.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 # Upsert order
                 stmt = dialect_insert(OrderModel).values(
                     order_id=order.order_id, account_number=order.account_number,
@@ -1322,7 +1324,7 @@ class OrderManager:
                     status=order.status.value, total_quantity=order.total_quantity,
                     total_pnl=order.total_pnl, has_assignment=order.has_assignment,
                     has_expiration=order.has_expiration, has_exercise=order.has_exercise,
-                    linked_order_id=order.linked_order_id,
+                    linked_order_id=order.linked_order_id, user_id=user_id,
                 )
                 session.execute(stmt.on_conflict_do_update(
                     index_elements=['order_id'],
@@ -1993,9 +1995,11 @@ class OrderManager:
         """Save an order chain to the database"""
         from src.database.engine import dialect_insert
         from src.database.models import OrderChain as OC, OrderChainMember as OCM
+        from src.database.tenant import DEFAULT_USER_ID
 
         try:
             with self.db.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 # Upsert chain
                 stmt = dialect_insert(OC).values(
                     chain_id=chain['chain_id'], underlying=chain['underlying'],
@@ -2004,6 +2008,7 @@ class OrderManager:
                     strategy_type=chain['strategy_type'], opening_date=chain['opening_date'],
                     closing_date=chain['closing_date'], chain_status=chain['chain_status'],
                     order_count=chain['order_count'], total_pnl=chain['total_pnl'],
+                    user_id=user_id,
                 )
                 session.execute(stmt.on_conflict_do_update(
                     index_elements=['chain_id'],

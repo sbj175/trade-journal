@@ -5,6 +5,7 @@ import os
 from fastapi.templating import Jinja2Templates
 
 from src.database.db_manager import DatabaseManager
+from src.database.tenant import DEFAULT_USER_ID
 from src.models.order_models import OrderManager
 from src.models.position_inventory import PositionInventoryManager
 from src.models.order_processor import OrderProcessor
@@ -22,3 +23,12 @@ strategy_detector = StrategyDetector(db)
 pnl_calculator = PnLCalculator(db, position_manager, lot_manager)
 connection_manager = ConnectionManager()
 templates = Jinja2Templates(directory="static")
+
+
+def get_current_user_id() -> str:
+    """Return the current user ID.
+
+    Placeholder: always returns DEFAULT_USER_ID.
+    Will be wired to JWT/session extraction when auth is added.
+    """
+    return DEFAULT_USER_ID

@@ -7,6 +7,7 @@ from typing import Dict, Optional
 from loguru import logger
 from sqlalchemy import func
 from src.database.engine import dialect_insert
+from src.database.tenant import DEFAULT_USER_ID
 
 from src.database.models import (
     OrderChain, PositionLot as PositionLotModel, LotClosing as LotClosingModel,
@@ -20,6 +21,8 @@ def seed_position_groups():
     groups_created = 0
 
     with db.get_session() as session:
+        user_id = session.info.get("user_id", DEFAULT_USER_ID)
+
         # Get all distinct chain_ids from position_lots
         chain_rows = session.query(
             PositionLotModel.chain_id,
@@ -94,7 +97,7 @@ def seed_position_groups():
 
             for txn_id in txn_ids:
                 stmt = dialect_insert(PositionGroupLot).values(
-                    group_id=group_id, transaction_id=txn_id,
+                    group_id=group_id, transaction_id=txn_id, user_id=user_id,
                 )
                 session.execute(stmt.on_conflict_do_nothing())
 
@@ -144,7 +147,7 @@ def seed_position_groups():
 
                 for txn_id in txn_ids:
                     stmt = dialect_insert(PositionGroupLot).values(
-                        group_id=group_id, transaction_id=txn_id,
+                        group_id=group_id, transaction_id=txn_id, user_id=user_id,
                     )
                     session.execute(stmt.on_conflict_do_nothing())
 
@@ -406,6 +409,8 @@ def seed_new_lots_into_groups():
         return 0
 
     with db.get_session() as session:
+        user_id = session.info.get("user_id", DEFAULT_USER_ID)
+
         # Check if position_groups table has any rows — if empty, do full seed instead
         group_count = session.query(func.count()).select_from(PositionGroup).scalar()
         if group_count == 0:
@@ -447,6 +452,7 @@ def seed_new_lots_into_groups():
                 for lot in lots:
                     stmt = dialect_insert(PositionGroupLot).values(
                         group_id=group_id, transaction_id=lot.transaction_id,
+                        user_id=user_id,
                     )
                     session.execute(stmt.on_conflict_do_nothing())
                     assigned += 1
@@ -481,6 +487,7 @@ def seed_new_lots_into_groups():
                     for lot in blots:
                         stmt = dialect_insert(PositionGroupLot).values(
                             group_id=group_id, transaction_id=lot.transaction_id,
+                            user_id=user_id,
                         )
                         session.execute(stmt.on_conflict_do_nothing())
                         assigned += 1

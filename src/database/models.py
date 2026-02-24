@@ -8,6 +8,7 @@ SQLAlchemy can coexist with the legacy sqlite3 code during the incremental
 migration.
 """
 
+import uuid
 from datetime import datetime, date as date_type
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +47,21 @@ class Base(DeclarativeBase):
 
 
 # ---------------------------------------------------------------------------
+# User table (multi-tenant)
+# ---------------------------------------------------------------------------
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, unique=True, nullable=True)  # nullable until auth phase
+    display_name = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(String, server_default=func.now())
+    updated_at = Column(String, server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
 # Account & balance tables
 # ---------------------------------------------------------------------------
 
@@ -53,6 +69,7 @@ class Account(Base):
     __tablename__ = "accounts"
 
     account_number = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_name = Column(String)
     account_type = Column(String)
     is_active = Column(Boolean, default=True)
@@ -71,6 +88,7 @@ class AccountBalance(Base):
     __tablename__ = "account_balances"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String)
     cash_balance = Column(Float)
     net_liquidating_value = Column(Float)
@@ -95,6 +113,7 @@ class Position(Base):
     __tablename__ = "positions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String, ForeignKey("accounts.account_number"), nullable=False)
     symbol = Column(String, nullable=False)
     underlying = Column(String)
@@ -137,6 +156,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     order_id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String)
     underlying = Column(String)
     order_type = Column(String)
@@ -168,6 +188,7 @@ class OrderPosition(Base):
     __tablename__ = "order_positions"
 
     position_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     order_id = Column(String, ForeignKey("orders.order_id"))
     account_number = Column(String)
     symbol = Column(String)
@@ -205,6 +226,7 @@ class OrderChain(Base):
     __tablename__ = "order_chains"
 
     chain_id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     underlying = Column(String)
     account_number = Column(String)
     opening_order_id = Column(String)
@@ -242,6 +264,7 @@ class OrderChainMember(Base):
     __tablename__ = "order_chain_members"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     chain_id = Column(String, ForeignKey("order_chains.chain_id"))
     order_id = Column(String, ForeignKey("orders.order_id"))
     sequence_number = Column(Integer)
@@ -262,6 +285,7 @@ class OrderChainCache(Base):
 
     chain_id = Column(String, ForeignKey("order_chains.chain_id"), primary_key=True)
     order_id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     order_data = Column(Text)  # JSON blob
 
     # relationships
@@ -276,6 +300,7 @@ class RawTransaction(Base):
     __tablename__ = "raw_transactions"
 
     id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String, nullable=False)
     order_id = Column(String)
     transaction_type = Column(String)
@@ -314,9 +339,14 @@ class SyncMetadata(Base):
     __tablename__ = "sync_metadata"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    key = Column(String, unique=True, nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    key = Column(String, nullable=False)
     value = Column(String, nullable=False)
     updated_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_sync_metadata_user_key"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -356,10 +386,15 @@ class StrategyTarget(Base):
     __tablename__ = "strategy_targets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    strategy_name = Column(String, unique=True, nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    strategy_name = Column(String, nullable=False)
     profit_target_pct = Column(Float, nullable=False)
     loss_target_pct = Column(Float, nullable=False)
     updated_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "strategy_name", name="uq_strategy_targets_user_name"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +405,7 @@ class PositionLot(Base):
     __tablename__ = "position_lots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     transaction_id = Column(String, nullable=False, unique=True)
     account_number = Column(String, nullable=False)
     symbol = Column(String, nullable=False)
@@ -413,6 +449,7 @@ class LotClosing(Base):
     __tablename__ = "lot_closings"
 
     closing_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     lot_id = Column(Integer, ForeignKey("position_lots.id"), nullable=False)
     closing_order_id = Column(String, nullable=False)
     closing_transaction_id = Column(String)
@@ -443,6 +480,7 @@ class ChainMerge(Base):
     __tablename__ = "chain_merges"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     merged_chain_id = Column(String, nullable=False)
     source_chain_id = Column(String, nullable=False)
     underlying = Column(String, nullable=False)
@@ -458,6 +496,7 @@ class PositionGroup(Base):
     __tablename__ = "position_groups"
 
     group_id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String, nullable=False)
     underlying = Column(String, nullable=False)
     strategy_label = Column(String)
@@ -486,6 +525,7 @@ class PositionGroupLot(Base):
     group_id = Column(String, ForeignKey("position_groups.group_id", ondelete="CASCADE"),
                       primary_key=True)
     transaction_id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     assigned_at = Column(String, server_default=func.now())
 
     # relationships
@@ -504,6 +544,7 @@ class PositionsInventory(Base):
     __tablename__ = "positions_inventory"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String, nullable=False)
     symbol = Column(String, nullable=False)
     underlying = Column(String, nullable=False)
@@ -515,7 +556,8 @@ class PositionsInventory(Base):
     last_updated = Column(String, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("account_number", "symbol"),
+        UniqueConstraint("user_id", "account_number", "symbol",
+                         name="uq_positions_inventory_user_account_symbol"),
         Index("idx_positions_account_underlying", "account_number", "underlying"),
         Index("idx_positions_inv_symbol", "symbol"),
     )
@@ -529,6 +571,7 @@ class OrderComment(Base):
     __tablename__ = "order_comments"
 
     order_id = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     comment = Column(String, nullable=False)
     updated_at = Column(String, server_default=func.now())
 
@@ -541,5 +584,6 @@ class PositionNote(Base):
     __tablename__ = "position_notes"
 
     note_key = Column(String, primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     note = Column(String, nullable=False)
     updated_at = Column(String, server_default=func.now())

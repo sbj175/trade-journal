@@ -232,9 +232,12 @@ async def move_lots(body: LedgerMoveLots):
         ).delete(synchronize_session='fetch')
 
         from src.database.engine import dialect_insert
+        from src.database.tenant import DEFAULT_USER_ID
+        user_id = session.info.get("user_id", DEFAULT_USER_ID)
         for txn_id in body.transaction_ids:
             stmt = dialect_insert(PositionGroupLot).values(
                 group_id=body.target_group_id, transaction_id=txn_id,
+                user_id=user_id,
             )
             session.execute(stmt.on_conflict_do_nothing())
 

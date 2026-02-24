@@ -273,6 +273,30 @@ Key tables:
 - `order_chains`: Links related orders (opening → rolls → closing)
 - `positions`: Current position inventory
 
+## Multi-Tenancy (user_id Scoping)
+
+Every data table (except `quote_cache`) has a `user_id` column that scopes data to a specific user. This is the foundation for SaaS multi-user support.
+
+### How It Works
+
+- **`src/database/tenant.py`**: Contains `DEFAULT_USER_ID` constant and two SQLAlchemy session event listeners:
+  - `do_orm_execute`: Automatically appends `WHERE user_id = ?` to all ORM SELECT queries
+  - `before_flush`: Auto-sets `user_id` on new ORM objects from `session.info['user_id']`
+- **`get_session(user_id=None)`**: Stores user_id in `session.info['user_id']`, defaults to `DEFAULT_USER_ID`
+- **`dialect_insert()` calls**: Bypass ORM events, so `user_id` must be included in `.values()` explicitly
+
+### Key Rules for Developers
+
+1. **ORM queries** (session.query, session.add) are automatically scoped — no changes needed
+2. **`dialect_insert()`** calls must include `user_id=session.info.get("user_id", DEFAULT_USER_ID)` in `.values()`
+3. **QuoteCache** is global (shared market data) — no user_id column
+4. **Unique constraints** on SyncMetadata, StrategyTarget, and PositionsInventory include `user_id`
+5. **`get_current_user_id()`** in `src/dependencies.py` returns the current user ID (placeholder for auth)
+
+### Tables with user_id (19 total)
+
+Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, ChainMerge, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote
+
 ## Security Considerations
 
 - OAuth2 credentials stored in local `.env` file (gitignored)
