@@ -308,9 +308,9 @@ Every data table (except `quote_cache`) has a `user_id` column that scopes data 
 4. **Unique constraints** on SyncMetadata, StrategyTarget, and PositionsInventory include `user_id`
 5. **`get_current_user_id()`** in `src/dependencies.py` returns the current user ID (placeholder for auth)
 
-### Tables with user_id (19 total)
+### Tables with user_id (18 total)
 
-Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, ChainMerge, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote
+Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote
 
 ## Security Considerations
 

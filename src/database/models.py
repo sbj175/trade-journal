@@ -473,22 +473,6 @@ class LotClosing(Base):
 
 
 # ---------------------------------------------------------------------------
-# Chain merges
-# ---------------------------------------------------------------------------
-
-class ChainMerge(Base):
-    __tablename__ = "chain_merges"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    merged_chain_id = Column(String, nullable=False)
-    source_chain_id = Column(String, nullable=False)
-    underlying = Column(String, nullable=False)
-    account_number = Column(String, nullable=False)
-    merged_at = Column(String, server_default=func.now())
-
-
-# ---------------------------------------------------------------------------
 # Position groups (Ledger page)
 # ---------------------------------------------------------------------------
 

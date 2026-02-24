@@ -41,7 +41,6 @@ TENANT_TABLES = [
     "strategy_targets",
     "position_lots",
     "lot_closings",
-    "chain_merges",
     "position_groups",
     "position_group_lots",
     "positions_inventory",
