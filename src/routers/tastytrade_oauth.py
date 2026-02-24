@@ -238,8 +238,8 @@ async def tastytrade_callback(
             status_code=302,
         )
 
-    # Success — send user to positions page
-    return RedirectResponse(url="/positions", status_code=302)
+    # Success — send user to Import tab to run Initial Sync
+    return RedirectResponse(url="/settings?tab=import&onboarding=1", status_code=302)
 
 
 @router.post("/api/auth/tastytrade/disconnect")

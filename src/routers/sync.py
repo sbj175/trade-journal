@@ -1,8 +1,9 @@
 """Sync routes — unified sync, initial sync, reprocess chains, migrate P&L."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from loguru import logger
 
 from src.database.models import OrderChain
@@ -192,11 +193,34 @@ async def migrate_realized_pnl(user_id: str = Depends(get_current_user_id)):
 
 
 @router.post("/api/sync/initial")
-async def initial_sync(tastytrade: TastytradeClient = Depends(get_tastytrade_client), user_id: str = Depends(get_current_user_id)):
-    """Complete initial sync - clears database and rebuilds from scratch"""
+async def initial_sync(
+    tastytrade: TastytradeClient = Depends(get_tastytrade_client),
+    user_id: str = Depends(get_current_user_id),
+    start_date: Optional[str] = Body(None, embed=True),
+):
+    """Complete initial sync - clears database and rebuilds from scratch.
+
+    Accepts an optional start_date (YYYY-MM-DD) to control how far back to
+    import.  Capped at 730 days (2 years).  Defaults to 730 days if omitted.
+    """
+    # Determine days_back from start_date (max 730 days)
+    MAX_DAYS_BACK = 730
+    if start_date:
+        try:
+            start = date.fromisoformat(start_date)
+            days_back = (date.today() - start).days
+            if days_back < 1:
+                days_back = 1
+            if days_back > MAX_DAYS_BACK:
+                days_back = MAX_DAYS_BACK
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid start_date format: {start_date}")
+    else:
+        days_back = MAX_DAYS_BACK
+
     try:
 
-        logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
+        logger.info(f"Starting INITIAL SYNC - importing {days_back} days of history")
 
         db.reset_sync_metadata()
         logger.info("Skipping user data preservation (moving to order-based system)")
@@ -230,8 +254,8 @@ async def initial_sync(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
             )
         logger.info(f"Saved {len(accounts)} accounts")
 
-        logger.info("Fetching ALL transactions (last 730 days)...")
-        transactions = await tastytrade.get_transactions(days_back=730)
+        logger.info(f"Fetching ALL transactions (last {days_back} days)...")
+        transactions = await tastytrade.get_transactions(days_back=days_back)
         logger.info(f"Fetched {len(transactions)} transactions")
 
         logger.info("Saving raw transactions...")

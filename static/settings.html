@@ -118,21 +118,43 @@
                     <p class="text-tv-muted text-sm">Rebuild or reprocess your trade data from Tastytrade</p>
                 </div>
 
+                <!-- Onboarding welcome banner -->
+                <div x-show="onboarding" class="bg-tv-green/10 border border-tv-green/30 rounded p-4 mb-5">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-check-circle text-tv-green text-lg mt-0.5"></i>
+                        <div>
+                            <p class="text-tv-text font-medium">Your Tastytrade account is connected!</p>
+                            <p class="text-tv-muted text-sm mt-1">Run an Initial Sync below to import your trading history. Choose a start date for how far back you'd like to import.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="space-y-4">
                     <!-- Initial Sync -->
                     <div class="bg-tv-panel border border-tv-border rounded">
-                        <div class="p-5 flex items-start justify-between">
-                            <div>
-                                <h3 class="text-tv-text font-medium mb-1">
-                                    <i class="fas fa-database mr-2 text-tv-muted"></i>Initial Sync
-                                </h3>
-                                <p class="text-tv-muted text-sm">Clears the entire database and rebuilds it from scratch. Fetches all transactions from the last year. Use this if your data appears corrupted or after first install.</p>
+                        <div class="p-5">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <h3 class="text-tv-text font-medium mb-1">
+                                        <i class="fas fa-database mr-2 text-tv-muted"></i>Initial Sync
+                                    </h3>
+                                    <p class="text-tv-muted text-sm">Clears the existing database and rebuilds it from scratch. Fetches all transactions from the selected start date.</p>
+                                </div>
+                                <button @click="initialSync()" :disabled="initialSyncing || reprocessing"
+                                        class="flex-shrink-0 ml-6 px-5 py-2.5 rounded text-sm disabled:opacity-50 whitespace-nowrap"
+                                        :class="onboarding ? 'bg-tv-blue hover:bg-tv-blue/80 text-white' : 'bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30'">
+                                    <i class="fas fa-database mr-2" :class="{'animate-spin': initialSyncing}"></i>
+                                    <span x-text="initialSyncing ? 'Importing...' : (onboarding ? 'Import Trades' : 'Initial Sync')"></span>
+                                </button>
                             </div>
-                            <button @click="initialSync()" :disabled="initialSyncing || reprocessing"
-                                    class="flex-shrink-0 ml-6 bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30 px-5 py-2.5 rounded text-sm disabled:opacity-50 whitespace-nowrap">
-                                <i class="fas fa-database mr-2" :class="{'animate-spin': initialSyncing}"></i>
-                                <span x-text="initialSyncing ? 'Rebuilding...' : 'Initial Sync'"></span>
-                            </button>
+                            <!-- Start date picker -->
+                            <div class="mt-4 flex items-center gap-3 ml-7">
+                                <label class="text-tv-muted text-sm whitespace-nowrap">Import from:</label>
+                                <input type="date" x-model="syncStartDate"
+                                       :min="syncMinDate" :max="syncMaxDate"
+                                       class="bg-tv-bg border border-tv-border text-tv-text px-3 py-1.5 rounded text-sm focus:outline-none focus:border-tv-blue">
+                                <span class="text-tv-muted text-xs" x-text="syncDaysBack + ' days of history'"></span>
+                            </div>
                         </div>
                     </div>
 
