@@ -33,6 +33,7 @@ document.addEventListener('alpine:init', () => {
         strategyBreakdown: [],
 
         async init() {
+            await Auth.requireAuth();
             // Load accounts first
             await this.loadAccounts();
 
@@ -166,7 +167,7 @@ document.addEventListener('alpine:init', () => {
 
         async loadAccounts() {
             try {
-                const response = await fetch('/api/accounts');
+                const response = await Auth.authFetch('/api/accounts');
                 const data = await response.json();
                 this.accounts = data.accounts || [];
 
@@ -200,7 +201,7 @@ document.addEventListener('alpine:init', () => {
                 const activeStrategies = this.getActiveStrategies();
                 params.append('strategies', activeStrategies.join(','));
 
-                const response = await fetch(`/api/reports/performance?${params}`);
+                const response = await Auth.authFetch(`/api/reports/performance?${params}`);
                 const data = await response.json();
 
                 if (data.error) {

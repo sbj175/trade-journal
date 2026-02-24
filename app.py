@@ -16,6 +16,7 @@ from loguru import logger
 from src.dependencies import db, connection_manager
 from src.services.sync_service import background_auto_sync
 from src.routers import (
+    auth,
     health,
     pages,
     notes,
@@ -64,6 +65,7 @@ static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Register routers
+app.include_router(auth.router)
 app.include_router(pages.router)
 app.include_router(health.router)
 app.include_router(notes.router)

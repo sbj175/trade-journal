@@ -18,6 +18,7 @@ document.addEventListener('alpine:init', () => {
         filterDirection: [],
         filterType: [],
         async init() {
+            await Auth.requireAuth();
             await this.loadAccounts();
 
             // Restore state from localStorage
@@ -63,7 +64,7 @@ document.addEventListener('alpine:init', () => {
 
         async loadAccounts() {
             try {
-                const response = await fetch('/api/accounts');
+                const response = await Auth.authFetch('/api/accounts');
                 const data = await response.json();
                 this.accounts = data.accounts || [];
                 this.accounts.sort((a, b) => {
@@ -88,7 +89,7 @@ document.addEventListener('alpine:init', () => {
                 if (this.selectedAccount) params.set('account_number', this.selectedAccount);
                 // Server-side underlying filter is exact match; we'll do client-side for partial
                 const url = '/api/ledger' + (params.toString() ? '?' + params.toString() : '');
-                const response = await fetch(url);
+                const response = await Auth.authFetch(url);
                 const data = await response.json();
 
                 // Add expanded state
@@ -423,7 +424,7 @@ document.addEventListener('alpine:init', () => {
                 const { underlying, account } = this._getSourceInfo();
                 const strategyLabel = this._inferStrategyLabel();
                 try {
-                    const resp = await fetch('/api/ledger/groups', {
+                    const resp = await Auth.authFetch('/api/ledger/groups', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ account_number: account, underlying: underlying, strategy_label: strategyLabel })
@@ -437,7 +438,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             try {
-                await fetch('/api/ledger/move-lots', {
+                await Auth.authFetch('/api/ledger/move-lots', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -455,7 +456,7 @@ document.addEventListener('alpine:init', () => {
         async updateGroupStrategy(group, value) {
             if (value === group.strategy_label) return;
             try {
-                await fetch(`/api/ledger/groups/${group.group_id}`, {
+                await Auth.authFetch(`/api/ledger/groups/${group.group_id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ strategy_label: value })

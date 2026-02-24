@@ -37,6 +37,7 @@ document.addEventListener('alpine:init', () => {
         reprocessing: false,
 
         async init() {
+            await Auth.requireAuth();
             await this.checkConnection();
             await this.loadTargets();
             this.loadRollAlerts();
@@ -45,7 +46,7 @@ document.addEventListener('alpine:init', () => {
 
         async checkConnection() {
             try {
-                const resp = await fetch('/api/connection/status');
+                const resp = await Auth.authFetch('/api/connection/status');
                 if (resp.ok) {
                     this.connectionStatus = await resp.json();
                 }
@@ -62,7 +63,7 @@ document.addEventListener('alpine:init', () => {
             this.savingCredentials = true;
             try {
                 // Save credentials to .env
-                const saveResp = await fetch('/api/settings/credentials', {
+                const saveResp = await Auth.authFetch('/api/settings/credentials', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -77,7 +78,7 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 // Reconnect with new credentials
-                const reconnResp = await fetch('/api/connection/reconnect', { method: 'POST' });
+                const reconnResp = await Auth.authFetch('/api/connection/reconnect', { method: 'POST' });
                 if (reconnResp.ok) {
                     this.connectionStatus = await reconnResp.json();
                     if (this.connectionStatus.connected) {
@@ -98,7 +99,7 @@ document.addEventListener('alpine:init', () => {
 
         async loadTargets() {
             try {
-                const resp = await fetch('/api/settings/targets');
+                const resp = await Auth.authFetch('/api/settings/targets');
                 if (resp.ok) {
                     this.targets = await resp.json();
                 }
@@ -121,7 +122,7 @@ document.addEventListener('alpine:init', () => {
                     profit_target_pct: parseFloat(t.profit_target_pct),
                     loss_target_pct: parseFloat(t.loss_target_pct)
                 }));
-                const resp = await fetch('/api/settings/targets', {
+                const resp = await Auth.authFetch('/api/settings/targets', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -141,7 +142,7 @@ document.addEventListener('alpine:init', () => {
 
         async resetToDefaults() {
             try {
-                const resp = await fetch('/api/settings/targets/reset', { method: 'POST' });
+                const resp = await Auth.authFetch('/api/settings/targets/reset', { method: 'POST' });
                 if (resp.ok) {
                     await this.loadTargets();
                     this.showNotification('Targets reset to defaults', 'success');
@@ -182,7 +183,7 @@ document.addEventListener('alpine:init', () => {
 
             this.initialSyncing = true;
             try {
-                const response = await fetch('/api/sync/initial', {
+                const response = await Auth.authFetch('/api/sync/initial', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -202,7 +203,7 @@ document.addEventListener('alpine:init', () => {
         async reprocessChains() {
             this.reprocessing = true;
             try {
-                const response = await fetch('/api/reprocess-chains', {
+                const response = await Auth.authFetch('/api/reprocess-chains', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
