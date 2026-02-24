@@ -332,9 +332,9 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 ).delete(synchronize_session='fetch')
                 logger.info(f"[CACHE UPDATE] Cleared cache for account: {affected_account}")
             else:
-                session.query(OrderChainModel).delete()
-                session.query(OrderChainMember).delete()
                 session.query(OrderChainCache).delete()
+                session.query(OrderChainMember).delete()
+                session.query(OrderChainModel).delete()
 
             current_time = datetime.now()
 
