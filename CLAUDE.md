@@ -317,9 +317,9 @@ Every data table (except `quote_cache`) has a `user_id` column that scopes data 
 4. **Unique constraints** on SyncMetadata, StrategyTarget, and PositionsInventory include `user_id`
 5. **`get_current_user_id()`** in `src/dependencies.py` validates JWT and returns the authenticated user ID
 
-### Tables with user_id (18 total)
+### Tables with user_id (19 total)
 
-Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote
+Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote, UserCredential
 
 ## Authentication (Supabase Auth)
 
@@ -365,12 +365,43 @@ SUPABASE_JWT_SECRET=your-secret                         # From Supabase Dashboar
 
 When a user first logs in with Supabase, their data is empty (all existing data belongs to DEFAULT_USER_ID). The `/api/auth/claim-data` endpoint migrates all DEFAULT_USER_ID data to the authenticated user. This is a one-time operation.
 
+## Per-User Tastytrade Credentials (OPT-113)
+
+### Overview
+
+When auth is enabled, each user stores their own encrypted Tastytrade OAuth credentials in the `user_credentials` table instead of a global `.env`. Each user gets their own cached Tastytrade connection. When auth is disabled, the app works exactly as before (single connection from `.env`).
+
+### Architecture
+
+- **`src/utils/credential_encryption.py`**: Fernet-based encrypt/decrypt using `CREDENTIAL_ENCRYPTION_KEY` env var (auto-generated if missing)
+- **`src/database/models.py` → `UserCredential`**: Stores encrypted provider_secret + refresh_token per user/provider
+- **`src/utils/auth_manager.py` → `ConnectionManager`**: Per-user connection pool (LRU, max 50, 60-min TTL)
+- **`src/dependencies.py` → `get_tastytrade_client`**: FastAPI dependency that resolves global or per-user client based on `AUTH_ENABLED`
+
+### Environment Variables
+
+```
+CREDENTIAL_ENCRYPTION_KEY=<Fernet key>   # Required to persist encrypted credentials across restarts
+```
+
+If not set, a temporary key is auto-generated and logged at startup.
+
+### Key Rules for Developers
+
+1. **Use `get_tastytrade_client` dependency** for endpoints that need the Tastytrade client — replaces the old `connection_manager.get_client()` + null check pattern
+2. **Quotes endpoint** resolves the client manually (not via Depends) to allow cache fallback when not connected
+3. **WebSocket** resolves the client directly via `connection_manager.get_user_client(user_id)` after JWT validation
+4. **Settings save** (`POST /api/settings/credentials`): encrypts + upserts into `user_credentials` then evicts cached connection
+5. **Settings delete** (`DELETE /api/settings/credentials`): deletes credential row + evicts connection (auth-enabled only)
+6. **Startup**: when `AUTH_ENABLED`, skips global auto-connect and auto-sync (each user connects on demand)
+
 ## Security Considerations
 
-- Tastytrade OAuth2 credentials stored in local `.env` file (gitignored)
+- **Auth disabled**: Tastytrade OAuth2 credentials stored in local `.env` file (gitignored)
+- **Auth enabled**: Credentials encrypted at rest with Fernet in `user_credentials` table; `CREDENTIAL_ENCRYPTION_KEY` must be in `.env`
 - Supabase auth credentials (`SUPABASE_JWT_SECRET`) also in `.env` (never committed)
 - JWT validation is local (no network calls) — fast and reliable
-- A shared `ConnectionManager` singleton holds the authenticated Tastytrade client
+- Per-user `ConnectionManager` pool with LRU eviction; connections expire after 60 minutes
 - Never commit: `.env`, `*.db`, `docker-compose.yml` credentials
 - All data stored locally (SQLite file or local Docker PostgreSQL) - no external API calls except to Tastytrade and Supabase Auth
 
