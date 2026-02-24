@@ -104,6 +104,21 @@ python query_db.py
 # Schema created via Base.metadata.create_all() in DatabaseManager.initialize_database()
 ```
 
+### Applying Schema Migrations
+After pulling code that includes new Alembic migrations, apply them before starting the app:
+```bash
+# SQLite (default)
+venv/bin/alembic upgrade head
+
+# PostgreSQL
+DATABASE_URL=postgresql://optionledger:optionledger@localhost:5432/optionledger venv/bin/alembic upgrade head
+```
+For a brand-new database that was created by `create_all()` but never stamped by Alembic, stamp the baseline first:
+```bash
+venv/bin/alembic stamp 880552b12e57
+venv/bin/alembic upgrade head
+```
+
 ### Running with PostgreSQL (optional)
 ```bash
 # 1. Start PostgreSQL via Docker
