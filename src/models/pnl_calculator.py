@@ -12,6 +12,7 @@ import logging
 
 from src.database.engine import dialect_insert
 from src.database.models import PositionLot as PositionLotModel
+from src.database.tenant import DEFAULT_USER_ID
 
 if TYPE_CHECKING:
     from src.models.lot_manager import LotManager
@@ -88,6 +89,8 @@ class PnLCalculator:
         )
 
         with self.db.get_session() as session:
+            user_id = session.info.get("user_id", DEFAULT_USER_ID)
+            values["user_id"] = user_id
             stmt = dialect_insert(PositionLotModel).values(**values)
             stmt = stmt.on_conflict_do_update(
                 index_elements=[PositionLotModel.transaction_id],

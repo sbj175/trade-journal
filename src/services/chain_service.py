@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 from sqlalchemy import func
 from src.database.engine import dialect_insert
+from src.database.tenant import DEFAULT_USER_ID
 
 from src.database.models import (
     OrderChain as OrderChainModel, OrderChainMember, OrderChainCache,
@@ -416,6 +417,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     logger.debug(f"Could not get lot metadata for chain {chain.chain_id}: {lot_err}")
 
                 # Insert chain data with V3 columns
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 chain_values = dict(
                     chain_id=chain.chain_id,
                     underlying=chain.underlying,
@@ -436,6 +438,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     assignment_date=assignment_date,
                     created_at=current_time,
                     updated_at=current_time,
+                    user_id=user_id,
                 )
                 stmt = dialect_insert(OrderChainModel).values(**chain_values)
                 stmt = stmt.on_conflict_do_update(
@@ -481,6 +484,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     if order.order_id in existing_order_ids:
                         member_values = dict(
                             chain_id=chain.chain_id, order_id=order.order_id,
+                            user_id=user_id,
                         )
                         stmt = dialect_insert(OrderChainMember).values(**member_values)
                         stmt = stmt.on_conflict_do_nothing()
@@ -587,6 +591,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         chain_id=chain.chain_id,
                         order_id=order.order_id,
                         order_data=json.dumps(order_data),
+                        user_id=user_id,
                     )
                     stmt = dialect_insert(OrderChainCache).values(**cache_values)
                     stmt = stmt.on_conflict_do_update(

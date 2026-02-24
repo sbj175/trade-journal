@@ -30,14 +30,15 @@ class DatabaseManager:
         if not self._initialized:
             self.initialize_database()
 
-    def get_session(self):
+    def get_session(self, user_id: str = None):
         """Context manager for SQLAlchemy sessions (delegates to engine module)."""
-        return sa_engine.get_session()
+        return sa_engine.get_session(user_id=user_id)
     
     def initialize_database(self):
         """Create all necessary tables using SQLAlchemy models + legacy migration support."""
         from sqlalchemy import func as sa_func, inspect
-        from src.database.models import Base, StrategyTarget
+        from src.database.models import Base, StrategyTarget, User
+        from src.database.tenant import DEFAULT_USER_ID
 
         start_time = time.time()
         logger.info("Starting database initialization...")
@@ -46,6 +47,15 @@ class DatabaseManager:
         # Create all tables from ORM models (IF NOT EXISTS semantics)
         engine = sa_engine._engine
         Base.metadata.create_all(engine)
+
+        # Seed default user if not present
+        with self.get_session() as session:
+            if not session.get(User, DEFAULT_USER_ID):
+                session.add(User(
+                    id=DEFAULT_USER_ID,
+                    display_name="Default User",
+                    is_active=True,
+                ))
 
         # Seed default strategy targets if table is empty
         with self.get_session() as session:
@@ -81,12 +91,14 @@ class DatabaseManager:
         """Save account information"""
         from src.database.engine import dialect_insert
         from src.database.models import Account
+        from src.database.tenant import DEFAULT_USER_ID
 
         try:
             with self.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 stmt = dialect_insert(Account).values(
                     account_number=account_number, account_name=account_name,
-                    account_type=account_type,
+                    account_type=account_type, user_id=user_id,
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
                 session.execute(stmt.on_conflict_do_update(
@@ -128,10 +140,12 @@ class DatabaseManager:
         """Save raw transactions to database for order-based grouping"""
         from src.database.engine import dialect_insert
         from src.database.models import RawTransaction
+        from src.database.tenant import DEFAULT_USER_ID
         self.ensure_initialized()
         saved_count = 0
 
         with self.get_session() as session:
+            user_id = session.info.get("user_id", DEFAULT_USER_ID)
             for txn in transactions:
                 try:
                     stmt = dialect_insert(RawTransaction).values(
@@ -146,6 +160,7 @@ class DatabaseManager:
                         value=txn.get('value'), regulatory_fees=txn.get('regulatory_fees'),
                         clearing_fees=txn.get('clearing_fees'), commission=txn.get('commission'),
                         net_value=txn.get('net_value'), is_estimated_fee=txn.get('is_estimated_fee'),
+                        user_id=user_id,
                     )
                     # Skip duplicates (on conflict do nothing)
                     session.execute(stmt.on_conflict_do_nothing(index_elements=['id']))
@@ -260,14 +275,16 @@ class DatabaseManager:
         """Set a sync metadata value"""
         from src.database.engine import dialect_insert
         from src.database.models import SyncMetadata
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 stmt = dialect_insert(SyncMetadata).values(
-                    key=key, value=value,
+                    key=key, value=value, user_id=user_id,
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
                 session.execute(stmt.on_conflict_do_update(
-                    index_elements=['key'],
+                    constraint='uq_sync_metadata_user_key',
                     set_={'value': stmt.excluded.value, 'updated_at': stmt.excluded.updated_at},
                 ))
                 return True
@@ -366,18 +383,20 @@ class DatabaseManager:
         """Save strategy targets (upsert pattern)"""
         from src.database.engine import dialect_insert
         from src.database.models import StrategyTarget
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 for target in targets:
                     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     stmt = dialect_insert(StrategyTarget).values(
                         strategy_name=target['strategy_name'],
                         profit_target_pct=target['profit_target_pct'],
                         loss_target_pct=target['loss_target_pct'],
-                        updated_at=now,
+                        updated_at=now, user_id=user_id,
                     )
                     session.execute(stmt.on_conflict_do_update(
-                        index_elements=['strategy_name'],
+                        constraint='uq_strategy_targets_user_name',
                         set_={
                             'profit_target_pct': stmt.excluded.profit_target_pct,
                             'loss_target_pct': stmt.excluded.loss_target_pct,
@@ -405,11 +424,13 @@ class DatabaseManager:
         """Save or delete a comment for an order"""
         from src.database.engine import dialect_insert
         from src.database.models import OrderComment
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 if comment.strip():
                     stmt = dialect_insert(OrderComment).values(
-                        order_id=order_id, comment=comment,
+                        order_id=order_id, comment=comment, user_id=user_id,
                         updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     )
                     session.execute(stmt.on_conflict_do_update(
@@ -438,11 +459,13 @@ class DatabaseManager:
         """Save or delete a note for a position"""
         from src.database.engine import dialect_insert
         from src.database.models import PositionNote
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
                 if note.strip():
                     stmt = dialect_insert(PositionNote).values(
-                        note_key=note_key, note=note,
+                        note_key=note_key, note=note, user_id=user_id,
                         updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     )
                     session.execute(stmt.on_conflict_do_update(
