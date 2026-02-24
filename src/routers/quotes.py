@@ -3,16 +3,16 @@
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from loguru import logger
 
-from src.dependencies import db, connection_manager
+from src.dependencies import db, connection_manager, get_current_user_id, AUTH_ENABLED
 
 router = APIRouter()
 
 
 @router.get("/api/quotes")
-async def get_market_quotes(symbols: str, refresh: bool = False, request: Request = None):
+async def get_market_quotes(symbols: str, refresh: bool = False, request: Request = None, user_id: str = Depends(get_current_user_id)):
     """Get current market quotes for symbols (cached or fresh)"""
     try:
         symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
@@ -78,8 +78,22 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
 
 
 @router.websocket("/ws/quotes")
-async def websocket_quotes(websocket: WebSocket):
+async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None)):
     """WebSocket endpoint for streaming live quotes"""
+    # Validate JWT for WebSocket if auth is enabled
+    if AUTH_ENABLED:
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required")
+            return
+        try:
+            from src.auth.jwt_validator import validate_token as _validate_token
+            from src.database.tenant import set_current_user_id
+            payload = _validate_token(token)
+            set_current_user_id(payload["sub"])
+        except Exception:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+
     await websocket.accept()
     logger.info("WebSocket connection accepted")
 

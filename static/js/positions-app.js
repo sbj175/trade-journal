@@ -163,6 +163,7 @@ document.addEventListener('alpine:init', () => {
 
         // Initialize
         async init() {
+            await Auth.requireAuth();
             await this.loadComments();
             this.loadRollAlertSettings();
             this.privacyMode = localStorage.getItem('privacyMode') || 'off';
@@ -177,7 +178,7 @@ document.addEventListener('alpine:init', () => {
 
         async fetchAccounts() {
             try {
-                const response = await fetch('/api/accounts');
+                const response = await Auth.authFetch('/api/accounts');
                 const data = await response.json();
                 this.accounts = data.accounts || [];
                 this.accounts.sort((a, b) => {
@@ -198,7 +199,7 @@ document.addEventListener('alpine:init', () => {
             this.error = null;
             try {
                 if (includeSync) {
-                    const syncResp = await fetch('/api/sync', { method: 'POST' });
+                    const syncResp = await Auth.authFetch('/api/sync', { method: 'POST' });
                     if (syncResp.ok) {
                         const syncData = await syncResp.json();
                         if (syncData.reconciliation) {
@@ -208,7 +209,7 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 // Fetch from chain-based endpoint
-                const response = await fetch('/api/open-chains');
+                const response = await Auth.authFetch('/api/open-chains');
                 const data = await response.json();
 
                 this.allChains = [];
@@ -248,7 +249,7 @@ document.addEventListener('alpine:init', () => {
 
         async loadAccountBalances() {
             try {
-                const response = await fetch('/api/account-balances');
+                const response = await Auth.authFetch('/api/account-balances');
                 const data = await response.json();
                 const balances = data.balances || data;
                 this.accountBalances = {};
@@ -263,7 +264,7 @@ document.addEventListener('alpine:init', () => {
                 const symbols = this._collectSymbols();
                 if (symbols.length === 0) return;
 
-                const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
+                const response = await Auth.authFetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
                 if (response.ok) {
                     const quotes = await response.json();
                     for (const [symbol, quoteData] of Object.entries(quotes)) {
@@ -293,10 +294,9 @@ document.addEventListener('alpine:init', () => {
             return Array.from(symbolSet).filter(s => s && s !== 'Unknown');
         },
 
-        initializeWebSocket() {
+        async initializeWebSocket() {
             try {
-                const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = protocol + '//' + location.host + '/ws/quotes';
+                const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes');
                 this.ws = new WebSocket(wsUrl);
 
                 this.ws.onopen = () => {
@@ -829,7 +829,7 @@ document.addEventListener('alpine:init', () => {
         // ===== Strategy Targets =====
         async loadStrategyTargets() {
             try {
-                const response = await fetch('/api/settings/targets');
+                const response = await Auth.authFetch('/api/settings/targets');
                 if (response.ok) {
                     const data = await response.json();
                     // API returns a list of {strategy_name, profit_target_pct, loss_target_pct}
@@ -850,7 +850,7 @@ document.addEventListener('alpine:init', () => {
         // ===== Notes (DB-persisted) =====
         async loadComments() {
             try {
-                const response = await fetch('/api/position-notes');
+                const response = await Auth.authFetch('/api/position-notes');
                 if (response.ok) {
                     const data = await response.json();
                     this.positionComments = data.notes || {};
@@ -870,7 +870,7 @@ document.addEventListener('alpine:init', () => {
                     for (const [key, value] of Object.entries(local)) {
                         if (value && !this.positionComments[key]) {
                             this.positionComments[key] = value;
-                            fetch(`/api/position-notes/${encodeURIComponent(key)}`, {
+                            Auth.authFetch(`/api/position-notes/${encodeURIComponent(key)}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ note: value })
@@ -898,7 +898,7 @@ document.addEventListener('alpine:init', () => {
                     // If note exists under old key but not new key, migrate it
                     if (this.positionComments[oldKey] && !this.positionComments[newKey]) {
                         this.positionComments[newKey] = this.positionComments[oldKey];
-                        fetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
+                        Auth.authFetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ note: this.positionComments[oldKey] })
@@ -909,7 +909,7 @@ document.addEventListener('alpine:init', () => {
                     const oldChainKey = `chain_${groupId}`;
                     if (this.positionComments[oldChainKey] && !this.positionComments[newKey]) {
                         this.positionComments[newKey] = this.positionComments[oldChainKey];
-                        fetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
+                        Auth.authFetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ note: this.positionComments[oldChainKey] })
@@ -937,7 +937,7 @@ document.addEventListener('alpine:init', () => {
                 clearTimeout(this._noteSaveTimers[key]);
             }
             this._noteSaveTimers[key] = setTimeout(() => {
-                fetch(`/api/position-notes/${encodeURIComponent(key)}`, {
+                Auth.authFetch(`/api/position-notes/${encodeURIComponent(key)}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ note: value })

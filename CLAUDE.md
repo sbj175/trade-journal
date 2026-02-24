@@ -87,13 +87,20 @@ python app.py
 
 The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains.
 
-### Authentication (OAuth2)
+### Authentication
+
+**Tastytrade API (OAuth2):**
 - Uses Tastytrade SDK v12 with OAuth2 authentication (async-only)
 - Credentials (`TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`) stored in `.env` file
-- App auto-connects on startup via `ConnectionManager` singleton — no login page needed
+- App auto-connects on startup via `ConnectionManager` singleton
 - OAuth credentials can also be configured via the Settings page (`/settings`)
 - Get credentials from: my.tastytrade.com → Manage → My Profile → API → OAuth Applications
-- Token refresh is handled automatically by the SDK
+
+**User Authentication (Supabase Auth — optional):**
+- When `SUPABASE_JWT_SECRET` is set, users must sign in via `/login` page
+- JWTs validated on every API request via `Depends(get_current_user_id)`
+- When not set, auth is disabled — app works as single-user local app
+- See "Authentication (Supabase Auth)" section below for details
 
 ### Database Operations
 ```bash
@@ -200,7 +207,9 @@ python test_expiration.py
 - **Performance Reports**: `static/reports.html` at `/reports` with strategy breakdown and historical performance
 - **Portfolio Risk X-Ray**: `static/risk-dashboard.html` at `/risk` with real-time portfolio Greeks, Black-Scholes engine, and ApexCharts visualizations (delta exposure, theta projection, treemap, scenario analysis)
 - **Settings**: `static/settings.html` at `/settings` for OAuth credential management, connection status, and app configuration
+- **Login**: `static/login.html` at `/login` — standalone Supabase auth page (only shown when auth is enabled)
 - **Alpine.js** for reactivity (loaded from CDN)
+- **Supabase JS SDK** for auth (loaded from CDN on all pages)
 - **ApexCharts** for advanced visualizations on Risk page (loaded from CDN)
 - **Chart.js** for visualizations (loaded from CDN)
 - **Tailwind CSS** for styling (loaded from CDN)
@@ -306,19 +315,64 @@ Every data table (except `quote_cache`) has a `user_id` column that scopes data 
 2. **`dialect_insert()`** calls must include `user_id=session.info.get("user_id", DEFAULT_USER_ID)` in `.values()`
 3. **QuoteCache** is global (shared market data) — no user_id column
 4. **Unique constraints** on SyncMetadata, StrategyTarget, and PositionsInventory include `user_id`
-5. **`get_current_user_id()`** in `src/dependencies.py` returns the current user ID (placeholder for auth)
+5. **`get_current_user_id()`** in `src/dependencies.py` validates JWT and returns the authenticated user ID
 
 ### Tables with user_id (18 total)
 
 Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote
 
+## Authentication (Supabase Auth)
+
+### Overview
+
+User authentication is handled by Supabase Auth. When `SUPABASE_JWT_SECRET` is set, auth is enforced on all `/api/*` data endpoints. When not set, auth is disabled and the app works as a single-user local app (backward compatible).
+
+### How It Works
+
+1. **Frontend**: Supabase JS SDK handles sign-up/sign-in, stores JWT in browser
+2. **Backend**: FastAPI `Depends(get_current_user_id)` validates JWT on every request
+3. **User ID Flow**: JWT `sub` claim → `set_current_user_id()` contextvar → `get_session()` auto-scopes queries
+4. **User Provisioning**: First authenticated request auto-creates a `User` row
+
+### Architecture
+
+- **`src/auth/jwt_validator.py`**: Validates Supabase JWTs (HS256, audience="authenticated")
+- **`src/auth/user_provisioning.py`**: Auto-creates User rows on first login
+- **`src/dependencies.py`**: `get_current_user_id()` dependency — validates JWT or returns DEFAULT_USER_ID
+- **`src/database/tenant.py`**: `ContextVar` for per-request user_id propagation
+- **`src/routers/auth.py`**: Public config endpoint, data claim flow
+- **`static/js/auth.js`**: Frontend auth client (shared across all pages)
+
+### Environment Variables
+
+```
+SUPABASE_URL=https://your-project.supabase.co         # Public project URL
+SUPABASE_ANON_KEY=eyJ...                               # Public anon key (safe for browser)
+SUPABASE_JWT_SECRET=your-secret                         # From Supabase Dashboard > Settings > API
+```
+
+**Behavioral switch:** `SUPABASE_JWT_SECRET` present → auth enforced; absent → auth disabled (DEFAULT_USER_ID used).
+
+### Key Rules for Developers
+
+1. **All `/api/*` data endpoints** must have `user_id: str = Depends(get_current_user_id)` — this enforces auth AND sets the contextvar
+2. **Public endpoints** (health checks, `/api/auth/config`) must NOT use the dependency
+3. **Frontend `fetch()` calls** must use `Auth.authFetch()` instead — it attaches the JWT header automatically
+4. **WebSocket connections** pass the token as `?token=JWT` query parameter
+5. **New pages** must include `<script src="/static/js/auth.js"></script>` and call `Auth.requireAuth()` in their Alpine `init()`
+
+### Data Claim Flow
+
+When a user first logs in with Supabase, their data is empty (all existing data belongs to DEFAULT_USER_ID). The `/api/auth/claim-data` endpoint migrates all DEFAULT_USER_ID data to the authenticated user. This is a one-time operation.
+
 ## Security Considerations
 
-- OAuth2 credentials stored in local `.env` file (gitignored)
-- No login page, session cookies, or per-request authentication
-- A shared `ConnectionManager` singleton holds the authenticated client
+- Tastytrade OAuth2 credentials stored in local `.env` file (gitignored)
+- Supabase auth credentials (`SUPABASE_JWT_SECRET`) also in `.env` (never committed)
+- JWT validation is local (no network calls) — fast and reliable
+- A shared `ConnectionManager` singleton holds the authenticated Tastytrade client
 - Never commit: `.env`, `*.db`, `docker-compose.yml` credentials
-- All data stored locally (SQLite file or local Docker PostgreSQL) - no external API calls except to Tastytrade
+- All data stored locally (SQLite file or local Docker PostgreSQL) - no external API calls except to Tastytrade and Supabase Auth
 
 ## Common Issues and Solutions
 

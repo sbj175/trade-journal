@@ -2,10 +2,12 @@
 
 import os
 
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.templating import Jinja2Templates
 
 from src.database.db_manager import DatabaseManager
-from src.database.tenant import DEFAULT_USER_ID
+from src.database.tenant import DEFAULT_USER_ID, set_current_user_id
 from src.models.order_models import OrderManager
 from src.models.position_inventory import PositionInventoryManager
 from src.models.order_processor import OrderProcessor
@@ -24,11 +26,43 @@ pnl_calculator = PnLCalculator(db, position_manager, lot_manager)
 connection_manager = ConnectionManager()
 templates = Jinja2Templates(directory="static")
 
+# Auth is enabled when SUPABASE_JWT_SECRET is set
+AUTH_ENABLED = bool(os.getenv("SUPABASE_JWT_SECRET"))
 
-def get_current_user_id() -> str:
-    """Return the current user ID.
+# HTTPBearer with auto_error=False so we can handle missing tokens ourselves
+_bearer_scheme = HTTPBearer(auto_error=False)
 
-    Placeholder: always returns DEFAULT_USER_ID.
-    Will be wired to JWT/session extraction when auth is added.
+
+async def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> str:
+    """Extract and validate the authenticated user ID.
+
+    When auth is disabled (no SUPABASE_JWT_SECRET), returns DEFAULT_USER_ID
+    for full backward compatibility.
+
+    When auth is enabled, validates the Supabase JWT and returns the user's
+    UUID from the 'sub' claim. Also sets the contextvar so get_session()
+    automatically scopes queries.
     """
-    return DEFAULT_USER_ID
+    if not AUTH_ENABLED:
+        set_current_user_id(DEFAULT_USER_ID)
+        return DEFAULT_USER_ID
+
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from src.auth.jwt_validator import validate_token, AuthError
+    from src.auth.user_provisioning import ensure_user_exists
+
+    try:
+        payload = validate_token(credentials.credentials)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    uid = payload["sub"]
+    email = payload.get("email")
+
+    ensure_user_exists(uid, email)
+    set_current_user_id(uid)
+    return uid

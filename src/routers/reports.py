@@ -3,18 +3,18 @@
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, order_manager
+from src.dependencies import db, order_manager, get_current_user_id
 from src.services.report_service import calculate_max_risk_reward
 
 router = APIRouter()
 
 
 @router.get("/api/dashboard")
-async def get_dashboard_data(account_number: Optional[str] = None):
+async def get_dashboard_data(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     """Get dashboard summary data using the new order-based system"""
     try:
         chains = order_manager.get_order_chains(account_number=account_number)
@@ -126,7 +126,7 @@ async def get_dashboard_data(account_number: Optional[str] = None):
 
 
 @router.get("/api/performance/monthly")
-async def get_monthly_performance(year: int = None):
+async def get_monthly_performance(year: int = None, user_id: str = Depends(get_current_user_id)):
     """Get monthly performance data"""
     try:
         if year is None:
@@ -140,7 +140,7 @@ async def get_monthly_performance(year: int = None):
 
 
 @router.get("/api/reports/strategies")
-async def get_available_strategies():
+async def get_available_strategies(user_id: str = Depends(get_current_user_id)):
     """Get list of strategies that have been used in closed trades"""
     try:
         with db.get_session() as session:
@@ -162,7 +162,8 @@ async def get_available_strategies():
 async def get_performance_report(
     account_number: Optional[str] = None,
     days: str = "90",
-    strategies: str = ""
+    strategies: str = "",
+    user_id: str = Depends(get_current_user_id),
 ):
     """Get performance report data for closed trades"""
     try:

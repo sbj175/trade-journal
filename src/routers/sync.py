@@ -2,11 +2,11 @@
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager
+from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager, get_current_user_id
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 @router.post("/api/sync")
-async def sync_unified():
+async def sync_unified(user_id: str = Depends(get_current_user_id)):
     """Unified sync endpoint with smart date range calculation"""
     try:
         tastytrade = connection_manager.get_client()
@@ -165,7 +165,7 @@ async def sync_unified():
 
 
 @router.post("/api/migrate-realized-pnl")
-async def migrate_realized_pnl():
+async def migrate_realized_pnl(user_id: str = Depends(get_current_user_id)):
     """One-time migration to populate realized_pnl for existing chains"""
     try:
         logger.info("Starting realized P&L migration...")
@@ -194,7 +194,7 @@ async def migrate_realized_pnl():
 
 
 @router.post("/api/sync/initial")
-async def initial_sync():
+async def initial_sync(user_id: str = Depends(get_current_user_id)):
     """Complete initial sync - clears database and rebuilds from scratch"""
     try:
         tastytrade = connection_manager.get_client()
@@ -318,7 +318,7 @@ async def initial_sync():
 
 
 @router.post("/api/reprocess-chains")
-async def reprocess_chains():
+async def reprocess_chains(user_id: str = Depends(get_current_user_id)):
     """Reprocess orders and chains from existing raw transactions"""
     try:
         logger.info("Starting chain reprocessing from database")

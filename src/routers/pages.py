@@ -55,3 +55,9 @@ async def ledger_page(request: Request):
 async def settings_page(request: Request):
     """Serve the Settings page"""
     return templates.TemplateResponse("settings.html", _nav_context(request, "/settings", "settings"))
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Serve the login page (standalone, no nav bar)"""
+    return templates.TemplateResponse("login.html", {"request": request})

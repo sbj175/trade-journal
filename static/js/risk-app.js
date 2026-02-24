@@ -18,6 +18,7 @@ document.addEventListener('alpine:init', () => {
 
         // ==================== LIFECYCLE ====================
         async init() {
+            await Auth.requireAuth();
             await this.fetchData();
             // Restore saved account selection AFTER accounts are loaded
             this.selectedAccount = localStorage.getItem('trade_journal_selected_account') || '';
@@ -28,9 +29,9 @@ document.addEventListener('alpine:init', () => {
             this.isLoading = true;
             try {
                 const [posRes, balRes, acctRes] = await Promise.all([
-                    fetch('/api/positions'),
-                    fetch('/api/account-balances'),
-                    fetch('/api/accounts')
+                    Auth.authFetch('/api/positions'),
+                    Auth.authFetch('/api/account-balances'),
+                    Auth.authFetch('/api/accounts')
                 ]);
                 if (posRes.ok) this.rawPositions = await posRes.json();
                 if (balRes.ok) {
@@ -66,9 +67,9 @@ document.addEventListener('alpine:init', () => {
         },
 
         // ==================== WEBSOCKET ====================
-        connectWebSocket() {
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            this.ws = new WebSocket(`${protocol}//${location.host}/ws/quotes`);
+        async connectWebSocket() {
+            const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes');
+            this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');

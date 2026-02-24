@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionLedger - Sign In</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/js/tailwind-config.js"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
+        body { background: #131722; color: #d1d4dc; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center" x-data="loginApp" x-cloak>
+
+    <div class="w-full max-w-md px-6">
+        <!-- Logo -->
+        <div class="text-center mb-8">
+            <span class="text-tv-blue font-semibold text-3xl">
+                <i class="fas fa-chart-line mr-2"></i>OptionLedger
+            </span>
+            <p class="text-tv-muted mt-2">Options Trading Analytics</p>
+        </div>
+
+        <!-- Auth Not Enabled Message -->
+        <template x-if="!authEnabled && loaded">
+            <div class="bg-tv-panel border border-tv-border rounded-lg p-6 text-center">
+                <i class="fas fa-info-circle text-tv-blue text-2xl mb-3"></i>
+                <p class="text-tv-text mb-4">Authentication is not enabled.</p>
+                <a href="/positions" class="inline-block bg-tv-blue hover:bg-blue-600 text-white px-6 py-2 rounded text-sm">
+                    Go to App
+                </a>
+            </div>
+        </template>
+
+        <!-- Login Form -->
+        <template x-if="authEnabled && loaded">
+            <div class="bg-tv-panel border border-tv-border rounded-lg p-6">
+                <h2 class="text-xl font-semibold text-tv-text mb-6 text-center" x-text="isSignUp ? 'Create Account' : 'Sign In'"></h2>
+
+                <!-- Error Message -->
+                <div x-show="error" x-cloak
+                     class="bg-red-900/30 border border-red-700 text-red-400 px-4 py-2 rounded mb-4 text-sm">
+                    <span x-text="error"></span>
+                </div>
+
+                <!-- Success Message -->
+                <div x-show="success" x-cloak
+                     class="bg-green-900/30 border border-green-700 text-green-400 px-4 py-2 rounded mb-4 text-sm">
+                    <span x-text="success"></span>
+                </div>
+
+                <form @submit.prevent="handleSubmit" class="space-y-4">
+                    <div>
+                        <label class="block text-tv-muted text-sm mb-1">Email</label>
+                        <input type="email" x-model="email" required
+                               class="w-full bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded focus:outline-none focus:border-tv-blue"
+                               placeholder="you@example.com">
+                    </div>
+
+                    <div>
+                        <label class="block text-tv-muted text-sm mb-1">Password</label>
+                        <input type="password" x-model="password" required minlength="6"
+                               class="w-full bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded focus:outline-none focus:border-tv-blue"
+                               placeholder="Min 6 characters">
+                    </div>
+
+                    <button type="submit" :disabled="loading"
+                            class="w-full bg-tv-blue hover:bg-blue-600 disabled:opacity-50 text-white py-2 rounded text-sm font-medium">
+                        <span x-show="!loading" x-text="isSignUp ? 'Create Account' : 'Sign In'"></span>
+                        <span x-show="loading"><i class="fas fa-spinner fa-spin mr-1"></i>Please wait...</span>
+                    </button>
+                </form>
+
+                <div class="mt-4 text-center text-sm">
+                    <template x-if="!isSignUp">
+                        <p class="text-tv-muted">
+                            Don't have an account?
+                            <button @click="isSignUp = true; error = ''; success = ''" class="text-tv-blue hover:underline">Sign up</button>
+                        </p>
+                    </template>
+                    <template x-if="isSignUp">
+                        <p class="text-tv-muted">
+                            Already have an account?
+                            <button @click="isSignUp = false; error = ''; success = ''" class="text-tv-blue hover:underline">Sign in</button>
+                        </p>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('loginApp', () => ({
+            email: '',
+            password: '',
+            error: '',
+            success: '',
+            loading: false,
+            isSignUp: false,
+            authEnabled: false,
+            loaded: false,
+            supabaseClient: null,
+
+            async init() {
+                try {
+                    const resp = await fetch('/api/auth/config');
+                    const config = await resp.json();
+                    this.authEnabled = config.auth_enabled;
+
+                    if (this.authEnabled && config.supabase_url && config.supabase_anon_key) {
+                        this.supabaseClient = window.supabase.createClient(
+                            config.supabase_url,
+                            config.supabase_anon_key
+                        );
+
+                        // Check if already logged in
+                        const { data: { session } } = await this.supabaseClient.auth.getSession();
+                        if (session) {
+                            window.location.href = '/positions';
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to load auth config:', e);
+                    this.authEnabled = false;
+                }
+                this.loaded = true;
+            },
+
+            async handleSubmit() {
+                this.error = '';
+                this.success = '';
+                this.loading = true;
+
+                try {
+                    if (!this.supabaseClient) {
+                        this.error = 'Authentication service not available';
+                        return;
+                    }
+
+                    let result;
+                    if (this.isSignUp) {
+                        result = await this.supabaseClient.auth.signUp({
+                            email: this.email,
+                            password: this.password,
+                        });
+                    } else {
+                        result = await this.supabaseClient.auth.signInWithPassword({
+                            email: this.email,
+                            password: this.password,
+                        });
+                    }
+
+                    if (result.error) {
+                        this.error = result.error.message;
+                        return;
+                    }
+
+                    if (this.isSignUp && result.data?.user && !result.data?.session) {
+                        // Email confirmation required
+                        this.success = 'Check your email for a confirmation link.';
+                        return;
+                    }
+
+                    // Success — redirect
+                    window.location.href = '/positions';
+                } catch (e) {
+                    this.error = e.message || 'An unexpected error occurred';
+                } finally {
+                    this.loading = false;
+                }
+            },
+        }));
+    });
+    </script>
+</body>
+</html>

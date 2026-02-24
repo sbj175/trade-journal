@@ -5,12 +5,12 @@ import uuid as _uuid
 from datetime import datetime
 from typing import Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
 from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionLot as PositionLotModel
-from src.dependencies import db, lot_manager
+from src.dependencies import db, lot_manager, get_current_user_id
 from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup
 from src.services.ledger_service import seed_position_groups, _refresh_group_status
 
@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/api/ledger")
-async def get_ledger(account_number: str = '', underlying: str = ''):
+async def get_ledger(account_number: str = '', underlying: str = '', user_id: str = Depends(get_current_user_id)):
     """Main Ledger data endpoint — returns position groups with lots and derived orders."""
 
     # Auto-seed if position_groups is empty
@@ -171,14 +171,14 @@ async def get_ledger(account_number: str = '', underlying: str = ''):
 
 
 @router.post("/api/ledger/seed")
-async def seed_ledger():
+async def seed_ledger(user_id: str = Depends(get_current_user_id)):
     """Explicitly seed position groups from existing chains."""
     count = seed_position_groups()
     return {"message": f"Seeded {count} position groups", "groups_created": count}
 
 
 @router.put("/api/ledger/groups/{group_id}")
-async def update_ledger_group(group_id: str, body: LedgerGroupUpdate):
+async def update_ledger_group(group_id: str, body: LedgerGroupUpdate, user_id: str = Depends(get_current_user_id)):
     """Update group metadata (strategy label)."""
     with db.get_session() as session:
         row = session.query(PositionGroup).filter(
@@ -195,7 +195,7 @@ async def update_ledger_group(group_id: str, body: LedgerGroupUpdate):
 
 
 @router.post("/api/ledger/move-lots")
-async def move_lots(body: LedgerMoveLots):
+async def move_lots(body: LedgerMoveLots, user_id: str = Depends(get_current_user_id)):
     """Move lots between position groups. All lots and target must share underlying + account."""
     if not body.transaction_ids:
         raise HTTPException(status_code=400, detail="No transaction_ids provided")
@@ -249,7 +249,7 @@ async def move_lots(body: LedgerMoveLots):
 
 
 @router.post("/api/ledger/groups")
-async def create_ledger_group(body: LedgerCreateGroup):
+async def create_ledger_group(body: LedgerCreateGroup, user_id: str = Depends(get_current_user_id)):
     """Create a new empty position group."""
     group_id = str(_uuid.uuid4())
 
@@ -266,7 +266,7 @@ async def create_ledger_group(body: LedgerCreateGroup):
 
 
 @router.delete("/api/ledger/groups/{group_id}")
-async def delete_ledger_group(group_id: str):
+async def delete_ledger_group(group_id: str, user_id: str = Depends(get_current_user_id)):
     """Delete a group. Orphaned lots become unassigned (picked up by next seed)."""
     with db.get_session() as session:
         row = session.query(PositionGroup).filter(

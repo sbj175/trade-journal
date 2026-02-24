@@ -3,24 +3,24 @@
 import os
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
-from src.dependencies import db, connection_manager
+from src.dependencies import db, connection_manager, get_current_user_id
 from src.schemas import StrategyTarget, CredentialUpdate
 
 router = APIRouter()
 
 
 @router.get("/api/settings/targets")
-async def get_strategy_targets():
+async def get_strategy_targets(user_id: str = Depends(get_current_user_id)):
     """Get all strategy P&L targets"""
     targets = db.get_strategy_targets()
     return targets
 
 
 @router.post("/api/settings/targets")
-async def save_strategy_targets(targets: List[StrategyTarget]):
+async def save_strategy_targets(targets: List[StrategyTarget], user_id: str = Depends(get_current_user_id)):
     """Save strategy P&L targets"""
     target_dicts = [t.model_dump() for t in targets]
     success = db.save_strategy_targets(target_dicts)
@@ -30,7 +30,7 @@ async def save_strategy_targets(targets: List[StrategyTarget]):
 
 
 @router.post("/api/settings/targets/reset")
-async def reset_strategy_targets():
+async def reset_strategy_targets(user_id: str = Depends(get_current_user_id)):
     """Reset strategy targets to defaults"""
     success = db.reset_strategy_targets()
     if not success:
@@ -39,13 +39,13 @@ async def reset_strategy_targets():
 
 
 @router.get("/api/settings/credentials")
-async def get_credentials_status():
+async def get_credentials_status(user_id: str = Depends(get_current_user_id)):
     """Check if OAuth credentials are configured (never expose actual secrets)"""
     return {"configured": connection_manager.is_configured()}
 
 
 @router.post("/api/settings/credentials")
-async def save_credentials(creds: CredentialUpdate):
+async def save_credentials(creds: CredentialUpdate, user_id: str = Depends(get_current_user_id)):
     """Save OAuth credentials to .env file"""
     try:
         env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
