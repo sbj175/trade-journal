@@ -15,14 +15,28 @@ user_id in their .values() explicitly.
 """
 
 import logging
+from contextvars import ContextVar
 
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Well-known UUID for the default user (used until auth is implemented).
+# Well-known UUID for the default user (used when auth is disabled).
 DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001"
+
+# ContextVar for per-request user_id (set by auth middleware/dependency).
+_current_user_id: ContextVar[str | None] = ContextVar("_current_user_id", default=None)
+
+
+def set_current_user_id(uid: str) -> None:
+    """Set the user_id for the current async/thread context."""
+    _current_user_id.set(uid)
+
+
+def get_current_user_id_from_context() -> str | None:
+    """Get the user_id from the current context, or None if not set."""
+    return _current_user_id.get()
 
 # Models that are global (not tenant-scoped).  These are checked by table name
 # so we don't need to import the model classes here.

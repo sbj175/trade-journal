@@ -4,20 +4,20 @@ import json as _json
 from datetime import date, datetime
 from typing import Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from sqlalchemy import func
 
 from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionLot as PositionLotModel
-from src.dependencies import db, lot_manager, order_manager
+from src.dependencies import db, lot_manager, order_manager, get_current_user_id
 from src.services.ledger_service import seed_position_groups
 
 router = APIRouter()
 
 
 @router.get("/api/positions/cached")
-async def get_cached_positions(account_number: Optional[str] = None):
+async def get_cached_positions(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     """Get cached positions immediately without sync - chain_id already persisted"""
     try:
         positions = db.get_open_positions()
@@ -56,7 +56,7 @@ async def get_cached_positions(account_number: Optional[str] = None):
 
 
 @router.get("/api/positions")
-async def get_positions(account_number: Optional[str] = None):
+async def get_positions(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     """Get current open positions - chain_id/strategy_type already persisted at sync time"""
     try:
         positions = db.get_open_positions()
@@ -79,7 +79,7 @@ async def get_positions(account_number: Optional[str] = None):
 
 
 @router.get("/api/open-chains")
-async def get_open_chains(account_number: Optional[str] = None):
+async def get_open_chains(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     """Get open position groups for the Positions page — position_groups as single source of truth."""
 
     try:
@@ -283,7 +283,7 @@ async def get_open_chains(account_number: Optional[str] = None):
 
 
 @router.get("/api/orders/{order_id}")
-async def get_order(order_id: str):
+async def get_order(order_id: str, user_id: str = Depends(get_current_user_id)):
     """Get a specific order with all positions"""
     try:
         order = order_manager.get_order_by_id(order_id)

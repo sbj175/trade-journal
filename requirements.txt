@@ -16,5 +16,8 @@ python-dotenv>=1.0.0
 pandas>=2.0.0
 pytz>=2023.3
 
+# Authentication
+PyJWT>=2.8.0
+
 # Logging
 loguru>=0.7.0

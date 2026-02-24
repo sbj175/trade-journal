@@ -118,10 +118,16 @@ def get_session(user_id: str = None):
     if _SessionFactory is None:
         raise RuntimeError("SQLAlchemy engine not initialized — call init_engine() first")
 
-    from src.database.tenant import DEFAULT_USER_ID
+    from src.database.tenant import DEFAULT_USER_ID, get_current_user_id_from_context
+
+    # Priority: explicit arg > contextvar > DEFAULT_USER_ID
+    if user_id is None:
+        user_id = get_current_user_id_from_context()
+    if user_id is None:
+        user_id = DEFAULT_USER_ID
 
     session: Session = _SessionFactory()
-    session.info["user_id"] = user_id if user_id is not None else DEFAULT_USER_ID
+    session.info["user_id"] = user_id
     try:
         yield session
         session.commit()

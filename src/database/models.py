@@ -54,8 +54,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = Column(String, unique=True, nullable=True)  # nullable until auth phase
+    email = Column(String, unique=True, nullable=True)
     display_name = Column(String, nullable=True)
+    auth_provider = Column(String(20), nullable=True)  # 'supabase' or None for default user
     is_active = Column(Boolean, default=True)
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())

@@ -2,18 +2,18 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
 from src.database.models import AccountBalance
-from src.dependencies import db, connection_manager
+from src.dependencies import db, connection_manager, get_current_user_id
 
 router = APIRouter()
 
 
 @router.get("/api/accounts")
-async def get_accounts():
+async def get_accounts(user_id: str = Depends(get_current_user_id)):
     """Get all available accounts"""
     try:
         accounts = db.get_accounts()
@@ -24,7 +24,7 @@ async def get_accounts():
 
 
 @router.get("/api/account-balances")
-async def get_account_balances(account_number: Optional[str] = None):
+async def get_account_balances(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     """Get account balances for specified account or all accounts"""
     try:
         with db.get_session() as session:
@@ -53,7 +53,7 @@ async def get_account_balances(account_number: Optional[str] = None):
 
 
 @router.get("/api/debug/balances")
-async def debug_balances():
+async def debug_balances(user_id: str = Depends(get_current_user_id)):
     """Debug endpoint to see all balance fields from Tastytrade API"""
     try:
         tastytrade = connection_manager.get_client()

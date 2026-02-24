@@ -1,23 +1,23 @@
 """Debug routes — strategy inspection, cache debugging, reconciliation."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, order_processor, strategy_detector
+from src.dependencies import db, order_processor, strategy_detector, get_current_user_id
 from src.services.sync_service import reconcile_positions_vs_chains
 
 router = APIRouter()
 
 
 @router.get("/api/reconcile")
-async def get_reconciliation():
+async def get_reconciliation(user_id: str = Depends(get_current_user_id)):
     """Run position reconciliation and return results"""
     return await reconcile_positions_vs_chains()
 
 
 @router.get("/api/debug/strategy/{chain_id}")
-async def debug_strategy(chain_id: str):
+async def debug_strategy(chain_id: str, user_id: str = Depends(get_current_user_id)):
     """Debug strategy detection for a specific chain"""
     raw_transactions = db.get_raw_transactions()
     chains_by_account = order_processor.process_transactions(raw_transactions)
@@ -69,7 +69,7 @@ async def debug_strategy(chain_id: str):
 
 
 @router.get("/api/debug/cache-path/{chain_id}")
-async def debug_cache_path(chain_id: str):
+async def debug_cache_path(chain_id: str, user_id: str = Depends(get_current_user_id)):
     """Debug strategy detection using the EXACT same code path as cache update"""
     raw_transactions = db.get_raw_transactions()
     chains_by_account = order_processor.process_transactions(raw_transactions)
@@ -105,7 +105,7 @@ async def debug_cache_path(chain_id: str):
 
 
 @router.get("/api/debug/cache-update/{chain_id}")
-async def debug_cache_update(chain_id: str):
+async def debug_cache_update(chain_id: str, user_id: str = Depends(get_current_user_id)):
     """Debug the full cache update process for a specific chain"""
     try:
         raw_transactions = db.get_raw_transactions()
