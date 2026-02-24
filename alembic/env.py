@@ -2,14 +2,16 @@
 Alembic environment configuration for OptionLedger.
 
 Key settings:
-- render_as_batch=True  (critical for SQLite ALTER TABLE support)
+- render_as_batch=True for SQLite (critical for ALTER TABLE support)
+- render_as_batch=False for PostgreSQL (not needed, avoids overhead)
+- Reads DATABASE_URL from environment, falls back to SQLite
 - Imports models so autogenerate can detect schema changes
-- Reads db_path from engine module when available, falls back to alembic.ini
 """
 
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, pool
 from sqlalchemy.types import Float, String, Integer, Boolean, Text
 
 from alembic import context
@@ -25,6 +27,10 @@ if config.config_file_name is not None:
 
 # Point Alembic at our declarative metadata for autogenerate support
 target_metadata = Base.metadata
+
+# Determine database URL and dialect
+_db_url = os.environ.get("DATABASE_URL", "sqlite:///trade_journal.db")
+_is_sqlite = _db_url.startswith("sqlite")
 
 
 # SQLite stores all text as TEXT and numbers as REAL regardless of declared type.
@@ -49,14 +55,13 @@ def _compare_type(context, inspected_column, metadata_column, inspected_type, me
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (SQL script output)."""
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=_db_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,
-        compare_type=_compare_type,
+        render_as_batch=_is_sqlite,
+        compare_type=_compare_type if _is_sqlite else None,
     )
 
     with context.begin_transaction():
@@ -65,18 +70,19 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode with a live connection."""
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connect_args = {}
+    if _is_sqlite:
+        connect_args["check_same_thread"] = False
+
+    connectable = create_engine(_db_url, poolclass=pool.NullPool,
+                                connect_args=connect_args)
 
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=True,
-            compare_type=_compare_type,
+            render_as_batch=_is_sqlite,
+            compare_type=_compare_type if _is_sqlite else None,
         )
 
         with context.begin_transaction():
