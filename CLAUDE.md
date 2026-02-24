@@ -51,7 +51,7 @@ The application solves several key problems for options traders:
 The application follows a modern web architecture:
 - **Backend**: Python FastAPI server providing REST API and WebSocket endpoints
 - **Frontend**: Multi-page app with per-page Alpine.js components for reactivity
-- **Database**: SQLite for local data persistence
+- **Database**: SQLAlchemy ORM with dual-dialect support (SQLite default, PostgreSQL optional via Docker)
 - **Real-time Data**: WebSocket integration for live market quotes
 - **Authentication**: OAuth2 via tastytrade SDK v12 (provider_secret + refresh_token in `.env`)
 
@@ -69,7 +69,7 @@ The system maintains two main views:
 
 ## Project Overview
 
-OptionLedger is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLite for local data storage.
+OptionLedger is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLAlchemy ORM for data persistence (SQLite by default, PostgreSQL optional).
 
 ## Common Development Commands
 
@@ -104,6 +104,23 @@ python query_db.py
 # Schema created via Base.metadata.create_all() in DatabaseManager.initialize_database()
 ```
 
+### Running with PostgreSQL (optional)
+```bash
+# 1. Start PostgreSQL via Docker
+docker compose up -d
+
+# 2. Uncomment DATABASE_URL in .env
+# DATABASE_URL=postgresql://optionledger:optionledger@localhost:5432/optionledger
+
+# 3. Start the app — tables auto-created on first run
+./start.sh
+
+# 4. (Optional) Migrate existing SQLite data to PostgreSQL
+python scripts/migrate_sqlite_to_pg.py
+
+# To switch back to SQLite: comment out DATABASE_URL in .env
+```
+
 ### Managing Trades
 ```bash
 # Interactive trade management CLI
@@ -130,10 +147,11 @@ python test_expiration.py
    - System components initialized on startup
 
 2. **Database Layer** (`src/database/db_manager.py`, `src/database/models.py`, `src/database/engine.py`):
-   - SQLite database via SQLAlchemy 2.0 ORM (declarative models in `models.py`)
-   - Engine factory + session context manager in `engine.py`
+   - SQLAlchemy 2.0 ORM with dual-dialect support (SQLite + PostgreSQL)
+   - `engine.py`: `init_engine(db_url)` detects dialect, configures pool/pragmas, exports `dialect_insert()`
    - `db.get_session()` for all database operations (ORM-based)
-   - All trades stored locally in `trade_journal.db`
+   - `DATABASE_URL` env var selects backend; absent = SQLite (`trade_journal.db`)
+   - PostgreSQL available via Docker Compose (`docker compose up -d`)
 
 3. **Order Processing System**:
    - **OrderProcessor** (`src/models/order_processor.py`): Core processing engine for transaction grouping
@@ -179,7 +197,7 @@ python test_expiration.py
 1. User clicks "Sync Trades" → API call to `/api/sync-trades`
 2. Backend fetches transactions from Tastytrade API
 3. Transactions grouped into trades by `StrategyRecognizer`
-4. Trades stored in SQLite database
+4. Trades stored in database (SQLite or PostgreSQL)
 5. Frontend updates via API calls to display trades
 
 ### Live Data Features
@@ -260,14 +278,14 @@ Key tables:
 - OAuth2 credentials stored in local `.env` file (gitignored)
 - No login page, session cookies, or per-request authentication
 - A shared `ConnectionManager` singleton holds the authenticated client
-- Never commit: `.env`, `*.db`
-- All data stored locally - no external API calls except to Tastytrade
+- Never commit: `.env`, `*.db`, `docker-compose.yml` credentials
+- All data stored locally (SQLite file or local Docker PostgreSQL) - no external API calls except to Tastytrade
 
 ## Common Issues and Solutions
 
 1. **Trades showing wrong dates**: Fixed by timezone conversion in `trade_strategy.py`
 2. **Multi-leg trades split up**: Fixed by improved transaction grouping in OrderProcessor
-3. **Database locked errors**: Use context managers, avoid long-running transactions
+3. **Database locked errors** (SQLite only): Use context managers, avoid long-running transactions
 4. **Authentication failures**: Check `.env` has valid `TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`, or update via Settings page
 5. **Missing quotes**: Check market hours and ensure symbols are valid
 6. **Incorrect P&L for rolls**: The system properly tracks roll chains and calculates cumulative P&L
