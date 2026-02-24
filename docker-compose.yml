@@ -1,5 +1,8 @@
+name: optionledger
+
 services:
   postgres:
+    container_name: optionledger-postgres
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: optionledger

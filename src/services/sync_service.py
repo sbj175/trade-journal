@@ -306,9 +306,9 @@ async def reconcile_positions_vs_chains():
             rows = session.query(
                 PositionLotModel.account_number,
                 PositionLotModel.symbol,
-                PositionLotModel.underlying,
+                func.max(PositionLotModel.underlying).label('underlying'),
                 func.sum(PositionLotModel.remaining_quantity).label('net_qty'),
-                PositionGroupLot.group_id,
+                func.max(PositionGroupLot.group_id).label('group_id'),
             ).outerjoin(
                 PositionGroupLot,
                 PositionLotModel.transaction_id == PositionGroupLot.transaction_id,

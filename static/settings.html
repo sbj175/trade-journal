@@ -54,17 +54,17 @@
                 </h1>
             </div>
             <nav class="space-y-0.5 px-2">
-                <button @click="activeTab = 'import'"
-                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
-                        :class="activeTab === 'import' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
-                    <i class="fas fa-file-import w-4 text-center"></i>
-                    <span>Import Trades</span>
-                </button>
                 <button @click="activeTab = 'privacy'"
                         class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
                         :class="activeTab === 'privacy' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
                     <i class="fas fa-eye-slash w-4 text-center"></i>
                     <span>Privacy</span>
+                </button>
+                <button @click="activeTab = 'import'"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+                        :class="activeTab === 'import' ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30' : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+                    <i class="fas fa-file-import w-4 text-center"></i>
+                    <span>Import Trades</span>
                 </button>
                 <button @click="activeTab = 'connection'"
                         class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"

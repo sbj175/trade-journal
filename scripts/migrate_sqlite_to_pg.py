@@ -3,11 +3,14 @@
 Migrate all data from an existing SQLite database to PostgreSQL.
 
 Usage:
-    python scripts/migrate_sqlite_to_pg.py [--sqlite PATH] [--pg-url URL]
+    python scripts/migrate_sqlite_to_pg.py [--sqlite PATH] [--pg-url URL] [--clean]
 
 Defaults:
     --sqlite   trade_journal.db
     --pg-url   postgresql://optionledger:optionledger@localhost:5432/optionledger
+
+Options:
+    --clean    Truncate all PG tables before migrating (exact copy of SQLite)
 
 Tables are migrated in FK dependency order.  FK constraints are deferred
 during the bulk load to handle orphaned references that SQLite allowed.
@@ -66,7 +69,7 @@ MIGRATION_ORDER = [
 BATCH_SIZE = 500
 
 
-def migrate(sqlite_path: str, pg_url: str):
+def migrate(sqlite_path: str, pg_url: str, clean: bool = False):
     sqlite_engine = create_engine(f"sqlite:///{sqlite_path}")
     pg_engine = create_engine(pg_url)
 
@@ -87,6 +90,14 @@ def migrate(sqlite_path: str, pg_url: str):
         # references (e.g. order_chain_members pointing to system-generated
         # order IDs not in the orders table).
         dst.execute(text("SET session_replication_role = 'replica'"))
+
+        if clean:
+            print("Cleaning: truncating all PG tables...")
+            # Truncate in reverse FK order (children before parents)
+            for model in reversed(MIGRATION_ORDER):
+                dst.execute(text(f"TRUNCATE TABLE {model.__tablename__} CASCADE"))
+            dst.commit()
+            print()
 
         for model in MIGRATION_ORDER:
             table_name = model.__tablename__
@@ -160,6 +171,8 @@ def main():
     parser.add_argument("--pg-url",
                         default="postgresql://optionledger:optionledger@localhost:5432/optionledger",
                         help="PostgreSQL connection URL")
+    parser.add_argument("--clean", action="store_true",
+                        help="Truncate all PG tables before migrating")
     args = parser.parse_args()
 
     if not Path(args.sqlite).exists():
@@ -167,8 +180,10 @@ def main():
         sys.exit(1)
 
     print(f"Migrating: {args.sqlite} → {args.pg_url.split('@')[-1]}")
+    if args.clean:
+        print("Mode: CLEAN (truncate before insert)")
     print()
-    migrate(args.sqlite, args.pg_url)
+    migrate(args.sqlite, args.pg_url, clean=args.clean)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from src.database.engine import dialect_insert
 
 from src.database.models import (
     OrderChain as OrderChainModel, OrderChainMember, OrderChainCache,
-    RawTransaction, PositionLot as PositionLotModel,
+    Order as OrderModel, RawTransaction, PositionLot as PositionLotModel,
 )
 from src.dependencies import db, strategy_detector, lot_manager
 
@@ -469,13 +469,22 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                             derived_by_lot.setdefault(dr.derived_from_lot_id, []).append(dr)
 
                 # Insert chain membership links and cache complete order data
+                # Pre-check which order IDs exist (PG enforces FK, SQLite didn't)
+                order_ids_in_chain = [o.order_id for o in chain.orders]
+                existing_order_ids = set(
+                    row[0] for row in session.query(OrderModel.order_id).filter(
+                        OrderModel.order_id.in_(order_ids_in_chain),
+                    ).all()
+                )
+
                 for order in chain.orders:
-                    member_values = dict(
-                        chain_id=chain.chain_id, order_id=order.order_id,
-                    )
-                    stmt = dialect_insert(OrderChainMember).values(**member_values)
-                    stmt = stmt.on_conflict_do_nothing()
-                    session.execute(stmt)
+                    if order.order_id in existing_order_ids:
+                        member_values = dict(
+                            chain_id=chain.chain_id, order_id=order.order_id,
+                        )
+                        stmt = dialect_insert(OrderChainMember).values(**member_values)
+                        stmt = stmt.on_conflict_do_nothing()
+                        session.execute(stmt)
 
                     # Calculate total P&L for this order
                     order_pnl = 0.0
