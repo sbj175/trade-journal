@@ -26,8 +26,8 @@ pnl_calculator = PnLCalculator(db, position_manager, lot_manager)
 connection_manager = ConnectionManager()
 templates = Jinja2Templates(directory="static")
 
-# Auth is enabled when SUPABASE_JWT_SECRET is set
-AUTH_ENABLED = bool(os.getenv("SUPABASE_JWT_SECRET"))
+# Auth is enabled when Supabase credentials are configured (URL for ES256, or legacy JWT secret for HS256)
+AUTH_ENABLED = bool(os.getenv("SUPABASE_URL") or os.getenv("SUPABASE_JWT_SECRET"))
 
 # HTTPBearer with auto_error=False so we can handle missing tokens ourselves
 _bearer_scheme = HTTPBearer(auto_error=False)

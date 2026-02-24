@@ -38,7 +38,7 @@ async def get_auth_config():
     """
     supabase_url = os.getenv("SUPABASE_URL", "")
     supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
-    auth_enabled = bool(os.getenv("SUPABASE_JWT_SECRET"))
+    auth_enabled = bool(supabase_url or os.getenv("SUPABASE_JWT_SECRET"))
 
     return {
         "auth_enabled": auth_enabled,

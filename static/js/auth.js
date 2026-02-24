@@ -104,6 +104,8 @@ const Auth = (() => {
         const token = await getAccessToken();
         if (!token) {
             window.location.href = '/login';
+            // Return a never-resolving promise to halt the caller's init chain
+            return new Promise(() => {});
         }
     }
 

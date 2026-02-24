@@ -284,7 +284,7 @@ class DatabaseManager:
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
                 session.execute(stmt.on_conflict_do_update(
-                    constraint='uq_sync_metadata_user_key',
+                    index_elements=['user_id', 'key'],
                     set_={'value': stmt.excluded.value, 'updated_at': stmt.excluded.updated_at},
                 ))
                 return True
@@ -396,7 +396,7 @@ class DatabaseManager:
                         updated_at=now, user_id=user_id,
                     )
                     session.execute(stmt.on_conflict_do_update(
-                        constraint='uq_strategy_targets_user_name',
+                        index_elements=['user_id', 'strategy_name'],
                         set_={
                             'profit_target_pct': stmt.excluded.profit_target_pct,
                             'loss_target_pct': stmt.excluded.loss_target_pct,
