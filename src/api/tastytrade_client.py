@@ -85,8 +85,12 @@ class TastytradeClient:
 
         return account_list
 
-    async def get_transactions(self, days_back: int = 30, account_number: str = None) -> List[Dict[str, Any]]:
-        """Get transactions for the past N days from all accounts or specific account"""
+    async def get_transactions(self, days_back: int = 30, account_number: str = None, start_date: datetime = None) -> List[Dict[str, Any]]:
+        """Get transactions from all accounts or a specific account.
+
+        If *start_date* is provided it is used directly; otherwise the range
+        is computed from *days_back*.
+        """
         if not self.accounts:
             logger.error("Not authenticated")
             return []
@@ -107,17 +111,15 @@ class TastytradeClient:
             accounts_to_process = self.accounts
 
         all_transactions = []
+        end_date = datetime.now()
+        effective_start = start_date if start_date is not None else end_date - timedelta(days=days_back)
 
         for account in accounts_to_process:
             try:
-                # Calculate date range
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=days_back)
-
                 # Get transaction history - page_offset=None fetches all pages automatically
                 transactions = await account.get_history(
                     self.session,
-                    start_date=start_date,
+                    start_date=effective_start,
                     end_date=end_date,
                     per_page=250,
                     page_offset=None

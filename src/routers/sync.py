@@ -203,24 +203,28 @@ async def initial_sync(
     Accepts an optional start_date (YYYY-MM-DD) to control how far back to
     import.  Capped at 730 days (2 years).  Defaults to 730 days if omitted.
     """
-    # Determine days_back from start_date (max 730 days)
+    from datetime import datetime as _dt
+
     MAX_DAYS_BACK = 730
+    sync_start = None
     if start_date:
         try:
-            start = date.fromisoformat(start_date)
-            days_back = (date.today() - start).days
-            if days_back < 1:
-                days_back = 1
-            if days_back > MAX_DAYS_BACK:
-                days_back = MAX_DAYS_BACK
+            parsed = date.fromisoformat(start_date)
+            # Clamp: no earlier than MAX_DAYS_BACK ago, no later than today
+            earliest = date.today() - timedelta(days=MAX_DAYS_BACK)
+            if parsed < earliest:
+                parsed = earliest
+            if parsed > date.today():
+                parsed = date.today()
+            sync_start = _dt.combine(parsed, _dt.min.time())
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid start_date format: {start_date}")
-    else:
-        days_back = MAX_DAYS_BACK
+
+    days_label = (date.today() - sync_start.date()).days if sync_start else MAX_DAYS_BACK
 
     try:
 
-        logger.info(f"Starting INITIAL SYNC - importing {days_back} days of history")
+        logger.info(f"Starting INITIAL SYNC - importing {days_label} days of history")
 
         db.reset_sync_metadata()
         logger.info("Skipping user data preservation (moving to order-based system)")
@@ -254,8 +258,8 @@ async def initial_sync(
             )
         logger.info(f"Saved {len(accounts)} accounts")
 
-        logger.info(f"Fetching ALL transactions (last {days_back} days)...")
-        transactions = await tastytrade.get_transactions(days_back=days_back)
+        logger.info(f"Fetching ALL transactions (last {days_label} days)...")
+        transactions = await tastytrade.get_transactions(start_date=sync_start) if sync_start else await tastytrade.get_transactions(days_back=MAX_DAYS_BACK)
         logger.info(f"Fetched {len(transactions)} transactions")
 
         logger.info("Saving raw transactions...")
