@@ -106,7 +106,7 @@ def dialect_insert(model):
 
 
 @contextmanager
-def get_session(user_id: str = None):
+def get_session(user_id: str = None, unscoped: bool = False):
     """Context manager yielding a SQLAlchemy Session.
 
     Commits on clean exit, rolls back on exception.
@@ -114,20 +114,27 @@ def get_session(user_id: str = None):
     Args:
         user_id: Tenant user ID for automatic query scoping.
                  Defaults to DEFAULT_USER_ID.  Pass explicitly to override.
+        unscoped: If True, skip tenant filtering entirely.  Use only for
+                  cross-tenant admin operations (e.g. data claim).
     """
     if _SessionFactory is None:
         raise RuntimeError("SQLAlchemy engine not initialized — call init_engine() first")
 
-    from src.database.tenant import DEFAULT_USER_ID, get_current_user_id_from_context
-
-    # Priority: explicit arg > contextvar > DEFAULT_USER_ID
-    if user_id is None:
-        user_id = get_current_user_id_from_context()
-    if user_id is None:
-        user_id = DEFAULT_USER_ID
-
     session: Session = _SessionFactory()
-    session.info["user_id"] = user_id
+
+    if unscoped:
+        # Leave user_id out of session.info — tenant filter checks for None and skips
+        pass
+    else:
+        from src.database.tenant import DEFAULT_USER_ID, get_current_user_id_from_context
+
+        # Priority: explicit arg > contextvar > DEFAULT_USER_ID
+        if user_id is None:
+            user_id = get_current_user_id_from_context()
+        if user_id is None:
+            user_id = DEFAULT_USER_ID
+
+        session.info["user_id"] = user_id
     try:
         yield session
         session.commit()

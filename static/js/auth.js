@@ -150,33 +150,6 @@ const Auth = (() => {
         return wsUrl;
     }
 
-    /**
-     * Check if there's claimable data and prompt the user.
-     * Call after first login.
-     */
-    async function checkAndPromptClaim() {
-        if (!_config?.auth_enabled) return;
-
-        try {
-            const resp = await authFetch('/api/auth/check-claimable');
-            const data = await resp.json();
-            if (data.claimable) {
-                return true; // Caller should show claim UI
-            }
-        } catch (e) {
-            console.warn('Claim check failed:', e);
-        }
-        return false;
-    }
-
-    /**
-     * Claim existing DEFAULT_USER_ID data for the authenticated user.
-     */
-    async function claimData() {
-        const resp = await authFetch('/api/auth/claim-data', { method: 'POST' });
-        return resp.json();
-    }
-
     return {
         init,
         isAuthEnabled,
@@ -186,7 +159,5 @@ const Auth = (() => {
         requireAuth,
         authFetch,
         getAuthenticatedWsUrl,
-        checkAndPromptClaim,
-        claimData,
     };
 })();
