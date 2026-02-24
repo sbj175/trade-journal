@@ -11,6 +11,7 @@ document.addEventListener('alpine:init', () => {
         providerSecret: '',
         refreshToken: '',
         savingCredentials: false,
+        deletingCredentials: false,
 
         get creditStrategies() {
             const names = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
@@ -95,6 +96,24 @@ document.addEventListener('alpine:init', () => {
                 this.showNotification('Error saving credentials: ' + e.message, 'error');
             }
             this.savingCredentials = false;
+        },
+
+        async deleteCredentials() {
+            if (!confirm('Remove your Tastytrade credentials? You will need to re-enter them to sync.')) return;
+            this.deletingCredentials = true;
+            try {
+                const resp = await Auth.authFetch('/api/settings/credentials', { method: 'DELETE' });
+                if (resp.ok) {
+                    this.showNotification('Credentials removed', 'success');
+                    await this.checkConnection();
+                } else {
+                    const data = await resp.json().catch(() => ({}));
+                    this.showNotification(data.detail || 'Failed to remove credentials', 'error');
+                }
+            } catch (e) {
+                this.showNotification('Error removing credentials: ' + e.message, 'error');
+            }
+            this.deletingCredentials = false;
         },
 
         async loadTargets() {

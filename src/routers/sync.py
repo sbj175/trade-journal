@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager, get_current_user_id
+from src.api.tastytrade_client import TastytradeClient
+from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager, get_current_user_id, get_tastytrade_client
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
@@ -20,12 +21,9 @@ router = APIRouter()
 
 
 @router.post("/api/sync")
-async def sync_unified(user_id: str = Depends(get_current_user_id)):
+async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_client), user_id: str = Depends(get_current_user_id)):
     """Unified sync endpoint with smart date range calculation"""
     try:
-        tastytrade = connection_manager.get_client()
-        if not tastytrade:
-            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
 
         logger.info("Sync requested")
 
@@ -194,12 +192,9 @@ async def migrate_realized_pnl(user_id: str = Depends(get_current_user_id)):
 
 
 @router.post("/api/sync/initial")
-async def initial_sync(user_id: str = Depends(get_current_user_id)):
+async def initial_sync(tastytrade: TastytradeClient = Depends(get_tastytrade_client), user_id: str = Depends(get_current_user_id)):
     """Complete initial sync - clears database and rebuilds from scratch"""
     try:
-        tastytrade = connection_manager.get_client()
-        if not tastytrade:
-            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
 
         logger.info("Starting INITIAL SYNC - this will rebuild the entire database")
 

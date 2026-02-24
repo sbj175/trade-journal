@@ -572,3 +572,24 @@ class PositionNote(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     note = Column(String, nullable=False)
     updated_at = Column(String, server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# User credentials (per-user Tastytrade OAuth, encrypted at rest)
+# ---------------------------------------------------------------------------
+
+class UserCredential(Base):
+    __tablename__ = "user_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    provider = Column(String(50), default="tastytrade")
+    encrypted_provider_secret = Column(Text)
+    encrypted_refresh_token = Column(Text)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(String, server_default=func.now())
+    updated_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_credentials_user_provider"),
+    )

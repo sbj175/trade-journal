@@ -7,7 +7,8 @@ from loguru import logger
 from sqlalchemy import func
 
 from src.database.models import AccountBalance
-from src.dependencies import db, connection_manager, get_current_user_id
+from src.api.tastytrade_client import TastytradeClient
+from src.dependencies import db, connection_manager, get_current_user_id, get_tastytrade_client
 
 router = APIRouter()
 
@@ -53,12 +54,9 @@ async def get_account_balances(account_number: Optional[str] = None, user_id: st
 
 
 @router.get("/api/debug/balances")
-async def debug_balances(user_id: str = Depends(get_current_user_id)):
+async def debug_balances(tastytrade: TastytradeClient = Depends(get_tastytrade_client), user_id: str = Depends(get_current_user_id)):
     """Debug endpoint to see all balance fields from Tastytrade API"""
     try:
-        tastytrade = connection_manager.get_client()
-        if not tastytrade:
-            raise HTTPException(status_code=503, detail="Not connected to Tastytrade")
 
         all_balances = []
         for account in tastytrade.accounts:

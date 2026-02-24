@@ -14,12 +14,15 @@ load_dotenv()
 
 
 class TastytradeClient:
-    def __init__(self):
+    def __init__(self, provider_secret: str = None, refresh_token: str = None):
         """
-        Initialize TastytradeClient with OAuth2 credentials from environment.
+        Initialize TastytradeClient with OAuth2 credentials.
+
+        When called without arguments, reads from environment (backward compatible).
+        When called with explicit credentials, uses those instead (per-user mode).
         """
-        self.provider_secret = (os.getenv('TASTYTRADE_PROVIDER_SECRET') or '').strip()
-        self.refresh_token = (os.getenv('TASTYTRADE_REFRESH_TOKEN') or '').strip()
+        self.provider_secret = (provider_secret or os.getenv('TASTYTRADE_PROVIDER_SECRET') or '').strip()
+        self.refresh_token = (refresh_token or os.getenv('TASTYTRADE_REFRESH_TOKEN') or '').strip()
 
         self.session = None
         self.accounts = []

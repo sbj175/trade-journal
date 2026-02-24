@@ -6,6 +6,8 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.templating import Jinja2Templates
 
+from src.api.tastytrade_client import TastytradeClient
+
 from src.database.db_manager import DatabaseManager
 from src.database.tenant import DEFAULT_USER_ID, set_current_user_id
 from src.models.order_models import OrderManager
@@ -66,3 +68,25 @@ async def get_current_user_id(
     ensure_user_exists(uid, email)
     set_current_user_id(uid)
     return uid
+
+
+async def get_tastytrade_client(
+    user_id: str = Depends(get_current_user_id),
+) -> TastytradeClient:
+    """Resolve the Tastytrade client for the current request.
+
+    Auth disabled  → returns the global singleton from .env credentials.
+    Auth enabled   → returns a per-user client from encrypted DB credentials.
+    Raises 503 if no client is available.
+    """
+    if not AUTH_ENABLED:
+        client = connection_manager.get_client()
+    else:
+        client = await connection_manager.get_user_client(user_id)
+
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="Tastytrade not connected. Configure credentials in Settings.",
+        )
+    return client

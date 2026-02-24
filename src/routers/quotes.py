@@ -39,8 +39,11 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
                 return cached_quotes
             logger.info(f"Cache miss for symbols: {symbol_list}, attempting fresh quotes")
 
-        # Use shared client
-        client = connection_manager.get_client()
+        # Resolve client manually (not via Depends) to allow cache fallback
+        if AUTH_ENABLED:
+            client = await connection_manager.get_user_client(user_id)
+        else:
+            client = connection_manager.get_client()
         if not client:
             cached_quotes = db.get_cached_quotes(symbol_list)
             if cached_quotes:
@@ -81,6 +84,7 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
 async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None)):
     """WebSocket endpoint for streaming live quotes"""
     # Validate JWT for WebSocket if auth is enabled
+    payload = None
     if AUTH_ENABLED:
         if not token:
             await websocket.close(code=4001, reason="Authentication required")
@@ -102,7 +106,12 @@ async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None
     try:
         await websocket.send_json({"type": "connected", "message": "WebSocket connected"})
 
-        client = connection_manager.get_client()
+        # Resolve client: per-user when auth enabled, global otherwise
+        if AUTH_ENABLED and payload:
+            ws_user_id = payload["sub"]
+            client = await connection_manager.get_user_client(ws_user_id)
+        else:
+            client = connection_manager.get_client()
         if not client:
             logger.error("WebSocket connection rejected: Not connected to Tastytrade")
             await websocket.send_json({"error": "Not connected to Tastytrade - check settings"})

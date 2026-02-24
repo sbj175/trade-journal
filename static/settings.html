@@ -258,6 +258,13 @@
                                     <i class="fas fa-spinner fa-spin mr-1" x-show="savingCredentials"></i>
                                     <span x-text="savingCredentials ? 'Connecting...' : 'Save & Connect'"></span>
                                 </button>
+                                <button x-show="connectionStatus?.configured" x-cloak
+                                        @click="deleteCredentials()" :disabled="deletingCredentials"
+                                        class="bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30 px-4 py-2 rounded text-sm disabled:opacity-50">
+                                    <i class="fas fa-trash-alt mr-1" x-show="!deletingCredentials"></i>
+                                    <i class="fas fa-spinner fa-spin mr-1" x-show="deletingCredentials"></i>
+                                    <span x-text="deletingCredentials ? 'Removing...' : 'Remove Credentials'"></span>
+                                </button>
                             </div>
                         </div>
 
