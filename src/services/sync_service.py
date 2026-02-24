@@ -10,7 +10,7 @@ from src.database.models import (
     RawTransaction, OrderChain, OrderChainCache,
     PositionLot as PositionLotModel, PositionGroupLot, PositionGroup,
 )
-from src.dependencies import db, connection_manager, order_processor, position_manager, lot_manager, order_manager
+from src.dependencies import db, connection_manager, order_processor, position_manager, lot_manager, order_manager, AUTH_ENABLED
 from src.services import chain_service, ledger_service
 
 
@@ -160,10 +160,16 @@ def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: s
     return db.save_positions(positions_with_dates, account_number)
 
 
-async def sync_unified_internal():
-    """Internal sync function that can be called without HTTP context"""
+async def sync_unified_internal(user_id: str = None):
+    """Internal sync function that can be called without HTTP context.
 
-    tastytrade = connection_manager.get_client()
+    When *user_id* is provided and AUTH_ENABLED, uses the per-user client.
+    Otherwise falls back to the global singleton.
+    """
+    if AUTH_ENABLED and user_id:
+        tastytrade = await connection_manager.get_user_client(user_id)
+    else:
+        tastytrade = connection_manager.get_client()
     if not tastytrade:
         logger.error("Auto-sync: Not connected to Tastytrade")
         return
@@ -222,7 +228,7 @@ async def background_auto_sync():
         logger.error(f"Background auto-sync failed: {e}")
 
 
-async def background_incremental_sync():
+async def background_incremental_sync(user_id: str = None):
     """Background task to perform incremental sync when unmatched positions are detected."""
     try:
         logger.info("Starting background incremental sync...")
@@ -238,7 +244,10 @@ async def background_incremental_sync():
             days_back = 365
             logger.info(f"Background sync: no previous sync, fetching {days_back} days")
 
-        tastytrade = connection_manager.get_client()
+        if AUTH_ENABLED and user_id:
+            tastytrade = await connection_manager.get_user_client(user_id)
+        else:
+            tastytrade = connection_manager.get_client()
         if not tastytrade:
             logger.warning("Background sync: not connected to Tastytrade, skipping")
             return

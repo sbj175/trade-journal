@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from src.dependencies import db, connection_manager
+from src.dependencies import db, connection_manager, AUTH_ENABLED
 from src.services.sync_service import background_auto_sync
 from src.routers import (
     auth,
@@ -85,7 +85,12 @@ async def startup_event():
     logger.info("Starting OptionLedger Web App")
     db.initialize_database()
 
-    # Auto-connect to Tastytrade using OAuth credentials from .env
+    if AUTH_ENABLED:
+        # Multi-user mode: each user connects on demand with their own credentials
+        logger.info("Multi-user mode: per-user Tastytrade connections on demand")
+        return
+
+    # Single-user mode: auto-connect to Tastytrade using OAuth credentials from .env
     if connection_manager.is_configured():
         logger.info("OAuth credentials found, connecting to Tastytrade...")
         await connection_manager.connect()
