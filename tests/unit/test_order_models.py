@@ -150,19 +150,15 @@ class TestChainPnl:
         mgr.save_order_to_database(order)
 
         # Create chain
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO order_chains (
-                    chain_id, underlying, account_number, opening_order_id,
-                    strategy_type, chain_status, total_pnl
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, ("chain-test", "AAPL", "ACCT1", "ORD-1", "Short Call",
-                  chain_status, position_pnl))
-            cursor.execute("""
-                INSERT INTO order_chain_members (chain_id, order_id, sequence_number)
-                VALUES (?, ?, ?)
-            """, ("chain-test", "ORD-1", 1))
+        from src.database.models import OrderChain as OC, OrderChainMember as OCM
+        with db.get_session() as session:
+            session.add(OC(
+                chain_id="chain-test", underlying="AAPL", account_number="ACCT1",
+                opening_order_id="ORD-1", strategy_type="Short Call",
+                chain_status=chain_status, total_pnl=position_pnl,
+            ))
+            session.flush()
+            session.add(OCM(chain_id="chain-test", order_id="ORD-1", sequence_number=1))
 
         return mgr
 
@@ -184,11 +180,9 @@ class TestChainPnl:
         total = mgr.update_chain_pnl("chain-test")
 
         # Verify it was written to the DB
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT total_pnl FROM order_chains WHERE chain_id = ?",
-                           ("chain-test",))
-            row = cursor.fetchone()
+        from src.database.models import OrderChain as OC
+        with db.get_session() as session:
+            row = session.query(OC).filter(OC.chain_id == "chain-test").first()
             assert row is not None
 
 

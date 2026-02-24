@@ -2,12 +2,12 @@
 SQLAlchemy engine factory and session management for OptionLedger.
 
 Provides a module-level engine and a get_session() context manager that
-commits on success and rolls back on exception.  Designed for SQLite now;
-switching to PostgreSQL later means changing the URL and removing the
-SQLite-specific PRAGMA listener.
+commits on success and rolls back on exception.  Supports both SQLite and
+PostgreSQL — the dialect is selected at init time based on the URL prefix.
 """
 
 import logging
+import os
 from contextlib import contextmanager
 from typing import Optional
 
@@ -22,31 +22,56 @@ logger = logging.getLogger(__name__)
 # Module-level state
 _engine: Optional[Engine] = None
 _SessionFactory: Optional[sessionmaker] = None
+_dialect: Optional[str] = None  # "sqlite" or "postgresql"
+_insert_func = None  # dialect-specific insert(), resolved once at init
 
 
-def init_engine(db_path: str) -> Engine:
+def init_engine(db_url: str = None) -> Engine:
     """Create (or replace) the module-level SQLAlchemy engine.
+
+    Args:
+        db_url: Full SQLAlchemy database URL. If None, reads DATABASE_URL
+                from environment. Falls back to sqlite:///trade_journal.db.
 
     Call once at startup — typically inside DatabaseManager.initialize_database().
     """
-    global _engine, _SessionFactory
+    global _engine, _SessionFactory, _dialect, _insert_func
 
-    url = f"sqlite:///{db_path}"
-    _engine = create_engine(
-        url,
-        echo=False,
-        connect_args={"check_same_thread": False},  # required for FastAPI
-    )
+    if db_url is None:
+        db_url = os.environ.get("DATABASE_URL", "sqlite:///trade_journal.db")
 
-    # Enable foreign keys for every connection (SQLite-specific)
-    @event.listens_for(_engine, "connect")
-    def _set_sqlite_pragma(dbapi_conn, connection_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    _dialect = "postgresql" if db_url.startswith("postgresql") else "sqlite"
+
+    if _dialect == "sqlite":
+        _engine = create_engine(
+            db_url,
+            echo=False,
+            connect_args={"check_same_thread": False},  # required for FastAPI
+        )
+
+        # Enable foreign keys for every connection (SQLite-specific)
+        @event.listens_for(_engine, "connect")
+        def _set_sqlite_pragma(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
+        _insert_func = _sqlite_insert
+
+    else:
+        _engine = create_engine(
+            db_url,
+            echo=False,
+            pool_size=5,
+            max_overflow=10,
+        )
+
+        from sqlalchemy.dialects.postgresql import insert as _pg_insert
+        _insert_func = _pg_insert
 
     _SessionFactory = sessionmaker(bind=_engine)
-    logger.info("SQLAlchemy engine initialized for %s", db_path)
+    logger.info("SQLAlchemy engine initialized (%s): %s", _dialect, db_url.split("@")[-1] if "@" in db_url else db_url)
     return _engine
 
 
@@ -55,6 +80,24 @@ def get_engine() -> Engine:
     if _engine is None:
         raise RuntimeError("SQLAlchemy engine not initialized — call init_engine() first")
     return _engine
+
+
+def get_dialect() -> str:
+    """Return the current dialect name ('sqlite' or 'postgresql')."""
+    if _dialect is None:
+        raise RuntimeError("SQLAlchemy engine not initialized — call init_engine() first")
+    return _dialect
+
+
+def dialect_insert(model):
+    """Return a dialect-specific insert() statement for the given model.
+
+    Equivalent to sqlite.insert(Model) or postgresql.insert(Model), resolved
+    once at engine init time so there's no per-call overhead.
+    """
+    if _insert_func is None:
+        raise RuntimeError("SQLAlchemy engine not initialized — call init_engine() first")
+    return _insert_func(model)
 
 
 @contextmanager

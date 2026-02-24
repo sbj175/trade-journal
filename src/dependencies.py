@@ -1,5 +1,7 @@
 """Singleton instances shared across routers and services."""
 
+import os
+
 from fastapi.templating import Jinja2Templates
 
 from src.database.db_manager import DatabaseManager
@@ -11,7 +13,7 @@ from src.models.pnl_calculator import PnLCalculator
 from src.models.lot_manager import LotManager
 from src.utils.auth_manager import ConnectionManager
 
-db = DatabaseManager()
+db = DatabaseManager(db_url=os.getenv("DATABASE_URL"))
 order_manager = OrderManager(db)
 position_manager = PositionInventoryManager(db)
 lot_manager = LotManager(db)

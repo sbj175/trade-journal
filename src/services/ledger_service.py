@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 from loguru import logger
 from sqlalchemy import func
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from src.database.engine import dialect_insert
 
 from src.database.models import (
     OrderChain, PositionLot as PositionLotModel, LotClosing as LotClosingModel,
@@ -93,7 +93,7 @@ def seed_position_groups():
             ).filter(PositionLotModel.chain_id == chain_id).all()]
 
             for txn_id in txn_ids:
-                stmt = sqlite_insert(PositionGroupLot).values(
+                stmt = dialect_insert(PositionGroupLot).values(
                     group_id=group_id, transaction_id=txn_id,
                 )
                 session.execute(stmt.on_conflict_do_nothing())
@@ -143,7 +143,7 @@ def seed_position_groups():
                     groups_created += 1
 
                 for txn_id in txn_ids:
-                    stmt = sqlite_insert(PositionGroupLot).values(
+                    stmt = dialect_insert(PositionGroupLot).values(
                         group_id=group_id, transaction_id=txn_id,
                     )
                     session.execute(stmt.on_conflict_do_nothing())
@@ -445,7 +445,7 @@ def seed_new_lots_into_groups():
                     ))
 
                 for lot in lots:
-                    stmt = sqlite_insert(PositionGroupLot).values(
+                    stmt = dialect_insert(PositionGroupLot).values(
                         group_id=group_id, transaction_id=lot.transaction_id,
                     )
                     session.execute(stmt.on_conflict_do_nothing())
@@ -479,7 +479,7 @@ def seed_new_lots_into_groups():
                         ))
 
                     for lot in blots:
-                        stmt = sqlite_insert(PositionGroupLot).values(
+                        stmt = dialect_insert(PositionGroupLot).values(
                             group_id=group_id, transaction_id=lot.transaction_id,
                         )
                         session.execute(stmt.on_conflict_do_nothing())
