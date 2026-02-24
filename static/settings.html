@@ -199,9 +199,9 @@
                         <h2 class="text-xl font-semibold text-tv-text mb-1">
                             <i class="fas fa-plug mr-2 text-tv-blue"></i>Tastytrade Connection
                         </h2>
-                        <p class="text-tv-muted text-sm">Connect to Tastytrade using OAuth2 credentials</p>
+                        <p class="text-tv-muted text-sm" x-text="authEnabled ? 'Connect your Tastytrade account with one click' : 'Connect to Tastytrade using OAuth2 credentials'"></p>
                     </div>
-                    <div class="flex items-center gap-2" x-show="connectionStatus">
+                    <div class="flex items-center gap-2" x-show="connectionStatus && !onboarding">
                         <template x-if="connectionStatus?.connected">
                             <span class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-3 py-1 rounded text-xs font-medium">
                                 <i class="fas fa-check-circle mr-1"></i>Connected
@@ -219,70 +219,158 @@
                         </template>
                     </div>
                 </div>
-                <div class="bg-tv-panel border border-tv-border rounded">
-                    <div class="p-5 space-y-4">
-                        <!-- Connection error message -->
-                        <div x-show="connectionStatus?.error" x-cloak class="bg-tv-red/10 border border-tv-red/20 rounded p-3 text-sm text-tv-red">
-                            <i class="fas fa-exclamation-triangle mr-1"></i>
-                            <span x-text="connectionStatus?.error"></span>
-                        </div>
 
-                        <!-- Connected accounts -->
-                        <div x-show="connectionStatus?.connected && connectionStatus?.accounts?.length > 0" x-cloak class="text-sm flex flex-col items-start gap-1.5">
-                            <span class="text-tv-muted">Accounts:</span>
-                            <template x-for="acct in connectionStatus?.accounts || []" :key="acct.account_number">
-                                <div class="inline-flex items-center gap-2 bg-tv-bg border border-tv-border rounded px-3 py-1.5 ml-4">
-                                    <span class="text-tv-text font-medium" x-text="acct.account_number"></span>
-                                    <span class="text-tv-muted">&mdash;</span>
-                                    <span class="text-tv-muted" x-text="acct.account_name"></span>
+                <!-- ============================================================ -->
+                <!-- Auth-enabled mode: OAuth Authorization Code flow              -->
+                <!-- ============================================================ -->
+                <template x-if="authEnabled">
+                    <div>
+                        <!-- Onboarding welcome panel -->
+                        <div x-show="onboarding && !connectionStatus?.configured" class="bg-tv-panel border border-tv-blue/30 rounded mb-5">
+                            <div class="p-6 text-center">
+                                <div class="text-4xl mb-4"><i class="fas fa-handshake text-tv-blue"></i></div>
+                                <h3 class="text-xl font-semibold text-tv-text mb-2">Welcome! Let's connect your Tastytrade account.</h3>
+                                <p class="text-tv-muted text-sm mb-5 max-w-lg mx-auto">
+                                    OptionLedger needs read-only access to your Tastytrade account to import your trades and positions.
+                                </p>
+                                <div class="flex flex-col items-center gap-3 mb-5">
+                                    <div class="flex items-center gap-2 text-sm text-tv-muted">
+                                        <i class="fas fa-shield-halved text-tv-green w-5 text-center"></i>
+                                        <span>Read-only scope &mdash; we cannot place trades or modify your account</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-tv-muted">
+                                        <i class="fas fa-lock text-tv-green w-5 text-center"></i>
+                                        <span>Not your password &mdash; you authorize directly on Tastytrade's website</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-tv-muted">
+                                        <i class="fas fa-database text-tv-green w-5 text-center"></i>
+                                        <span>Encrypted at rest &mdash; your credentials are encrypted in our database</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-tv-muted">
+                                        <i class="fas fa-rotate-left text-tv-green w-5 text-center"></i>
+                                        <span>Revoke anytime &mdash; disconnect here or revoke access on Tastytrade</span>
+                                    </div>
                                 </div>
-                            </template>
-                        </div>
-
-                        <!-- Credential inputs -->
-                        <div class="space-y-3">
-                            <div>
-                                <label class="block text-tv-muted text-sm mb-1">Client Secret <span class="text-tv-muted/50">(saved as provider_secret)</span></label>
-                                <input type="password" x-model="providerSecret" placeholder="Enter your Client Secret from Tastytrade"
-                                       class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
-                            </div>
-                            <div>
-                                <label class="block text-tv-muted text-sm mb-1">Refresh Token</label>
-                                <input type="password" x-model="refreshToken" placeholder="Enter your Refresh Token from Tastytrade"
-                                       class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
-                            </div>
-                            <div class="flex items-center gap-3 ml-4">
-                                <button @click="saveCredentials()" :disabled="savingCredentials"
-                                        class="bg-tv-blue hover:bg-tv-blue/80 text-white px-4 py-2 rounded text-sm disabled:opacity-50">
-                                    <i class="fas fa-save mr-1" x-show="!savingCredentials"></i>
-                                    <i class="fas fa-spinner fa-spin mr-1" x-show="savingCredentials"></i>
-                                    <span x-text="savingCredentials ? 'Connecting...' : 'Save & Connect'"></span>
-                                </button>
-                                <button x-show="connectionStatus?.configured" x-cloak
-                                        @click="deleteCredentials()" :disabled="deletingCredentials"
-                                        class="bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30 px-4 py-2 rounded text-sm disabled:opacity-50">
-                                    <i class="fas fa-trash-alt mr-1" x-show="!deletingCredentials"></i>
-                                    <i class="fas fa-spinner fa-spin mr-1" x-show="deletingCredentials"></i>
-                                    <span x-text="deletingCredentials ? 'Removing...' : 'Remove Credentials'"></span>
+                                <button @click="connectTastytrade()" :disabled="connecting"
+                                        class="bg-tv-blue hover:bg-tv-blue/80 text-white px-8 py-3 rounded-lg text-base font-medium disabled:opacity-50 transition-colors">
+                                    <i class="fas fa-right-to-bracket mr-2" x-show="!connecting"></i>
+                                    <i class="fas fa-spinner fa-spin mr-2" x-show="connecting"></i>
+                                    <span x-text="connecting ? 'Redirecting...' : 'Connect to Tastytrade'"></span>
                                 </button>
                             </div>
                         </div>
 
-                        <!-- Setup instructions -->
-                        <div class="bg-tv-bg border border-tv-border rounded p-3 text-xs text-tv-muted space-y-2 ml-4">
-                            <p class="font-medium text-tv-text"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How to get OAuth credentials</p>
-                            <ol class="list-decimal list-inside space-y-1 ml-1">
-                                <li>Log in to <strong class="text-tv-text">my.tastytrade.com</strong></li>
-                                <li>Go to <strong class="text-tv-text">Manage &rarr; My Profile &rarr; API</strong></li>
-                                <li>Under <strong class="text-tv-text">OAuth Applications</strong>, create a new app (or view existing)</li>
-                                <li>Copy the <strong class="text-tv-text">Client Secret</strong> (this is the first field above)</li>
-                                <li>Create a <strong class="text-tv-text">Grant</strong> for the app to generate a <strong class="text-tv-text">Refresh Token</strong></li>
-                                <li>Copy the <strong class="text-tv-text">Refresh Token</strong> (this is the second field above)</li>
-                            </ol>
-                            <p class="text-tv-muted/70 italic">Note: The Client ID shown by Tastytrade is not needed. Only Client Secret and Refresh Token are required.</p>
+                        <!-- Normal connection panel (returning user or post-onboarding) -->
+                        <div x-show="!onboarding || connectionStatus?.configured" class="bg-tv-panel border border-tv-border rounded">
+                            <div class="p-5 space-y-4">
+                                <!-- Connection error message -->
+                                <div x-show="connectionStatus?.error" x-cloak class="bg-tv-red/10 border border-tv-red/20 rounded p-3 text-sm text-tv-red">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    <span x-text="connectionStatus?.error"></span>
+                                </div>
+
+                                <!-- Connected accounts -->
+                                <div x-show="connectionStatus?.connected && connectionStatus?.accounts?.length > 0" x-cloak class="text-sm flex flex-col items-start gap-1.5">
+                                    <span class="text-tv-muted">Accounts:</span>
+                                    <template x-for="acct in connectionStatus?.accounts || []" :key="acct.account_number">
+                                        <div class="inline-flex items-center gap-2 bg-tv-bg border border-tv-border rounded px-3 py-1.5 ml-4">
+                                            <span class="text-tv-text font-medium" x-text="acct.account_number"></span>
+                                            <span class="text-tv-muted">&mdash;</span>
+                                            <span class="text-tv-muted" x-text="acct.account_name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- Action buttons -->
+                                <div class="flex items-center gap-3">
+                                    <button @click="connectTastytrade()" :disabled="connecting"
+                                            class="bg-tv-blue hover:bg-tv-blue/80 text-white px-5 py-2 rounded text-sm disabled:opacity-50">
+                                        <i class="fas fa-right-to-bracket mr-1" x-show="!connecting"></i>
+                                        <i class="fas fa-spinner fa-spin mr-1" x-show="connecting"></i>
+                                        <span x-text="connecting ? 'Redirecting...' : (connectionStatus?.configured ? 'Reconnect to Tastytrade' : 'Connect to Tastytrade')"></span>
+                                    </button>
+                                    <button x-show="connectionStatus?.configured" x-cloak
+                                            @click="disconnectTastytrade()" :disabled="deletingCredentials"
+                                            class="bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30 px-4 py-2 rounded text-sm disabled:opacity-50">
+                                        <i class="fas fa-unlink mr-1" x-show="!deletingCredentials"></i>
+                                        <i class="fas fa-spinner fa-spin mr-1" x-show="deletingCredentials"></i>
+                                        <span x-text="deletingCredentials ? 'Disconnecting...' : 'Disconnect'"></span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </template>
+
+                <!-- ============================================================ -->
+                <!-- Auth-disabled mode: manual credential form (unchanged)        -->
+                <!-- ============================================================ -->
+                <template x-if="!authEnabled">
+                    <div class="bg-tv-panel border border-tv-border rounded">
+                        <div class="p-5 space-y-4">
+                            <!-- Connection error message -->
+                            <div x-show="connectionStatus?.error" x-cloak class="bg-tv-red/10 border border-tv-red/20 rounded p-3 text-sm text-tv-red">
+                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                <span x-text="connectionStatus?.error"></span>
+                            </div>
+
+                            <!-- Connected accounts -->
+                            <div x-show="connectionStatus?.connected && connectionStatus?.accounts?.length > 0" x-cloak class="text-sm flex flex-col items-start gap-1.5">
+                                <span class="text-tv-muted">Accounts:</span>
+                                <template x-for="acct in connectionStatus?.accounts || []" :key="acct.account_number">
+                                    <div class="inline-flex items-center gap-2 bg-tv-bg border border-tv-border rounded px-3 py-1.5 ml-4">
+                                        <span class="text-tv-text font-medium" x-text="acct.account_number"></span>
+                                        <span class="text-tv-muted">&mdash;</span>
+                                        <span class="text-tv-muted" x-text="acct.account_name"></span>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Credential inputs -->
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-tv-muted text-sm mb-1">Client Secret <span class="text-tv-muted/50">(saved as provider_secret)</span></label>
+                                    <input type="password" x-model="providerSecret" placeholder="Enter your Client Secret from Tastytrade"
+                                           class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                                </div>
+                                <div>
+                                    <label class="block text-tv-muted text-sm mb-1">Refresh Token</label>
+                                    <input type="password" x-model="refreshToken" placeholder="Enter your Refresh Token from Tastytrade"
+                                           class="ml-4 w-[calc(100%-1rem)] bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded text-sm focus:outline-none focus:border-tv-blue">
+                                </div>
+                                <div class="flex items-center gap-3 ml-4">
+                                    <button @click="saveCredentials()" :disabled="savingCredentials"
+                                            class="bg-tv-blue hover:bg-tv-blue/80 text-white px-4 py-2 rounded text-sm disabled:opacity-50">
+                                        <i class="fas fa-save mr-1" x-show="!savingCredentials"></i>
+                                        <i class="fas fa-spinner fa-spin mr-1" x-show="savingCredentials"></i>
+                                        <span x-text="savingCredentials ? 'Connecting...' : 'Save & Connect'"></span>
+                                    </button>
+                                    <button x-show="connectionStatus?.configured" x-cloak
+                                            @click="deleteCredentials()" :disabled="deletingCredentials"
+                                            class="bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30 px-4 py-2 rounded text-sm disabled:opacity-50">
+                                        <i class="fas fa-trash-alt mr-1" x-show="!deletingCredentials"></i>
+                                        <i class="fas fa-spinner fa-spin mr-1" x-show="deletingCredentials"></i>
+                                        <span x-text="deletingCredentials ? 'Removing...' : 'Remove Credentials'"></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Setup instructions -->
+                            <div class="bg-tv-bg border border-tv-border rounded p-3 text-xs text-tv-muted space-y-2 ml-4">
+                                <p class="font-medium text-tv-text"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How to get OAuth credentials</p>
+                                <ol class="list-decimal list-inside space-y-1 ml-1">
+                                    <li>Log in to <strong class="text-tv-text">my.tastytrade.com</strong></li>
+                                    <li>Go to <strong class="text-tv-text">Manage &rarr; My Profile &rarr; API</strong></li>
+                                    <li>Under <strong class="text-tv-text">OAuth Applications</strong>, create a new app (or view existing)</li>
+                                    <li>Copy the <strong class="text-tv-text">Client Secret</strong> (this is the first field above)</li>
+                                    <li>Create a <strong class="text-tv-text">Grant</strong> for the app to generate a <strong class="text-tv-text">Refresh Token</strong></li>
+                                    <li>Copy the <strong class="text-tv-text">Refresh Token</strong> (this is the second field above)</li>
+                                </ol>
+                                <p class="text-tv-muted/70 italic">Note: The Client ID shown by Tastytrade is not needed. Only Client Secret and Refresh Token are required.</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
 
             <!-- Strategy Targets Tab -->

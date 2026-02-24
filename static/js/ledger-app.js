@@ -19,6 +19,7 @@ document.addEventListener('alpine:init', () => {
         filterType: [],
         async init() {
             await Auth.requireAuth();
+            await Auth.requireTastytrade();
             await this.loadAccounts();
 
             // Restore state from localStorage

@@ -19,6 +19,7 @@ document.addEventListener('alpine:init', () => {
         // ==================== LIFECYCLE ====================
         async init() {
             await Auth.requireAuth();
+            await Auth.requireTastytrade();
             await this.fetchData();
             // Restore saved account selection AFTER accounts are loaded
             this.selectedAccount = localStorage.getItem('trade_journal_selected_account') || '';

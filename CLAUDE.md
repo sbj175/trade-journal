@@ -395,6 +395,52 @@ If not set, a temporary key is auto-generated and logged at startup.
 5. **Settings delete** (`DELETE /api/settings/credentials`): deletes credential row + evicts connection (auth-enabled only)
 6. **Startup**: when `AUTH_ENABLED`, skips global auto-connect and auto-sync (each user connects on demand)
 
+## Tastytrade OAuth2 Authorization Code Flow (OPT-53)
+
+### Overview
+
+When auth is enabled (SaaS/multi-user mode), new users connect their Tastytrade account via a "Login with Google"-style OAuth2 redirect flow. The user clicks "Connect to Tastytrade", gets redirected to Tastytrade to log in and click "Allow", and gets redirected back with everything configured automatically. No manual copy/paste of keys.
+
+When auth is disabled (single-user/self-hosted), the Settings page shows the existing manual credential form.
+
+### How It Works
+
+1. User visits a data page (Positions, Ledger, etc.) without Tastytrade credentials
+2. `Auth.requireTastytrade()` detects missing credentials and redirects to `/settings?tab=connection&onboarding=1`
+3. User clicks "Connect to Tastytrade" button
+4. Frontend calls `POST /api/auth/tastytrade/authorize` which returns an authorization URL
+5. Browser redirects to Tastytrade (`https://my.tastytrade.com/auth.html`)
+6. User logs in on Tastytrade and clicks "Allow"
+7. Tastytrade redirects to `GET /auth/tastytrade/callback?code=...&state=...`
+8. Backend exchanges the code for a refresh token via `POST https://api.tastyworks.com/oauth/token`
+9. Refresh token is encrypted and stored in `user_credentials` (provider_secret is NULL — the client_secret is app-level)
+10. Browser is redirected to `/positions`
+
+### Architecture
+
+- **`src/routers/tastytrade_oauth.py`**: Three endpoints (authorize, callback, disconnect)
+- **`static/js/auth.js` → `requireTastytrade()`**: Checks if user has credentials, redirects to Settings if not
+- **`static/js/settings-app.js`**: `connectTastytrade()` and `disconnectTastytrade()` methods
+- **`src/utils/auth_manager.py`**: `_load_user_credentials()` falls back to env var when `encrypted_provider_secret` is NULL
+
+### Environment Variables
+
+```
+TASTYTRADE_CLIENT_ID=<uuid>                              # OAuth app Client ID from Tastytrade
+TASTYTRADE_CLIENT_SECRET=<secret>                        # OAuth app Client Secret (same as TASTYTRADE_PROVIDER_SECRET)
+TASTYTRADE_REDIRECT_URI=http://localhost:8000/auth/tastytrade/callback   # Must match registered redirect URI
+```
+
+`TASTYTRADE_PROVIDER_SECRET` remains as a backward-compatible alias for `TASTYTRADE_CLIENT_SECRET`.
+
+### Key Rules for Developers
+
+1. **`requireTastytrade()`** must be called after `requireAuth()` on all data pages (Positions, Ledger, Reports, Risk) — NOT on Settings
+2. **The callback endpoint is PUBLIC** (no JWT) because it receives a redirect from Tastytrade; the state parameter carries the encrypted user_id
+3. **State parameter** is Fernet-encrypted `{user_id, timestamp}`, validated for max 10 minutes
+4. **Auth-code-flow users** have `encrypted_provider_secret = NULL` in `user_credentials` — the app-level client_secret from env is used
+5. **Manually-entered credentials** (legacy) still store both provider_secret and refresh_token per-user
+
 ## Security Considerations
 
 - **Auth disabled**: Tastytrade OAuth2 credentials stored in local `.env` file (gitignored)

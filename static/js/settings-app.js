@@ -13,6 +13,11 @@ document.addEventListener('alpine:init', () => {
         savingCredentials: false,
         deletingCredentials: false,
 
+        // OAuth flow state
+        onboarding: false,
+        authEnabled: false,
+        connecting: false,
+
         get creditStrategies() {
             const names = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
                            'Cash Secured Put', 'Covered Call', 'Short Put', 'Short Call',
@@ -39,6 +44,17 @@ document.addEventListener('alpine:init', () => {
 
         async init() {
             await Auth.requireAuth();
+
+            // Parse URL query params
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('tab')) this.activeTab = params.get('tab');
+            this.onboarding = params.get('onboarding') === '1';
+            this.authEnabled = Auth.isAuthEnabled();
+
+            // Show error from OAuth callback redirect
+            const errorParam = params.get('error');
+            if (errorParam) this.showNotification(decodeURIComponent(errorParam), 'error');
+
             await this.checkConnection();
             await this.loadTargets();
             this.loadRollAlerts();
@@ -54,6 +70,41 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 this.connectionStatus = { connected: false, configured: false, error: 'Could not check connection status' };
             }
+        },
+
+        async connectTastytrade() {
+            this.connecting = true;
+            try {
+                const resp = await Auth.authFetch('/api/auth/tastytrade/authorize', { method: 'POST' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    window.location.href = data.authorization_url;
+                    return;
+                }
+                const err = await resp.json().catch(() => ({}));
+                this.showNotification(err.detail || 'Failed to start Tastytrade connection', 'error');
+            } catch (e) {
+                this.showNotification('Error: ' + e.message, 'error');
+            }
+            this.connecting = false;
+        },
+
+        async disconnectTastytrade() {
+            if (!confirm('Disconnect your Tastytrade account? You will need to reconnect to sync trades.')) return;
+            this.deletingCredentials = true;
+            try {
+                const resp = await Auth.authFetch('/api/auth/tastytrade/disconnect', { method: 'POST' });
+                if (resp.ok) {
+                    this.showNotification('Tastytrade disconnected', 'success');
+                    await this.checkConnection();
+                } else {
+                    const data = await resp.json().catch(() => ({}));
+                    this.showNotification(data.detail || 'Failed to disconnect', 'error');
+                }
+            } catch (e) {
+                this.showNotification('Error: ' + e.message, 'error');
+            }
+            this.deletingCredentials = false;
         },
 
         async saveCredentials() {

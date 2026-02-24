@@ -181,6 +181,9 @@ class ConnectionManager:
         """Load and decrypt credentials from the user_credentials table.
 
         Returns (provider_secret, refresh_token) or None.
+
+        For auth-code-flow users, encrypted_provider_secret is NULL because
+        the client_secret is app-level. We fall back to the env var.
         """
         try:
             from src.database.models import UserCredential
@@ -196,8 +199,18 @@ class ConnectionManager:
                 if row is None:
                     return None
 
+                # provider_secret: use per-user value if present, else app-level env var
+                provider_secret = (
+                    decrypt_credential(row.encrypted_provider_secret)
+                    if row.encrypted_provider_secret
+                    else os.getenv(
+                        "TASTYTRADE_CLIENT_SECRET",
+                        os.getenv("TASTYTRADE_PROVIDER_SECRET", ""),
+                    )
+                )
+
                 return (
-                    decrypt_credential(row.encrypted_provider_secret),
+                    provider_secret,
                     decrypt_credential(row.encrypted_refresh_token),
                 )
         except Exception as e:

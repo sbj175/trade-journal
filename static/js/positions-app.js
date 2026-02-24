@@ -164,6 +164,7 @@ document.addEventListener('alpine:init', () => {
         // Initialize
         async init() {
             await Auth.requireAuth();
+            await Auth.requireTastytrade();
             await this.loadComments();
             this.loadRollAlertSettings();
             this.privacyMode = localStorage.getItem('privacyMode') || 'off';
