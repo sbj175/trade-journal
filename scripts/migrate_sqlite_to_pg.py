@@ -9,8 +9,10 @@ Defaults:
     --sqlite   trade_journal.db
     --pg-url   postgresql://optionledger:optionledger@localhost:5432/optionledger
 
-Tables are migrated in FK dependency order.  The PostgreSQL schema must
-already exist (run the app once or `alembic upgrade head` first).
+Tables are migrated in FK dependency order.  FK constraints are deferred
+during the bulk load to handle orphaned references that SQLite allowed.
+The PostgreSQL schema must already exist (run the app once or
+`alembic upgrade head` first).
 """
 
 import argparse
@@ -80,6 +82,12 @@ def migrate(sqlite_path: str, pg_url: str):
     total_rows = 0
 
     try:
+        # Disable FK constraint checks for the duration of the migration.
+        # SQLite didn't enforce FKs strictly, so the data may have orphaned
+        # references (e.g. order_chain_members pointing to system-generated
+        # order IDs not in the orders table).
+        dst.execute(text("SET session_replication_role = 'replica'"))
+
         for model in MIGRATION_ORDER:
             table_name = model.__tablename__
             columns = [col.key for col in model.__table__.columns]
@@ -91,27 +99,28 @@ def migrate(sqlite_path: str, pg_url: str):
                 continue
 
             # For position_lots: temporarily null out derived_from_lot_id
-            # to avoid FK violations during insert
+            # to avoid self-referential FK violations during insert
             deferred_updates = []
             is_position_lots = (model is PositionLot)
 
             # Batch insert into PostgreSQL
             count = 0
-            for i in range(0, len(rows), BATCH_SIZE):
-                batch = rows[i:i + BATCH_SIZE]
-                for row in batch:
-                    data = {col: getattr(row, col) for col in columns}
+            with dst.no_autoflush:
+                for i in range(0, len(rows), BATCH_SIZE):
+                    batch = rows[i:i + BATCH_SIZE]
+                    for row in batch:
+                        data = {col: getattr(row, col) for col in columns}
 
-                    if is_position_lots and data.get("derived_from_lot_id"):
-                        deferred_updates.append(
-                            (data["id"], data["derived_from_lot_id"])
-                        )
-                        data["derived_from_lot_id"] = None
+                        if is_position_lots and data.get("derived_from_lot_id"):
+                            deferred_updates.append(
+                                (data["id"], data["derived_from_lot_id"])
+                            )
+                            data["derived_from_lot_id"] = None
 
-                    dst.merge(model(**data))
-                    count += 1
+                        dst.merge(model(**data))
+                        count += 1
 
-                dst.flush()
+                    dst.flush()
 
             dst.commit()
 
@@ -128,6 +137,10 @@ def migrate(sqlite_path: str, pg_url: str):
                 print(f"  {table_name}: {count} rows")
 
             total_rows += count
+
+        # Re-enable FK constraint checks
+        dst.execute(text("SET session_replication_role = 'origin'"))
+        dst.commit()
 
     except Exception as e:
         dst.rollback()
