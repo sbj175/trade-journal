@@ -26,6 +26,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001"
 
+# Naming convention that matches how SQLAlchemy generates names for unnamed
+# constraints reflected from SQLite.  Allows batch mode to find and drop them.
+NAMING_CONVENTION = {
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+}
+
 # All tables that get user_id (in safe dependency order)
 TENANT_TABLES = [
     "accounts",
@@ -50,36 +56,59 @@ TENANT_TABLES = [
 ]
 
 
+def _table_exists(table_name: str) -> bool:
+    """Check if a table already exists (handles create_all() race)."""
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
+    return table_name in insp.get_table_names()
+
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    """Check if a column already exists in a table."""
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
+    columns = [c["name"] for c in insp.get_columns(table_name)]
+    return column_name in columns
+
+
 def upgrade() -> None:
     """Add users table and user_id to all data tables."""
-    # 1. Create users table
-    op.create_table(
-        "users",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("email", sa.String, unique=True, nullable=True),
-        sa.Column("display_name", sa.String, nullable=True),
-        sa.Column("is_active", sa.Boolean, server_default=sa.text("1")),
-        sa.Column("created_at", sa.String, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.String, server_default=sa.func.now()),
-    )
+    # 1. Create users table (skip if create_all() already made it)
+    if not _table_exists("users"):
+        op.create_table(
+            "users",
+            sa.Column("id", sa.String(36), primary_key=True),
+            sa.Column("email", sa.String, unique=True, nullable=True),
+            sa.Column("display_name", sa.String, nullable=True),
+            sa.Column("is_active", sa.Boolean, server_default=sa.text("1")),
+            sa.Column("created_at", sa.String, server_default=sa.func.now()),
+            sa.Column("updated_at", sa.String, server_default=sa.func.now()),
+        )
 
-    # 2. Insert default user
-    users_table = sa.table(
-        "users",
-        sa.column("id", sa.String),
-        sa.column("display_name", sa.String),
-        sa.column("is_active", sa.Boolean),
-    )
-    op.bulk_insert(users_table, [
-        {"id": DEFAULT_USER_ID, "display_name": "Default User", "is_active": True},
-    ])
+    # 2. Insert default user (if not already present)
+    conn = op.get_bind()
+    row = conn.execute(
+        sa.text("SELECT id FROM users WHERE id = :uid"),
+        {"uid": DEFAULT_USER_ID},
+    ).first()
+    if row is None:
+        users_table = sa.table(
+            "users",
+            sa.column("id", sa.String),
+            sa.column("display_name", sa.String),
+            sa.column("is_active", sa.Boolean),
+        )
+        op.bulk_insert(users_table, [
+            {"id": DEFAULT_USER_ID, "display_name": "Default User", "is_active": True},
+        ])
 
     # 3. Add user_id column to all 19 tables and backfill
     for table_name in TENANT_TABLES:
-        with op.batch_alter_table(table_name) as batch_op:
-            batch_op.add_column(
-                sa.Column("user_id", sa.String(36), nullable=True),
-            )
+        if not _column_exists(table_name, "user_id"):
+            with op.batch_alter_table(table_name) as batch_op:
+                batch_op.add_column(
+                    sa.Column("user_id", sa.String(36), nullable=True),
+                )
 
         # Backfill existing rows
         op.execute(
@@ -88,29 +117,49 @@ def upgrade() -> None:
             )
         )
 
-        # Create index
+        # Create index (idempotent — batch mode recreates table on SQLite)
         op.create_index(
-            f"ix_{table_name}_user_id", table_name, ["user_id"]
+            f"ix_{table_name}_user_id", table_name, ["user_id"],
+            if_not_exists=True,
         )
 
     # 4. Update unique constraints
-    # sync_metadata: drop unique on key, add composite (user_id, key)
-    with op.batch_alter_table("sync_metadata") as batch_op:
-        batch_op.drop_constraint("uq_sync_metadata_key", type_="unique")
+    # In SQLite, inline `unique=True` creates unnamed constraints.  Alembic
+    # batch mode needs a naming_convention to generate deterministic names so
+    # it can find and drop them during the table rebuild.
+
+    # sync_metadata: drop unique on (key), add composite (user_id, key)
+    with op.batch_alter_table(
+        "sync_metadata",
+        naming_convention=NAMING_CONVENTION,
+    ) as batch_op:
+        batch_op.drop_constraint(
+            "uq_sync_metadata_key", type_="unique",
+        )
         batch_op.create_unique_constraint(
-            "uq_sync_metadata_user_key", ["user_id", "key"]
+            "uq_sync_metadata_user_key", ["user_id", "key"],
         )
 
-    # strategy_targets: drop unique on strategy_name, add composite (user_id, strategy_name)
-    with op.batch_alter_table("strategy_targets") as batch_op:
-        batch_op.drop_constraint("uq_strategy_targets_strategy_name", type_="unique")
+    # strategy_targets: drop unique on (strategy_name), add composite (user_id, strategy_name)
+    with op.batch_alter_table(
+        "strategy_targets",
+        naming_convention=NAMING_CONVENTION,
+    ) as batch_op:
+        batch_op.drop_constraint(
+            "uq_strategy_targets_strategy_name", type_="unique",
+        )
         batch_op.create_unique_constraint(
-            "uq_strategy_targets_user_name", ["user_id", "strategy_name"]
+            "uq_strategy_targets_user_name", ["user_id", "strategy_name"],
         )
 
     # positions_inventory: drop unique on (account_number, symbol), add (user_id, account_number, symbol)
-    with op.batch_alter_table("positions_inventory") as batch_op:
-        batch_op.drop_constraint("uq_positions_inventory_account_number_symbol", type_="unique")
+    with op.batch_alter_table(
+        "positions_inventory",
+        naming_convention=NAMING_CONVENTION,
+    ) as batch_op:
+        batch_op.drop_constraint(
+            "uq_positions_inventory_account_number_symbol", type_="unique",
+        )
         batch_op.create_unique_constraint(
             "uq_positions_inventory_user_account_symbol",
             ["user_id", "account_number", "symbol"],
