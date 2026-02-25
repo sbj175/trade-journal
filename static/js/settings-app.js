@@ -49,7 +49,7 @@ document.addEventListener('alpine:init', () => {
 
         rollAlerts: { enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true },
         privacyMode: 'off',
-        activeTab: 'privacy',
+        activeTab: 'connection',
         initialSyncing: false,
         reprocessing: false,
 
