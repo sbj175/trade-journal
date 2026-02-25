@@ -12,6 +12,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 load_dotenv()
 
+# Instrument types we don't support — futures have product-specific multipliers,
+# different symbol formats, and ambiguous Buy/Sell actions.
+_UNSUPPORTED_INSTRUMENT_TYPES = {'Future', 'Future Option'}
+
 
 class TastytradeClient:
     def __init__(self, provider_secret: str = None, refresh_token: str = None):
@@ -126,7 +130,14 @@ class TastytradeClient:
                 )
 
                 # Convert to list of dicts
+                skipped_futures = 0
                 for tx in transactions:
+                    # Skip unsupported instrument types (futures, futures options)
+                    inst_type = str(tx.instrument_type) if tx.instrument_type else ''
+                    if inst_type in _UNSUPPORTED_INSTRUMENT_TYPES:
+                        skipped_futures += 1
+                        continue
+
                     # Convert to dict, handling optional fields
                     tx_dict = {
                         'id': tx.id,
@@ -152,7 +163,8 @@ class TastytradeClient:
                     }
                     all_transactions.append(tx_dict)
 
-                logger.info(f"Retrieved {len(transactions)} transactions from account {account.account_number}")
+                logger.info(f"Retrieved {len(transactions)} transactions from account {account.account_number}"
+                            + (f" (skipped {skipped_futures} futures)" if skipped_futures else ""))
 
             except Exception as e:
                 logger.error(f"Failed to get transactions from account {account.account_number}: {str(e)}")
@@ -190,7 +202,14 @@ class TastytradeClient:
                 positions = await account.get_positions(self.session, include_marks=True)
 
                 position_list = []
+                skipped_futures = 0
                 for pos in positions:
+                    # Skip unsupported instrument types (futures, futures options)
+                    inst_type = str(pos.instrument_type) if pos.instrument_type else ''
+                    if inst_type in _UNSUPPORTED_INSTRUMENT_TYPES:
+                        skipped_futures += 1
+                        continue
+
                     # Calculate market value
                     quantity = float(pos.quantity) if pos.quantity else 0
                     close_price = float(pos.close_price) if pos.close_price else 0
@@ -283,7 +302,8 @@ class TastytradeClient:
                     })
 
                 all_positions[account.account_number] = position_list
-                logger.info(f"Retrieved {len(position_list)} positions from account {account.account_number}")
+                logger.info(f"Retrieved {len(position_list)} positions from account {account.account_number}"
+                            + (f" (skipped {skipped_futures} futures)" if skipped_futures else ""))
 
             except Exception as e:
                 logger.error(f"Failed to get positions from account {account.account_number}: {str(e)}")
@@ -372,6 +392,11 @@ class TastytradeClient:
         options = []
 
         for symbol in symbols:
+            # Skip futures symbols (start with / or ./)
+            if symbol.startswith('/') or symbol.startswith('./'):
+                logger.debug(f"Skipping futures symbol in quote classification: {symbol}")
+                continue
+
             # Option symbols have double spaces and end with C/P followed by strike
             # Format: "MSTR  250613C00400000" (underlying + double space + YYMMDDC/P + strike)
             if len(symbol) > 10 and '  ' in symbol:
