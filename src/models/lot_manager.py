@@ -12,6 +12,7 @@ from sqlalchemy import func
 from src.database.models import (
     PositionLot as PositionLotModel,
     LotClosing as LotClosingModel,
+    PositionGroup,
     PositionGroupLot,
 )
 
@@ -506,11 +507,22 @@ class LotManager:
                 lot.chain_id = chain_id
 
     def clear_all_lots(self, underlyings: set = None):
-        """Clear lots. If underlyings is provided, only clear lots for those symbols."""
+        """Clear lots and their groups. If underlyings is provided, only clear for those symbols."""
         with self.db.get_session() as session:
             if underlyings:
                 underlying_list = list(underlyings)
-                # Delete closings for matching lots first (FK constraint)
+                # Delete group links for matching lots first (FK constraint)
+                lot_txn_ids_sub = session.query(PositionLotModel.transaction_id).filter(
+                    PositionLotModel.underlying.in_(underlying_list)
+                ).scalar_subquery()
+                session.query(PositionGroupLot).filter(
+                    PositionGroupLot.transaction_id.in_(lot_txn_ids_sub)
+                ).delete(synchronize_session='fetch')
+                # Delete groups for matching underlyings
+                session.query(PositionGroup).filter(
+                    PositionGroup.underlying.in_(underlying_list)
+                ).delete(synchronize_session='fetch')
+                # Delete closings for matching lots (FK constraint)
                 lot_ids_sub = session.query(PositionLotModel.id).filter(
                     PositionLotModel.underlying.in_(underlying_list)
                 ).scalar_subquery()
@@ -521,8 +533,10 @@ class LotManager:
                 session.query(PositionLotModel).filter(
                     PositionLotModel.underlying.in_(underlying_list)
                 ).delete(synchronize_session='fetch')
-                logger.info(f"Cleared lots and closings for {len(underlyings)} underlyings")
+                logger.info(f"Cleared lots, closings, and groups for {len(underlyings)} underlyings")
             else:
+                session.query(PositionGroupLot).delete()
+                session.query(PositionGroup).delete()
                 session.query(LotClosingModel).delete()
                 session.query(PositionLotModel).delete()
-                logger.warning("Cleared all lots and closings")
+                logger.warning("Cleared all lots, closings, and groups")
