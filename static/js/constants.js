@@ -20,5 +20,10 @@ const STRATEGY_CATEGORIES = {
     'Long Put': { direction: 'bearish', type: 'debit' },
     'Long Strangle': { direction: 'neutral', type: 'debit' },
     'Long Straddle': { direction: 'neutral', type: 'debit' },
+    'Calendar Spread': { direction: 'neutral', type: 'debit' },
+    'Diagonal Spread': { direction: 'neutral', type: 'debit' },
+    'PMCC': { direction: 'bullish', type: 'debit' },
+    'Jade Lizard': { direction: 'bullish', type: 'credit' },
+    'Collar': { direction: 'neutral', type: 'mixed' },
     'Shares': { direction: null, type: null, isShares: true }
 };

@@ -32,13 +32,18 @@ document.addEventListener('alpine:init', () => {
         get creditStrategies() {
             const names = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
                            'Cash Secured Put', 'Covered Call', 'Short Put', 'Short Call',
-                           'Short Strangle', 'Short Straddle'];
+                           'Short Strangle', 'Short Straddle', 'Jade Lizard'];
             return this.targets.filter(t => names.includes(t.strategy_name));
         },
 
         get debitStrategies() {
             const names = ['Bull Call Spread', 'Bear Put Spread', 'Long Call', 'Long Put',
-                           'Long Strangle', 'Long Straddle'];
+                           'Long Strangle', 'Long Straddle', 'Calendar Spread', 'Diagonal Spread', 'PMCC'];
+            return this.targets.filter(t => names.includes(t.strategy_name));
+        },
+
+        get mixedStrategies() {
+            const names = ['Collar'];
             return this.targets.filter(t => names.includes(t.strategy_name));
         },
 

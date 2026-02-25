@@ -345,7 +345,18 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     logger.info(f"Using preserved strategy for chain {chain.chain_id}: {detected_strategy}")
                 else:
                     try:
-                        detected_strategy = strategy_detector.detect_chain_strategy(chain)
+                        # Try new Strategy Engine first (position-snapshot based)
+                        from src.pipeline.strategy_engine import recognize, lots_to_legs
+                        chain_lots = lot_manager.get_lots_for_chain(chain.chain_id, include_derived=False)
+                        if chain_lots:
+                            engine_legs = lots_to_legs(chain_lots)
+                            engine_result = recognize(engine_legs)
+                            if engine_result.confidence > 0:
+                                detected_strategy = engine_result.name
+                            else:
+                                detected_strategy = strategy_detector.detect_chain_strategy(chain)
+                        else:
+                            detected_strategy = strategy_detector.detect_chain_strategy(chain)
 
                         if detected_strategy is None:
                             detected_strategy = "Unknown"

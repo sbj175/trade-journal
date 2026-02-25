@@ -478,6 +478,40 @@
                     </table>
                 </div>
 
+                <!-- Mixed Strategies -->
+                <div x-show="mixedStrategies.length > 0" class="bg-tv-panel border border-tv-border rounded mb-5" @input="debouncedSaveTargets()">
+                    <div class="px-4 py-3 border-b border-tv-border">
+                        <h3 class="text-sm font-semibold text-tv-text">
+                            <i class="fas fa-exchange-alt mr-2 text-tv-muted"></i>Mixed Strategies
+                        </h3>
+                        <p class="text-tv-muted text-xs mt-0.5">Strategies combining credit and debit components</p>
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-tv-border text-tv-muted text-left">
+                                <th class="px-4 py-2 font-medium">Strategy</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Profit Target %</th>
+                                <th class="px-4 py-2 font-medium text-center w-40">Loss Limit %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="target in mixedStrategies" :key="target.strategy_name">
+                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50">
+                                    <td class="px-4 py-2 text-tv-text" x-text="target.strategy_name"></td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.profit_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-green text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                    <td class="px-4 py-2 text-center">
+                                        <input type="number" x-model.number="target.loss_target_pct" min="0" max="500" step="5"
+                                               class="w-20 bg-tv-bg border border-tv-border text-tv-red text-center px-2 py-1 rounded focus:outline-none focus:border-tv-blue">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
                 <!-- Equity -->
                 <div class="bg-tv-panel border border-tv-border rounded mb-5" @input="debouncedSaveTargets()">
                     <div class="px-4 py-3 border-b border-tv-border">
