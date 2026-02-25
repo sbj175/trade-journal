@@ -105,6 +105,29 @@ class TestPreprocessTransactions:
         assert len(assign_stocks) == 1
         assert assign_stocks[0]["id"] == "tx-assign-stock"
 
+    def test_acat_not_sidelined_as_assignment_stock(self):
+        """ACAT transfers (no order_id, sub_type=ACAT) flow through normal
+        processing and are NOT captured as assignment_stock_transactions."""
+        raw = [
+            make_stock_transaction(
+                id="tx-acat",
+                order_id=None,
+                action="BUY_TO_OPEN",
+                instrument_type="EQUITY",
+                quantity=900,
+                price=300.00,
+                transaction_sub_type="ACAT",
+                description="ACAT transfer",
+            )
+        ]
+        txs, assign_stocks = preprocess_transactions(raw)
+
+        # ACAT should NOT be sidelined
+        assert len(assign_stocks) == 0
+        # It should pass through as a normal transaction with a synthetic order ID
+        assert len(txs) == 1
+        assert "SYSTEM_ACAT" in txs[0].order_id
+
     def test_skips_no_symbol(self):
         raw = [{"id": "1", "symbol": None, "action": "BUY_TO_OPEN"}]
         txs, assign_stocks = preprocess_transactions(raw)

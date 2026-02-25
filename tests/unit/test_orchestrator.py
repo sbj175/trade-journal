@@ -187,6 +187,37 @@ class TestFullPipeline:
         assert result.orders_assembled == 1
         assert _count_lots(db) >= 1
 
+    def test_shares_sell_rebuy_single_group(self, db, order_processor, lot_manager, position_manager):
+        """Buy shares, sell all, buy again -> all lots in 1 'Shares' group."""
+        txs = [
+            make_stock_transaction(
+                id="tx-buy1", order_id="ORD-BUY1",
+                action="BUY_TO_OPEN", quantity=100, price=50.00,
+                executed_at="2025-01-10T10:00:00+00:00",
+            ),
+            make_stock_transaction(
+                id="tx-sell1", order_id="ORD-SELL1",
+                action="SELL_TO_CLOSE", quantity=100, price=55.00,
+                executed_at="2025-02-10T10:00:00+00:00",
+                transaction_sub_type="Sell to Close",
+            ),
+            make_stock_transaction(
+                id="tx-buy2", order_id="ORD-BUY2",
+                action="BUY_TO_OPEN", quantity=200, price=48.00,
+                executed_at="2025-03-10T10:00:00+00:00",
+            ),
+        ]
+
+        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+
+        assert result.groups_processed >= 1
+        # Use snapshot helper to avoid detached-session issues
+        groups = _snapshot_groups(db)
+        shares_groups = [g for g in groups if g["strategy_label"] == "Shares"]
+        assert len(shares_groups) == 1
+        assert shares_groups[0]["underlying"] == "AAPL"
+        assert shares_groups[0]["status"] == "OPEN"
+
     def test_empty_transactions(self, db, order_processor, lot_manager, position_manager):
         """No transactions -> PipelineResult with zeros, empty old_chains."""
         result = reprocess(db, order_processor, lot_manager, position_manager, [])

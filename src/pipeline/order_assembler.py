@@ -122,12 +122,16 @@ def preprocess_transactions(
         # These are automatic stock transactions and shouldn't create chains
         # But keep expiration/assignment/exercise option transactions
         # Capture these for derived lot creation (returned explicitly)
+        # ACAT transfers also have no order_id but are real stock positions —
+        # let them flow through normal processing for proper chain linkage.
         instrument_type = str(raw_tx.get("instrument_type", ""))
+        sub_type_upper = raw_tx.get("transaction_sub_type", "").upper()
         if (
             "EQUITY" in instrument_type
             and "EQUITY_OPTION" not in instrument_type
             and not raw_tx.get("order_id")
             and raw_tx.get("action")
+            and sub_type_upper != "ACAT"
         ):
             assignment_stock_transactions.append(raw_tx)
             continue
