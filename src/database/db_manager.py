@@ -106,6 +106,7 @@ class DatabaseManager:
                     set_={
                         'account_name': stmt.excluded.account_name,
                         'account_type': stmt.excluded.account_type,
+                        'user_id': stmt.excluded.user_id,
                         'updated_at': stmt.excluded.updated_at,
                     },
                 ))

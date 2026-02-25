@@ -34,6 +34,7 @@ document.addEventListener('alpine:init', () => {
 
         async init() {
             await Auth.requireAuth();
+            await Auth.requireTastytrade();
             // Load accounts first
             await this.loadAccounts();
 

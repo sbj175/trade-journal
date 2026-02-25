@@ -134,6 +134,24 @@ const Auth = (() => {
     }
 
     /**
+     * Redirect to Settings if auth is enabled and user has no Tastytrade
+     * credentials configured. Call after requireAuth() on data pages.
+     */
+    async function requireTastytrade() {
+        if (!_config?.auth_enabled) return; // Single-user mode uses .env
+        try {
+            const resp = await authFetch('/api/settings/credentials');
+            if (resp.ok) {
+                const data = await resp.json();
+                if (!data.configured) {
+                    window.location.href = '/settings?tab=connection&onboarding=1';
+                    return new Promise(() => {}); // Halt caller's init chain
+                }
+            }
+        } catch (e) { /* Let page load, fail gracefully elsewhere */ }
+    }
+
+    /**
      * Build a WebSocket URL with token for authenticated connections.
      */
     async function getAuthenticatedWsUrl(path) {
@@ -157,6 +175,7 @@ const Auth = (() => {
         getUser,
         signOut,
         requireAuth,
+        requireTastytrade,
         authFetch,
         getAuthenticatedWsUrl,
     };

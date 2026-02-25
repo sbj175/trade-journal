@@ -13,6 +13,22 @@ document.addEventListener('alpine:init', () => {
         savingCredentials: false,
         deletingCredentials: false,
 
+        // OAuth flow state
+        onboarding: false,
+        authEnabled: false,
+        connecting: false,
+
+        // Initial Sync date picker (default: 1 year ago, max: 2 years)
+        syncStartDate: new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10),
+        syncMinDate: new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10),
+        syncMaxDate: new Date().toISOString().slice(0, 10),
+
+        get syncDaysBack() {
+            const start = new Date(this.syncStartDate);
+            const now = new Date();
+            return Math.max(1, Math.round((now - start) / 86400000));
+        },
+
         get creditStrategies() {
             const names = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
                            'Cash Secured Put', 'Covered Call', 'Short Put', 'Short Call',
@@ -39,6 +55,17 @@ document.addEventListener('alpine:init', () => {
 
         async init() {
             await Auth.requireAuth();
+
+            // Parse URL query params
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('tab')) this.activeTab = params.get('tab');
+            this.onboarding = params.get('onboarding') === '1';
+            this.authEnabled = Auth.isAuthEnabled();
+
+            // Show error from OAuth callback redirect
+            const errorParam = params.get('error');
+            if (errorParam) this.showNotification(decodeURIComponent(errorParam), 'error');
+
             await this.checkConnection();
             await this.loadTargets();
             this.loadRollAlerts();
@@ -54,6 +81,41 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 this.connectionStatus = { connected: false, configured: false, error: 'Could not check connection status' };
             }
+        },
+
+        async connectTastytrade() {
+            this.connecting = true;
+            try {
+                const resp = await Auth.authFetch('/api/auth/tastytrade/authorize', { method: 'POST' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    window.location.href = data.authorization_url;
+                    return;
+                }
+                const err = await resp.json().catch(() => ({}));
+                this.showNotification(err.detail || 'Failed to start Tastytrade connection', 'error');
+            } catch (e) {
+                this.showNotification('Error: ' + e.message, 'error');
+            }
+            this.connecting = false;
+        },
+
+        async disconnectTastytrade() {
+            if (!confirm('Disconnect your Tastytrade account? You will need to reconnect to sync trades.')) return;
+            this.deletingCredentials = true;
+            try {
+                const resp = await Auth.authFetch('/api/auth/tastytrade/disconnect', { method: 'POST' });
+                if (resp.ok) {
+                    this.showNotification('Tastytrade disconnected', 'success');
+                    await this.checkConnection();
+                } else {
+                    const data = await resp.json().catch(() => ({}));
+                    this.showNotification(data.detail || 'Failed to disconnect', 'error');
+                }
+            } catch (e) {
+                this.showNotification('Error: ' + e.message, 'error');
+            }
+            this.deletingCredentials = false;
         },
 
         async saveCredentials() {
@@ -193,21 +255,27 @@ document.addEventListener('alpine:init', () => {
         },
 
         async initialSync() {
-            const confirmed = confirm(
-                'Initial Sync will CLEAR the entire database and rebuild it from scratch.\n\n' +
-                'This will fetch all transactions from the last year and may take several minutes.\n\n' +
-                'Are you sure you want to continue?'
-            );
-            if (!confirmed) return;
+            const days = this.syncDaysBack;
+            const msg = this.onboarding
+                ? `This will import ${days} days of trading history from Tastytrade.\n\nThis may take a minute. Continue?`
+                : `Initial Sync will CLEAR the existing database and rebuild from scratch.\n\nThis will fetch ${days} days of transactions and may take several minutes.\n\nAre you sure you want to continue?`;
+            if (!confirm(msg)) return;
 
             this.initialSyncing = true;
             try {
                 const response = await Auth.authFetch('/api/sync/initial', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ start_date: this.syncStartDate })
                 });
                 if (!response.ok) throw new Error(`Initial sync failed: ${response.statusText}`);
                 const result = await response.json();
+
+                if (this.onboarding) {
+                    // Onboarding complete — go to Positions page
+                    window.location.href = '/positions';
+                    return;
+                }
                 this.showNotification(
                     `Initial sync completed! ${result.transactions_processed || 0} transactions, ` +
                     `${result.orders_saved || 0} orders in ${result.chains_saved || 0} chains`, 'success'
