@@ -3,6 +3,10 @@ Integration tests for the Pipeline Orchestrator (OPT-121 final piece).
 
 All tests use a real temporary SQLite database via conftest fixtures.
 The orchestrator is shadow-built — not wired into sync.py yet.
+
+Shadow comparison tests run both the legacy group-creation path
+(seed_position_groups from ledger_service) and the new pipeline path
+(GroupPersister) on the same lot state, then compare outputs.
 """
 
 import pytest
@@ -12,7 +16,12 @@ from src.pipeline.orchestrator import reprocess, PipelineResult
 from src.pipeline.chain_graph import derive_chains
 from src.pipeline.group_manager import GroupPersister
 from src.pipeline.order_assembler import assemble_orders
-from src.database.models import PositionLot, PositionGroup, PositionGroupLot, LotClosing
+from src.pipeline.strategy_engine import recognize, lots_to_legs
+from src.database.models import (
+    PositionLot, PositionGroup, PositionGroupLot, LotClosing,
+    OrderChain as OrderChainModel,
+)
+import src.services.ledger_service as ledger_svc
 from tests.conftest import (
     make_option_transaction,
     make_stock_transaction,
@@ -293,14 +302,133 @@ class TestPipelineResultCounts:
 
 
 # =====================================================================
-# Shadow comparison — orchestrator vs manual steps
+# Shadow comparison — new pipeline vs legacy grouping
 # =====================================================================
 
-class TestShadowComparison:
-    """Compare orchestrator output against the manual step-by-step pipeline."""
+def _snapshot_groups(db_manager):
+    """Snapshot all groups with their lot membership for comparison.
 
-    def test_shadow_vs_manual_steps(self, db, order_processor, lot_manager, position_manager):
-        """Same transactions through orchestrator vs manual steps -> same lots and chains."""
+    Returns a list of dicts sorted by (underlying, opening_date) for stable comparison.
+    Each dict has: underlying, strategy_label, status, lot_txn_ids (sorted set).
+    """
+    with db_manager.get_session() as session:
+        groups = session.query(PositionGroup).all()
+        result = []
+        for g in groups:
+            txn_ids = sorted(
+                r[0] for r in session.query(PositionGroupLot.transaction_id).filter(
+                    PositionGroupLot.group_id == g.group_id,
+                ).all()
+            )
+            result.append({
+                "underlying": g.underlying,
+                "strategy_label": g.strategy_label,
+                "status": g.status,
+                "lot_txn_ids": txn_ids,
+            })
+        result.sort(key=lambda x: (x["underlying"], str(x.get("lot_txn_ids", []))))
+        return result
+
+
+def _populate_order_chains(db_manager, lot_manager_inst, chains):
+    """Populate order_chains table from Chain objects, computing per-chain strategy
+    via strategy_engine (same logic as update_chain_cache).
+
+    This is the synchronous equivalent of what update_chain_cache does for strategy_type.
+    """
+    with db_manager.get_session() as session:
+        for chain in chains:
+            # Compute strategy same way update_chain_cache does
+            chain_lots = lot_manager_inst.get_lots_for_chain(chain.chain_id, include_derived=False)
+            if chain_lots:
+                legs = lots_to_legs(chain_lots)
+                engine_result = recognize(legs)
+                detected_strategy = engine_result.name if engine_result.confidence > 0 else "Unknown"
+            else:
+                detected_strategy = "Unknown"
+
+            session.add(OrderChainModel(
+                chain_id=chain.chain_id,
+                underlying=chain.underlying,
+                account_number=chain.account_number,
+                opening_order_id=chain.orders[0].order_id if chain.orders else None,
+                strategy_type=detected_strategy,
+                opening_date=str(chain.opening_date) if chain.opening_date else None,
+                closing_date=str(chain.closing_date) if chain.closing_date else None,
+                chain_status=chain.status,
+                order_count=len(chain.orders),
+                total_pnl=0.0,
+            ))
+
+
+def _clear_groups(db_manager):
+    """Clear all groups and group-lot links."""
+    with db_manager.get_session() as session:
+        session.query(PositionGroupLot).delete()
+        session.query(PositionGroup).delete()
+
+
+class TestShadowComparison:
+    """Run both legacy grouping (seed_position_groups) and new pipeline grouping
+    (GroupPersister.process_groups) on the same lot state, then compare outputs.
+
+    For 1:1 chain-to-group cases, both paths should produce identical groups.
+    For cross-order cases, the new pipeline may produce fewer, better-labeled groups.
+    """
+
+    def test_shadow_simple_open(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Single STO: legacy and new pipeline produce same group."""
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            make_option_transaction(
+                id="tx-001", order_id="ORD-001", action="SELL_TO_OPEN",
+                quantity=1, price=2.50,
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+
+        # --- Create lots via OrderProcessor (shared state for both paths) ---
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # --- Legacy path: populate order_chains → seed_position_groups ---
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # --- New pipeline path: derive_chains → GroupPersister ---
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Same number of groups
+        assert len(new_groups) == len(legacy_groups)
+        # Same lot membership per group
+        for lg, ng in zip(legacy_groups, new_groups):
+            assert lg["lot_txn_ids"] == ng["lot_txn_ids"], (
+                f"Lot mismatch: legacy={lg['lot_txn_ids']}, new={ng['lot_txn_ids']}"
+            )
+            assert lg["underlying"] == ng["underlying"]
+            assert lg["status"] == ng["status"]
+
+    def test_shadow_open_close(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """STO + BTC: both paths produce 1 CLOSED group with same lots.
+
+        Strategy label improvement: legacy gets "Unknown" for closed chains because
+        lots_to_legs() skips closed lots, leaving no legs for detection. The new
+        pipeline's _label_from_all_lots() includes closed lots, correctly detecting
+        "Short Call" even after the position is closed.
+        """
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
         txs = [
             make_option_transaction(
                 id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
@@ -314,59 +442,307 @@ class TestShadowComparison:
             ),
         ]
 
-        # --- Run orchestrator ---
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
-        orch_lots = _count_lots(db)
-        orch_groups = _count_groups(db)
-        orch_closings = _count_closings(db)
-
-        # --- Run manual steps (same as sync.py pattern) ---
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         chains_by_account = order_processor.process_transactions(txs)
         all_chains = [c for chains in chains_by_account.values() for c in chains]
 
-        manual_lots = _count_lots(db)
-        manual_closings = _count_closings(db)
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
 
-        # Lots and closings come from OrderProcessor (stage 3) — should be identical
-        assert orch_lots == manual_lots
-        assert orch_closings == manual_closings
-
-        # Now run the new pipeline stages on manual output
+        # New pipeline
+        _clear_groups(db)
         assembly = assemble_orders(txs)
         new_chains = derive_chains(db, assembly.orders)
         persister = GroupPersister(db, lot_manager)
-        manual_groups = persister.process_groups(new_chains)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
 
-        # Groups should match (orchestrator ran same stages)
-        assert orch_groups == manual_groups
+        assert len(new_groups) == len(legacy_groups)
+        for lg, ng in zip(legacy_groups, new_groups):
+            assert lg["lot_txn_ids"] == ng["lot_txn_ids"]
+            assert lg["underlying"] == ng["underlying"]
+            assert lg["status"] == ng["status"]
+            # Legacy gets "Unknown" for closed chains (lots_to_legs skips closed lots)
+            # New pipeline correctly labels closed groups via _label_from_all_lots
+            assert lg["strategy_label"] == "Unknown"
+            assert ng["strategy_label"] == "Short Call"
 
-    def test_shadow_multi_underlying(self, db, order_processor, lot_manager, position_manager):
-        """Multiple underlyings: orchestrator produces same lots as manual steps."""
+    def test_shadow_roll_chain(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Roll scenario: both paths produce 1 group with all lots linked."""
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
         txs = [
             make_option_transaction(
-                id="tx-aapl-open", order_id="ORD-AAPL", action="SELL_TO_OPEN",
+                id="tx-open", order_id="ORD-1", action="SELL_TO_OPEN",
+                quantity=1, price=2.00,
+                symbol="AAPL 250321P00170000", option_type="Put",
+                strike=170.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-roll-close", order_id="ORD-2", action="BUY_TO_CLOSE",
+                quantity=1, price=1.50,
+                symbol="AAPL 250321P00170000", option_type="Put",
+                strike=170.0, expiration="2025-03-21",
+                executed_at="2025-03-10T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-roll-open", order_id="ORD-2", action="SELL_TO_OPEN",
+                quantity=1, price=2.50,
+                symbol="AAPL 250418P00170000", option_type="Put",
+                strike=170.0, expiration="2025-04-18",
+                executed_at="2025-03-10T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-final-close", order_id="ORD-3", action="BUY_TO_CLOSE",
+                quantity=1, price=1.00,
+                symbol="AAPL 250418P00170000", option_type="Put",
+                strike=170.0, expiration="2025-04-18",
+                executed_at="2025-04-01T10:00:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Both should produce exactly 1 group (roll chain = single group)
+        assert len(legacy_groups) == 1
+        assert len(new_groups) == 1
+        assert legacy_groups[0]["lot_txn_ids"] == new_groups[0]["lot_txn_ids"]
+        assert legacy_groups[0]["status"] == new_groups[0]["status"]
+
+    def test_shadow_multi_underlying(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Multiple underlyings: both paths isolate groups per underlying."""
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            make_option_transaction(
+                id="tx-aapl", order_id="ORD-AAPL", action="SELL_TO_OPEN",
                 quantity=1, price=2.50, underlying_symbol="AAPL",
                 symbol="AAPL 250321C00170000",
                 executed_at="2025-03-01T10:00:00+00:00",
             ),
             make_option_transaction(
-                id="tx-msft-open", order_id="ORD-MSFT", action="SELL_TO_OPEN",
+                id="tx-msft", order_id="ORD-MSFT", action="SELL_TO_OPEN",
                 quantity=1, price=3.00, underlying_symbol="MSFT",
                 symbol="MSFT 250321C00300000",
                 executed_at="2025-03-01T10:00:00+00:00",
             ),
-            make_option_transaction(
-                id="tx-aapl-close", order_id="ORD-AAPL-CL", action="BUY_TO_CLOSE",
-                quantity=1, price=1.00, underlying_symbol="AAPL",
-                symbol="AAPL 250321C00170000",
-                executed_at="2025-03-10T10:00:00+00:00",
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Same group count and underlying isolation
+        assert len(new_groups) == len(legacy_groups)
+        legacy_underlyings = sorted(g["underlying"] for g in legacy_groups)
+        new_underlyings = sorted(g["underlying"] for g in new_groups)
+        assert legacy_underlyings == new_underlyings
+
+        # Same lot membership per underlying
+        for lg, ng in zip(legacy_groups, new_groups):
+            assert lg["lot_txn_ids"] == ng["lot_txn_ids"]
+
+    def test_shadow_equity(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Stock BTO: both paths create a group for the equity lot."""
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            make_stock_transaction(
+                id="tx-stock", order_id="ORD-STOCK",
+                action="BUY_TO_OPEN", quantity=100, price=150.00,
+                executed_at="2025-03-01T10:00:00+00:00",
             ),
         ]
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
 
-        assert result.orders_assembled == 3
-        assert result.chains_derived >= 2  # at least AAPL chain + MSFT orphan
-        assert _count_lots(db) >= 2
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        assert len(new_groups) == len(legacy_groups)
+        for lg, ng in zip(legacy_groups, new_groups):
+            assert lg["lot_txn_ids"] == ng["lot_txn_ids"]
+            assert lg["underlying"] == ng["underlying"]
+
+    def test_shadow_cross_order_improvement(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Cross-order Iron Condor: new pipeline merges into 1 group where legacy creates 2.
+
+        This is a documented improvement — the new pipeline recognizes that a put spread
+        and call spread on the same underlying/expiration form an Iron Condor.
+        """
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            # Put spread (order 1)
+            make_option_transaction(
+                id="tx-sp", order_id="ORD-PS", action="SELL_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="AAPL 250321P00170000", option_type="Put",
+                strike=170.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-bp", order_id="ORD-PS", action="BUY_TO_OPEN",
+                quantity=1, price=0.50,
+                symbol="AAPL 250321P00160000", option_type="Put",
+                strike=160.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            # Call spread (order 2)
+            make_option_transaction(
+                id="tx-sc", order_id="ORD-CS", action="SELL_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="AAPL 250321C00190000", option_type="Call",
+                strike=190.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:30:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-bc", order_id="ORD-CS", action="BUY_TO_OPEN",
+                quantity=1, price=0.50,
+                symbol="AAPL 250321C00200000", option_type="Call",
+                strike=200.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:30:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy: creates 1 group per chain = 2 groups (put spread + call spread)
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline: merges into 1 group with "Iron Condor" label
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Legacy creates 2 groups (one per chain)
+        assert len(legacy_groups) == 2
+        # New pipeline merges into 1 group (cross-order Iron Condor)
+        assert len(new_groups) == 1
+        # All 4 lots are in the single new group
+        all_txn_ids = sorted(["tx-sp", "tx-bp", "tx-sc", "tx-bc"])
+        assert new_groups[0]["lot_txn_ids"] == all_txn_ids
+        # Strategy label should be Iron Condor
+        assert new_groups[0]["strategy_label"] == "Iron Condor"
+
+    def test_shadow_single_chain_ic_same_result(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """4-leg IC in a single order: both paths produce 1 group with same strategy."""
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            make_option_transaction(
+                id="tx-sp", order_id="ORD-IC", action="SELL_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="AAPL 250321P00170000", option_type="Put",
+                strike=170.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-bp", order_id="ORD-IC", action="BUY_TO_OPEN",
+                quantity=1, price=0.50,
+                symbol="AAPL 250321P00160000", option_type="Put",
+                strike=160.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sc", order_id="ORD-IC", action="SELL_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="AAPL 250321C00190000", option_type="Call",
+                strike=190.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-bc", order_id="ORD-IC", action="BUY_TO_OPEN",
+                quantity=1, price=0.50,
+                symbol="AAPL 250321C00200000", option_type="Call",
+                strike=200.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Both should produce exactly 1 group
+        assert len(legacy_groups) == 1
+        assert len(new_groups) == 1
+        # Same lots
+        assert legacy_groups[0]["lot_txn_ids"] == new_groups[0]["lot_txn_ids"]
+        # Both should detect Iron Condor
+        assert legacy_groups[0]["strategy_label"] == "Iron Condor"
+        assert new_groups[0]["strategy_label"] == "Iron Condor"
