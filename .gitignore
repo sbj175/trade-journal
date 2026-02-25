@@ -38,6 +38,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Screenshots (dev-only, not needed in repo)
+screenshots/
+
 # Test coverage
 htmlcov/
 .coverage
