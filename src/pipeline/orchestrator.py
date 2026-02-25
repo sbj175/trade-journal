@@ -1,16 +1,16 @@
 """
 Pipeline Orchestrator — composes Stages 2-6 into a single ``reprocess()`` call.
 
-Replaces the duplicated reprocessing logic scattered across sync.py endpoints.
-Built alongside the existing code — NOT wired into any router yet (shadow build).
+Replaces the duplicated reprocessing logic in sync.py endpoints
+(``/api/sync``, ``/api/sync/initial``, ``/api/reprocess-chains``).
 
-Part of OPT-121 (final piece).
+Part of OPT-121.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from src.models.order_processor import Chain
@@ -35,6 +35,7 @@ class PipelineResult:
     chains_derived: int
     groups_processed: int
     equity_lots_netted: int
+    old_chains: List[Chain] = field(default_factory=list)
 
 
 def reprocess(
@@ -138,4 +139,5 @@ def reprocess(
         chains_derived=chains_derived,
         groups_processed=groups_processed,
         equity_lots_netted=equity_lots_netted,
+        old_chains=all_chains,
     )

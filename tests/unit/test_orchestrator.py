@@ -1,8 +1,7 @@
 """
-Integration tests for the Pipeline Orchestrator (OPT-121 final piece).
+Integration tests for the Pipeline Orchestrator (OPT-121).
 
 All tests use a real temporary SQLite database via conftest fixtures.
-The orchestrator is shadow-built — not wired into sync.py yet.
 
 Shadow comparison tests run both the legacy group-creation path
 (seed_position_groups from ledger_service) and the new pipeline path
@@ -88,6 +87,20 @@ class TestFullPipeline:
         assert result.chains_derived >= 1
         assert result.groups_processed >= 1
         assert _count_lots(db) >= 1
+
+    def test_old_chains_populated(self, db, order_processor, lot_manager, position_manager):
+        """old_chains field is populated for non-empty transactions."""
+        txs = [
+            make_option_transaction(
+                id="tx-oc-001", order_id="ORD-OC-001", action="SELL_TO_OPEN",
+                quantity=1, price=2.50,
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+
+        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+
+        assert len(result.old_chains) >= 1
 
     def test_open_close(self, db, order_processor, lot_manager, position_manager):
         """STO + BTC -> lots + closings, chain CLOSED, group CLOSED."""
@@ -175,7 +188,7 @@ class TestFullPipeline:
         assert _count_lots(db) >= 1
 
     def test_empty_transactions(self, db, order_processor, lot_manager, position_manager):
-        """No transactions -> PipelineResult with zeros."""
+        """No transactions -> PipelineResult with zeros, empty old_chains."""
         result = reprocess(db, order_processor, lot_manager, position_manager, [])
 
         assert result == PipelineResult(
@@ -183,6 +196,7 @@ class TestFullPipeline:
             chains_derived=0,
             groups_processed=0,
             equity_lots_netted=0,
+            old_chains=[],
         )
 
 
@@ -298,8 +312,8 @@ class TestPipelineResultCounts:
 
     def test_dataclass_equality(self, db, order_processor, lot_manager, position_manager):
         """PipelineResult supports equality for test assertions."""
-        r1 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1)
-        r2 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1)
+        r1 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1, old_chains=[])
+        r2 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1, old_chains=[])
         assert r1 == r2
 
 
