@@ -108,12 +108,13 @@ def preprocess_transactions(
         if not raw_tx.get("symbol"):
             continue
 
-        # Skip transactions with no action, except assignment/exercise
+        # Skip transactions with no action, except assignment/exercise/expiration
         sub_type = raw_tx.get("transaction_sub_type", "").upper()
         if (
             not raw_tx.get("action")
             and "ASSIGNMENT" not in sub_type
             and "EXERCISE" not in sub_type
+            and "EXPIR" not in sub_type
         ):
             continue
 

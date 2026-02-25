@@ -62,12 +62,13 @@ class TestPreprocessTransactions:
         assert tx.action == "BUY_TO_OPEN"
         assert tx.option_type is None
 
-    def test_expiration_no_action_skipped(self):
-        """Expirations with action=None are skipped (same as OrderProcessor).
-        Only assignments/exercises bypass the action check."""
+    def test_expiration_no_action_kept(self):
+        """Expirations with action=None are kept (same as assignments/exercises).
+        They get a synthetic order ID for chain derivation."""
         raw = [make_expiration_transaction()]
         txs, assign_stocks = preprocess_transactions(raw)
-        assert len(txs) == 0
+        assert len(txs) == 1
+        assert "SYSTEM_Expiration" in txs[0].order_id
 
     def test_expiration_with_action_gets_synthetic_order_id(self):
         """Expirations that have an action (rare edge case) get a synthetic ID."""

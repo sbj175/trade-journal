@@ -25,6 +25,8 @@ import src.services.ledger_service as ledger_svc
 from tests.conftest import (
     make_option_transaction,
     make_stock_transaction,
+    make_expiration_transaction,
+    make_assignment_transaction,
 )
 
 
@@ -819,3 +821,168 @@ class TestShadowComparison:
         # Both should detect Iron Condor
         assert legacy_groups[0]["strategy_label"] == "Iron Condor"
         assert new_groups[0]["strategy_label"] == "Iron Condor"
+
+    def test_shadow_expiration(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """STO → expiration: both paths produce 1 CLOSED group.
+
+        Expirations have no order_id and no action — they get synthetic order IDs
+        during preprocessing. This tests the full pipeline handles that edge case.
+        """
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            make_option_transaction(
+                id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
+                quantity=1, price=2.00,
+                symbol="AAPL  250321C00170000",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_expiration_transaction(
+                id="tx-exp",
+                symbol="AAPL  250321C00170000",
+                quantity=1,
+                executed_at="2025-03-21T16:00:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Both should produce 1 group
+        assert len(legacy_groups) == 1
+        assert len(new_groups) == 1
+        # Same lot membership
+        assert legacy_groups[0]["lot_txn_ids"] == new_groups[0]["lot_txn_ids"]
+        # Both CLOSED (expired)
+        assert legacy_groups[0]["status"] == "CLOSED"
+        assert new_groups[0]["status"] == "CLOSED"
+
+    def test_shadow_assignment(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """STO put → assignment: assignment creates a derived stock lot.
+
+        Assignments have no order_id and no action — they get synthetic handling.
+        The derived stock lot should be in the same group as the option lot.
+        """
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            make_option_transaction(
+                id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
+                quantity=1, price=3.00,
+                symbol="AAPL  250321P00170000", option_type="Put",
+                strike=170.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_assignment_transaction(
+                id="tx-assign",
+                symbol="AAPL  250321P00170000",
+                quantity=1,
+                executed_at="2025-03-21T16:00:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Both should produce at least 1 group containing the option lot
+        assert len(legacy_groups) >= 1
+        assert len(new_groups) >= 1
+        # The opening transaction should be in a group in both paths
+        legacy_all_txns = sorted(t for g in legacy_groups for t in g["lot_txn_ids"])
+        new_all_txns = sorted(t for g in new_groups for t in g["lot_txn_ids"])
+        assert "tx-open" in legacy_all_txns
+        assert "tx-open" in new_all_txns
+
+    def test_shadow_jade_lizard(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Jade Lizard (short put + bear call spread) entered as a single order:
+        both paths produce 1 group with 'Jade Lizard' strategy label.
+        """
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            # Short put
+            make_option_transaction(
+                id="tx-sp", order_id="ORD-JL", action="SELL_TO_OPEN",
+                quantity=1, price=2.00,
+                symbol="AAPL 250321P00160000", option_type="Put",
+                strike=160.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            # Short call (lower strike of the bear call spread)
+            make_option_transaction(
+                id="tx-sc", order_id="ORD-JL", action="SELL_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="AAPL 250321C00180000", option_type="Call",
+                strike=180.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            # Long call (higher strike — caps upside risk)
+            make_option_transaction(
+                id="tx-lc", order_id="ORD-JL", action="BUY_TO_OPEN",
+                quantity=1, price=0.50,
+                symbol="AAPL 250321C00190000", option_type="Call",
+                strike=190.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Both should produce 1 group with all 3 lots
+        assert len(legacy_groups) == 1
+        assert len(new_groups) == 1
+        all_txn_ids = sorted(["tx-sp", "tx-sc", "tx-lc"])
+        assert legacy_groups[0]["lot_txn_ids"] == all_txn_ids
+        assert new_groups[0]["lot_txn_ids"] == all_txn_ids
+        # Both should detect Jade Lizard
+        assert legacy_groups[0]["strategy_label"] == "Jade Lizard"
+        assert new_groups[0]["strategy_label"] == "Jade Lizard"
