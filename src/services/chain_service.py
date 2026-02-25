@@ -378,7 +378,8 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         if tx.is_cash_settlement:
                             order_pnl += tx.value
                         else:
-                            value = tx.price * abs(tx.quantity) * 100
+                            multiplier = 100 if tx.option_type else 1
+                            value = tx.price * abs(tx.quantity) * multiplier
                             if tx.is_sell:
                                 order_pnl += value
                             else:

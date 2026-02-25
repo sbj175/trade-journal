@@ -254,16 +254,7 @@ class OrderProcessor:
                 # V3: Save for assignment/exercise processing
                 self._assignment_stock_transactions.append(raw_tx)
                 continue
-            
-            # Only process options transactions for chain creation
-            # Skip pure stock transactions (but keep assignment/exercise which are option-related)
-            if (instrument_type and 'EQUITY_OPTION' not in instrument_type and 
-                'ASSIGNMENT' not in sub_type and 
-                'EXERCISE' not in sub_type and
-                'EXPIR' not in sub_type):
-                # Debug: Log what we're filtering out
-                logger.debug(f"Filtering out transaction: {raw_tx.get('symbol')} - {instrument_type} - {sub_type}")
-                continue
+
             # Generate order ID — use symbol change override if available
             tx_id_str = str(raw_tx.get('id', ''))
             sc_override = symbol_change_overrides.get(tx_id_str)
@@ -514,6 +505,13 @@ class OrderProcessor:
                             opening_order_id=order.order_id
                         )
                     elif tx.is_closing:
+                        # Determine closing direction for equity FIFO
+                        close_long = None
+                        if 'SELL_TO_CLOSE' in (tx.action or ''):
+                            close_long = True
+                        elif 'BUY_TO_CLOSE' in (tx.action or ''):
+                            close_long = False
+
                         # Determine closing type
                         if tx.is_assignment:
                             closing_type = 'ASSIGNMENT'
@@ -533,7 +531,8 @@ class OrderProcessor:
                             closing_order_id=order.order_id,
                             closing_transaction_id=tx.id,
                             closing_date=tx.executed_at,
-                            closing_type=closing_type
+                            closing_type=closing_type,
+                            close_long=close_long
                         )
 
         # Store for use in _derive_chains

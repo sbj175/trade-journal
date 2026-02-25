@@ -15,7 +15,7 @@ from src.services.sync_service import (
 )
 from src.services.chain_service import update_chain_cache
 from src.services.ledger_service import (
-    process_equity_transactions, seed_new_lots_into_groups, _reconcile_stale_groups,
+    net_opposing_equity_lots, seed_new_lots_into_groups, _reconcile_stale_groups,
 )
 
 router = APIRouter()
@@ -122,7 +122,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
                     logger.info("Running strategy detection on chains...")
                     try:
                         await update_chain_cache(all_chains, affected_underlyings)
-                        process_equity_transactions()
+                        net_opposing_equity_lots()
                         seed_new_lots_into_groups()
                         _reconcile_stale_groups()
                         logger.info("Strategy detection and cache update completed")
@@ -318,7 +318,7 @@ async def initial_sync(
             for account, chains in chains_by_account.items():
                 all_chains.extend(chains)
             await update_chain_cache(all_chains)
-            process_equity_transactions()
+            net_opposing_equity_lots()
             seed_new_lots_into_groups()
             _reconcile_stale_groups()
             logger.info(f"Chain reprocessing completed: {len(all_chains)} chains with strategy detection")
@@ -362,7 +362,7 @@ async def reprocess_chains(user_id: str = Depends(get_current_user_id)):
 
         logger.info(f"About to update cache with {len(all_chains)} chains...")
         await update_chain_cache(all_chains)
-        process_equity_transactions()
+        net_opposing_equity_lots()
         logger.info("Cache update completed")
 
         seed_new_lots_into_groups()

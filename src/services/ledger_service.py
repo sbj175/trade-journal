@@ -11,7 +11,7 @@ from src.database.tenant import DEFAULT_USER_ID
 
 from src.database.models import (
     OrderChain, PositionLot as PositionLotModel, LotClosing as LotClosingModel,
-    PositionGroup, PositionGroupLot, RawTransaction,
+    PositionGroup, PositionGroupLot,
 )
 from src.dependencies import db, lot_manager
 
@@ -158,134 +158,20 @@ def seed_position_groups():
 
 
 def process_equity_transactions(account_number: Optional[str] = None):
-    """Create/close equity lots from raw stock transactions.
+    """Deprecated: equity lots are now created by the unified OrderProcessor pipeline.
 
-    Runs after OrderProcessor (which handles options + assignment equity).
-    Processes explicit buy/sell equity trades AND Receive Deliver equity
-    (ACAT transfers, etc.) from raw_transactions.
-
-    After processing individual transactions, runs a netting pass to close
-    opposing equity lots against each other (e.g., call assignment -800 shares
-    vs ACAT +800 shares for the same symbol).
+    This function is kept for backward compatibility. It now only runs the
+    netting pass to close opposing equity lots against each other.
 
     Returns:
         Tuple of (lots_created, lots_closed)
     """
-    lots_created = 0
-    lots_closed = 0
-
-    with db.get_session() as session:
-        # 1. Query equity transactions: Trade + Receive Deliver (ACAT, etc.)
-        q = session.query(RawTransaction).filter(
-            RawTransaction.instrument_type == 'InstrumentType.EQUITY',
-            RawTransaction.transaction_type.in_(['Trade', 'Receive Deliver']),
-            RawTransaction.action.isnot(None),
-        )
-        if account_number:
-            q = q.filter(RawTransaction.account_number == account_number)
-        q = q.order_by(RawTransaction.executed_at.asc(), RawTransaction.id.asc())
-
-        equity_txns = [row.to_dict() for row in q.all()]
-
-        if not equity_txns:
-            return (0, 0)
-
-        # 2. Get existing lot transaction_ids to skip already-processed
-        existing_lot_txn_ids = {
-            r[0] for r in session.query(
-                PositionLotModel.transaction_id,
-            ).filter(
-                PositionLotModel.instrument_type == 'EQUITY',
-            ).all()
-        }
-
-        existing_closing_txn_ids = {
-            r[0] for r in session.query(
-                LotClosingModel.closing_transaction_id,
-            ).filter(
-                LotClosingModel.closing_transaction_id.isnot(None),
-            ).all()
-        }
-
-    # 3. Process each transaction chronologically
-    for txn in equity_txns:
-        txn_id = txn['id']
-        action = (txn.get('action') or '').upper()
-        txn_type = txn.get('transaction_type', '')
-        symbol = txn.get('underlying_symbol') or txn.get('symbol', '')
-
-        # Normalize instrument_type for lot creation
-        txn['instrument_type'] = 'EQUITY'
-
-        # For Receive Deliver: only process opening actions (BTO/STO).
-        # STC/BTC from Receive Deliver are assignment settlements — OrderProcessor
-        # already creates derived lots for those, so skip to avoid double-counting.
-        is_receive_deliver = (txn_type == 'Receive Deliver')
-
-        if 'BUY_TO_OPEN' in action or 'SELL_TO_OPEN' in action:
-            # Opening transaction — create a lot
-            if txn_id in existing_lot_txn_ids:
-                continue
-            lot_manager.create_lot(
-                transaction=txn,
-                chain_id='',
-                leg_index=0,
-                opening_order_id=txn.get('order_id', '')
-            )
-            existing_lot_txn_ids.add(txn_id)
-            lots_created += 1
-
-        elif 'SELL_TO_CLOSE' in action and not is_receive_deliver:
-            # STC closes long positions (Trade type only)
-            if txn_id in existing_closing_txn_ids:
-                continue
-            qty = abs(int(txn.get('quantity', 0)))
-            if qty > 0:
-                pnl, affected = lot_manager.close_lot_fifo(
-                    account_number=txn['account_number'],
-                    symbol=symbol,
-                    quantity_to_close=qty,
-                    closing_price=float(txn.get('price', 0)),
-                    closing_order_id=txn.get('order_id', ''),
-                    closing_transaction_id=txn_id,
-                    closing_date=txn.get('executed_at', ''),
-                    closing_type='MANUAL',
-                    close_long=True
-                )
-                if affected:
-                    existing_closing_txn_ids.add(txn_id)
-                    lots_closed += len(affected)
-
-        elif 'BUY_TO_CLOSE' in action and not is_receive_deliver:
-            # BTC closes short positions (Trade type only)
-            if txn_id in existing_closing_txn_ids:
-                continue
-            qty = abs(int(txn.get('quantity', 0)))
-            if qty > 0:
-                pnl, affected = lot_manager.close_lot_fifo(
-                    account_number=txn['account_number'],
-                    symbol=symbol,
-                    quantity_to_close=qty,
-                    closing_price=float(txn.get('price', 0)),
-                    closing_order_id=txn.get('order_id', ''),
-                    closing_transaction_id=txn_id,
-                    closing_date=txn.get('executed_at', ''),
-                    closing_type='MANUAL',
-                    close_long=False
-                )
-                if affected:
-                    existing_closing_txn_ids.add(txn_id)
-                    lots_closed += len(affected)
-
-    # 4. Netting pass: close opposing equity lots against each other.
-    netted = _net_opposing_equity_lots()
-    lots_closed += netted
-
-    logger.info(f"Equity lot processing: {lots_created} lots created, {lots_closed} lots closed (incl {netted} netted)")
-    return (lots_created, lots_closed)
+    logger.warning("process_equity_transactions() is deprecated — equity flows through OrderProcessor now. Running netting only.")
+    netted = net_opposing_equity_lots()
+    return (0, netted)
 
 
-def _net_opposing_equity_lots() -> int:
+def net_opposing_equity_lots() -> int:
     """Close opposing equity lots (positive vs negative) for the same account+symbol.
 
     When a call assignment creates a derived lot with negative quantity and there are
