@@ -23,171 +23,484 @@
         * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
         body { background: #131722; color: #d1d4dc; }
         [x-cloak] { display: none !important; }
+
+        /* ── Layout ── */
+        .login-wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+        .brand-panel {
+            width: 55%;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 3rem 4rem;
+            background: linear-gradient(135deg, #0a0e17 0%, #131722 40%, #0d1a2d 100%);
+        }
+        .form-panel {
+            width: 45%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            position: relative;
+            background: #131722;
+        }
+
+        /* ── Grid overlay ── */
+        .brand-panel::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(41,98,255,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(41,98,255,0.04) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+        }
+
+        /* ── Animated SVG chart ── */
+        .chart-bg {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 60%;
+            opacity: 0.12;
+            pointer-events: none;
+        }
+        .chart-line {
+            stroke-dasharray: 1200;
+            stroke-dashoffset: 1200;
+            animation: drawLine 3s ease-out forwards;
+        }
+        .chart-fill {
+            opacity: 0;
+            animation: fadeInFill 1.5s ease-out 2s forwards;
+        }
+        @keyframes drawLine {
+            to { stroke-dashoffset: 0; }
+        }
+        @keyframes fadeInFill {
+            to { opacity: 0.4; }
+        }
+
+        /* ── Entrance animations ── */
+        @keyframes fadeInLeft {
+            from { opacity: 0; transform: translateX(-30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .anim-fade-left {
+            opacity: 0;
+            animation: fadeInLeft 0.6s ease-out forwards;
+        }
+        .anim-fade-up {
+            opacity: 0;
+            animation: fadeInUp 0.7s ease-out forwards;
+        }
+        .delay-1 { animation-delay: 0.15s; }
+        .delay-2 { animation-delay: 0.30s; }
+        .delay-3 { animation-delay: 0.45s; }
+        .delay-4 { animation-delay: 0.60s; }
+        .delay-5 { animation-delay: 0.75s; }
+        .delay-6 { animation-delay: 0.90s; }
+
+        /* ── Glass card ── */
+        .glass-card {
+            background: rgba(30, 34, 45, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(42, 46, 57, 0.7);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #2962ff, #7c3aed, #2ec4b6, #2962ff);
+            background-size: 300% 100%;
+            animation: gradientBar 6s linear infinite;
+        }
+        @keyframes gradientBar {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+        }
+
+        /* Radial glow behind card */
+        .form-panel::before {
+            content: '';
+            position: absolute;
+            width: 420px;
+            height: 420px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(41,98,255,0.12) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        /* ── Input focus glow ── */
+        .input-glow {
+            transition: box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+        .input-glow:focus {
+            border-color: #2962ff;
+            box-shadow: 0 0 0 3px rgba(41,98,255,0.25);
+            outline: none;
+        }
+
+        /* ── Gradient submit button ── */
+        .btn-gradient {
+            background: linear-gradient(135deg, #2962ff, #1e50d4);
+            transition: box-shadow 0.25s ease, transform 0.15s ease;
+        }
+        .btn-gradient:hover:not(:disabled) {
+            box-shadow: 0 6px 20px rgba(41,98,255,0.4);
+            transform: translateY(-1px);
+        }
+        .btn-gradient:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        /* ── Icon badge ── */
+        .icon-badge {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 16px;
+        }
+
+        /* ── Green pulse ── */
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #2ec4b6;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(46,196,182,0.5); }
+            50%      { box-shadow: 0 0 0 6px rgba(46,196,182,0); }
+        }
+
+        /* ── Password toggle ── */
+        .pw-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #868c99;
+            cursor: pointer;
+            padding: 4px;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+        .pw-toggle:hover {
+            color: #d1d4dc;
+        }
+
+        /* ── Mobile ── */
+        @media (max-width: 959px) {
+            .brand-panel { display: none; }
+            .form-panel { width: 100%; }
+            .mobile-logo { display: flex !important; }
+        }
+        @media (min-width: 960px) {
+            .mobile-logo { display: none !important; }
+        }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center" x-data="loginApp" x-cloak>
+<body x-data="loginApp" x-cloak>
 
-    <div class="w-full max-w-md px-6">
-        <!-- Logo -->
-        <div class="text-center mb-8">
-            <span class="text-tv-blue font-semibold text-3xl">
-                <i class="fas fa-chart-line mr-2"></i>OptionLedger
-            </span>
-            <p class="text-tv-muted mt-2">Options Trading Analytics</p>
+<div class="login-wrapper">
+    <!-- ═══════════════ LEFT: BRANDING PANEL ═══════════════ -->
+    <div class="brand-panel">
+        <!-- Animated chart background -->
+        <svg class="chart-bg" viewBox="0 0 800 400" preserveAspectRatio="none">
+            <defs>
+                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#2962ff" stop-opacity="0.6"/>
+                    <stop offset="100%" stop-color="#2962ff" stop-opacity="0"/>
+                </linearGradient>
+            </defs>
+            <path class="chart-fill" d="M0,350 L40,340 100,320 160,330 220,280 280,300 340,250 400,200 460,220 520,160 580,140 640,100 700,80 760,60 800,40 800,400 0,400 Z" fill="url(#chartGrad)"/>
+            <polyline class="chart-line" fill="none" stroke="#2962ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                      points="0,350 40,340 100,320 160,330 220,280 280,300 340,250 400,200 460,220 520,160 580,140 640,100 700,80 760,60 800,40"/>
+        </svg>
+
+        <!-- Logo + tagline -->
+        <div class="relative z-10 mb-12 anim-fade-left">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="icon-badge" style="background: linear-gradient(135deg, #2962ff, #1e50d4);">
+                    <i class="fas fa-chart-line text-white"></i>
+                </div>
+                <span class="text-2xl font-bold text-white tracking-tight">OptionLedger</span>
+            </div>
+            <p class="text-tv-muted text-sm ml-[52px]">Professional Options Trading Analytics</p>
         </div>
 
-        <!-- Auth Not Enabled Message -->
-        <template x-if="!authEnabled && loaded">
-            <div class="bg-tv-panel border border-tv-border rounded-lg p-6 text-center">
-                <i class="fas fa-info-circle text-tv-blue text-2xl mb-3"></i>
-                <p class="text-tv-text mb-4">Authentication is not enabled.</p>
-                <a href="/positions" class="inline-block bg-tv-blue hover:bg-blue-600 text-white px-6 py-2 rounded text-sm">
-                    Go to App
-                </a>
-            </div>
-        </template>
-
-        <!-- Login Form -->
-        <template x-if="authEnabled && loaded">
-            <div class="bg-tv-panel border border-tv-border rounded-lg p-6">
-                <h2 class="text-xl font-semibold text-tv-text mb-6 text-center" x-text="isSignUp ? 'Create Account' : 'Sign In'"></h2>
-
-                <!-- Error Message -->
-                <div x-show="error" x-cloak
-                     class="bg-red-900/30 border border-red-700 text-red-400 px-4 py-2 rounded mb-4 text-sm">
-                    <span x-text="error"></span>
+        <!-- Feature highlights -->
+        <div class="relative z-10 space-y-5">
+            <div class="flex items-center gap-4 anim-fade-left delay-2">
+                <div class="icon-badge" style="background: rgba(41,98,255,0.15);">
+                    <i class="fas fa-link text-[#2962ff]"></i>
                 </div>
-
-                <!-- Success Message -->
-                <div x-show="success" x-cloak
-                     class="bg-green-900/30 border border-green-700 text-green-400 px-4 py-2 rounded mb-4 text-sm">
-                    <span x-text="success"></span>
-                </div>
-
-                <form @submit.prevent="handleSubmit" class="space-y-4">
-                    <div>
-                        <label class="block text-tv-muted text-sm mb-1">Email</label>
-                        <input type="email" x-model="email" required x-init="$nextTick(() => $el.focus())"
-                               class="w-full bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded focus:outline-none focus:border-tv-blue"
-                               placeholder="you@example.com">
-                    </div>
-
-                    <div>
-                        <label class="block text-tv-muted text-sm mb-1">Password</label>
-                        <input type="password" x-model="password" required minlength="6"
-                               class="w-full bg-tv-bg border border-tv-border text-tv-text px-3 py-2 rounded focus:outline-none focus:border-tv-blue"
-                               placeholder="Min 6 characters">
-                    </div>
-
-                    <button type="submit" :disabled="loading"
-                            class="w-full bg-tv-blue hover:bg-blue-600 disabled:opacity-50 text-white py-2 rounded text-sm font-medium">
-                        <span x-show="!loading" x-text="isSignUp ? 'Create Account' : 'Sign In'"></span>
-                        <span x-show="loading"><i class="fas fa-spinner fa-spin mr-1"></i>Please wait...</span>
-                    </button>
-                </form>
-
-                <div class="mt-4 text-center text-sm">
-                    <template x-if="!isSignUp">
-                        <p class="text-tv-muted">
-                            Don't have an account?
-                            <button @click="isSignUp = true; error = ''; success = ''" class="text-tv-blue hover:underline">Sign up</button>
-                        </p>
-                    </template>
-                    <template x-if="isSignUp">
-                        <p class="text-tv-muted">
-                            Already have an account?
-                            <button @click="isSignUp = false; error = ''; success = ''" class="text-tv-blue hover:underline">Sign in</button>
-                        </p>
-                    </template>
+                <div>
+                    <p class="text-white font-medium text-sm">Chain Tracking</p>
+                    <p class="text-tv-muted text-xs">Automatic roll chain linking and P&L aggregation</p>
                 </div>
             </div>
-        </template>
+            <div class="flex items-center gap-4 anim-fade-left delay-3">
+                <div class="icon-badge" style="background: rgba(46,196,182,0.15);">
+                    <i class="fas fa-chart-area text-[#2ec4b6]"></i>
+                </div>
+                <div>
+                    <p class="text-white font-medium text-sm">Real-Time Portfolio</p>
+                    <p class="text-tv-muted text-xs">Live P&L, Greeks, and position monitoring</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 anim-fade-left delay-4">
+                <div class="icon-badge" style="background: rgba(124,58,237,0.15);">
+                    <i class="fas fa-brain text-[#7c3aed]"></i>
+                </div>
+                <div>
+                    <p class="text-white font-medium text-sm">Strategy Detection</p>
+                    <p class="text-tv-muted text-xs">Automatic multi-leg strategy identification</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 anim-fade-left delay-5">
+                <div class="icon-badge" style="background: rgba(247,113,113,0.15);">
+                    <i class="fas fa-shield-halved text-[#f77171]"></i>
+                </div>
+                <div>
+                    <p class="text-white font-medium text-sm">Privacy First</p>
+                    <p class="text-tv-muted text-xs">100% local — your data never leaves your machine</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status line -->
+        <div class="relative z-10 mt-auto pt-12 anim-fade-left delay-6">
+            <div class="flex items-center gap-2">
+                <div class="pulse-dot"></div>
+                <span class="text-tv-muted text-xs">Tastytrade API Connected &middot; OAuth 2.0 Secured</span>
+            </div>
+        </div>
     </div>
 
-    <script>
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('loginApp', () => ({
-            email: '',
-            password: '',
-            error: '',
-            success: '',
-            loading: false,
-            isSignUp: false,
-            authEnabled: false,
-            loaded: false,
-            supabaseClient: null,
+    <!-- ═══════════════ RIGHT: FORM PANEL ═══════════════ -->
+    <div class="form-panel">
+        <div class="w-full max-w-sm anim-fade-up delay-1">
+            <!-- Mobile logo (hidden on desktop) -->
+            <div class="mobile-logo items-center justify-center gap-3 mb-8">
+                <div class="icon-badge" style="background: linear-gradient(135deg, #2962ff, #1e50d4);">
+                    <i class="fas fa-chart-line text-white"></i>
+                </div>
+                <span class="text-2xl font-bold text-white tracking-tight">OptionLedger</span>
+            </div>
 
-            async init() {
-                try {
-                    const resp = await fetch('/api/auth/config');
-                    const config = await resp.json();
-                    this.authEnabled = config.auth_enabled;
+            <!-- Auth Not Enabled Message -->
+            <template x-if="!authEnabled && loaded">
+                <div class="glass-card p-8 text-center">
+                    <div class="pt-4">
+                        <div class="icon-badge mx-auto mb-5" style="background: rgba(41,98,255,0.15); width: 56px; height: 56px; border-radius: 14px; font-size: 22px;">
+                            <i class="fas fa-info-circle text-[#2962ff]"></i>
+                        </div>
+                        <p class="text-tv-text mb-2 font-medium">Authentication Not Enabled</p>
+                        <p class="text-tv-muted text-sm mb-6">Running in single-user local mode</p>
+                        <a href="/positions" class="inline-block btn-gradient text-white px-8 py-2.5 rounded-lg text-sm font-medium">
+                            Go to App
+                        </a>
+                    </div>
+                </div>
+            </template>
 
-                    if (this.authEnabled && config.supabase_url && config.supabase_anon_key) {
-                        this.supabaseClient = window.supabase.createClient(
-                            config.supabase_url,
-                            config.supabase_anon_key
-                        );
+            <!-- Login Form -->
+            <template x-if="authEnabled && loaded">
+                <div class="glass-card p-8">
+                    <div class="pt-3">
+                        <h2 class="text-xl font-semibold text-white mb-1 text-center" x-text="isSignUp ? 'Create Account' : 'Welcome Back'"></h2>
+                        <p class="text-tv-muted text-sm mb-7 text-center" x-text="isSignUp ? 'Get started with OptionLedger' : 'Sign in to your account'"></p>
 
-                        // Check if already logged in
-                        const { data: { session } } = await this.supabaseClient.auth.getSession();
-                        if (session) {
-                            window.location.href = '/positions';
-                            return;
-                        }
+                        <!-- Error Message -->
+                        <div x-show="error"
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 -translate-y-1"
+                             x-transition:enter-end="opacity-100 translate-y-0"
+                             x-transition:leave="transition ease-in duration-150"
+                             x-transition:leave-start="opacity-100"
+                             x-transition:leave-end="opacity-0"
+                             class="bg-red-900/20 border border-red-700/50 text-red-400 px-4 py-2.5 rounded-lg mb-5 text-sm flex items-center gap-2">
+                            <i class="fas fa-circle-exclamation text-xs"></i>
+                            <span x-text="error"></span>
+                        </div>
+
+                        <!-- Success Message -->
+                        <div x-show="success"
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 -translate-y-1"
+                             x-transition:enter-end="opacity-100 translate-y-0"
+                             x-transition:leave="transition ease-in duration-150"
+                             x-transition:leave-start="opacity-100"
+                             x-transition:leave-end="opacity-0"
+                             class="bg-green-900/20 border border-green-700/50 text-green-400 px-4 py-2.5 rounded-lg mb-5 text-sm flex items-center gap-2">
+                            <i class="fas fa-circle-check text-xs"></i>
+                            <span x-text="success"></span>
+                        </div>
+
+                        <form @submit.prevent="handleSubmit" class="space-y-5">
+                            <div>
+                                <label class="block text-tv-muted text-[11px] font-semibold tracking-wider uppercase mb-1.5">
+                                    <i class="fas fa-envelope text-[10px] mr-1"></i> Email
+                                </label>
+                                <input type="email" x-model="email" required x-init="$nextTick(() => $el.focus())"
+                                       class="w-full bg-tv-bg/80 border border-tv-border text-tv-text px-3.5 py-2.5 rounded-lg input-glow text-sm"
+                                       placeholder="you@example.com">
+                            </div>
+
+                            <div>
+                                <label class="block text-tv-muted text-[11px] font-semibold tracking-wider uppercase mb-1.5">
+                                    <i class="fas fa-lock text-[10px] mr-1"></i> Password
+                                </label>
+                                <div class="relative">
+                                    <input :type="showPassword ? 'text' : 'password'" x-model="password" required minlength="6"
+                                           class="w-full bg-tv-bg/80 border border-tv-border text-tv-text px-3.5 py-2.5 rounded-lg input-glow text-sm pr-10"
+                                           placeholder="Min 6 characters">
+                                    <button type="button" class="pw-toggle" @click="showPassword = !showPassword" tabindex="-1">
+                                        <i :class="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button type="submit" :disabled="loading"
+                                    class="w-full btn-gradient disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-semibold tracking-wide">
+                                <span x-show="!loading" x-text="isSignUp ? 'Create Account' : 'Sign In'"></span>
+                                <span x-show="loading"><i class="fas fa-spinner fa-spin mr-1"></i>Please wait...</span>
+                            </button>
+                        </form>
+
+                        <div class="mt-5 text-center text-sm">
+                            <template x-if="!isSignUp">
+                                <p class="text-tv-muted">
+                                    Don't have an account?
+                                    <button @click="isSignUp = true; error = ''; success = ''" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign up</button>
+                                </p>
+                            </template>
+                            <template x-if="isSignUp">
+                                <p class="text-tv-muted">
+                                    Already have an account?
+                                    <button @click="isSignUp = false; error = ''; success = ''" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign in</button>
+                                </p>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Footer -->
+            <p class="text-center text-tv-muted/50 text-[11px] mt-6">&copy; 2026 OptionLedger &middot; Encrypted &amp; Private</p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('loginApp', () => ({
+        email: '',
+        password: '',
+        error: '',
+        success: '',
+        loading: false,
+        isSignUp: false,
+        showPassword: false,
+        authEnabled: false,
+        loaded: false,
+        supabaseClient: null,
+
+        async init() {
+            try {
+                const resp = await fetch('/api/auth/config');
+                const config = await resp.json();
+                this.authEnabled = config.auth_enabled;
+
+                if (this.authEnabled && config.supabase_url && config.supabase_anon_key) {
+                    this.supabaseClient = window.supabase.createClient(
+                        config.supabase_url,
+                        config.supabase_anon_key
+                    );
+
+                    // Check if already logged in
+                    const { data: { session } } = await this.supabaseClient.auth.getSession();
+                    if (session) {
+                        window.location.href = '/positions';
+                        return;
                     }
-                } catch (e) {
-                    console.warn('Failed to load auth config:', e);
-                    this.authEnabled = false;
                 }
-                this.loaded = true;
-            },
+            } catch (e) {
+                console.warn('Failed to load auth config:', e);
+                this.authEnabled = false;
+            }
+            this.loaded = true;
+        },
 
-            async handleSubmit() {
-                this.error = '';
-                this.success = '';
-                this.loading = true;
+        async handleSubmit() {
+            this.error = '';
+            this.success = '';
+            this.loading = true;
 
-                try {
-                    if (!this.supabaseClient) {
-                        this.error = 'Authentication service not available';
-                        return;
-                    }
-
-                    let result;
-                    if (this.isSignUp) {
-                        result = await this.supabaseClient.auth.signUp({
-                            email: this.email,
-                            password: this.password,
-                        });
-                    } else {
-                        result = await this.supabaseClient.auth.signInWithPassword({
-                            email: this.email,
-                            password: this.password,
-                        });
-                    }
-
-                    if (result.error) {
-                        this.error = result.error.message;
-                        return;
-                    }
-
-                    if (this.isSignUp && result.data?.user && !result.data?.session) {
-                        // Email confirmation required
-                        this.success = 'Check your email for a confirmation link.';
-                        return;
-                    }
-
-                    // Success — redirect
-                    window.location.href = '/positions';
-                } catch (e) {
-                    this.error = e.message || 'An unexpected error occurred';
-                } finally {
-                    this.loading = false;
+            try {
+                if (!this.supabaseClient) {
+                    this.error = 'Authentication service not available';
+                    return;
                 }
-            },
-        }));
-    });
-    </script>
+
+                let result;
+                if (this.isSignUp) {
+                    result = await this.supabaseClient.auth.signUp({
+                        email: this.email,
+                        password: this.password,
+                    });
+                } else {
+                    result = await this.supabaseClient.auth.signInWithPassword({
+                        email: this.email,
+                        password: this.password,
+                    });
+                }
+
+                if (result.error) {
+                    this.error = result.error.message;
+                    return;
+                }
+
+                if (this.isSignUp && result.data?.user && !result.data?.session) {
+                    // Email confirmation required
+                    this.success = 'Check your email for a confirmation link.';
+                    return;
+                }
+
+                // Success — redirect
+                window.location.href = '/positions';
+            } catch (e) {
+                this.error = e.message || 'An unexpected error occurred';
+            } finally {
+                this.loading = false;
+            }
+        },
+    }));
+});
+</script>
 </body>
 </html>
