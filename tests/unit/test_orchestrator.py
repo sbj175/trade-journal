@@ -578,8 +578,8 @@ class TestShadowComparison:
         for lg, ng in zip(legacy_groups, new_groups):
             assert lg["lot_txn_ids"] == ng["lot_txn_ids"]
 
-    def test_shadow_equity(self, db, order_processor, lot_manager, position_manager, monkeypatch):
-        """Stock BTO: both paths create a group for the equity lot."""
+    def test_shadow_shares_only(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Shares only: both paths create 1 group labeled 'Shares'."""
         monkeypatch.setattr(ledger_svc, "db", db)
         monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
 
@@ -609,10 +609,83 @@ class TestShadowComparison:
         persister.process_groups(new_chains)
         new_groups = _snapshot_groups(db)
 
-        assert len(new_groups) == len(legacy_groups)
-        for lg, ng in zip(legacy_groups, new_groups):
-            assert lg["lot_txn_ids"] == ng["lot_txn_ids"]
-            assert lg["underlying"] == ng["underlying"]
+        assert len(new_groups) == len(legacy_groups) == 1
+        assert legacy_groups[0]["lot_txn_ids"] == new_groups[0]["lot_txn_ids"]
+        assert legacy_groups[0]["underlying"] == new_groups[0]["underlying"] == "AAPL"
+        assert legacy_groups[0]["status"] == new_groups[0]["status"] == "OPEN"
+        # Both should label equity-only groups as "Shares"
+        assert legacy_groups[0]["strategy_label"] == "Shares"
+        assert new_groups[0]["strategy_label"] == "Shares"
+
+    def test_shadow_shares_plus_bull_put_spread(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+        """Shares + bull put spread on same underlying as separate orders:
+        both paths correctly keep them as 2 separate groups.
+
+        A stock purchase and a put spread are independent positions — not a
+        meaningful combined strategy — so they should NOT be merged.
+        """
+        monkeypatch.setattr(ledger_svc, "db", db)
+        monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
+
+        txs = [
+            # Stock purchase
+            make_stock_transaction(
+                id="tx-stock", order_id="ORD-STOCK",
+                action="BUY_TO_OPEN", quantity=100, price=150.00,
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            # Bull put spread (separate order)
+            make_option_transaction(
+                id="tx-sell-put", order_id="ORD-BPS", action="SELL_TO_OPEN",
+                quantity=1, price=3.00,
+                symbol="AAPL 250321P00145000", option_type="Put",
+                strike=145.0, expiration="2025-03-21",
+                executed_at="2025-03-01T11:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-buy-put", order_id="ORD-BPS", action="BUY_TO_OPEN",
+                quantity=1, price=1.00,
+                symbol="AAPL 250321P00135000", option_type="Put",
+                strike=135.0, expiration="2025-03-21",
+                executed_at="2025-03-01T11:00:00+00:00",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+        all_chains = [c for chains in chains_by_account.values() for c in chains]
+
+        # Legacy
+        _populate_order_chains(db, lot_manager, all_chains)
+        ledger_svc.seed_position_groups()
+        legacy_groups = _snapshot_groups(db)
+
+        # New pipeline
+        _clear_groups(db)
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(new_chains)
+        new_groups = _snapshot_groups(db)
+
+        # Both paths produce 2 groups — shares and spread are independent positions
+        assert len(legacy_groups) == 2
+        assert len(new_groups) == 2
+
+        # Same lot membership
+        legacy_by_label = {g["strategy_label"]: g for g in legacy_groups}
+        new_by_label = {g["strategy_label"]: g for g in new_groups}
+
+        # Shares group
+        assert "Shares" in legacy_by_label
+        assert "Shares" in new_by_label
+        assert legacy_by_label["Shares"]["lot_txn_ids"] == new_by_label["Shares"]["lot_txn_ids"]
+        assert new_by_label["Shares"]["lot_txn_ids"] == ["tx-stock"]
+
+        # Bull Put Spread group
+        assert "Bull Put Spread" in new_by_label
+        assert sorted(new_by_label["Bull Put Spread"]["lot_txn_ids"]) == sorted(["tx-sell-put", "tx-buy-put"])
 
     def test_shadow_cross_order_improvement(self, db, order_processor, lot_manager, position_manager, monkeypatch):
         """Cross-order Iron Condor: new pipeline merges into 1 group where legacy creates 2.
