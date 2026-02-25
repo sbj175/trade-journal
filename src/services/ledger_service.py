@@ -30,11 +30,10 @@ def seed_position_groups():
             PositionLotModel.underlying,
         ).filter(
             PositionLotModel.chain_id.isnot(None),
+            PositionLotModel.chain_id != '',
         ).distinct().all()
 
         for chain_id, account_number, underlying in chain_rows:
-            if not chain_id:
-                continue
 
             # Check if group already exists for this chain
             exists = session.query(PositionGroup.group_id).filter(
@@ -113,7 +112,7 @@ def seed_position_groups():
             PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
         ).filter(
             PositionGroupLot.transaction_id.is_(None),
-            PositionLotModel.chain_id.is_(None),
+            (PositionLotModel.chain_id.is_(None) | (PositionLotModel.chain_id == '')),
         ).all()
 
         if ungrouped:
