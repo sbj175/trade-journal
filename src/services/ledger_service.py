@@ -150,6 +150,9 @@ def seed_position_groups():
                     )
                     session.execute(stmt.on_conflict_do_nothing())
 
+    # Refresh statuses — lots may already be closed at seeding time
+    _refresh_all_group_statuses()
+
     logger.info(f"Seeded {groups_created} position groups")
     return groups_created
 
