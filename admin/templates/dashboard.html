@@ -103,10 +103,12 @@
                                 <th class="px-4 py-2 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <template x-for="user in sortedUsers" :key="user.id">
-                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50 transition-colors">
+                        <template x-for="user in sortedUsers" :key="user.id">
+                            <tbody>
+                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50 transition-colors cursor-pointer"
+                                    @click="expandedUser === user.id ? expandedUser = null : expandedUser = user.id">
                                     <td class="px-4 py-2">
+                                        <span class="inline-block w-3 text-tv-muted text-xs mr-1" x-text="expandedUser === user.id ? '\u25BC' : '\u25B6'"></span>
                                         <span x-text="user.email || 'Default User'" :class="!user.email && 'text-tv-muted italic'"></span>
                                     </td>
                                     <td class="px-4 py-2 text-tv-muted" x-text="formatDate(user.created_at)"></td>
@@ -133,7 +135,7 @@
                                             x-text="user.is_active ? 'Active' : 'Inactive'"
                                         ></span>
                                     </td>
-                                    <td class="px-4 py-2 text-right">
+                                    <td class="px-4 py-2 text-right" @click.stop>
                                         <div class="flex items-center justify-end gap-2">
                                             <button
                                                 @click="resetSync(user)"
@@ -154,12 +156,36 @@
                                         </div>
                                     </td>
                                 </tr>
-                            </template>
-                            <template x-if="users.length === 0 && !loading">
-                                <tr>
-                                    <td colspan="11" class="px-4 py-8 text-center text-tv-muted">No users found</td>
+                                <tr x-show="expandedUser === user.id" x-collapse>
+                                    <td colspan="11" class="px-4 py-3 bg-tv-bg/70">
+                                        <template x-if="Object.keys(user.accounts_detail || {}).length === 0">
+                                            <div class="text-tv-muted text-xs italic">No positions</div>
+                                        </template>
+                                        <template x-if="Object.keys(user.accounts_detail || {}).length > 0">
+                                            <div class="space-y-3">
+                                                <template x-for="[acct, strategies] in Object.entries(user.accounts_detail)" :key="acct">
+                                                    <div>
+                                                        <div class="text-xs text-tv-muted mb-1">Account <span class="text-tv-text" x-text="acct"></span></div>
+                                                        <div class="flex flex-wrap gap-1.5">
+                                                            <template x-for="s in strategies" :key="s.strategy">
+                                                                <span class="inline-block bg-tv-panel border border-tv-border rounded px-2 py-0.5 text-xs">
+                                                                    <span x-text="s.strategy"></span>
+                                                                    <span class="text-tv-muted ml-1" x-text="'(' + s.count + ')'"></span>
+                                                                </span>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </td>
                                 </tr>
-                            </template>
+                            </tbody>
+                        </template>
+                        <tbody x-show="users.length === 0 && !loading">
+                            <tr>
+                                <td colspan="11" class="px-4 py-8 text-center text-tv-muted">No users found</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>

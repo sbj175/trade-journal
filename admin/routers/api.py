@@ -144,6 +144,26 @@ async def list_users():
                 .scalar()
             )
 
+            # Strategies by account
+            strategy_rows = (
+                session.query(
+                    Position.account_number,
+                    Position.strategy_type,
+                    func.count(Position.id),
+                )
+                .filter(Position.user_id == uid)
+                .group_by(Position.account_number, Position.strategy_type)
+                .all()
+            )
+            accounts_detail = {}
+            for acct, strategy, count in strategy_rows:
+                if acct not in accounts_detail:
+                    accounts_detail[acct] = []
+                accounts_detail[acct].append({
+                    "strategy": strategy or "Unknown",
+                    "count": count,
+                })
+
             result.append(
                 {
                     "id": user.id,
@@ -158,6 +178,7 @@ async def list_users():
                     "days_of_history": days_of_history,
                     "last_sync": last_sync,
                     "positions": position_count,
+                    "accounts_detail": accounts_detail,
                 }
             )
 

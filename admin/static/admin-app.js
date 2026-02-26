@@ -17,6 +17,9 @@ function adminApp() {
         sortColumn: 'last_login_at',
         sortDirection: 'desc',
 
+        // Expandable row
+        expandedUser: null,
+
         // Delete confirmation modal
         deleteModal: { open: false, user: null, confirmEmail: '' },
 
