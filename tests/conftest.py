@@ -60,12 +60,6 @@ def order_processor(db, position_manager, lot_manager):
     return OrderProcessor(db, position_manager, lot_manager)
 
 
-@pytest.fixture
-def order_processor_legacy(db, position_manager):
-    """OrderProcessor without lot_manager (legacy path)."""
-    return OrderProcessor(db, position_manager, lot_manager=None)
-
-
 # ---------------------------------------------------------------------------
 # Transaction factory helpers
 # ---------------------------------------------------------------------------
@@ -224,6 +218,40 @@ def make_assignment_transaction(
         "transaction_type": "Trade",
         "transaction_sub_type": "Assignment",
         "description": f"Assignment of {symbol}",
+        "value": 0.0,
+        "net_value": 0.0,
+        "commission": 0.0,
+        "regulatory_fees": 0.0,
+        "clearing_fees": 0.0,
+    }
+
+
+def make_exercise_transaction(
+    *,
+    id="tx-exercise-001",
+    account_number="ACCT1",
+    symbol="AAPL  250321P00170000",
+    underlying_symbol="AAPL",
+    quantity=1,
+    price=0.0,
+    executed_at="2025-03-21T16:00:00+00:00",
+    instrument_type="EQUITY_OPTION",
+):
+    """Build a transaction representing an option exercise."""
+    return {
+        "id": id,
+        "account_number": account_number,
+        "order_id": None,
+        "symbol": symbol,
+        "underlying_symbol": underlying_symbol,
+        "action": None,
+        "quantity": quantity,
+        "price": price,
+        "executed_at": executed_at,
+        "instrument_type": instrument_type,
+        "transaction_type": "Trade",
+        "transaction_sub_type": "Exercise",
+        "description": f"Exercise of {symbol}",
         "value": 0.0,
         "net_value": 0.0,
         "commission": 0.0,

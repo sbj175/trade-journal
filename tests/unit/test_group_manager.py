@@ -201,8 +201,13 @@ class TestAssignLotsToGroups:
         specs = assign_lots_to_groups(lots, chains)
         assert len(specs) == 2
 
-    def test_equity_joins_option_group(self):
-        """Short call + equity lot (same underlying) -> 1 group, Covered Call."""
+    def test_equity_and_option_separate_without_chain_link(self):
+        """Short call + equity lot (no shared chain) -> 2 groups.
+
+        Without a chain link, options and equity stay in separate groups.
+        Only equity lots register in the (account, underlying) index to
+        prevent option groups from stealing the pointer.
+        """
         lots = [
             _lot(chain_id="C1", option_type="Call", strike=180.0, quantity=-1,
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -211,8 +216,7 @@ class TestAssignLotsToGroups:
         ]
         chains = [_chain("C1", order_ids=["O1"])]
         specs = assign_lots_to_groups(lots, chains)
-        assert len(specs) == 1
-        assert specs[0].strategy_label == "Covered Call"
+        assert len(specs) == 2
 
     def test_closed_group_not_merged_into(self):
         """Existing group all CLOSED, new lot same exp -> new group (not merged)."""
@@ -290,6 +294,98 @@ class TestAssignLotsToGroups:
         assert len(specs) == 1
         # Single equity leg recognized as "Long Shares" or "Shares"
         assert "Shares" in specs[0].strategy_label or "Long" in specs[0].strategy_label
+
+    def test_exercise_derived_equity_joins_equity_group(self):
+        """Exercise-derived stock lot joins existing equity group, not the option chain group.
+
+        Scenario (modeled after IBIT Roth):
+        - Several direct stock purchases → equity group (OPEN)
+        - LEAPS options (separate chain) → option group
+        - LEAPS exercised → derived stock lot (has option chain_id)
+        - More stock purchases
+
+        All equity lots should end up in ONE group, not split between
+        the equity group and the option chain group.
+        """
+        # Direct equity purchases (different chains, all OPEN)
+        eq1 = _equity_lot(
+            underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-1",
+            quantity=4800, entry_price=53.47,
+            entry_date=datetime(2025, 5, 5, 14, 0),
+        )
+        eq2 = _equity_lot(
+            underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-2",
+            quantity=200, entry_price=61.95,
+            entry_date=datetime(2025, 7, 9, 15, 0),
+        )
+
+        # LEAPS options in their own chain (all CLOSED)
+        opt1 = _lot(
+            chain_id="LEAPS-CHAIN", symbol="IBIT 251231C00047000",
+            underlying="IBIT", option_type="Call", strike=47.0,
+            expiration=date(2025, 12, 31), quantity=8, remaining_quantity=0,
+            status="CLOSED", entry_date=datetime(2025, 6, 9, 15, 0),
+        )
+        opt2 = _lot(
+            chain_id="LEAPS-CHAIN", symbol="IBIT 251231C00061000",
+            underlying="IBIT", option_type="Call", strike=61.0,
+            expiration=date(2025, 12, 31), quantity=-4, remaining_quantity=0,
+            status="CLOSED", entry_date=datetime(2025, 6, 9, 15, 0),
+        )
+
+        # Exercise-derived stock lot — has LEAPS chain_id!
+        derived_eq = _equity_lot(
+            underlying="IBIT", symbol="IBIT", chain_id="LEAPS-CHAIN",
+            quantity=600, entry_price=47.0,
+            entry_date=datetime(2025, 12, 31, 22, 0),
+        )
+
+        # Later stock purchases (separate chains)
+        eq3 = _equity_lot(
+            underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-3",
+            quantity=1000, entry_price=42.20,
+            entry_date=datetime(2026, 2, 3, 19, 0),
+        )
+        eq4 = _equity_lot(
+            underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-4",
+            quantity=1000, entry_price=37.12,
+            entry_date=datetime(2026, 2, 23, 16, 0),
+        )
+
+        all_lots = [eq1, eq2, opt1, opt2, derived_eq, eq3, eq4]
+        chains = [
+            _chain("EQ-CHAIN-1", underlying="IBIT", order_ids=["O1"]),
+            _chain("EQ-CHAIN-2", underlying="IBIT", order_ids=["O2"]),
+            _chain("LEAPS-CHAIN", underlying="IBIT", order_ids=["O-LEAPS"]),
+            _chain("EQ-CHAIN-3", underlying="IBIT", order_ids=["O3"]),
+            _chain("EQ-CHAIN-4", underlying="IBIT", order_ids=["O4"]),
+        ]
+
+        specs = assign_lots_to_groups(all_lots, chains)
+
+        # Find the Shares groups
+        shares_groups = [s for s in specs if s.strategy_label and "Shares" in s.strategy_label]
+        open_shares = [s for s in shares_groups if s.status == "OPEN"]
+
+        # All open equity lots (including exercise-derived) should be in ONE group
+        assert len(open_shares) == 1, (
+            f"Expected 1 OPEN Shares group, got {len(open_shares)}: "
+            f"{[(s.strategy_label, s.status, len(s.lot_transaction_ids)) for s in shares_groups]}"
+        )
+
+        # That group should contain ALL equity lots (eq1 + eq2 + derived_eq + eq3 + eq4)
+        equity_txn_ids = {eq1.transaction_id, eq2.transaction_id,
+                          derived_eq.transaction_id, eq3.transaction_id, eq4.transaction_id}
+        assert equity_txn_ids.issubset(set(open_shares[0].lot_transaction_ids))
+
+        # The LEAPS options should be in a separate group
+        option_groups = [s for s in specs
+                         if any(tid == opt1.transaction_id for tid in s.lot_transaction_ids)]
+        assert len(option_groups) == 1
+        assert opt1.transaction_id in option_groups[0].lot_transaction_ids
+        assert opt2.transaction_id in option_groups[0].lot_transaction_ids
+        # The option group should NOT contain the derived equity lot
+        assert derived_eq.transaction_id not in option_groups[0].lot_transaction_ids
 
     def test_chronological_ordering_invariant(self):
         """Lots in random order -> same result as sorted."""

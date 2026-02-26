@@ -9,6 +9,7 @@ import pytest
 from datetime import datetime
 
 from src.pipeline.chain_graph import UnionFind, build_order_graph, derive_chains
+from src.pipeline.order_assembler import assemble_orders
 from src.models.order_processor import OrderProcessor
 from tests.conftest import (
     make_option_transaction,
@@ -196,32 +197,14 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-03-10T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        old_chains = old_chains_by_acct["ACCT1"]
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
 
-        # Build the same Order objects for derive_chains
-        all_orders = []
-        for chains in old_chains_by_acct.values():
-            for chain in chains:
-                all_orders.extend(chain.orders)
-        # De-duplicate by order_id
-        seen = set()
-        unique_orders = []
-        for o in all_orders:
-            if o.order_id not in seen:
-                unique_orders.append(o)
-                seen.add(o.order_id)
-
-        new_chains = derive_chains(db, unique_orders)
-
-        # Same number of chains
-        assert len(new_chains) == len(old_chains)
-        # Same status
-        assert new_chains[0].status == old_chains[0].status
-        # Same order IDs in chain
-        old_ids = sorted(o.order_id for o in old_chains[0].orders)
+        assert len(new_chains) == 1
+        assert new_chains[0].status == "CLOSED"
         new_ids = sorted(o.order_id for o in new_chains[0].orders)
-        assert old_ids == new_ids
+        assert new_ids == ["ORD-CLOSE", "ORD-OPEN"]
 
     def test_roll_chain(self, order_processor, db):
         """Roll scenario: 3 orders should form a single chain."""
@@ -251,11 +234,9 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-04-01T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        old_chains = old_chains_by_acct["ACCT1"]
-
-        all_orders = _collect_unique_orders(old_chains_by_acct)
-        new_chains = derive_chains(db, all_orders)
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
 
         assert len(new_chains) == 1
         assert new_chains[0].status == "CLOSED"
@@ -314,11 +295,9 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-03-15T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        old_chains = old_chains_by_acct["ACCT1"]
-
-        all_orders = _collect_unique_orders(old_chains_by_acct)
-        new_chains = derive_chains(db, all_orders)
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
 
         assert len(new_chains) == 1
         assert new_chains[0].status == "CLOSED"
@@ -339,9 +318,9 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-03-10T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        all_orders = _collect_unique_orders(old_chains_by_acct)
-        new_chains = derive_chains(db, all_orders)
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
 
         assert len(new_chains) == 1
         assert new_chains[0].status == "OPEN"
@@ -360,9 +339,9 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-03-01T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        all_orders = _collect_unique_orders(old_chains_by_acct)
-        new_chains = derive_chains(db, all_orders)
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
 
         # Each account should have its own chain (orphan chains)
         assert len(new_chains) == 2
@@ -378,9 +357,9 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-03-01T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        all_orders = _collect_unique_orders(old_chains_by_acct)
-        new_chains = derive_chains(db, all_orders)
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
+        new_chains = derive_chains(db, assembly.orders)
 
         assert len(new_chains) == 1
         assert len(new_chains[0].orders) == 1
@@ -400,26 +379,9 @@ class TestDeriveChainsIntegration:
                 executed_at="2025-03-01T10:00:00+00:00",
             ),
         ]
-        old_chains_by_acct = order_processor.process_transactions(txs)
-        all_orders = _collect_unique_orders(old_chains_by_acct)
+        order_processor.process_transactions(txs)  # creates lots in DB
+        assembly = assemble_orders(txs)
 
-        acct1_chains = derive_chains(db, all_orders, account_number="ACCT1")
+        acct1_chains = derive_chains(db, assembly.orders, account_number="ACCT1")
         assert len(acct1_chains) == 1
         assert acct1_chains[0].account_number == "ACCT1"
-
-
-# =====================================================================
-# Helpers
-# =====================================================================
-
-def _collect_unique_orders(chains_by_acct):
-    """Extract unique Order objects from process_transactions output."""
-    seen = set()
-    orders = []
-    for chains in chains_by_acct.values():
-        for chain in chains:
-            for order in chain.orders:
-                if order.order_id not in seen:
-                    orders.append(order)
-                    seen.add(order.order_id)
-    return orders

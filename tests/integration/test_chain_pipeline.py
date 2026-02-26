@@ -1,5 +1,5 @@
 """
-Integration tests — end-to-end: transactions → chains → P&L.
+Integration tests — end-to-end: transactions -> chains -> P&L.
 
 Exercises the full OrderProcessor pipeline with realistic multi-step scenarios.
 """
@@ -8,6 +8,8 @@ import pytest
 from datetime import datetime
 
 from src.models.order_processor import OrderType
+from src.pipeline.order_assembler import assemble_orders
+from src.pipeline.chain_graph import derive_chains
 from tests.conftest import (
     make_option_transaction,
     make_stock_transaction,
@@ -17,12 +19,24 @@ from tests.conftest import (
 
 
 # ---------------------------------------------------------------------------
-# Simple open → close
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _find_chain_with_order(order_id, chains):
+    """Find a chain containing the given order ID."""
+    for chain in chains:
+        if order_id in {o.order_id for o in chain.orders}:
+            return chain
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Simple open -> close
 # ---------------------------------------------------------------------------
 
 class TestSimpleOpenClose:
-    def test_simple_open_close_chain(self, order_processor, lot_manager):
-        """BTO → STC: full lifecycle with correct P&L."""
+    def test_simple_open_close_chain(self, order_processor, db, lot_manager):
+        """BTO -> STC: full lifecycle with correct P&L."""
         txs = [
             make_option_transaction(
                 id="tx-open", order_id="ORD-OPEN", action="BUY_TO_OPEN",
@@ -36,8 +50,9 @@ class TestSimpleOpenClose:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct["ACCT1"]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         chain = chains[0]
@@ -54,8 +69,8 @@ class TestSimpleOpenClose:
 # ---------------------------------------------------------------------------
 
 class TestRollChain:
-    def test_roll_chain(self, order_processor, lot_manager):
-        """STO put → BTC + STO new put: chain links 3 orders, cumulative P&L correct."""
+    def test_roll_chain(self, order_processor, db, lot_manager):
+        """STO put -> BTC + STO new put: chain links 3 orders, cumulative P&L correct."""
         txs = [
             # Open initial position
             make_option_transaction(
@@ -86,8 +101,9 @@ class TestRollChain:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct["ACCT1"]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         # All orders should be in a single chain
         assert len(chains) == 1
@@ -95,8 +111,8 @@ class TestRollChain:
         assert chain.status == "CLOSED"
 
         # Total realized P&L across the chain:
-        # Leg 1: STO at 2.00, BTC at 1.50 → (2.00-1.50)*1*100 = $50
-        # Leg 2: STO at 2.50, BTC at 1.00 → (2.50-1.00)*1*100 = $150
+        # Leg 1: STO at 2.00, BTC at 1.50 -> (2.00-1.50)*1*100 = $50
+        # Leg 2: STO at 2.50, BTC at 1.00 -> (2.50-1.00)*1*100 = $150
         realized = lot_manager.get_realized_pnl_for_chain(chain.chain_id)
         assert realized == pytest.approx(200.00)
 
@@ -106,8 +122,8 @@ class TestRollChain:
 # ---------------------------------------------------------------------------
 
 class TestIronCondorLifecycle:
-    def test_iron_condor_lifecycle(self, order_processor, lot_manager):
-        """Open 4-leg IC → close at different times → verify total P&L."""
+    def test_iron_condor_lifecycle(self, order_processor, db, lot_manager):
+        """Open 4-leg IC -> close at different times -> verify total P&L."""
         txs = [
             # Open IC (4 legs in one order)
             make_option_transaction(
@@ -161,8 +177,9 @@ class TestIronCondorLifecycle:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct["ACCT1"]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         assert chains[0].status == "CLOSED"
@@ -181,7 +198,7 @@ class TestIronCondorLifecycle:
 # ---------------------------------------------------------------------------
 
 class TestPartialClose:
-    def test_partial_close_proportional(self, order_processor, lot_manager):
+    def test_partial_close_proportional(self, order_processor, db, lot_manager):
         """Open 4 contracts, close 2: verify 50% realized."""
         txs = [
             make_option_transaction(
@@ -196,8 +213,9 @@ class TestPartialClose:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct["ACCT1"]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         chain = chains[0]
@@ -218,7 +236,7 @@ class TestPartialClose:
 # ---------------------------------------------------------------------------
 
 class TestMultipleAccountsIsolated:
-    def test_multiple_accounts_isolated(self, order_processor, lot_manager):
+    def test_multiple_accounts_isolated(self, order_processor, db, lot_manager):
         """Same underlying in two accounts: separate chains, no cross-contamination."""
         txs = [
             make_option_transaction(
@@ -239,23 +257,27 @@ class TestMultipleAccountsIsolated:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
-        acct1_chains = chains_by_acct.get("ACCT1", [])
-        acct2_chains = chains_by_acct.get("ACCT2", [])
+        assert len(chains) == 2
 
-        assert len(acct1_chains) == 1
-        assert len(acct2_chains) == 1
+        acct1_chain = _find_chain_with_order("ORD-A1", chains)
+        acct2_chain = _find_chain_with_order("ORD-A2", chains)
+
+        assert acct1_chain is not None
+        assert acct2_chain is not None
 
         # ACCT1 chain should be closed
-        assert acct1_chains[0].status == "CLOSED"
+        assert acct1_chain.status == "CLOSED"
         # ACCT2 chain should still be open
-        assert acct2_chains[0].status == "OPEN"
+        assert acct2_chain.status == "OPEN"
 
         # Verify realized P&L is only on ACCT1
-        acct1_pnl = lot_manager.get_realized_pnl_for_chain(acct1_chains[0].chain_id)
+        acct1_pnl = lot_manager.get_realized_pnl_for_chain(acct1_chain.chain_id)
         assert acct1_pnl == pytest.approx(100.00)  # (2.00-1.00)*1*100
 
         # ACCT2 should have no realized P&L
-        acct2_pnl = lot_manager.get_realized_pnl_for_chain(acct2_chains[0].chain_id)
+        acct2_pnl = lot_manager.get_realized_pnl_for_chain(acct2_chain.chain_id)
         assert acct2_pnl == pytest.approx(0.0)

@@ -60,12 +60,17 @@ def assign_lots_to_groups(
     1. Build order_id -> chain_id lookup from chains
     2. Sort lots by entry_date
     3. For each lot:
-       a. Rule 1: lot's chain already has a group -> add to it
-       b. Rule 2: (account, underlying, expiration) matches an OPEN group -> add
-       c. Rule 2b: equity lot (no expiration) matches OPEN group by (account, underlying) -> add
+       a. Equity-first: shares always group with shares (by account + underlying)
+       b. Rule 1: lot's chain already has a group -> add to it (options/rolls)
+       c. Rule 2: same (account, underlying, expiration) -> add (options)
        d. Rule 3: create new group
     4. Run strategy engine on each group's lots -> strategy_label
     5. Compute status (OPEN if any lot has remaining_quantity != 0)
+
+    Index separation: equity lots only update au_to_group (underlying index),
+    option lots only update chain_to_group and aue_to_group (chain/expiration
+    indexes).  This prevents cross-contamination between equity and option
+    group routing.
     """
     if not lots:
         return []
@@ -106,12 +111,16 @@ def assign_lots_to_groups(
         groups[gk].append(lot)
         if chain_id:
             group_chains[gk].add(chain_id)
-            chain_to_group[chain_id] = gk
-        # Update Rule 2 indexes
+            # Only option lots update chain→group routing.  Equity lots must
+            # not redirect option lots away from their chain group.
+            if lot.expiration:
+                chain_to_group[chain_id] = gk
+        # Only option lots update the expiration index
         if lot.expiration:
             aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
-        # Always register (account, underlying) so equity lots can find option groups
-        au_to_group[(lot.account_number, lot.underlying)] = gk
+        # Only equity lots update the underlying index
+        if not lot.expiration:
+            au_to_group[(lot.account_number, lot.underlying)] = gk
 
     # --- Step 3: Assign each lot to a group --------------------------------
     for lot in sorted_lots:
@@ -122,8 +131,18 @@ def assign_lots_to_groups(
 
         assigned = False
 
+        # Equity-first: shares always group with shares, not with the
+        # option chain they were derived from (e.g. via exercise).
+        if not assigned and not lot.expiration:
+            au_key = (lot.account_number, lot.underlying)
+            if au_key in au_to_group:
+                gk = au_to_group[au_key]
+                if _is_group_open(gk):
+                    _add_lot_to_group(lot, gk, chain_id)
+                    assigned = True
+
         # Rule 1: lot's chain already has a group (always merge — rolls stay together)
-        if chain_id and chain_id in chain_to_group:
+        if not assigned and chain_id and chain_id in chain_to_group:
             gk = chain_to_group[chain_id]
             _add_lot_to_group(lot, gk, chain_id)
             assigned = True
@@ -133,15 +152,6 @@ def assign_lots_to_groups(
             aue_key = (lot.account_number, lot.underlying, lot.expiration)
             if aue_key in aue_to_group:
                 gk = aue_to_group[aue_key]
-                if _is_group_open(gk):
-                    _add_lot_to_group(lot, gk, chain_id)
-                    assigned = True
-
-        # Rule 2b: equity (no expiration) matches OPEN group by (account, underlying)
-        if not assigned and not lot.expiration:
-            au_key = (lot.account_number, lot.underlying)
-            if au_key in au_to_group:
-                gk = au_to_group[au_key]
                 if _is_group_open(gk):
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True

@@ -489,10 +489,10 @@
                                             <span x-text="formatOrderDate(lot.entry_date)"></span>
                                         </span>
 
-                                        <!-- Qty -->
+                                        <!-- Qty (current remaining, not original) -->
                                         <span class="w-10 text-right font-medium"
-                                              :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'"
-                                              x-text="lot.quantity"></span>
+                                              :class="(lot.remaining_quantity ?? lot.quantity) > 0 ? 'text-tv-green' : (lot.remaining_quantity ?? lot.quantity) < 0 ? 'text-tv-red' : 'text-tv-muted'"
+                                              x-text="lot.remaining_quantity ?? lot.quantity"></span>
 
                                         <!-- Expiration -->
                                         <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text"

@@ -10,7 +10,7 @@ from src.database.models import (
     RawTransaction, OrderChain, OrderChainCache,
     PositionLot as PositionLotModel, PositionGroupLot, PositionGroup,
 )
-from src.dependencies import db, connection_manager, order_processor, position_manager, lot_manager, order_manager, AUTH_ENABLED
+from src.dependencies import db, connection_manager, position_manager, lot_manager, order_manager, AUTH_ENABLED
 from src.services import chain_service, ledger_service
 
 
@@ -270,16 +270,10 @@ async def background_incremental_sync(user_id: str = None):
 
             logger.info(f"Background sync: saved {total_positions} positions")
 
+            from src.pipeline.orchestrator import reprocess
             raw_transactions = db.get_raw_transactions()
-            chains_by_account = order_processor.process_transactions(raw_transactions)
-
-            all_chains = []
-            for account, chains in chains_by_account.items():
-                for chain in chains:
-                    all_chains.append(chain)
-
-            if all_chains:
-                logger.info(f"Background sync: reprocessed {len(all_chains)} chains")
+            result = reprocess(db, lot_manager, position_manager, raw_transactions)
+            logger.info(f"Background sync: reprocessed {result.chains_derived} chains")
 
             db.update_last_sync_timestamp()
             logger.info("Background sync: completed successfully")

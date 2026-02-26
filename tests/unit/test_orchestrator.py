@@ -1,8 +1,7 @@
 """
-Integration tests for the Pipeline Orchestrator (OPT-121 final piece).
+Integration tests for the Pipeline Orchestrator (OPT-121).
 
 All tests use a real temporary SQLite database via conftest fixtures.
-The orchestrator is shadow-built — not wired into sync.py yet.
 
 Shadow comparison tests run both the legacy group-creation path
 (seed_position_groups from ledger_service) and the new pipeline path
@@ -27,6 +26,7 @@ from tests.conftest import (
     make_stock_transaction,
     make_expiration_transaction,
     make_assignment_transaction,
+    make_exercise_transaction,
 )
 
 
@@ -71,7 +71,7 @@ def _get_groups(db):
 class TestFullPipeline:
     """End-to-end tests running transactions through the full orchestrator."""
 
-    def test_simple_open(self, db, order_processor, lot_manager, position_manager):
+    def test_simple_open(self, db, lot_manager, position_manager):
         """Single STO option -> lot created, chain derived, group created."""
         txs = [
             make_option_transaction(
@@ -81,7 +81,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, position_manager, txs)
 
         assert isinstance(result, PipelineResult)
         assert result.orders_assembled == 1
@@ -89,8 +89,23 @@ class TestFullPipeline:
         assert result.groups_processed >= 1
         assert _count_lots(db) >= 1
 
-    def test_open_close(self, db, order_processor, lot_manager, position_manager):
+    def test_chains_populated(self, db, lot_manager, position_manager):
+        """chains field is populated for non-empty transactions."""
+        txs = [
+            make_option_transaction(
+                id="tx-oc-001", order_id="ORD-OC-001", action="SELL_TO_OPEN",
+                quantity=1, price=2.50,
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+
+        result = reprocess(db, lot_manager, position_manager, txs)
+
+        assert len(result.chains) >= 1
+
+    def test_open_close(self, db, lot_manager, position_manager):
         """STO + BTC -> lots + closings, chain CLOSED, group CLOSED."""
+
         txs = [
             make_option_transaction(
                 id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
@@ -104,7 +119,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, position_manager, txs)
 
         assert result.orders_assembled == 2
         assert result.chains_derived >= 1
@@ -116,7 +131,7 @@ class TestFullPipeline:
         groups = _get_groups(db)
         assert len(groups) >= 1
 
-    def test_iron_condor_cross_order(self, db, order_processor, lot_manager, position_manager):
+    def test_iron_condor_cross_order(self, db, lot_manager, position_manager):
         """Put spread + call spread as separate orders -> 1 group (Iron Condor)."""
         txs = [
             # Put spread (order 1)
@@ -151,7 +166,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, position_manager, txs)
 
         assert result.orders_assembled == 2
         assert result.chains_derived >= 1
@@ -159,7 +174,7 @@ class TestFullPipeline:
         # 4 lots (one per leg)
         assert _count_lots(db) == 4
 
-    def test_with_equity(self, db, order_processor, lot_manager, position_manager):
+    def test_with_equity(self, db, lot_manager, position_manager):
         """Stock BTO -> equity lot and group created."""
         txs = [
             make_stock_transaction(
@@ -169,20 +184,75 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, position_manager, txs)
 
         assert result.orders_assembled == 1
         assert _count_lots(db) >= 1
 
-    def test_empty_transactions(self, db, order_processor, lot_manager, position_manager):
-        """No transactions -> PipelineResult with zeros."""
-        result = reprocess(db, order_processor, lot_manager, position_manager, [])
+    def test_shares_sell_rebuy_separate_groups(self, db, lot_manager, position_manager):
+        """Buy shares, sell all, buy again -> 2 separate groups (separate trading decisions)."""
+        txs = [
+            make_stock_transaction(
+                id="tx-buy1", order_id="ORD-BUY1",
+                action="BUY_TO_OPEN", quantity=100, price=50.00,
+                executed_at="2025-01-10T10:00:00+00:00",
+            ),
+            make_stock_transaction(
+                id="tx-sell1", order_id="ORD-SELL1",
+                action="SELL_TO_CLOSE", quantity=100, price=55.00,
+                executed_at="2025-02-10T10:00:00+00:00",
+                transaction_sub_type="Sell to Close",
+            ),
+            make_stock_transaction(
+                id="tx-buy2", order_id="ORD-BUY2",
+                action="BUY_TO_OPEN", quantity=200, price=48.00,
+                executed_at="2025-03-10T10:00:00+00:00",
+            ),
+        ]
+
+        result = reprocess(db, lot_manager, position_manager, txs)
+
+        groups = _snapshot_groups(db)
+        shares_groups = [g for g in groups if g["strategy_label"] == "Shares"]
+        # Sell-rebuy = two separate trading decisions = two groups
+        assert len(shares_groups) == 2
+        statuses = {g["status"] for g in shares_groups}
+        assert statuses == {"OPEN", "CLOSED"}
+
+    def test_shares_additional_purchase_same_group(self, db, lot_manager, position_manager):
+        """Buy shares twice while holding -> 1 group (adding to existing position)."""
+        txs = [
+            make_stock_transaction(
+                id="tx-buy1", order_id="ORD-BUY1",
+                action="BUY_TO_OPEN", quantity=100, price=50.00,
+                executed_at="2025-01-10T10:00:00+00:00",
+            ),
+            make_stock_transaction(
+                id="tx-buy2", order_id="ORD-BUY2",
+                action="BUY_TO_OPEN", quantity=200, price=48.00,
+                executed_at="2025-02-10T10:00:00+00:00",
+            ),
+        ]
+
+        result = reprocess(db, lot_manager, position_manager, txs)
+
+        groups = _snapshot_groups(db)
+        shares_groups = [g for g in groups if g["strategy_label"] == "Shares"]
+        # Both purchases while holding -> single group
+        assert len(shares_groups) == 1
+        assert shares_groups[0]["status"] == "OPEN"
+        assert len(shares_groups[0]["lot_txn_ids"]) == 2
+
+    def test_empty_transactions(self, db, lot_manager, position_manager):
+        """No transactions -> PipelineResult with zeros, empty old_chains."""
+        result = reprocess(db, lot_manager, position_manager, [])
 
         assert result == PipelineResult(
             orders_assembled=0,
             chains_derived=0,
             groups_processed=0,
             equity_lots_netted=0,
+            chains=[],
         )
 
 
@@ -193,7 +263,7 @@ class TestFullPipeline:
 class TestIncrementalReprocess:
     """Tests for affected_underlyings partial reprocessing."""
 
-    def test_incremental_reprocess(self, db, order_processor, lot_manager, position_manager):
+    def test_incremental_reprocess(self, db, lot_manager, position_manager):
         """Full process, then incremental on 1 underlying -> correct counts."""
         txs_aapl = [
             make_option_transaction(
@@ -214,12 +284,12 @@ class TestIncrementalReprocess:
         all_txs = txs_aapl + txs_msft
 
         # Full process first
-        result_full = reprocess(db, order_processor, lot_manager, position_manager, all_txs)
+        result_full = reprocess(db, lot_manager, position_manager, all_txs)
         assert result_full.orders_assembled == 2
 
         # Incremental: only reprocess AAPL
         result_incr = reprocess(
-            db, order_processor, lot_manager, position_manager,
+            db, lot_manager, position_manager,
             all_txs,
             affected_underlyings={"AAPL"},
         )
@@ -234,7 +304,7 @@ class TestIncrementalReprocess:
 class TestIdempotency:
     """Verify that running the pipeline twice produces the same result."""
 
-    def test_reprocess_idempotent(self, db, order_processor, lot_manager, position_manager):
+    def test_reprocess_idempotent(self, db, lot_manager, position_manager):
         """Run twice on same data -> same DB state."""
         txs = [
             make_option_transaction(
@@ -249,12 +319,12 @@ class TestIdempotency:
             ),
         ]
 
-        result1 = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result1 = reprocess(db, lot_manager, position_manager, txs)
         lots_after_1 = _count_lots(db)
         groups_after_1 = _count_groups(db)
         closings_after_1 = _count_closings(db)
 
-        result2 = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result2 = reprocess(db, lot_manager, position_manager, txs)
         lots_after_2 = _count_lots(db)
         groups_after_2 = _count_groups(db)
         closings_after_2 = _count_closings(db)
@@ -273,7 +343,7 @@ class TestIdempotency:
 class TestPipelineResultCounts:
     """Verify PipelineResult fields are populated correctly."""
 
-    def test_all_fields_populated(self, db, order_processor, lot_manager, position_manager):
+    def test_all_fields_populated(self, db, lot_manager, position_manager):
         """Multi-order scenario -> all PipelineResult fields > 0."""
         txs = [
             make_option_transaction(
@@ -288,7 +358,7 @@ class TestPipelineResultCounts:
             ),
         ]
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, position_manager, txs)
 
         assert result.orders_assembled >= 1
         assert result.chains_derived >= 1
@@ -296,10 +366,10 @@ class TestPipelineResultCounts:
         # equity_lots_netted may be 0 for option-only scenarios
         assert result.equity_lots_netted >= 0
 
-    def test_dataclass_equality(self, db, order_processor, lot_manager, position_manager):
+    def test_dataclass_equality(self):
         """PipelineResult supports equality for test assertions."""
-        r1 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1)
-        r2 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1)
+        r1 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1, chains=[])
+        r2 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1, chains=[])
         assert r1 == r2
 
 
@@ -394,8 +464,9 @@ class TestShadowComparison:
         # --- Create lots via OrderProcessor (shared state for both paths) ---
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # --- Legacy path: populate order_chains → seed_position_groups ---
         _populate_order_chains(db, lot_manager, all_chains)
@@ -446,8 +517,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -510,8 +582,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -554,8 +627,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -595,8 +669,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -655,8 +730,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -733,8 +809,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy: creates 1 group per chain = 2 groups (put spread + call spread)
         _populate_order_chains(db, lot_manager, all_chains)
@@ -797,8 +874,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -848,8 +926,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -900,8 +979,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)
@@ -924,6 +1004,100 @@ class TestShadowComparison:
         new_all_txns = sorted(t for g in new_groups for t in g["lot_txn_ids"])
         assert "tx-open" in legacy_all_txns
         assert "tx-open" in new_all_txns
+
+    def test_exercise_closes_derived_stock_lot(self, db, order_processor, lot_manager, position_manager):
+        """Put spread fully ITM: assignment + exercise -> derived shares fully closed.
+
+        Short 50P assigned -> stock BTO 300 @ $50 (derived lot created).
+        Long 45P exercised -> stock STC 300 @ $45 (derived lot closed).
+        Net: no open stock lots remain.
+        """
+        ACCT = "ACCT1"
+        UNDERLYING = "IREN"
+        SHORT_PUT_SYM = "IREN  241220P00050000"
+        LONG_PUT_SYM = "IREN  241220P00045000"
+
+        txs = [
+            # Open: STO 3x 50P
+            make_option_transaction(
+                id="tx-sto-50p", order_id="ORD-OPEN", action="SELL_TO_OPEN",
+                account_number=ACCT, quantity=3, price=5.00,
+                symbol=SHORT_PUT_SYM, underlying_symbol=UNDERLYING,
+                option_type="Put", strike=50.0, expiration="2024-12-20",
+                executed_at="2024-11-01T10:00:00+00:00",
+            ),
+            # Open: BTO 3x 45P
+            make_option_transaction(
+                id="tx-bto-45p", order_id="ORD-OPEN", action="BUY_TO_OPEN",
+                account_number=ACCT, quantity=3, price=2.00,
+                symbol=LONG_PUT_SYM, underlying_symbol=UNDERLYING,
+                option_type="Put", strike=45.0, expiration="2024-12-20",
+                executed_at="2024-11-01T10:00:00+00:00",
+            ),
+            # Assignment: short 50P assigned
+            make_assignment_transaction(
+                id="tx-assign-50p", account_number=ACCT,
+                symbol=SHORT_PUT_SYM, underlying_symbol=UNDERLYING,
+                quantity=3, executed_at="2024-12-18T16:00:00+00:00",
+            ),
+            # Stock BTO from assignment (no order_id)
+            make_stock_transaction(
+                id="tx-stock-bto", order_id=None, account_number=ACCT,
+                symbol=UNDERLYING, underlying_symbol=UNDERLYING,
+                action="BUY_TO_OPEN", quantity=300, price=50.0,
+                executed_at="2024-12-18T16:00:00+00:00",
+                transaction_sub_type="Assignment",
+            ),
+            # Exercise: long 45P exercised
+            make_exercise_transaction(
+                id="tx-exercise-45p", account_number=ACCT,
+                symbol=LONG_PUT_SYM, underlying_symbol=UNDERLYING,
+                quantity=3, executed_at="2024-12-19T16:00:00+00:00",
+            ),
+            # Stock STC from exercise (no order_id)
+            make_stock_transaction(
+                id="tx-stock-stc", order_id=None, account_number=ACCT,
+                symbol=UNDERLYING, underlying_symbol=UNDERLYING,
+                action="SELL_TO_CLOSE", quantity=300, price=45.0,
+                executed_at="2024-12-19T16:00:00+00:00",
+                transaction_sub_type="Exercise",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        order_processor.process_transactions(txs)
+
+        # No open stock lots should remain
+        open_stock_lots = lot_manager.get_open_lots(account_number=ACCT, symbol=UNDERLYING)
+        assert len(open_stock_lots) == 0, f"Expected 0 open stock lots, got {len(open_stock_lots)}"
+
+        # Derived stock lot should exist and be CLOSED
+        with db.get_session() as session:
+            stock_lots = session.query(PositionLot).filter(
+                PositionLot.account_number == ACCT,
+                PositionLot.symbol == UNDERLYING,
+                PositionLot.instrument_type == 'EQUITY',
+            ).all()
+            assert len(stock_lots) == 1, f"Expected 1 stock lot, got {len(stock_lots)}"
+            assert stock_lots[0].status == 'CLOSED'
+            assert stock_lots[0].remaining_quantity == 0
+            assert stock_lots[0].derivation_type == 'ASSIGNMENT'
+
+        # Verify stock lot closing has correct type and P&L
+        with db.get_session() as session:
+            stock_lot = session.query(PositionLot).filter(
+                PositionLot.account_number == ACCT,
+                PositionLot.symbol == UNDERLYING,
+                PositionLot.instrument_type == 'EQUITY',
+            ).first()
+            closings = session.query(LotClosing).filter(
+                LotClosing.lot_id == stock_lot.id,
+            ).all()
+            assert len(closings) == 1
+            assert closings[0].closing_type == 'EXERCISE'
+            # P&L: (45 - 50) * 300 = -1500
+            assert closings[0].realized_pnl == -1500.0
 
     def test_shadow_jade_lizard(self, db, order_processor, lot_manager, position_manager, monkeypatch):
         """Jade Lizard (short put + bear call spread) entered as a single order:
@@ -961,8 +1135,9 @@ class TestShadowComparison:
 
         position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
-        chains_by_account = order_processor.process_transactions(txs)
-        all_chains = [c for chains in chains_by_account.values() for c in chains]
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        all_chains = derive_chains(db, assembly.orders)
 
         # Legacy
         _populate_order_chains(db, lot_manager, all_chains)

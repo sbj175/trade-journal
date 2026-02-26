@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, order_processor, strategy_detector, get_current_user_id
+from src.dependencies import db, strategy_detector, get_current_user_id
+from src.pipeline.order_assembler import assemble_orders
+from src.pipeline.chain_graph import derive_chains
 from src.services.sync_service import reconcile_positions_vs_chains
 
 router = APIRouter()
@@ -20,14 +22,14 @@ async def get_reconciliation(user_id: str = Depends(get_current_user_id)):
 async def debug_strategy(chain_id: str, user_id: str = Depends(get_current_user_id)):
     """Debug strategy detection for a specific chain"""
     raw_transactions = db.get_raw_transactions()
-    chains_by_account = order_processor.process_transactions(raw_transactions)
+    assembly = assemble_orders(raw_transactions)
+    all_chains = derive_chains(db, assembly.orders)
 
     target_chain = None
-    for account_chains in chains_by_account.values():
-        for chain in account_chains:
-            if chain.chain_id == chain_id:
-                target_chain = chain
-                break
+    for chain in all_chains:
+        if chain.chain_id == chain_id:
+            target_chain = chain
+            break
 
     if not target_chain:
         return {"error": f"Chain {chain_id} not found"}
@@ -37,7 +39,7 @@ async def debug_strategy(chain_id: str, user_id: str = Depends(get_current_user_
         "underlying": target_chain.underlying,
         "orders": len(target_chain.orders),
         "opening_orders": [],
-        "debug_path": "fresh_processing"
+        "debug_path": "graph_derived"
     }
 
     for order in target_chain.orders:
@@ -72,12 +74,8 @@ async def debug_strategy(chain_id: str, user_id: str = Depends(get_current_user_
 async def debug_cache_path(chain_id: str, user_id: str = Depends(get_current_user_id)):
     """Debug strategy detection using the EXACT same code path as cache update"""
     raw_transactions = db.get_raw_transactions()
-    chains_by_account = order_processor.process_transactions(raw_transactions)
-
-    all_chains = []
-    for account, chains in chains_by_account.items():
-        for chain in chains:
-            all_chains.append(chain)
+    assembly = assemble_orders(raw_transactions)
+    all_chains = derive_chains(db, assembly.orders)
 
     target_chain = None
     for chain in all_chains:
@@ -109,14 +107,14 @@ async def debug_cache_update(chain_id: str, user_id: str = Depends(get_current_u
     """Debug the full cache update process for a specific chain"""
     try:
         raw_transactions = db.get_raw_transactions()
-        chains_by_account = order_processor.process_transactions(raw_transactions)
+        assembly = assemble_orders(raw_transactions)
+        all_chains = derive_chains(db, assembly.orders)
 
         target_chain = None
-        for account_chains in chains_by_account.values():
-            for chain in account_chains:
-                if chain.chain_id == chain_id:
-                    target_chain = chain
-                    break
+        for chain in all_chains:
+            if chain.chain_id == chain_id:
+                target_chain = chain
+                break
 
         if not target_chain:
             return {"error": f"Chain {chain_id} not found"}

@@ -1,12 +1,12 @@
 """
 Tests for src/pipeline/order_assembler — Stage 2 of OPT-121.
 
-Verifies that the standalone order assembly functions produce identical
-results to the equivalent OrderProcessor methods.
+Verifies that the standalone order assembly functions (preprocess, group,
+normalize, classify, create_orders, assemble_orders) work correctly.
 """
 
 import pytest
-from datetime import datetime, date
+from datetime import date
 
 from src.pipeline.order_assembler import (
     AssemblyResult,
@@ -20,8 +20,6 @@ from src.pipeline.order_assembler import (
     create_orders,
     assemble_orders,
 )
-from src.models.order_processor import OrderProcessor
-
 from tests.conftest import (
     make_option_transaction,
     make_stock_transaction,
@@ -104,6 +102,29 @@ class TestPreprocessTransactions:
         assert len(txs) == 0
         assert len(assign_stocks) == 1
         assert assign_stocks[0]["id"] == "tx-assign-stock"
+
+    def test_acat_not_sidelined_as_assignment_stock(self):
+        """ACAT transfers (no order_id, sub_type=ACAT) flow through normal
+        processing and are NOT captured as assignment_stock_transactions."""
+        raw = [
+            make_stock_transaction(
+                id="tx-acat",
+                order_id=None,
+                action="BUY_TO_OPEN",
+                instrument_type="EQUITY",
+                quantity=900,
+                price=300.00,
+                transaction_sub_type="ACAT",
+                description="ACAT transfer",
+            )
+        ]
+        txs, assign_stocks = preprocess_transactions(raw)
+
+        # ACAT should NOT be sidelined
+        assert len(assign_stocks) == 0
+        # It should pass through as a normal transaction with a synthetic order ID
+        assert len(txs) == 1
+        assert "SYSTEM_ACAT" in txs[0].order_id
 
     def test_skips_no_symbol(self):
         raw = [{"id": "1", "symbol": None, "action": "BUY_TO_OPEN"}]
@@ -446,188 +467,3 @@ class TestAssembleOrders:
         assert isinstance(result, AssemblyResult)
         assert result.orders == []
         assert result.assignment_stock_transactions == []
-
-
-# ---------------------------------------------------------------------------
-# Shadow comparison: assembler vs OrderProcessor
-# ---------------------------------------------------------------------------
-
-class TestShadowComparison:
-    """Verify assemble_orders() produces identical Order objects as OrderProcessor."""
-
-    def _run_order_processor(self, raw_transactions, db, position_manager, lot_manager):
-        """Run OrderProcessor up through order creation (steps 1-4 only)."""
-        processor = OrderProcessor(db, position_manager, lot_manager)
-        txs = processor._preprocess_transactions(raw_transactions)
-        grouped = processor._group_transactions(txs)
-        orders = processor._create_orders(grouped)
-        orders.sort(key=lambda o: o.executed_at)
-        return orders, processor._assignment_stock_transactions
-
-    def _compare_orders(self, assembler_orders, processor_orders):
-        """Compare two lists of Order objects for equivalence."""
-        assert len(assembler_orders) == len(processor_orders)
-
-        # Sort both by order_id for stable comparison
-        a_sorted = sorted(assembler_orders, key=lambda o: o.order_id)
-        p_sorted = sorted(processor_orders, key=lambda o: o.order_id)
-
-        for a_order, p_order in zip(a_sorted, p_sorted):
-            assert a_order.order_id == p_order.order_id
-            assert a_order.account_number == p_order.account_number
-            assert a_order.underlying == p_order.underlying
-            assert a_order.executed_at == p_order.executed_at
-            assert a_order.order_type == p_order.order_type
-            assert len(a_order.transactions) == len(p_order.transactions)
-
-            # Compare transactions by sorted ID
-            a_txs = sorted(a_order.transactions, key=lambda t: t.id)
-            p_txs = sorted(p_order.transactions, key=lambda t: t.id)
-            for a_tx, p_tx in zip(a_txs, p_txs):
-                assert a_tx.id == p_tx.id
-                assert a_tx.action == p_tx.action
-                assert a_tx.quantity == p_tx.quantity
-                assert a_tx.price == p_tx.price
-                assert a_tx.symbol == p_tx.symbol
-                assert a_tx.underlying_symbol == p_tx.underlying_symbol
-
-    def test_shadow_basic_open_close(self, db, position_manager, lot_manager):
-        raw = [
-            make_option_transaction(
-                id="tx-1", order_id="ORD-1", action="SELL_TO_OPEN",
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-            make_option_transaction(
-                id="tx-2", order_id="ORD-2", action="BUY_TO_CLOSE",
-                executed_at="2025-03-10T14:00:00+00:00",
-            ),
-        ]
-
-        result = assemble_orders(raw)
-        proc_orders, proc_stocks = self._run_order_processor(
-            raw, db, position_manager, lot_manager
-        )
-
-        self._compare_orders(result.orders, proc_orders)
-        assert len(result.assignment_stock_transactions) == len(proc_stocks)
-
-    def test_shadow_multi_leg_roll(self, db, position_manager, lot_manager):
-        raw = [
-            make_option_transaction(
-                id="tx-1", order_id="ORD-1", action="SELL_TO_OPEN",
-                symbol="AAPL  250321C00170000", strike=170.0,
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-            make_option_transaction(
-                id="tx-2", order_id="ORD-ROLL", action="BUY_TO_CLOSE",
-                symbol="AAPL  250321C00170000", strike=170.0,
-                executed_at="2025-03-15T10:00:00+00:00",
-            ),
-            make_option_transaction(
-                id="tx-3", order_id="ORD-ROLL", action="SELL_TO_OPEN",
-                symbol="AAPL  250418C00175000", strike=175.0,
-                expiration="2025-04-18",
-                executed_at="2025-03-15T10:00:00+00:00",
-            ),
-        ]
-
-        result = assemble_orders(raw)
-        proc_orders, proc_stocks = self._run_order_processor(
-            raw, db, position_manager, lot_manager
-        )
-
-        self._compare_orders(result.orders, proc_orders)
-
-        # Verify the roll order was classified correctly
-        roll_orders = [o for o in result.orders if o.order_type == OrderType.ROLLING]
-        assert len(roll_orders) == 1
-        assert roll_orders[0].order_id == "ORD-ROLL"
-
-    def test_shadow_expiration(self, db, position_manager, lot_manager):
-        raw = [
-            make_option_transaction(
-                id="tx-1", order_id="ORD-1", action="SELL_TO_OPEN",
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-            make_expiration_transaction(
-                id="tx-exp",
-                executed_at="2025-03-21T16:00:00+00:00",
-            ),
-        ]
-
-        result = assemble_orders(raw)
-        proc_orders, _ = self._run_order_processor(
-            raw, db, position_manager, lot_manager
-        )
-
-        self._compare_orders(result.orders, proc_orders)
-
-    def test_shadow_assignment_with_stock(self, db, position_manager, lot_manager):
-        raw = [
-            make_option_transaction(
-                id="tx-1", order_id="ORD-1", action="SELL_TO_OPEN",
-                symbol="AAPL  250321P00170000", option_type="Put",
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-            make_assignment_transaction(
-                id="tx-assign",
-                executed_at="2025-03-21T16:00:00+00:00",
-            ),
-            make_stock_transaction(
-                id="tx-stock-assign",
-                order_id=None,
-                action="BUY_TO_OPEN",
-                instrument_type="EQUITY",
-                executed_at="2025-03-21T16:00:00+00:00",
-            ),
-        ]
-
-        result = assemble_orders(raw)
-        proc_orders, proc_stocks = self._run_order_processor(
-            raw, db, position_manager, lot_manager
-        )
-
-        self._compare_orders(result.orders, proc_orders)
-        assert len(result.assignment_stock_transactions) == len(proc_stocks)
-        assert result.assignment_stock_transactions[0]["id"] == proc_stocks[0]["id"]
-
-    def test_shadow_multiple_fills_aggregated(self, db, position_manager, lot_manager):
-        """Multiple fills at the same price should aggregate identically."""
-        raw = [
-            make_option_transaction(
-                id="tx-1", order_id="ORD-1", action="SELL_TO_OPEN",
-                quantity=1, price=2.50,
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-            make_option_transaction(
-                id="tx-2", order_id="ORD-1", action="SELL_TO_OPEN",
-                quantity=2, price=2.50,
-                executed_at="2025-03-01T10:00:01+00:00",
-            ),
-        ]
-
-        result = assemble_orders(raw)
-        proc_orders, _ = self._run_order_processor(
-            raw, db, position_manager, lot_manager
-        )
-
-        self._compare_orders(result.orders, proc_orders)
-        # Both should aggregate to quantity 3
-        assert result.orders[0].transactions[0].quantity == 3
-
-    def test_shadow_stock_trade(self, db, position_manager, lot_manager):
-        """Stock trades with order_id should pass through identically."""
-        raw = [
-            make_stock_transaction(
-                id="tx-stock-1", order_id="ORD-STOCK-1",
-                action="BUY_TO_OPEN", quantity=100,
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-        ]
-
-        result = assemble_orders(raw)
-        proc_orders, _ = self._run_order_processor(
-            raw, db, position_manager, lot_manager
-        )
-
-        self._compare_orders(result.orders, proc_orders)

@@ -8,15 +8,13 @@ from loguru import logger
 
 from src.database.models import OrderChain
 from src.api.tastytrade_client import TastytradeClient
-from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager, get_current_user_id, get_tastytrade_client
+from src.dependencies import db, connection_manager, order_manager, position_manager, lot_manager, get_current_user_id, get_tastytrade_client
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
 )
 from src.services.chain_service import update_chain_cache
-from src.services.ledger_service import (
-    net_opposing_equity_lots, seed_new_lots_into_groups, _reconcile_stale_groups,
-)
+from src.pipeline.orchestrator import reprocess
 
 router = APIRouter()
 
@@ -93,41 +91,12 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
                 affected_underlyings = None
 
             try:
-                position_manager.clear_all_positions()
-                if use_incremental and affected_underlyings:
-                    lot_manager.clear_all_lots(underlyings=affected_underlyings)
-                    logger.info(f"Cleared position inventory and lots for {len(affected_underlyings)} affected underlyings")
-                else:
-                    lot_manager.clear_all_lots()
-                    logger.info("Cleared position inventory and lots for full reprocessing")
-
-                if use_incremental and affected_underlyings:
-                    all_chains = []
-                    for underlying in affected_underlyings:
-                        underlying_txs = db.get_raw_transactions(underlying=underlying)
-                        if underlying_txs:
-                            chains_by_account = order_processor.process_transactions(underlying_txs)
-                            for account, chains in chains_by_account.items():
-                                all_chains.extend(chains)
-                    logger.info(f"Incremental reprocessing created {len(all_chains)} chains for affected underlyings")
-                else:
-                    raw_transactions = db.get_raw_transactions()
-                    chains_by_account = order_processor.process_transactions(raw_transactions)
-                    all_chains = []
-                    for account, chains in chains_by_account.items():
-                        all_chains.extend(chains)
-                    logger.info(f"Full reprocessing created {len(all_chains)} chains")
-
-                if all_chains:
-                    logger.info("Running strategy detection on chains...")
-                    try:
-                        await update_chain_cache(all_chains, affected_underlyings)
-                        net_opposing_equity_lots()
-                        seed_new_lots_into_groups()
-                        _reconcile_stale_groups()
-                        logger.info("Strategy detection and cache update completed")
-                    except Exception as e:
-                        logger.error(f"Error during strategy detection after sync: {str(e)}", exc_info=True)
+                raw_transactions = db.get_raw_transactions()
+                result = reprocess(db, lot_manager, position_manager,
+                                   raw_transactions, affected_underlyings)
+                if result.chains:
+                    await update_chain_cache(result.chains, affected_underlyings)
+                    logger.info("Strategy detection and cache update completed")
                 else:
                     logger.warning("No chains created during reprocessing")
             except Exception as e:
@@ -266,19 +235,6 @@ async def initial_sync(
         raw_saved = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
 
-        logger.info("Processing transactions into orders and chains...")
-
-        trading_transactions = [
-            tx for tx in transactions
-            if tx.get('instrument_type') is not None and tx.get('symbol') is not None
-        ]
-
-        logger.info(f"Processing {len(trading_transactions)} trading transactions (filtered from {len(transactions)} total)")
-
-        result = order_manager.process_transactions_to_orders_and_chains(trading_transactions)
-
-        logger.info(f"Processed {result['orders_processed']} orders, saved {result['orders_saved']}, created {result['chains_created']} chains, saved {result['chains_saved']}")
-
         logger.info("Fetching current positions from all accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
@@ -303,34 +259,24 @@ async def initial_sync(
                 else:
                     logger.error(f"Failed to save balance for account {balance.get('account_number')}")
 
-        logger.info(f"INITIAL SYNC completed: {result['orders_saved']} orders saved, {result['chains_saved']} chains created, {total_positions} positions updated")
-
         db.update_last_sync_timestamp()
         db.mark_initial_sync_completed()
 
-        logger.info("Reprocessing chains with strategy detection after initial sync...")
-        try:
-            raw_transactions = db.get_raw_transactions()
-            position_manager.clear_all_positions()
-            lot_manager.clear_all_lots()
-            chains_by_account = order_processor.process_transactions(raw_transactions)
-            all_chains = []
-            for account, chains in chains_by_account.items():
-                all_chains.extend(chains)
-            await update_chain_cache(all_chains)
-            net_opposing_equity_lots()
-            seed_new_lots_into_groups()
-            _reconcile_stale_groups()
-            logger.info(f"Chain reprocessing completed: {len(all_chains)} chains with strategy detection")
-        except Exception as e:
-            logger.error(f"Error during chain reprocessing: {str(e)}", exc_info=True)
+        logger.info("Running full pipeline on initial sync data...")
+        raw_transactions = db.get_raw_transactions()
+        pipeline_result = reprocess(db, lot_manager, position_manager, raw_transactions)
+        if pipeline_result.chains:
+            await update_chain_cache(pipeline_result.chains)
+        logger.info(
+            f"INITIAL SYNC completed: {pipeline_result.orders_assembled} orders, "
+            f"{pipeline_result.chains_derived} chains, {total_positions} positions"
+        )
 
         return {
-            "message": f"Initial sync completed successfully",
-            "orders_processed": result['orders_processed'],
-            "orders_saved": result['orders_saved'],
-            "chains_created": result['chains_created'],
-            "chains_saved": result['chains_saved'],
+            "message": "Initial sync completed successfully",
+            "orders_assembled": pipeline_result.orders_assembled,
+            "chains_derived": pipeline_result.chains_derived,
+            "groups_processed": pipeline_result.groups_processed,
             "positions_updated": total_positions,
             "transactions_processed": len(transactions),
             "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
@@ -349,31 +295,18 @@ async def reprocess_chains(user_id: str = Depends(get_current_user_id)):
         raw_transactions = db.get_raw_transactions()
         logger.info(f"Loaded {len(raw_transactions)} raw transactions from database")
 
-        position_manager.clear_all_positions()
-        lot_manager.clear_all_lots()
-        logger.info("Cleared position inventory and lots for reprocessing")
+        result = reprocess(db, lot_manager, position_manager, raw_transactions)
 
-        chains_by_account = order_processor.process_transactions(raw_transactions)
-
-        all_chains = []
-        for account, chains in chains_by_account.items():
-            for chain in chains:
-                all_chains.append(chain)
-
-        logger.info(f"About to update cache with {len(all_chains)} chains...")
-        await update_chain_cache(all_chains)
-        net_opposing_equity_lots()
-        logger.info("Cache update completed")
-
-        seed_new_lots_into_groups()
-        _reconcile_stale_groups()
+        if result.chains:
+            await update_chain_cache(result.chains)
+        logger.info("Reprocessing completed")
 
         return {
             "message": "Reprocessing completed successfully",
             "orders_processed": len(raw_transactions),
             "orders_saved": len(raw_transactions),
-            "chains_created": len(all_chains),
-            "chains_saved": len(all_chains),
+            "chains_created": result.chains_derived,
+            "chains_saved": result.chains_derived,
         }
 
     except Exception as e:
