@@ -1,7 +1,6 @@
 """
 P&L Calculator
-Implements P&L calculation based on position inventory and FIFO matching
-Enhanced with lot-based calculations for accurate chain P&L
+Implements P&L calculation based on FIFO matching and lot-based tracking.
 """
 
 from dataclasses import dataclass
@@ -43,17 +42,11 @@ class PositionLot:
 
 
 class PnLCalculator:
-    """Calculates P&L using FIFO matching and position inventory
+    """Calculates P&L using FIFO matching and lot-based tracking."""
 
-    Enhanced with lot-based calculations when LotManager is provided.
-    Falls back to legacy position-based calculations otherwise.
-    """
-
-    def __init__(self, db_manager, position_manager, lot_manager: Optional['LotManager'] = None):
+    def __init__(self, db_manager, lot_manager: 'LotManager'):
         self.db = db_manager
-        self.position_manager = position_manager
         self.lot_manager = lot_manager
-        self._use_lots = lot_manager is not None
         self._create_lots_table_if_not_exists()
     
     def _create_lots_table_if_not_exists(self):
@@ -185,9 +178,7 @@ class PnLCalculator:
     
     def calculate_chain_pnl(self, chain, current_prices: Dict[str, float]) -> PnLResult:
         """
-        Calculate total P&L for a chain
-
-        When lot_manager is available, uses lot_closings for realized P&L
+        Calculate total P&L for a chain using lot_closings for realized P&L
         and open lots for unrealized P&L.
 
         Args:
@@ -197,45 +188,7 @@ class PnLCalculator:
         Returns:
             PnLResult with realized, unrealized, and total P&L
         """
-        # V3: Use lot-based P&L if available
-        if self._use_lots and self.lot_manager:
-            return self._calculate_chain_pnl_from_lots(chain, current_prices)
-
-        # Legacy: Calculate from transaction-level FIFO
-        realized_pnl = 0.0
-        unrealized_pnl = 0.0
-
-        # Calculate realized P&L from all closing transactions in the chain
-        for order in chain.orders:
-            for tx in order.closing_transactions:
-                if not tx.is_expiration or tx.price > 0:  # Skip $0 expirations
-                    tx_dict = {
-                        'id': tx.id,
-                        'account_number': tx.account_number,
-                        'symbol': tx.symbol,
-                        'action': tx.action,
-                        'quantity': tx.quantity,
-                        'price': tx.price,
-                        'executed_at': tx.executed_at.isoformat()
-                    }
-                    realized_pnl += self.calculate_realized_pnl_for_closing(tx_dict)
-
-        # Calculate unrealized P&L from open positions
-        all_symbols = set()
-        for order in chain.orders:
-            all_symbols.update(order.symbols)
-
-        for symbol in all_symbols:
-            position = self.position_manager.get_position(chain.account_number, symbol)
-            if position and not position.is_closed:
-                current_price = current_prices.get(symbol, position.cost_basis)
-                unrealized_pnl += self.calculate_unrealized_pnl_for_position(position, current_price)
-
-        return PnLResult(
-            realized_pnl=realized_pnl,
-            unrealized_pnl=unrealized_pnl,
-            total_pnl=realized_pnl + unrealized_pnl
-        )
+        return self._calculate_chain_pnl_from_lots(chain, current_prices)
 
     def _calculate_chain_pnl_from_lots(self, chain, current_prices: Dict[str, float]) -> PnLResult:
         """
@@ -284,9 +237,6 @@ class PnLCalculator:
 
         Returns per-lot P&L details for display in the UI.
         """
-        if not self._use_lots or not self.lot_manager:
-            return []
-
         lots = self.lot_manager.get_lots_for_chain(chain_id, include_derived=True)
         lot_pnl_list = []
 

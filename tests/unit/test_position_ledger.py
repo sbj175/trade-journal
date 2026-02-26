@@ -292,7 +292,7 @@ class TestAssignmentDerivedStockClosing:
     """
 
     def test_subsequent_order_closes_assignment_derived_shares(
-        self, db, order_processor, lot_manager, position_manager,
+        self, db, order_processor, lot_manager,
     ):
         """BTC stock in a later order should close assignment-derived short shares."""
         txs = [
@@ -336,7 +336,6 @@ class TestAssignmentDerivedStockClosing:
         from src.pipeline.order_assembler import assemble_orders
         from src.pipeline.position_ledger import process_lots
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
 
         assembly = assemble_orders(txs)
@@ -344,7 +343,6 @@ class TestAssignmentDerivedStockClosing:
             assembly.orders,
             [assignment_stock],
             lot_manager,
-            position_manager,
             db,
         )
 
@@ -356,7 +354,7 @@ class TestAssignmentDerivedStockClosing:
         )
 
     def test_multi_fill_closes_assignment_derived_shares(
-        self, db, order_processor, lot_manager, position_manager,
+        self, db, order_processor, lot_manager,
     ):
         """Multiple stock BTC fills in one order close assignment-derived shares."""
         txs = [
@@ -407,7 +405,6 @@ class TestAssignmentDerivedStockClosing:
         from src.pipeline.order_assembler import assemble_orders
         from src.pipeline.position_ledger import process_lots
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
 
         assembly = assemble_orders(txs)
@@ -415,7 +412,6 @@ class TestAssignmentDerivedStockClosing:
             assembly.orders,
             [assignment_stock],
             lot_manager,
-            position_manager,
             db,
         )
 
@@ -434,11 +430,10 @@ class TestAssignmentDerivedStockClosing:
 # Helper that drives process_lots directly (avoids OrderProcessor
 # side-effects and keeps the test focused on position_ledger logic).
 
-def _run_process_lots(db, lot_manager, position_manager, txs, assignment_stocks):
+def _run_process_lots(db, lot_manager, txs, assignment_stocks):
     from src.pipeline.order_assembler import assemble_orders
     from src.pipeline.position_ledger import process_lots
 
-    position_manager.clear_all_positions()
     lot_manager.clear_all_lots()
 
     assembly = assemble_orders(txs)
@@ -446,7 +441,6 @@ def _run_process_lots(db, lot_manager, position_manager, txs, assignment_stocks)
         assembly.orders,
         assignment_stocks,
         lot_manager,
-        position_manager,
         db,
     )
 
@@ -462,7 +456,7 @@ class TestAssignmentExerciseMatrix:
     # 1. Short Put assignment → BTO shares (opens long stock)
     # ------------------------------------------------------------------
     def test_short_put_assignment_opens_long_shares(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         txs = [
             make_option_transaction(
@@ -491,7 +485,7 @@ class TestAssignmentExerciseMatrix:
             transaction_sub_type="Buy to Open",
         )
 
-        _run_process_lots(db, lot_manager, position_manager, txs, [assignment_stock])
+        _run_process_lots(db, lot_manager, txs, [assignment_stock])
 
         lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
         assert len(lots) == 1
@@ -502,7 +496,7 @@ class TestAssignmentExerciseMatrix:
     # 2. Short Call assignment → STO shares (opens short stock)
     # ------------------------------------------------------------------
     def test_short_call_assignment_opens_short_shares(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         txs = [
             make_option_transaction(
@@ -531,7 +525,7 @@ class TestAssignmentExerciseMatrix:
             transaction_sub_type="Sell to Open",
         )
 
-        _run_process_lots(db, lot_manager, position_manager, txs, [assignment_stock])
+        _run_process_lots(db, lot_manager, txs, [assignment_stock])
 
         lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
         assert len(lots) == 1
@@ -542,7 +536,7 @@ class TestAssignmentExerciseMatrix:
     # 3. Short Call assignment closes existing long shares (STC)
     # ------------------------------------------------------------------
     def test_short_call_assignment_closes_existing_shares(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         """Short call assigned while holding long shares → STC closes them."""
         txs = [
@@ -582,7 +576,7 @@ class TestAssignmentExerciseMatrix:
             transaction_sub_type="Sell to Close",
         )
 
-        _run_process_lots(db, lot_manager, position_manager, txs, [assignment_stock])
+        _run_process_lots(db, lot_manager, txs, [assignment_stock])
 
         # All stock lots should be closed — no phantom position
         lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
@@ -595,7 +589,7 @@ class TestAssignmentExerciseMatrix:
     # 4. Long Call exercise → BTO shares (opens long stock)
     # ------------------------------------------------------------------
     def test_long_call_exercise_opens_long_shares(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         txs = [
             make_option_transaction(
@@ -624,7 +618,7 @@ class TestAssignmentExerciseMatrix:
             transaction_sub_type="Buy to Open",
         )
 
-        _run_process_lots(db, lot_manager, position_manager, txs, [exercise_stock])
+        _run_process_lots(db, lot_manager, txs, [exercise_stock])
 
         lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
         assert len(lots) == 1
@@ -635,7 +629,7 @@ class TestAssignmentExerciseMatrix:
     # 5. Long Put exercise closes existing long shares (STC)
     # ------------------------------------------------------------------
     def test_long_put_exercise_closes_long_shares(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         """Long put exercised while holding shares → STC closes them."""
         txs = [
@@ -674,7 +668,7 @@ class TestAssignmentExerciseMatrix:
             transaction_sub_type="Sell to Close",
         )
 
-        _run_process_lots(db, lot_manager, position_manager, txs, [exercise_stock])
+        _run_process_lots(db, lot_manager, txs, [exercise_stock])
 
         lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
         assert len(lots) == 0
@@ -683,7 +677,7 @@ class TestAssignmentExerciseMatrix:
     # 6. Long Put exercise opens short shares (STO — no existing shares)
     # ------------------------------------------------------------------
     def test_long_put_exercise_opens_short_shares(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         """Long put exercised without existing shares → STO creates short stock."""
         txs = [
@@ -713,7 +707,7 @@ class TestAssignmentExerciseMatrix:
             transaction_sub_type="Sell to Open",
         )
 
-        _run_process_lots(db, lot_manager, position_manager, txs, [exercise_stock])
+        _run_process_lots(db, lot_manager, txs, [exercise_stock])
 
         lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
         assert len(lots) == 1
@@ -725,7 +719,7 @@ class TestAssignmentExerciseMatrix:
     #    long $15 call exercised (BTO) → net zero stock
     # ------------------------------------------------------------------
     def test_call_spread_settlement(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         """HUT 14/15 call spread expires ITM.
 
@@ -791,7 +785,7 @@ class TestAssignmentExerciseMatrix:
         )
 
         _run_process_lots(
-            db, lot_manager, position_manager, txs,
+            db, lot_manager, txs,
             [assign_stock, exercise_stock],
         )
 
@@ -807,7 +801,7 @@ class TestAssignmentExerciseMatrix:
     #    long $14 put exercised (STC) → net zero stock
     # ------------------------------------------------------------------
     def test_put_spread_settlement(
-        self, db, lot_manager, position_manager,
+        self, db, lot_manager,
     ):
         """PUT spread: short $15 put / long $14 put expires ITM.
 
@@ -871,7 +865,7 @@ class TestAssignmentExerciseMatrix:
         )
 
         _run_process_lots(
-            db, lot_manager, position_manager, txs,
+            db, lot_manager, txs,
             [assign_stock, exercise_stock],
         )
 

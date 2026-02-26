@@ -22,7 +22,6 @@ from src.models.order_processor import Order, OrderType
 if TYPE_CHECKING:
     from src.database.db_manager import DatabaseManager
     from src.models.lot_manager import LotManager
-    from src.models.position_inventory import PositionInventoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,6 @@ def process_lots(
     orders: List[Order],
     assignment_stock_transactions: List[Dict],
     lot_manager: "LotManager",
-    position_manager: "PositionInventoryManager",
     db_manager: "DatabaseManager",
 ) -> None:
     """Stage 3: create/close lots in a single chronological pass.
@@ -78,8 +76,6 @@ def process_lots(
         (stock transactions resulting from assignment/exercise, no order_id).
     lot_manager : LotManager
         Manages position_lots and lot_closings tables.
-    position_manager : PositionInventoryManager
-        Legacy position inventory (updated for backward compatibility).
     db_manager : DatabaseManager
         Database access for assignment/exercise lot lookups.
     """
@@ -152,9 +148,6 @@ def process_lots(
                 ),
                 "transaction_sub_type": tx.transaction_sub_type,
             }
-
-            # Update legacy position inventory
-            position_manager.update_position_from_transaction(tx_dict)
 
             if tx.is_opening:
                 lot_manager.create_lot(

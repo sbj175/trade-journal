@@ -71,7 +71,7 @@ def _get_groups(db):
 class TestFullPipeline:
     """End-to-end tests running transactions through the full orchestrator."""
 
-    def test_simple_open(self, db, lot_manager, position_manager):
+    def test_simple_open(self, db, lot_manager):
         """Single STO option -> lot created, chain derived, group created."""
         txs = [
             make_option_transaction(
@@ -81,7 +81,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         assert isinstance(result, PipelineResult)
         assert result.orders_assembled == 1
@@ -89,7 +89,7 @@ class TestFullPipeline:
         assert result.groups_processed >= 1
         assert _count_lots(db) >= 1
 
-    def test_chains_populated(self, db, lot_manager, position_manager):
+    def test_chains_populated(self, db, lot_manager):
         """chains field is populated for non-empty transactions."""
         txs = [
             make_option_transaction(
@@ -99,11 +99,11 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         assert len(result.chains) >= 1
 
-    def test_open_close(self, db, lot_manager, position_manager):
+    def test_open_close(self, db, lot_manager):
         """STO + BTC -> lots + closings, chain CLOSED, group CLOSED."""
 
         txs = [
@@ -119,7 +119,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled == 2
         assert result.chains_derived >= 1
@@ -131,7 +131,7 @@ class TestFullPipeline:
         groups = _get_groups(db)
         assert len(groups) >= 1
 
-    def test_iron_condor_cross_order(self, db, lot_manager, position_manager):
+    def test_iron_condor_cross_order(self, db, lot_manager):
         """Put spread + call spread as separate orders -> 1 group (Iron Condor)."""
         txs = [
             # Put spread (order 1)
@@ -166,7 +166,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled == 2
         assert result.chains_derived >= 1
@@ -174,7 +174,7 @@ class TestFullPipeline:
         # 4 lots (one per leg)
         assert _count_lots(db) == 4
 
-    def test_with_equity(self, db, lot_manager, position_manager):
+    def test_with_equity(self, db, lot_manager):
         """Stock BTO -> equity lot and group created."""
         txs = [
             make_stock_transaction(
@@ -184,12 +184,12 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled == 1
         assert _count_lots(db) >= 1
 
-    def test_shares_sell_rebuy_separate_groups(self, db, lot_manager, position_manager):
+    def test_shares_sell_rebuy_separate_groups(self, db, lot_manager):
         """Buy shares, sell all, buy again -> 2 separate groups (separate trading decisions)."""
         txs = [
             make_stock_transaction(
@@ -210,7 +210,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         groups = _snapshot_groups(db)
         shares_groups = [g for g in groups if g["strategy_label"] == "Shares"]
@@ -219,7 +219,7 @@ class TestFullPipeline:
         statuses = {g["status"] for g in shares_groups}
         assert statuses == {"OPEN", "CLOSED"}
 
-    def test_shares_additional_purchase_same_group(self, db, lot_manager, position_manager):
+    def test_shares_additional_purchase_same_group(self, db, lot_manager):
         """Buy shares twice while holding -> 1 group (adding to existing position)."""
         txs = [
             make_stock_transaction(
@@ -234,7 +234,7 @@ class TestFullPipeline:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         groups = _snapshot_groups(db)
         shares_groups = [g for g in groups if g["strategy_label"] == "Shares"]
@@ -243,9 +243,9 @@ class TestFullPipeline:
         assert shares_groups[0]["status"] == "OPEN"
         assert len(shares_groups[0]["lot_txn_ids"]) == 2
 
-    def test_empty_transactions(self, db, lot_manager, position_manager):
+    def test_empty_transactions(self, db, lot_manager):
         """No transactions -> PipelineResult with zeros, empty old_chains."""
-        result = reprocess(db, lot_manager, position_manager, [])
+        result = reprocess(db, lot_manager, [])
 
         assert result == PipelineResult(
             orders_assembled=0,
@@ -263,7 +263,7 @@ class TestFullPipeline:
 class TestIncrementalReprocess:
     """Tests for affected_underlyings partial reprocessing."""
 
-    def test_incremental_reprocess(self, db, lot_manager, position_manager):
+    def test_incremental_reprocess(self, db, lot_manager):
         """Full process, then incremental on 1 underlying -> correct counts."""
         txs_aapl = [
             make_option_transaction(
@@ -284,12 +284,12 @@ class TestIncrementalReprocess:
         all_txs = txs_aapl + txs_msft
 
         # Full process first
-        result_full = reprocess(db, lot_manager, position_manager, all_txs)
+        result_full = reprocess(db, lot_manager, all_txs)
         assert result_full.orders_assembled == 2
 
         # Incremental: only reprocess AAPL
         result_incr = reprocess(
-            db, lot_manager, position_manager,
+            db, lot_manager,
             all_txs,
             affected_underlyings={"AAPL"},
         )
@@ -304,7 +304,7 @@ class TestIncrementalReprocess:
 class TestIdempotency:
     """Verify that running the pipeline twice produces the same result."""
 
-    def test_reprocess_idempotent(self, db, lot_manager, position_manager):
+    def test_reprocess_idempotent(self, db, lot_manager):
         """Run twice on same data -> same DB state."""
         txs = [
             make_option_transaction(
@@ -319,12 +319,12 @@ class TestIdempotency:
             ),
         ]
 
-        result1 = reprocess(db, lot_manager, position_manager, txs)
+        result1 = reprocess(db, lot_manager, txs)
         lots_after_1 = _count_lots(db)
         groups_after_1 = _count_groups(db)
         closings_after_1 = _count_closings(db)
 
-        result2 = reprocess(db, lot_manager, position_manager, txs)
+        result2 = reprocess(db, lot_manager, txs)
         lots_after_2 = _count_lots(db)
         groups_after_2 = _count_groups(db)
         closings_after_2 = _count_closings(db)
@@ -343,7 +343,7 @@ class TestIdempotency:
 class TestPipelineResultCounts:
     """Verify PipelineResult fields are populated correctly."""
 
-    def test_all_fields_populated(self, db, lot_manager, position_manager):
+    def test_all_fields_populated(self, db, lot_manager):
         """Multi-order scenario -> all PipelineResult fields > 0."""
         txs = [
             make_option_transaction(
@@ -358,7 +358,7 @@ class TestPipelineResultCounts:
             ),
         ]
 
-        result = reprocess(db, lot_manager, position_manager, txs)
+        result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled >= 1
         assert result.chains_derived >= 1
@@ -448,7 +448,7 @@ class TestShadowComparison:
     For cross-order cases, the new pipeline may produce fewer, better-labeled groups.
     """
 
-    def test_shadow_simple_open(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_simple_open(self, db, order_processor, lot_manager, monkeypatch):
         """Single STO: legacy and new pipeline produce same group."""
         monkeypatch.setattr(ledger_svc, "db", db)
         monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
@@ -462,7 +462,6 @@ class TestShadowComparison:
         ]
 
         # --- Create lots via OrderProcessor (shared state for both paths) ---
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -491,7 +490,7 @@ class TestShadowComparison:
             assert lg["underlying"] == ng["underlying"]
             assert lg["status"] == ng["status"]
 
-    def test_shadow_open_close(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_open_close(self, db, order_processor, lot_manager, monkeypatch):
         """STO + BTC: both paths produce 1 CLOSED group with same lots.
 
         Strategy label improvement: legacy gets "Unknown" for closed chains because
@@ -515,7 +514,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -544,7 +542,7 @@ class TestShadowComparison:
             assert lg["strategy_label"] == "Unknown"
             assert ng["strategy_label"] == "Short Call"
 
-    def test_shadow_roll_chain(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_roll_chain(self, db, order_processor, lot_manager, monkeypatch):
         """Roll scenario: both paths produce 1 group with all lots linked."""
         monkeypatch.setattr(ledger_svc, "db", db)
         monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
@@ -580,7 +578,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -605,7 +602,7 @@ class TestShadowComparison:
         assert legacy_groups[0]["lot_txn_ids"] == new_groups[0]["lot_txn_ids"]
         assert legacy_groups[0]["status"] == new_groups[0]["status"]
 
-    def test_shadow_multi_underlying(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_multi_underlying(self, db, order_processor, lot_manager, monkeypatch):
         """Multiple underlyings: both paths isolate groups per underlying."""
         monkeypatch.setattr(ledger_svc, "db", db)
         monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
@@ -625,7 +622,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -654,7 +650,7 @@ class TestShadowComparison:
         for lg, ng in zip(legacy_groups, new_groups):
             assert lg["lot_txn_ids"] == ng["lot_txn_ids"]
 
-    def test_shadow_shares_only(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_shares_only(self, db, order_processor, lot_manager, monkeypatch):
         """Shares only: both paths create 1 group labeled 'Shares'."""
         monkeypatch.setattr(ledger_svc, "db", db)
         monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
@@ -667,7 +663,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -694,7 +689,7 @@ class TestShadowComparison:
         assert legacy_groups[0]["strategy_label"] == "Shares"
         assert new_groups[0]["strategy_label"] == "Shares"
 
-    def test_shadow_shares_plus_bull_put_spread(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_shares_plus_bull_put_spread(self, db, order_processor, lot_manager, monkeypatch):
         """Shares + bull put spread on same underlying as separate orders:
         both paths correctly keep them as 2 separate groups.
 
@@ -728,7 +723,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -765,7 +759,7 @@ class TestShadowComparison:
         assert "Bull Put Spread" in new_by_label
         assert sorted(new_by_label["Bull Put Spread"]["lot_txn_ids"]) == sorted(["tx-sell-put", "tx-buy-put"])
 
-    def test_shadow_cross_order_improvement(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_cross_order_improvement(self, db, order_processor, lot_manager, monkeypatch):
         """Cross-order Iron Condor: new pipeline merges into 1 group where legacy creates 2.
 
         This is a documented improvement — the new pipeline recognizes that a put spread
@@ -807,7 +801,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -836,7 +829,7 @@ class TestShadowComparison:
         # Strategy label should be Iron Condor
         assert new_groups[0]["strategy_label"] == "Iron Condor"
 
-    def test_shadow_single_chain_ic_same_result(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_single_chain_ic_same_result(self, db, order_processor, lot_manager, monkeypatch):
         """4-leg IC in a single order: both paths produce 1 group with same strategy."""
         monkeypatch.setattr(ledger_svc, "db", db)
         monkeypatch.setattr(ledger_svc, "lot_manager", lot_manager)
@@ -872,7 +865,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -900,7 +892,7 @@ class TestShadowComparison:
         assert legacy_groups[0]["strategy_label"] == "Iron Condor"
         assert new_groups[0]["strategy_label"] == "Iron Condor"
 
-    def test_shadow_expiration(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_expiration(self, db, order_processor, lot_manager, monkeypatch):
         """STO → expiration: both paths produce 1 CLOSED group.
 
         Expirations have no order_id and no action — they get synthetic order IDs
@@ -924,7 +916,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -952,7 +943,7 @@ class TestShadowComparison:
         assert legacy_groups[0]["status"] == "CLOSED"
         assert new_groups[0]["status"] == "CLOSED"
 
-    def test_shadow_assignment(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_assignment(self, db, order_processor, lot_manager, monkeypatch):
         """STO put → assignment: assignment creates a derived stock lot.
 
         Assignments have no order_id and no action — they get synthetic handling.
@@ -977,7 +968,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)
@@ -1005,7 +995,7 @@ class TestShadowComparison:
         assert "tx-open" in legacy_all_txns
         assert "tx-open" in new_all_txns
 
-    def test_exercise_closes_derived_stock_lot(self, db, order_processor, lot_manager, position_manager):
+    def test_exercise_closes_derived_stock_lot(self, db, order_processor, lot_manager):
         """Put spread fully ITM: assignment + exercise -> derived shares fully closed.
 
         Short 50P assigned -> stock BTO 300 @ $50 (derived lot created).
@@ -1064,7 +1054,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
 
@@ -1099,7 +1088,7 @@ class TestShadowComparison:
             # P&L: (45 - 50) * 300 = -1500
             assert closings[0].realized_pnl == -1500.0
 
-    def test_shadow_jade_lizard(self, db, order_processor, lot_manager, position_manager, monkeypatch):
+    def test_shadow_jade_lizard(self, db, order_processor, lot_manager, monkeypatch):
         """Jade Lizard (short put + bear call spread) entered as a single order:
         both paths produce 1 group with 'Jade Lizard' strategy label.
         """
@@ -1133,7 +1122,6 @@ class TestShadowComparison:
             ),
         ]
 
-        position_manager.clear_all_positions()
         lot_manager.clear_all_lots()
         order_processor.process_transactions(txs)
         assembly = assemble_orders(txs)

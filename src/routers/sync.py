@@ -8,7 +8,7 @@ from loguru import logger
 
 from src.database.models import OrderChain
 from src.api.tastytrade_client import TastytradeClient
-from src.dependencies import db, connection_manager, order_manager, position_manager, lot_manager, get_current_user_id, get_tastytrade_client
+from src.dependencies import db, connection_manager, order_manager, lot_manager, get_current_user_id, get_tastytrade_client
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
@@ -92,7 +92,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
 
             try:
                 raw_transactions = db.get_raw_transactions()
-                result = reprocess(db, lot_manager, position_manager,
+                result = reprocess(db, lot_manager,
                                    raw_transactions, affected_underlyings)
                 if result.chains:
                     await update_chain_cache(result.chains, affected_underlyings)
@@ -264,7 +264,7 @@ async def initial_sync(
 
         logger.info("Running full pipeline on initial sync data...")
         raw_transactions = db.get_raw_transactions()
-        pipeline_result = reprocess(db, lot_manager, position_manager, raw_transactions)
+        pipeline_result = reprocess(db, lot_manager, raw_transactions)
         if pipeline_result.chains:
             await update_chain_cache(pipeline_result.chains)
         logger.info(
@@ -295,7 +295,7 @@ async def reprocess_chains(user_id: str = Depends(get_current_user_id)):
         raw_transactions = db.get_raw_transactions()
         logger.info(f"Loaded {len(raw_transactions)} raw transactions from database")
 
-        result = reprocess(db, lot_manager, position_manager, raw_transactions)
+        result = reprocess(db, lot_manager, raw_transactions)
 
         if result.chains:
             await update_chain_cache(result.chains)

@@ -11,7 +11,6 @@ from src.database.db_manager import DatabaseManager
 from src.database import engine as sa_engine
 from src.models.lot_manager import LotManager
 from src.models.pnl_calculator import PnLCalculator
-from src.models.position_inventory import PositionInventoryManager
 from src.models.strategy_detector import StrategyDetector
 from src.models.order_processor import OrderProcessor
 
@@ -35,19 +34,8 @@ def lot_manager(db):
 
 
 @pytest.fixture
-def position_manager(db):
-    return PositionInventoryManager(db)
-
-
-@pytest.fixture
-def pnl_calculator(db, position_manager, lot_manager):
-    return PnLCalculator(db, position_manager, lot_manager)
-
-
-@pytest.fixture
-def pnl_calculator_legacy(db, position_manager):
-    """PnLCalculator without lot_manager (legacy path)."""
-    return PnLCalculator(db, position_manager, lot_manager=None)
+def pnl_calculator(db, lot_manager):
+    return PnLCalculator(db, lot_manager)
 
 
 @pytest.fixture
@@ -56,8 +44,8 @@ def strategy_detector(db):
 
 
 @pytest.fixture
-def order_processor(db, position_manager, lot_manager):
-    return OrderProcessor(db, position_manager, lot_manager)
+def order_processor(db, lot_manager):
+    return OrderProcessor(db, lot_manager)
 
 
 # ---------------------------------------------------------------------------
