@@ -273,3 +273,154 @@ class TestFullPipelineNoSeparatePass:
         open_lots = lot_manager.get_open_lots("ACCT1", underlying="AAPL")
         assert len(open_lots) == 1
         assert open_lots[0].remaining_quantity == 100  # 200 - 100 closed
+
+
+# ---------------------------------------------------------------------------
+# Assignment-derived stock lots closed by subsequent orders
+# ---------------------------------------------------------------------------
+
+class TestAssignmentDerivedStockClosing:
+    """Validates that stock closing transactions can close assignment-derived
+    stock lots, even though the derived lots are created after the first pass
+    of lot processing.
+
+    Scenario (modeled after OKLO Roth account):
+      1. STO 1 call option
+      2. Assignment: BTC option (Receive Deliver) + STO 100 shares
+      3. Later trade: BTC 100 shares (closes the assigned short stock)
+    """
+
+    def test_subsequent_order_closes_assignment_derived_shares(
+        self, db, order_processor, lot_manager, position_manager,
+    ):
+        """BTC stock in a later order should close assignment-derived short shares."""
+        txs = [
+            # 1) Open short call
+            make_option_transaction(
+                id="tx-sto", order_id="ORD-STO", action="SELL_TO_OPEN",
+                quantity=1, price=5.00,
+                symbol="OKLO  251128C00086000",
+                underlying_symbol="OKLO",
+                option_type="Call", strike=86.0, expiration="2025-11-28",
+                executed_at="2025-11-21T18:00:00+00:00",
+            ),
+            # 2) Assignment: option side (Receive Deliver — no order_id)
+            make_assignment_transaction(
+                id="tx-assign-opt",
+                symbol="OKLO  251128C00086000",
+                underlying_symbol="OKLO",
+                quantity=1,
+                executed_at="2025-11-28T22:00:00+00:00",
+            ),
+            # 3) Later trade order: BTC 100 shares to close the assigned short
+            make_stock_transaction(
+                id="tx-btc-shares", order_id="ORD-CLOSE-SHARES",
+                symbol="OKLO", underlying_symbol="OKLO",
+                action="BUY_TO_CLOSE", quantity=100, price=90.19,
+                executed_at="2025-12-01T14:56:50+00:00",
+                transaction_sub_type="Buy to Close",
+            ),
+        ]
+
+        # Assignment stock side (STO shares — sidelined during preprocessing)
+        assignment_stock = make_stock_transaction(
+            id="tx-assign-stock", order_id=None,
+            symbol="OKLO", underlying_symbol="OKLO",
+            action="SELL_TO_OPEN", quantity=100, price=86.00,
+            executed_at="2025-11-28T22:00:00+00:00",
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Open",
+        )
+
+        from src.pipeline.order_assembler import assemble_orders
+        from src.pipeline.position_ledger import process_lots
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+
+        assembly = assemble_orders(txs)
+        process_lots(
+            assembly.orders,
+            [assignment_stock],
+            lot_manager,
+            position_manager,
+            db,
+        )
+
+        # The assignment-derived short stock lot should be CLOSED
+        open_stock_lots = lot_manager.get_open_lots("ACCT1", symbol="OKLO")
+        assert len(open_stock_lots) == 0, (
+            f"Expected 0 open stock lots, got {len(open_stock_lots)}: "
+            f"{[(l.symbol, l.remaining_quantity) for l in open_stock_lots]}"
+        )
+
+    def test_multi_fill_closes_assignment_derived_shares(
+        self, db, order_processor, lot_manager, position_manager,
+    ):
+        """Multiple stock BTC fills in one order close assignment-derived shares."""
+        txs = [
+            # 1) Open short call (16 contracts)
+            make_option_transaction(
+                id="tx-sto", order_id="ORD-STO", action="SELL_TO_OPEN",
+                quantity=16, price=5.10,
+                symbol="OKLO  251128C00086000",
+                underlying_symbol="OKLO",
+                option_type="Call", strike=86.0, expiration="2025-11-28",
+                executed_at="2025-11-21T18:00:00+00:00",
+            ),
+            # 2) Assignment: option side (Receive Deliver)
+            make_assignment_transaction(
+                id="tx-assign-opt",
+                symbol="OKLO  251128C00086000",
+                underlying_symbol="OKLO",
+                quantity=16,
+                executed_at="2025-11-28T22:00:00+00:00",
+            ),
+            # 3) Later order: BTC 800 + BTC 800 shares (two fills in same order)
+            make_stock_transaction(
+                id="tx-btc-1", order_id="ORD-CLOSE-SHARES",
+                symbol="OKLO", underlying_symbol="OKLO",
+                action="BUY_TO_CLOSE", quantity=800, price=90.19,
+                executed_at="2025-12-01T14:56:50+00:00",
+                transaction_sub_type="Buy to Close",
+            ),
+            make_stock_transaction(
+                id="tx-btc-2", order_id="ORD-CLOSE-SHARES",
+                symbol="OKLO", underlying_symbol="OKLO",
+                action="BUY_TO_CLOSE", quantity=800, price=90.19,
+                executed_at="2025-12-01T14:56:50+00:00",
+                transaction_sub_type="Buy to Close",
+            ),
+        ]
+
+        # Assignment stock side (STO 1600 shares)
+        assignment_stock = make_stock_transaction(
+            id="tx-assign-stock", order_id=None,
+            symbol="OKLO", underlying_symbol="OKLO",
+            action="SELL_TO_OPEN", quantity=1600, price=86.00,
+            executed_at="2025-11-28T22:00:00+00:00",
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Open",
+        )
+
+        from src.pipeline.order_assembler import assemble_orders
+        from src.pipeline.position_ledger import process_lots
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+
+        assembly = assemble_orders(txs)
+        process_lots(
+            assembly.orders,
+            [assignment_stock],
+            lot_manager,
+            position_manager,
+            db,
+        )
+
+        # All 1600 shares should be closed
+        open_stock_lots = lot_manager.get_open_lots("ACCT1", symbol="OKLO")
+        assert len(open_stock_lots) == 0, (
+            f"Expected 0 open stock lots, got {len(open_stock_lots)}: "
+            f"{[(l.symbol, l.remaining_quantity) for l in open_stock_lots]}"
+        )
