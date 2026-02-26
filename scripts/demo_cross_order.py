@@ -30,7 +30,7 @@ db.initialize_database()
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
-ACCOUNT = "TESTACCT"
+ACCOUNT = "TESTACCT"  # overridden by --account flag
 UNDERLYING = "ZTEST"
 EXPIRATION = "2026-09-18"
 
@@ -214,6 +214,11 @@ def main():
         help=f"user_id for tenant scoping (default: {DEFAULT_USER_ID})",
     )
     parser.add_argument(
+        "--account",
+        default="TESTACCT",
+        help="Tastytrade account number for the demo data (default: TESTACCT)",
+    )
+    parser.add_argument(
         "command",
         choices=COMMANDS.keys(),
         help="inject | add-wing | cleanup",
@@ -224,6 +229,12 @@ def main():
     set_current_user_id(args.user_id)
     if args.user_id != DEFAULT_USER_ID:
         print(f"  Using user_id: {args.user_id}")
+
+    # Set account number globally so transaction builders pick it up
+    global ACCOUNT
+    ACCOUNT = args.account
+    if args.account != "TESTACCT":
+        print(f"  Using account: {args.account}")
 
     COMMANDS[args.command]()
 
