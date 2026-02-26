@@ -60,12 +60,6 @@ def order_processor(db, position_manager, lot_manager):
     return OrderProcessor(db, position_manager, lot_manager)
 
 
-@pytest.fixture
-def order_processor_legacy(db, position_manager):
-    """OrderProcessor without lot_manager (legacy path)."""
-    return OrderProcessor(db, position_manager, lot_manager=None)
-
-
 # ---------------------------------------------------------------------------
 # Transaction factory helpers
 # ---------------------------------------------------------------------------

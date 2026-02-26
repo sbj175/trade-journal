@@ -1,12 +1,9 @@
 """
-Order Processing Engine
-Implements order chain processing rules
-Enhanced with lot-based position tracking
+Order Processing Engine — dataclasses and thin delegator.
 
-After OPT-121 Stage 3, lot creation/closing and assignment handling are in
-``src.pipeline.position_ledger.process_lots()``.  This module retains the
-dataclasses (Transaction, Order, Chain, OrderType) and a thin delegator that
-routes through the pipeline or the legacy path.
+Defines Transaction, Order, Chain, and OrderType dataclasses used throughout
+the pipeline.  ``OrderProcessor`` is a convenience wrapper that delegates to
+``order_assembler`` (Stage 2) and ``position_ledger`` (Stage 3).
 """
 
 from dataclasses import dataclass, field
@@ -138,26 +135,21 @@ class Chain:
 
 
 class OrderProcessor:
-    """Order processing engine — thin delegator.
+    """Order processing engine — thin delegator to pipeline stages.
 
-    When ``lot_manager`` is provided, delegates to
-    ``src.pipeline.position_ledger.process_lots()`` for lot creation/closing.
-    When ``lot_manager`` is None, falls back to the legacy position-only path.
-
-    Chain derivation is no longer performed here — Stage 4
-    (``chain_graph.derive_chains()``) handles that from the DB.
+    Delegates to ``order_assembler.assemble_orders()`` (Stage 2) and
+    ``position_ledger.process_lots()`` (Stage 3).  Chain derivation is
+    handled separately by Stage 4 (``chain_graph.derive_chains()``).
     """
 
-    def __init__(self, db_manager, position_manager, lot_manager: Optional['LotManager'] = None):
+    def __init__(self, db_manager, position_manager, lot_manager: 'LotManager'):
         self.db = db_manager
         self.position_manager = position_manager
         self.lot_manager = lot_manager
-        self._use_lots = lot_manager is not None
 
-    def process_transactions(self, raw_transactions: List[Dict]) -> Dict[str, List[Chain]]:
-        """Main processing method — converts raw transactions to lots.
+    def process_transactions(self, raw_transactions: List[Dict]) -> None:
+        """Convert raw transactions into lots via the pipeline.
 
-        Returns an empty dict (chains are no longer derived here).
         Callers that need chains should use ``chain_graph.derive_chains()``
         after calling this method.
         """
@@ -167,38 +159,10 @@ class OrderProcessor:
         logger.info(f"Processing {len(raw_transactions)} transactions")
 
         assembly = assemble_orders(raw_transactions)
-
-        if self._use_lots and self.lot_manager:
-            process_lots(
-                assembly.orders,
-                assembly.assignment_stock_transactions,
-                self.lot_manager,
-                self.position_manager,
-                self.db,
-            )
-        else:
-            # Legacy path (no lots) — position inventory only
-            self._update_positions_legacy(assembly.orders)
-
-        return {}
-
-    def _update_positions_legacy(self, orders: List[Order]):
-        """Update position inventory only (no lot tracking).
-
-        Used when lot_manager is None — backward compatibility for legacy tests.
-        """
-        for order in orders:
-            for tx in order.transactions:
-                tx_dict = {
-                    'id': tx.id,
-                    'account_number': tx.account_number,
-                    'symbol': tx.symbol,
-                    'underlying_symbol': tx.underlying_symbol,
-                    'action': tx.action,
-                    'quantity': tx.quantity,
-                    'price': tx.price,
-                    'executed_at': tx.executed_at.isoformat() if tx.executed_at else '',
-                    'instrument_type': 'EQUITY_OPTION' if tx.option_type else 'EQUITY',
-                    'transaction_sub_type': tx.transaction_sub_type
-                }
-                self.position_manager.update_position_from_transaction(tx_dict)
+        process_lots(
+            assembly.orders,
+            assembly.assignment_stock_transactions,
+            self.lot_manager,
+            self.position_manager,
+            self.db,
+        )

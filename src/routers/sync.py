@@ -235,19 +235,6 @@ async def initial_sync(
         raw_saved = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
 
-        logger.info("Processing transactions into orders and chains...")
-
-        trading_transactions = [
-            tx for tx in transactions
-            if tx.get('instrument_type') is not None and tx.get('symbol') is not None
-        ]
-
-        logger.info(f"Processing {len(trading_transactions)} trading transactions (filtered from {len(transactions)} total)")
-
-        legacy_result = order_manager.process_transactions_to_orders_and_chains(trading_transactions)
-
-        logger.info(f"Processed {legacy_result['orders_processed']} orders, saved {legacy_result['orders_saved']}, created {legacy_result['chains_created']} chains, saved {legacy_result['chains_saved']}")
-
         logger.info("Fetching current positions from all accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
@@ -272,27 +259,24 @@ async def initial_sync(
                 else:
                     logger.error(f"Failed to save balance for account {balance.get('account_number')}")
 
-        logger.info(f"INITIAL SYNC completed: {legacy_result['orders_saved']} orders saved, {legacy_result['chains_saved']} chains created, {total_positions} positions updated")
-
         db.update_last_sync_timestamp()
         db.mark_initial_sync_completed()
 
-        logger.info("Reprocessing chains with strategy detection after initial sync...")
-        try:
-            raw_transactions = db.get_raw_transactions()
-            pipeline_result = reprocess(db, lot_manager, position_manager, raw_transactions)
-            if pipeline_result.chains:
-                await update_chain_cache(pipeline_result.chains)
-            logger.info(f"Chain reprocessing completed: {pipeline_result.chains_derived} chains with strategy detection")
-        except Exception as e:
-            logger.error(f"Error during chain reprocessing: {str(e)}", exc_info=True)
+        logger.info("Running full pipeline on initial sync data...")
+        raw_transactions = db.get_raw_transactions()
+        pipeline_result = reprocess(db, lot_manager, position_manager, raw_transactions)
+        if pipeline_result.chains:
+            await update_chain_cache(pipeline_result.chains)
+        logger.info(
+            f"INITIAL SYNC completed: {pipeline_result.orders_assembled} orders, "
+            f"{pipeline_result.chains_derived} chains, {total_positions} positions"
+        )
 
         return {
-            "message": f"Initial sync completed successfully",
-            "orders_processed": legacy_result['orders_processed'],
-            "orders_saved": legacy_result['orders_saved'],
-            "chains_created": legacy_result['chains_created'],
-            "chains_saved": legacy_result['chains_saved'],
+            "message": "Initial sync completed successfully",
+            "orders_assembled": pipeline_result.orders_assembled,
+            "chains_derived": pipeline_result.chains_derived,
+            "groups_processed": pipeline_result.groups_processed,
             "positions_updated": total_positions,
             "transactions_processed": len(transactions),
             "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None
