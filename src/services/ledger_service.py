@@ -476,9 +476,12 @@ def _refresh_group_status(group_id: str, session=None):
     ).filter(PositionGroupLot.group_id == group_id).scalar()
 
     if total_count == 0:
-        # Empty group — delete it
+        # Empty group — delete it (user-scoped)
+        from src.database.tenant import DEFAULT_USER_ID
+        uid = session.info.get("user_id", DEFAULT_USER_ID)
         session.query(PositionGroup).filter(
             PositionGroup.group_id == group_id,
+            PositionGroup.user_id == uid,
         ).delete()
         return
 

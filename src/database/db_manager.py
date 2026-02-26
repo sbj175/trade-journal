@@ -131,7 +131,7 @@ class DatabaseManager:
         """Get specific account"""
         from src.database.models import Account
         with self.get_session() as session:
-            row = session.get(Account, account_number)
+            row = session.query(Account).filter(Account.account_number == account_number).first()
             return row.to_dict() if row else None
     
     # Legacy trade methods removed - use order system instead
@@ -206,11 +206,14 @@ class DatabaseManager:
     def save_positions(self, positions: List[Dict[str, Any]], account_number: str) -> bool:
         """Save current positions for an account - batch insert via ORM"""
         from src.database.models import Position as PositionModel
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
-                # Clear existing positions for this account
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
+                # Clear existing positions for this account (user-scoped)
                 session.query(PositionModel).filter(
                     PositionModel.account_number == account_number,
+                    PositionModel.user_id == user_id,
                 ).delete()
 
                 for pos in positions:
@@ -319,9 +322,11 @@ class DatabaseManager:
     def reset_sync_metadata(self) -> bool:
         """Reset sync metadata (for initial sync)"""
         from src.database.models import SyncMetadata
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
-                session.query(SyncMetadata).delete()
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
+                session.query(SyncMetadata).filter(SyncMetadata.user_id == user_id).delete()
                 return True
         except Exception as e:
             logger.error(f"Error resetting sync metadata: {str(e)}")
@@ -411,9 +416,11 @@ class DatabaseManager:
     def reset_strategy_targets(self) -> bool:
         """Reset strategy targets to defaults"""
         from src.database.models import StrategyTarget
+        from src.database.tenant import DEFAULT_USER_ID
         try:
             with self.get_session() as session:
-                session.query(StrategyTarget).delete()
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
+                session.query(StrategyTarget).filter(StrategyTarget.user_id == user_id).delete()
                 self._seed_default_strategy_targets_orm(session)
                 return True
         except Exception as e:
@@ -438,7 +445,10 @@ class DatabaseManager:
                         set_={'comment': stmt.excluded.comment, 'updated_at': stmt.excluded.updated_at},
                     ))
                 else:
-                    session.query(OrderComment).filter(OrderComment.order_id == order_id).delete()
+                    session.query(OrderComment).filter(
+                        OrderComment.order_id == order_id,
+                        OrderComment.user_id == user_id,
+                    ).delete()
                 return True
         except Exception as e:
             logger.error(f"Error saving order comment: {str(e)}")
@@ -473,7 +483,10 @@ class DatabaseManager:
                         set_={'note': stmt.excluded.note, 'updated_at': stmt.excluded.updated_at},
                     ))
                 else:
-                    session.query(PositionNote).filter(PositionNote.note_key == note_key).delete()
+                    session.query(PositionNote).filter(
+                        PositionNote.note_key == note_key,
+                        PositionNote.user_id == user_id,
+                    ).delete()
                 return True
         except Exception as e:
             logger.error(f"Error saving position note: {str(e)}")

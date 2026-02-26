@@ -227,13 +227,14 @@ async def move_lots(body: LedgerMoveLots, user_id: str = Depends(get_current_use
             PositionGroupLot.transaction_id.in_(body.transaction_ids),
         ).distinct().all()]
 
-        session.query(PositionGroupLot).filter(
-            PositionGroupLot.transaction_id.in_(body.transaction_ids),
-        ).delete(synchronize_session='fetch')
-
         from src.database.engine import dialect_insert
         from src.database.tenant import DEFAULT_USER_ID
         user_id = session.info.get("user_id", DEFAULT_USER_ID)
+
+        session.query(PositionGroupLot).filter(
+            PositionGroupLot.transaction_id.in_(body.transaction_ids),
+            PositionGroupLot.user_id == user_id,
+        ).delete(synchronize_session='fetch')
         for txn_id in body.transaction_ids:
             stmt = dialect_insert(PositionGroupLot).values(
                 group_id=body.target_group_id, transaction_id=txn_id,

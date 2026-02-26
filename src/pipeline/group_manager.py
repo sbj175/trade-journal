@@ -375,6 +375,7 @@ class GroupPersister:
                 # Delete stale group-lot links for this group, then re-insert
                 session.query(PositionGroupLot).filter(
                     PositionGroupLot.group_id == group_id,
+                    PositionGroupLot.user_id == user_id,
                 ).delete()
 
                 for txn_id in spec.lot_transaction_ids:
@@ -391,9 +392,11 @@ class GroupPersister:
             if orphans:
                 session.query(PositionGroupLot).filter(
                     PositionGroupLot.group_id.in_(orphans),
+                    PositionGroupLot.user_id == user_id,
                 ).delete(synchronize_session=False)
                 session.query(PositionGroup).filter(
                     PositionGroup.group_id.in_(orphans),
+                    PositionGroup.user_id == user_id,
                 ).delete(synchronize_session=False)
                 logger.info(f"Deleted {len(orphans)} orphan groups")
 

@@ -1345,7 +1345,10 @@ class OrderManager:
                 ))
 
                 # Delete existing positions for this order, then insert new
-                session.query(OP).filter(OP.order_id == order.order_id).delete()
+                session.query(OP).filter(
+                    OP.order_id == order.order_id,
+                    OP.user_id == user_id,
+                ).delete()
 
                 for position in order.positions:
                     session.add(OP(
@@ -2026,7 +2029,10 @@ class OrderManager:
                 ))
 
                 # Delete existing chain members
-                session.query(OCM).filter(OCM.chain_id == chain['chain_id']).delete()
+                session.query(OCM).filter(
+                    OCM.chain_id == chain['chain_id'],
+                    OCM.user_id == user_id,
+                ).delete()
 
                 # Insert chain members
                 for i, order in enumerate(chain['orders']):
@@ -2142,10 +2148,12 @@ class OrderManager:
             # Clear existing orders and chains (order matters for FK constraints)
             print("Clearing existing orders and chains...")
             with self.db.get_session() as session:
-                session.query(OCM).delete()
-                session.query(OC).delete()
-                session.query(OP).delete()
-                session.query(OrderModel).delete()
+                from src.database.tenant import DEFAULT_USER_ID
+                user_id = session.info.get("user_id", DEFAULT_USER_ID)
+                session.query(OCM).filter(OCM.user_id == user_id).delete()
+                session.query(OC).filter(OC.user_id == user_id).delete()
+                session.query(OP).filter(OP.user_id == user_id).delete()
+                session.query(OrderModel).filter(OrderModel.user_id == user_id).delete()
                 print("Cleared existing data")
             
             # Load raw transactions from database
