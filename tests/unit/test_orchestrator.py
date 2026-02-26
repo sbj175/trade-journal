@@ -26,6 +26,7 @@ from tests.conftest import (
     make_stock_transaction,
     make_expiration_transaction,
     make_assignment_transaction,
+    make_exercise_transaction,
 )
 
 
@@ -992,6 +993,100 @@ class TestShadowComparison:
         new_all_txns = sorted(t for g in new_groups for t in g["lot_txn_ids"])
         assert "tx-open" in legacy_all_txns
         assert "tx-open" in new_all_txns
+
+    def test_exercise_closes_derived_stock_lot(self, db, order_processor, lot_manager, position_manager):
+        """Put spread fully ITM: assignment + exercise -> derived shares fully closed.
+
+        Short 50P assigned -> stock BTO 300 @ $50 (derived lot created).
+        Long 45P exercised -> stock STC 300 @ $45 (derived lot closed).
+        Net: no open stock lots remain.
+        """
+        ACCT = "ACCT1"
+        UNDERLYING = "IREN"
+        SHORT_PUT_SYM = "IREN  241220P00050000"
+        LONG_PUT_SYM = "IREN  241220P00045000"
+
+        txs = [
+            # Open: STO 3x 50P
+            make_option_transaction(
+                id="tx-sto-50p", order_id="ORD-OPEN", action="SELL_TO_OPEN",
+                account_number=ACCT, quantity=3, price=5.00,
+                symbol=SHORT_PUT_SYM, underlying_symbol=UNDERLYING,
+                option_type="Put", strike=50.0, expiration="2024-12-20",
+                executed_at="2024-11-01T10:00:00+00:00",
+            ),
+            # Open: BTO 3x 45P
+            make_option_transaction(
+                id="tx-bto-45p", order_id="ORD-OPEN", action="BUY_TO_OPEN",
+                account_number=ACCT, quantity=3, price=2.00,
+                symbol=LONG_PUT_SYM, underlying_symbol=UNDERLYING,
+                option_type="Put", strike=45.0, expiration="2024-12-20",
+                executed_at="2024-11-01T10:00:00+00:00",
+            ),
+            # Assignment: short 50P assigned
+            make_assignment_transaction(
+                id="tx-assign-50p", account_number=ACCT,
+                symbol=SHORT_PUT_SYM, underlying_symbol=UNDERLYING,
+                quantity=3, executed_at="2024-12-18T16:00:00+00:00",
+            ),
+            # Stock BTO from assignment (no order_id)
+            make_stock_transaction(
+                id="tx-stock-bto", order_id=None, account_number=ACCT,
+                symbol=UNDERLYING, underlying_symbol=UNDERLYING,
+                action="BUY_TO_OPEN", quantity=300, price=50.0,
+                executed_at="2024-12-18T16:00:00+00:00",
+                transaction_sub_type="Assignment",
+            ),
+            # Exercise: long 45P exercised
+            make_exercise_transaction(
+                id="tx-exercise-45p", account_number=ACCT,
+                symbol=LONG_PUT_SYM, underlying_symbol=UNDERLYING,
+                quantity=3, executed_at="2024-12-19T16:00:00+00:00",
+            ),
+            # Stock STC from exercise (no order_id)
+            make_stock_transaction(
+                id="tx-stock-stc", order_id=None, account_number=ACCT,
+                symbol=UNDERLYING, underlying_symbol=UNDERLYING,
+                action="SELL_TO_CLOSE", quantity=300, price=45.0,
+                executed_at="2024-12-19T16:00:00+00:00",
+                transaction_sub_type="Exercise",
+            ),
+        ]
+
+        position_manager.clear_all_positions()
+        lot_manager.clear_all_lots()
+        chains_by_account = order_processor.process_transactions(txs)
+
+        # No open stock lots should remain
+        open_stock_lots = lot_manager.get_open_lots(account_number=ACCT, symbol=UNDERLYING)
+        assert len(open_stock_lots) == 0, f"Expected 0 open stock lots, got {len(open_stock_lots)}"
+
+        # Derived stock lot should exist and be CLOSED
+        with db.get_session() as session:
+            stock_lots = session.query(PositionLot).filter(
+                PositionLot.account_number == ACCT,
+                PositionLot.symbol == UNDERLYING,
+                PositionLot.instrument_type == 'EQUITY',
+            ).all()
+            assert len(stock_lots) == 1, f"Expected 1 stock lot, got {len(stock_lots)}"
+            assert stock_lots[0].status == 'CLOSED'
+            assert stock_lots[0].remaining_quantity == 0
+            assert stock_lots[0].derivation_type == 'ASSIGNMENT'
+
+        # Verify stock lot closing has correct type and P&L
+        with db.get_session() as session:
+            stock_lot = session.query(PositionLot).filter(
+                PositionLot.account_number == ACCT,
+                PositionLot.symbol == UNDERLYING,
+                PositionLot.instrument_type == 'EQUITY',
+            ).first()
+            closings = session.query(LotClosing).filter(
+                LotClosing.lot_id == stock_lot.id,
+            ).all()
+            assert len(closings) == 1
+            assert closings[0].closing_type == 'EXERCISE'
+            # P&L: (45 - 50) * 300 = -1500
+            assert closings[0].realized_pnl == -1500.0
 
     def test_shadow_jade_lizard(self, db, order_processor, lot_manager, position_manager, monkeypatch):
         """Jade Lizard (short put + bear call spread) entered as a single order:

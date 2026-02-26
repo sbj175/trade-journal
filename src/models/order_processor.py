@@ -597,12 +597,12 @@ class OrderProcessor:
 
     def _process_assignments(self, orders: List[Order]):
         """
-        V3: Process assignment pairs to create derived stock lots.
+        V3: Process assignment and exercise pairs to create/close derived stock lots.
 
-        After option lots are closed with type='ASSIGNMENT', this method:
-        1. Matches assignment option transactions with corresponding stock transactions
-        2. Finds the closed option lot
-        3. Creates a derived stock lot linked to the same chain
+        After option lots are closed with type='ASSIGNMENT' or 'EXERCISE', this method:
+        1. Matches assignment/exercise option transactions with corresponding stock transactions
+        2. For assignments: creates derived stock lots linked to the same chain
+        3. For exercises: closes existing stock lots (closing) or creates derived lots (opening)
         """
         if not self._use_lots or not self.lot_manager:
             return
@@ -610,41 +610,123 @@ class OrderProcessor:
         if not self._assignment_stock_transactions:
             return
 
-        # Find all assignment transactions from processed orders
-        assignment_txs = []
-        for order in orders:
-            for tx in order.transactions:
-                if tx.is_assignment and tx.option_type is not None:
-                    assignment_txs.append(tx)
+        from src.database.models import PositionLot as PL, LotClosing as LC
 
-        if not assignment_txs:
+        # --- Process assignments ---
+        assignment_txs = [tx for order in orders for tx in order.transactions
+                          if tx.is_assignment and tx.option_type is not None]
+
+        if assignment_txs:
+            logger.info(f"Processing {len(assignment_txs)} assignments with {len(self._assignment_stock_transactions)} stock transactions")
+
+            for assignment_tx in assignment_txs:
+                underlying = assignment_tx.underlying_symbol
+
+                # Find matching stock transaction
+                matching_stock = None
+                for stock_raw in self._assignment_stock_transactions:
+                    stock_underlying = stock_raw.get('underlying_symbol', stock_raw.get('symbol', ''))
+                    if stock_underlying != underlying:
+                        continue
+
+                    stock_executed_str = stock_raw.get('executed_at', '')
+                    try:
+                        stock_executed = datetime.fromisoformat(stock_executed_str.replace('Z', '+00:00'))
+                    except:
+                        continue
+
+                    time_diff = abs((assignment_tx.executed_at - stock_executed).total_seconds())
+                    if time_diff > 60:
+                        continue
+
+                    expected_shares = abs(assignment_tx.quantity) * 100
+                    if abs(int(stock_raw.get('quantity', 0))) != expected_shares:
+                        continue
+
+                    matching_stock = stock_raw
+                    break
+
+                if not matching_stock:
+                    logger.warning(f"No matching stock transaction found for assignment: {assignment_tx.symbol}")
+                    continue
+
+                with self.db.get_session() as session:
+                    result = (
+                        session.query(PL.id, PL.chain_id, PL.option_type, PL.strike)
+                        .join(LC, PL.id == LC.lot_id)
+                        .filter(
+                            PL.account_number == assignment_tx.account_number,
+                            PL.symbol == assignment_tx.symbol,
+                            LC.closing_type == 'ASSIGNMENT',
+                            LC.resulting_lot_id.is_(None),
+                        )
+                        .order_by(LC.closing_date.desc())
+                        .first()
+                    )
+
+                if not result:
+                    logger.warning(f"No closed option lot found for assignment: {assignment_tx.symbol}")
+                    continue
+
+                option_lot_id, chain_id, option_type, strike = result
+
+                if not chain_id:
+                    logger.warning(f"Option lot {option_lot_id} has no chain_id, skipping derived lot creation")
+                    continue
+
+                stock_tx_dict = {
+                    'id': str(matching_stock.get('id', '')),
+                    'account_number': matching_stock.get('account_number', ''),
+                    'symbol': matching_stock.get('symbol', ''),
+                    'underlying_symbol': matching_stock.get('underlying_symbol', matching_stock.get('symbol', '')),
+                    'quantity': int(matching_stock.get('quantity', 0)),
+                    'price': float(matching_stock.get('price', 0)),
+                    'executed_at': matching_stock.get('executed_at', ''),
+                }
+
+                derived_lot_id = self.lot_manager.create_derived_lot(
+                    source_lot_id=option_lot_id,
+                    stock_transaction=stock_tx_dict,
+                    derivation_type='ASSIGNMENT',
+                    chain_id=chain_id
+                )
+
+                logger.info(f"Created derived stock lot {derived_lot_id} from option lot {option_lot_id} via ASSIGNMENT")
+                self._assignment_stock_transactions.remove(matching_stock)
+
+        # --- Process exercises ---
+        if not self._assignment_stock_transactions:
             return
 
-        logger.info(f"Processing {len(assignment_txs)} assignments with {len(self._assignment_stock_transactions)} stock transactions")
+        exercise_txs = [tx for order in orders for tx in order.transactions
+                        if tx.is_exercise and tx.option_type is not None]
 
-        for assignment_tx in assignment_txs:
-            underlying = assignment_tx.underlying_symbol
+        if not exercise_txs:
+            return
 
-            # Find matching stock transaction
+        logger.info(f"Processing {len(exercise_txs)} exercises with {len(self._assignment_stock_transactions)} stock transactions")
+
+        for exercise_tx in exercise_txs:
+            underlying = exercise_tx.underlying_symbol
+
+            # Find matching stock transaction (same logic as assignments)
             matching_stock = None
             for stock_raw in self._assignment_stock_transactions:
                 stock_underlying = stock_raw.get('underlying_symbol', stock_raw.get('symbol', ''))
                 if stock_underlying != underlying:
                     continue
 
-                # Parse executed_at for comparison
                 stock_executed_str = stock_raw.get('executed_at', '')
                 try:
                     stock_executed = datetime.fromisoformat(stock_executed_str.replace('Z', '+00:00'))
                 except:
                     continue
 
-                time_diff = abs((assignment_tx.executed_at - stock_executed).total_seconds())
-                if time_diff > 60:  # 1 minute window
+                time_diff = abs((exercise_tx.executed_at - stock_executed).total_seconds())
+                if time_diff > 60:
                     continue
 
-                # Check quantity alignment (100 shares per option contract)
-                expected_shares = abs(assignment_tx.quantity) * 100
+                expected_shares = abs(exercise_tx.quantity) * 100
                 if abs(int(stock_raw.get('quantity', 0))) != expected_shares:
                     continue
 
@@ -652,20 +734,18 @@ class OrderProcessor:
                 break
 
             if not matching_stock:
-                logger.warning(f"No matching stock transaction found for assignment: {assignment_tx.symbol}")
+                logger.warning(f"No matching stock transaction found for exercise: {exercise_tx.symbol}")
                 continue
 
-            # Find the option lot that was closed by this assignment
-            # Query lot_closings for this symbol with type='ASSIGNMENT'
-            from src.database.models import PositionLot as PL, LotClosing as LC
+            # Find the option lot closed by this exercise
             with self.db.get_session() as session:
                 result = (
-                    session.query(PL.id, PL.chain_id, PL.option_type, PL.strike)
+                    session.query(PL.id, PL.chain_id, PL.option_type, PL.strike, LC.closing_order_id)
                     .join(LC, PL.id == LC.lot_id)
                     .filter(
-                        PL.account_number == assignment_tx.account_number,
-                        PL.symbol == assignment_tx.symbol,
-                        LC.closing_type == 'ASSIGNMENT',
+                        PL.account_number == exercise_tx.account_number,
+                        PL.symbol == exercise_tx.symbol,
+                        LC.closing_type == 'EXERCISE',
                         LC.resulting_lot_id.is_(None),
                     )
                     .order_by(LC.closing_date.desc())
@@ -673,37 +753,80 @@ class OrderProcessor:
                 )
 
             if not result:
-                logger.warning(f"No closed option lot found for assignment: {assignment_tx.symbol}")
+                logger.warning(f"No closed option lot found for exercise: {exercise_tx.symbol}")
                 continue
 
-            option_lot_id, chain_id, option_type, strike = result
+            option_lot_id, chain_id, option_type, strike, closing_order_id = result
 
-            if not chain_id:
-                logger.warning(f"Option lot {option_lot_id} has no chain_id, skipping derived lot creation")
+            stock_action = (matching_stock.get('action') or '').upper()
+
+            if 'TO_CLOSE' in stock_action:
+                # Exercise stock is closing existing shares (e.g., long put exercise -> STC)
+                close_long = 'SELL' in stock_action
+                stock_executed_str = matching_stock.get('executed_at', '')
+                try:
+                    stock_executed_dt = datetime.fromisoformat(stock_executed_str.replace('Z', '+00:00'))
+                except:
+                    stock_executed_dt = exercise_tx.executed_at
+
+                pnl, affected_lots = self.lot_manager.close_lot_fifo(
+                    account_number=matching_stock.get('account_number', exercise_tx.account_number),
+                    symbol=matching_stock.get('symbol', underlying),
+                    quantity_to_close=abs(int(matching_stock.get('quantity', 0))),
+                    closing_price=float(matching_stock.get('price', 0)),
+                    closing_order_id=closing_order_id or f"EXERCISE_{exercise_tx.symbol}",
+                    closing_transaction_id=str(matching_stock.get('id', '')),
+                    closing_date=stock_executed_dt,
+                    closing_type='EXERCISE',
+                    close_long=close_long,
+                )
+
+                logger.info(f"Exercise closed {len(affected_lots)} stock lots via {exercise_tx.symbol}, P&L: ${pnl:.2f}")
+
+                # Link the exercise LotClosing to the affected stock lot
+                if affected_lots:
+                    with self.db.get_session() as session:
+                        lc = session.query(LC).filter(
+                            LC.lot_id == option_lot_id,
+                            LC.closing_type == 'EXERCISE',
+                            LC.resulting_lot_id.is_(None),
+                        ).order_by(LC.closing_id.desc()).first()
+                        if lc:
+                            lc.resulting_lot_id = affected_lots[0]
+
+            elif 'TO_OPEN' in stock_action:
+                # Exercise stock is opening new position (e.g., long call exercise -> BTO)
+                stock_tx_dict = {
+                    'id': str(matching_stock.get('id', '')),
+                    'account_number': matching_stock.get('account_number', ''),
+                    'symbol': matching_stock.get('symbol', ''),
+                    'underlying_symbol': matching_stock.get('underlying_symbol', matching_stock.get('symbol', '')),
+                    'quantity': int(matching_stock.get('quantity', 0)),
+                    'price': float(matching_stock.get('price', 0)),
+                    'executed_at': matching_stock.get('executed_at', ''),
+                }
+
+                # Determine correct quantity sign from stock action (not option type)
+                raw_qty = abs(int(matching_stock.get('quantity', 0)))
+                if 'SELL' in stock_action:
+                    override_qty = -raw_qty
+                else:
+                    override_qty = raw_qty
+
+                derived_lot_id = self.lot_manager.create_derived_lot(
+                    source_lot_id=option_lot_id,
+                    stock_transaction=stock_tx_dict,
+                    derivation_type='EXERCISE',
+                    chain_id=chain_id or '',
+                    override_quantity=override_qty,
+                )
+
+                logger.info(f"Created derived stock lot {derived_lot_id} from exercise of option lot {option_lot_id}")
+
+            else:
+                logger.warning(f"Unexpected stock action for exercise: {stock_action}")
                 continue
 
-            # Create derived stock lot
-            stock_tx_dict = {
-                'id': str(matching_stock.get('id', '')),
-                'account_number': matching_stock.get('account_number', ''),
-                'symbol': matching_stock.get('symbol', ''),
-                'underlying_symbol': matching_stock.get('underlying_symbol', matching_stock.get('symbol', '')),
-                'quantity': int(matching_stock.get('quantity', 0)),
-                'price': float(matching_stock.get('price', 0)),
-                'executed_at': matching_stock.get('executed_at', ''),
-            }
-
-            derivation_type = 'ASSIGNMENT'
-            derived_lot_id = self.lot_manager.create_derived_lot(
-                source_lot_id=option_lot_id,
-                stock_transaction=stock_tx_dict,
-                derivation_type=derivation_type,
-                chain_id=chain_id
-            )
-
-            logger.info(f"Created derived stock lot {derived_lot_id} from option lot {option_lot_id} via {derivation_type}")
-
-            # Remove the matched stock transaction so it's not matched again
             self._assignment_stock_transactions.remove(matching_stock)
 
     def _derive_chains(self, orders: List[Order]) -> List[Chain]:

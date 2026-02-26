@@ -312,7 +312,8 @@ class LotManager:
         source_lot_id: int,
         stock_transaction: Dict,
         derivation_type: str,
-        chain_id: str
+        chain_id: str,
+        override_quantity: Optional[int] = None
     ) -> int:
         """
         Create a derived lot (stock from option assignment/exercise).
@@ -330,11 +331,14 @@ class LotManager:
                            if source_lot and source_lot.strike
                            else float(stock_transaction.get('price', 0)))
 
-            source_option_type = source_lot.option_type if source_lot else None
-            if source_option_type and source_option_type.upper() == 'CALL':
-                quantity = -raw_quantity
+            if override_quantity is not None:
+                quantity = override_quantity
             else:
-                quantity = raw_quantity
+                source_option_type = source_lot.option_type if source_lot else None
+                if source_option_type and source_option_type.upper() == 'CALL':
+                    quantity = -raw_quantity
+                else:
+                    quantity = raw_quantity
 
             new_lot = PositionLotModel(
                 transaction_id=stock_transaction.get('id', ''),
