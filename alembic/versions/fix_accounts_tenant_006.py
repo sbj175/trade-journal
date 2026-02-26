@@ -89,13 +89,14 @@ def _upgrade_postgresql() -> None:
     # 2. Drop PK on accounts
     op.drop_constraint("accounts_pkey", "accounts", type_="primary")
 
-    # 3. Add id column as new PK
+    # 3. Add id column as new PK (create sequence first, then reference it)
+    op.execute("CREATE SEQUENCE accounts_id_seq")
     op.add_column(
         "accounts",
-        sa.Column("id", sa.Integer, autoincrement=True, nullable=False,
-                  server_default=sa.text("nextval('accounts_id_seq'::regclass)")),
+        sa.Column("id", sa.Integer, nullable=False,
+                  server_default=sa.text("nextval('accounts_id_seq')")),
     )
-    op.execute("CREATE SEQUENCE IF NOT EXISTS accounts_id_seq OWNED BY accounts.id")
+    op.execute("ALTER SEQUENCE accounts_id_seq OWNED BY accounts.id")
     op.execute("SELECT setval('accounts_id_seq', COALESCE((SELECT MAX(id) FROM accounts), 0) + 1)")
     op.create_primary_key("accounts_pkey", "accounts", ["id"])
 
