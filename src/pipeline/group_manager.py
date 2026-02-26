@@ -97,12 +97,6 @@ def assign_lots_to_groups(
         """Check if any lot in the group still has remaining quantity."""
         return any(lot.remaining_quantity != 0 for lot in groups[group_key])
 
-    def _is_equity_only(group_key: str) -> bool:
-        """Check if all lots in the group are equity (no options)."""
-        return all(
-            lot.instrument_type in ("Equity", "EQUITY") for lot in groups[group_key]
-        )
-
     def _new_group_key() -> str:
         nonlocal group_counter
         group_counter += 1
@@ -143,15 +137,12 @@ def assign_lots_to_groups(
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True
 
-        # Rule 2b: equity (no expiration) matches group by (account, underlying)
-        # Merge into OPEN groups always; merge into CLOSED groups only if
-        # the group contains only equity lots (keeps all share activity in
-        # one "Shares" group even after sell-rebuy cycles).
+        # Rule 2b: equity (no expiration) matches OPEN group by (account, underlying)
         if not assigned and not lot.expiration:
             au_key = (lot.account_number, lot.underlying)
             if au_key in au_to_group:
                 gk = au_to_group[au_key]
-                if _is_group_open(gk) or _is_equity_only(gk):
+                if _is_group_open(gk):
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True
 
