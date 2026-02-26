@@ -13,5 +13,4 @@ logger = logging.getLogger(__name__)
 
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
-db_url = os.environ.get("DATABASE_URL", None)
-admin_db = DatabaseManager(db_url=db_url)
+admin_db = DatabaseManager(db_url=os.environ.get("DATABASE_URL"))
