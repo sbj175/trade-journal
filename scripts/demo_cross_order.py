@@ -6,16 +6,21 @@ Usage:
     venv/bin/python scripts/demo_cross_order.py add-wing   # + Bear Call Spread → Iron Condor
     venv/bin/python scripts/demo_cross_order.py cleanup    # Remove all ZTEST data
 
+    # With auth enabled (data scoped to your user):
+    venv/bin/python scripts/demo_cross_order.py --user-id <UUID> inject
+
 Between steps, open http://localhost:8000/ledger, filter to ZTEST, and watch
 the strategy label evolve from "Bull Put Spread" → "Iron Condor".
 """
 
+import argparse
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.dependencies import db, lot_manager
+from src.database.tenant import DEFAULT_USER_ID, set_current_user_id
 from src.pipeline.orchestrator import reprocess
 from src.database.models import PositionGroup, PositionGroupLot, PositionLot, LotClosing
 
@@ -200,12 +205,27 @@ COMMANDS = {
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print(__doc__)
-        print(f"Available commands: {', '.join(COMMANDS)}")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Demo cross-order strategy evolution on the Ledger page.",
+    )
+    parser.add_argument(
+        "--user-id",
+        default=DEFAULT_USER_ID,
+        help=f"user_id for tenant scoping (default: {DEFAULT_USER_ID})",
+    )
+    parser.add_argument(
+        "command",
+        choices=COMMANDS.keys(),
+        help="inject | add-wing | cleanup",
+    )
+    args = parser.parse_args()
 
-    COMMANDS[sys.argv[1]]()
+    # Set the tenant context so all get_session() calls scope to this user
+    set_current_user_id(args.user_id)
+    if args.user_id != DEFAULT_USER_ID:
+        print(f"  Using user_id: {args.user_id}")
+
+    COMMANDS[args.command]()
 
 
 if __name__ == "__main__":
