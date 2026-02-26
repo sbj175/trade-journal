@@ -102,11 +102,10 @@ class DatabaseManager:
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
                 session.execute(stmt.on_conflict_do_update(
-                    index_elements=['account_number'],
+                    index_elements=['account_number', 'user_id'],
                     set_={
                         'account_name': stmt.excluded.account_name,
                         'account_type': stmt.excluded.account_type,
-                        'user_id': stmt.excluded.user_id,
                         'updated_at': stmt.excluded.updated_at,
                     },
                 ))
