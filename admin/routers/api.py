@@ -137,10 +137,10 @@ async def list_users():
             )
             last_sync = last_sync_row.value if last_sync_row else None
 
-            # Chain count
-            chain_count = (
-                session.query(func.count(OrderChain.id))
-                .filter(OrderChain.user_id == uid)
+            # Position count
+            position_count = (
+                session.query(func.count(Position.id))
+                .filter(Position.user_id == uid)
                 .scalar()
             )
 
@@ -157,7 +157,7 @@ async def list_users():
                     "txn_count": txn_count,
                     "days_of_history": days_of_history,
                     "last_sync": last_sync,
-                    "chains": chain_count,
+                    "positions": position_count,
                 }
             )
 

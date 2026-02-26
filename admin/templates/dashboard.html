@@ -95,7 +95,7 @@
                                 <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('accounts')">Accounts<span class="text-xs ml-0.5" x-text="sortIcon('accounts')"></span></th>
                                 <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('tt_connected')">TT<span class="text-xs ml-0.5" x-text="sortIcon('tt_connected')"></span></th>
                                 <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('txn_count')">Txns<span class="text-xs ml-0.5" x-text="sortIcon('txn_count')"></span></th>
-                                <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('chains')">Chains<span class="text-xs ml-0.5" x-text="sortIcon('chains')"></span></th>
+                                <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('positions')">Positions<span class="text-xs ml-0.5" x-text="sortIcon('positions')"></span></th>
                                 <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('days_of_history')">History<span class="text-xs ml-0.5" x-text="sortIcon('days_of_history')"></span></th>
                                 <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('last_login_at')">Last Login<span class="text-xs ml-0.5" x-text="sortIcon('last_login_at')"></span></th>
                                 <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('last_sync')">Last Sync<span class="text-xs ml-0.5" x-text="sortIcon('last_sync')"></span></th>
@@ -118,7 +118,7 @@
                                         ></span>
                                     </td>
                                     <td class="px-4 py-2 text-right" x-text="formatNumber(user.txn_count)"></td>
-                                    <td class="px-4 py-2 text-right" x-text="formatNumber(user.chains)"></td>
+                                    <td class="px-4 py-2 text-right" x-text="formatNumber(user.positions)"></td>
                                     <td class="px-4 py-2 text-right">
                                         <span x-text="user.days_of_history != null ? user.days_of_history + 'd' : '-'"></span>
                                     </td>
