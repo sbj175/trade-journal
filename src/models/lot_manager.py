@@ -512,35 +512,43 @@ class LotManager:
 
     def clear_all_lots(self, underlyings: set = None):
         """Clear lots and their groups. If underlyings is provided, only clear for those symbols."""
+        from src.database.tenant import DEFAULT_USER_ID
         with self.db.get_session() as session:
+            user_id = session.info.get("user_id", DEFAULT_USER_ID)
             if underlyings:
                 underlying_list = list(underlyings)
-                # Delete group links for matching lots first (FK constraint)
+                # Delete group links for matching lots first
                 lot_txn_ids_sub = session.query(PositionLotModel.transaction_id).filter(
-                    PositionLotModel.underlying.in_(underlying_list)
+                    PositionLotModel.underlying.in_(underlying_list),
+                    PositionLotModel.user_id == user_id,
                 ).scalar_subquery()
                 session.query(PositionGroupLot).filter(
-                    PositionGroupLot.transaction_id.in_(lot_txn_ids_sub)
+                    PositionGroupLot.transaction_id.in_(lot_txn_ids_sub),
+                    PositionGroupLot.user_id == user_id,
                 ).delete(synchronize_session='fetch')
                 # Delete groups for matching underlyings
                 session.query(PositionGroup).filter(
-                    PositionGroup.underlying.in_(underlying_list)
+                    PositionGroup.underlying.in_(underlying_list),
+                    PositionGroup.user_id == user_id,
                 ).delete(synchronize_session='fetch')
-                # Delete closings for matching lots (FK constraint)
+                # Delete closings for matching lots
                 lot_ids_sub = session.query(PositionLotModel.id).filter(
-                    PositionLotModel.underlying.in_(underlying_list)
+                    PositionLotModel.underlying.in_(underlying_list),
+                    PositionLotModel.user_id == user_id,
                 ).scalar_subquery()
                 session.query(LotClosingModel).filter(
-                    LotClosingModel.lot_id.in_(lot_ids_sub)
+                    LotClosingModel.lot_id.in_(lot_ids_sub),
+                    LotClosingModel.user_id == user_id,
                 ).delete(synchronize_session='fetch')
                 # Then delete the lots themselves
                 session.query(PositionLotModel).filter(
-                    PositionLotModel.underlying.in_(underlying_list)
+                    PositionLotModel.underlying.in_(underlying_list),
+                    PositionLotModel.user_id == user_id,
                 ).delete(synchronize_session='fetch')
                 logger.info(f"Cleared lots, closings, and groups for {len(underlyings)} underlyings")
             else:
-                session.query(PositionGroupLot).delete()
-                session.query(PositionGroup).delete()
-                session.query(LotClosingModel).delete()
-                session.query(PositionLotModel).delete()
-                logger.warning("Cleared all lots, closings, and groups")
+                session.query(PositionGroupLot).filter(PositionGroupLot.user_id == user_id).delete()
+                session.query(PositionGroup).filter(PositionGroup.user_id == user_id).delete()
+                session.query(LotClosingModel).filter(LotClosingModel.user_id == user_id).delete()
+                session.query(PositionLotModel).filter(PositionLotModel.user_id == user_id).delete()
+                logger.warning("Cleared all lots, closings, and groups (user-scoped)")

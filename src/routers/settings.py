@@ -153,6 +153,7 @@ async def delete_credentials(user_id: str = Depends(get_current_user_id)):
         with db.get_session(user_id=user_id) as session:
             deleted = session.query(UserCredential).filter(
                 UserCredential.provider == "tastytrade",
+                UserCredential.user_id == user_id,
             ).delete()
 
         connection_manager.disconnect_user(user_id)

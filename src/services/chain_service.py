@@ -280,6 +280,8 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
     logger.info(f"[CACHE UPDATE] Starting update with {len(chains)} chains")
     try:
         with db.get_session() as session:
+            user_id = session.info.get("user_id", DEFAULT_USER_ID)
+
             # Preserve existing working strategies before clearing cache
             preserved = {}
             pres_rows = session.query(
@@ -295,7 +297,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
 
             if affected_underlyings:
                 underlying_list = list(affected_underlyings)
-                # Get chain_ids for affected underlyings
+                # Get chain_ids for affected underlyings (SELECT is auto-scoped)
                 affected_chain_ids = [r[0] for r in session.query(
                     OrderChainModel.chain_id,
                 ).filter(
@@ -305,12 +307,15 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 if affected_chain_ids:
                     session.query(OrderChainCache).filter(
                         OrderChainCache.chain_id.in_(affected_chain_ids),
+                        OrderChainCache.user_id == user_id,
                     ).delete(synchronize_session='fetch')
                     session.query(OrderChainMember).filter(
                         OrderChainMember.chain_id.in_(affected_chain_ids),
+                        OrderChainMember.user_id == user_id,
                     ).delete(synchronize_session='fetch')
                 session.query(OrderChainModel).filter(
                     OrderChainModel.underlying.in_(underlying_list),
+                    OrderChainModel.user_id == user_id,
                 ).delete(synchronize_session='fetch')
                 logger.info(f"[CACHE UPDATE] Cleared cache for underlyings: {affected_underlyings}")
             elif affected_account:
@@ -323,18 +328,21 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 if affected_chain_ids:
                     session.query(OrderChainCache).filter(
                         OrderChainCache.chain_id.in_(affected_chain_ids),
+                        OrderChainCache.user_id == user_id,
                     ).delete(synchronize_session='fetch')
                     session.query(OrderChainMember).filter(
                         OrderChainMember.chain_id.in_(affected_chain_ids),
+                        OrderChainMember.user_id == user_id,
                     ).delete(synchronize_session='fetch')
                 session.query(OrderChainModel).filter(
                     OrderChainModel.account_number == affected_account,
+                    OrderChainModel.user_id == user_id,
                 ).delete(synchronize_session='fetch')
                 logger.info(f"[CACHE UPDATE] Cleared cache for account: {affected_account}")
             else:
-                session.query(OrderChainCache).delete()
-                session.query(OrderChainMember).delete()
-                session.query(OrderChainModel).delete()
+                session.query(OrderChainCache).filter(OrderChainCache.user_id == user_id).delete()
+                session.query(OrderChainMember).filter(OrderChainMember.user_id == user_id).delete()
+                session.query(OrderChainModel).filter(OrderChainModel.user_id == user_id).delete()
 
             current_time = datetime.now()
 
