@@ -86,6 +86,11 @@ def process_lots(
     # Mutable copy — items removed as they are matched to assignments/exercises
     remaining_stock_txs = list(assignment_stock_transactions)
 
+    # Deferred TO_CLOSE events: when a spread settles simultaneously, the
+    # TO_CLOSE stock action may be processed before the corresponding TO_OPEN
+    # creates the shares.  We defer and retry after the main pass.
+    deferred_closings: List[Dict] = []
+
     order_to_temp_chain: Dict[str, str] = {}
     closing_order_to_chains: Dict[str, Set[str]] = {}
 
@@ -193,11 +198,17 @@ def process_lots(
                 if tx.option_type and tx.is_assignment:
                     _create_assignment_derived_lot(
                         tx, remaining_stock_txs, lot_manager, db_manager,
+                        deferred_closings,
                     )
                 elif tx.option_type and tx.is_exercise:
                     _handle_exercise_inline(
                         tx, remaining_stock_txs, lot_manager, db_manager,
+                        deferred_closings,
                     )
+
+    # Retry deferred TO_CLOSE events (spread settlement ordering)
+    for deferred in deferred_closings:
+        _process_deferred_closing(deferred, lot_manager, db_manager)
 
 
 # ---------------------------------------------------------------------------
@@ -209,8 +220,16 @@ def _create_assignment_derived_lot(
     remaining_stock_txs: List[Dict],
     lot_manager: "LotManager",
     db_manager: "DatabaseManager",
+    deferred_closings: List[Dict],
 ) -> None:
-    """Create a derived stock lot immediately after an option assignment closes."""
+    """Create (or close) a derived stock lot after an option assignment closes.
+
+    Like _handle_exercise_inline, inspects the stock action:
+    - TO_CLOSE: close existing shares via FIFO (e.g. short call assigned when
+      shares already held → STC)
+    - TO_OPEN: create a new derived lot (the common case)
+    - Fallback: infer direction from option_type (legacy data without action)
+    """
     from src.database.models import PositionLot as PL, LotClosing as LC
 
     underlying = assignment_tx.underlying_symbol
@@ -222,19 +241,13 @@ def _create_assignment_derived_lot(
         )
         return
 
-    matching_stock = _find_matching_stock(
-        assignment_tx, remaining_stock_txs, underlying,
-    )
-    if not matching_stock:
-        logger.warning(
-            "No matching stock transaction found for assignment: %s",
-            assignment_tx.symbol,
-        )
-        return
-
+    # Query the option lot FIRST so we can pass strike to _find_matching_stock
     with db_manager.get_session() as session:
         result = (
-            session.query(PL.id, PL.chain_id, PL.option_type, PL.strike)
+            session.query(
+                PL.id, PL.chain_id, PL.option_type, PL.strike,
+                LC.closing_order_id,
+            )
             .join(LC, PL.id == LC.lot_id)
             .filter(
                 PL.account_number == assignment_tx.account_number,
@@ -253,7 +266,17 @@ def _create_assignment_derived_lot(
         )
         return
 
-    option_lot_id, chain_id, option_type, strike = result
+    option_lot_id, chain_id, option_type, strike, closing_order_id = result
+
+    matching_stock = _find_matching_stock(
+        assignment_tx, remaining_stock_txs, underlying, strike=strike,
+    )
+    if not matching_stock:
+        logger.warning(
+            "No matching stock transaction found for assignment: %s",
+            assignment_tx.symbol,
+        )
+        return
 
     if not chain_id:
         logger.warning(
@@ -262,19 +285,114 @@ def _create_assignment_derived_lot(
         )
         return
 
-    stock_tx_dict = _stock_raw_to_dict(matching_stock)
+    stock_action = (matching_stock.get("action") or "").upper()
 
-    derived_lot_id = lot_manager.create_derived_lot(
-        source_lot_id=option_lot_id,
-        stock_transaction=stock_tx_dict,
-        derivation_type="ASSIGNMENT",
-        chain_id=chain_id,
-    )
+    if "TO_CLOSE" in stock_action:
+        # Assignment closes existing shares (e.g. short call assigned
+        # while holding long shares → STC)
+        close_long = "SELL" in stock_action
+        stock_executed_str = matching_stock.get("executed_at", "")
+        try:
+            stock_executed_dt = datetime.fromisoformat(
+                stock_executed_str.replace("Z", "+00:00")
+            )
+        except Exception:
+            stock_executed_dt = assignment_tx.executed_at
 
-    logger.info(
-        "Created derived stock lot %s from option lot %s via ASSIGNMENT",
-        derived_lot_id, option_lot_id,
-    )
+        pnl, affected_lots = lot_manager.close_lot_fifo(
+            account_number=matching_stock.get(
+                "account_number", assignment_tx.account_number
+            ),
+            symbol=matching_stock.get("symbol", underlying),
+            quantity_to_close=abs(int(matching_stock.get("quantity", 0))),
+            closing_price=float(matching_stock.get("price", 0)),
+            closing_order_id=(
+                closing_order_id
+                or f"ASSIGNMENT_{assignment_tx.symbol}"
+            ),
+            closing_transaction_id=str(matching_stock.get("id", "")),
+            closing_date=stock_executed_dt,
+            closing_type="ASSIGNMENT",
+            close_long=close_long,
+        )
+
+        if not affected_lots:
+            # Shares don't exist yet — defer until after all events are
+            # processed (spread settlement: TO_OPEN may not have run yet).
+            deferred_closings.append({
+                "matching_stock": matching_stock,
+                "option_lot_id": option_lot_id,
+                "closing_type": "ASSIGNMENT",
+                "close_long": close_long,
+                "closing_order_id": (
+                    closing_order_id
+                    or f"ASSIGNMENT_{assignment_tx.symbol}"
+                ),
+            })
+            logger.debug(
+                "Deferred assignment TO_CLOSE for %s (no shares yet)",
+                assignment_tx.symbol,
+            )
+            return  # Don't remove stock tx — retry later
+
+        logger.info(
+            "Assignment closed %d stock lots via %s, P&L: $%.2f",
+            len(affected_lots), assignment_tx.symbol, pnl,
+        )
+
+        # Link the assignment LotClosing to the affected stock lot
+        with db_manager.get_session() as session:
+            lc = (
+                session.query(LC)
+                .filter(
+                    LC.lot_id == option_lot_id,
+                    LC.closing_type == "ASSIGNMENT",
+                    LC.resulting_lot_id.is_(None),
+                )
+                .order_by(LC.closing_id.desc())
+                .first()
+            )
+            if lc:
+                lc.resulting_lot_id = affected_lots[0]
+
+    elif "TO_OPEN" in stock_action:
+        # Assignment opens new position (the common case)
+        stock_tx_dict = _stock_raw_to_dict(matching_stock)
+
+        raw_qty = abs(int(matching_stock.get("quantity", 0)))
+        if "SELL" in stock_action:
+            override_qty = -raw_qty
+        else:
+            override_qty = raw_qty
+
+        derived_lot_id = lot_manager.create_derived_lot(
+            source_lot_id=option_lot_id,
+            stock_transaction=stock_tx_dict,
+            derivation_type="ASSIGNMENT",
+            chain_id=chain_id,
+            override_quantity=override_qty,
+        )
+
+        logger.info(
+            "Created derived stock lot %s from option lot %s via ASSIGNMENT",
+            derived_lot_id, option_lot_id,
+        )
+    else:
+        # Fallback: infer direction from option_type (legacy data)
+        stock_tx_dict = _stock_raw_to_dict(matching_stock)
+
+        derived_lot_id = lot_manager.create_derived_lot(
+            source_lot_id=option_lot_id,
+            stock_transaction=stock_tx_dict,
+            derivation_type="ASSIGNMENT",
+            chain_id=chain_id,
+        )
+
+        logger.info(
+            "Created derived stock lot %s from option lot %s via ASSIGNMENT (fallback)",
+            derived_lot_id, option_lot_id,
+        )
+
     remaining_stock_txs.remove(matching_stock)
 
 
@@ -283,6 +401,7 @@ def _handle_exercise_inline(
     remaining_stock_txs: List[Dict],
     lot_manager: "LotManager",
     db_manager: "DatabaseManager",
+    deferred_closings: List[Dict],
 ) -> None:
     """Handle an exercise-derived stock lot immediately after the option closes."""
     from src.database.models import PositionLot as PL, LotClosing as LC
@@ -296,16 +415,7 @@ def _handle_exercise_inline(
         )
         return
 
-    matching_stock = _find_matching_stock(
-        exercise_tx, remaining_stock_txs, underlying,
-    )
-    if not matching_stock:
-        logger.warning(
-            "No matching stock transaction found for exercise: %s",
-            exercise_tx.symbol,
-        )
-        return
-
+    # Query the option lot FIRST so we can pass strike to _find_matching_stock
     with db_manager.get_session() as session:
         result = (
             session.query(
@@ -331,6 +441,16 @@ def _handle_exercise_inline(
         return
 
     option_lot_id, chain_id, option_type, strike, closing_order_id = result
+
+    matching_stock = _find_matching_stock(
+        exercise_tx, remaining_stock_txs, underlying, strike=strike,
+    )
+    if not matching_stock:
+        logger.warning(
+            "No matching stock transaction found for exercise: %s",
+            exercise_tx.symbol,
+        )
+        return
 
     stock_action = (matching_stock.get("action") or "").upper()
 
@@ -362,26 +482,44 @@ def _handle_exercise_inline(
             close_long=close_long,
         )
 
+        if not affected_lots:
+            # Shares don't exist yet — defer until after all events are
+            # processed (spread settlement: TO_OPEN may not have run yet).
+            deferred_closings.append({
+                "matching_stock": matching_stock,
+                "option_lot_id": option_lot_id,
+                "closing_type": "EXERCISE",
+                "close_long": close_long,
+                "closing_order_id": (
+                    closing_order_id
+                    or f"EXERCISE_{exercise_tx.symbol}"
+                ),
+            })
+            logger.debug(
+                "Deferred exercise TO_CLOSE for %s (no shares yet)",
+                exercise_tx.symbol,
+            )
+            return  # Don't remove stock tx — retry later
+
         logger.info(
             "Exercise closed %d stock lots via %s, P&L: $%.2f",
             len(affected_lots), exercise_tx.symbol, pnl,
         )
 
         # Link the exercise LotClosing to the affected stock lot
-        if affected_lots:
-            with db_manager.get_session() as session:
-                lc = (
-                    session.query(LC)
-                    .filter(
-                        LC.lot_id == option_lot_id,
-                        LC.closing_type == "EXERCISE",
-                        LC.resulting_lot_id.is_(None),
-                    )
-                    .order_by(LC.closing_id.desc())
-                    .first()
+        with db_manager.get_session() as session:
+            lc = (
+                session.query(LC)
+                .filter(
+                    LC.lot_id == option_lot_id,
+                    LC.closing_type == "EXERCISE",
+                    LC.resulting_lot_id.is_(None),
                 )
-                if lc:
-                    lc.resulting_lot_id = affected_lots[0]
+                .order_by(LC.closing_id.desc())
+                .first()
+            )
+            if lc:
+                lc.resulting_lot_id = affected_lots[0]
 
     elif "TO_OPEN" in stock_action:
         # Exercise opens new position (e.g. long call -> BTO shares)
@@ -415,6 +553,75 @@ def _handle_exercise_inline(
 
 
 # ---------------------------------------------------------------------------
+# Deferred closing retry
+# ---------------------------------------------------------------------------
+
+def _process_deferred_closing(
+    deferred: Dict,
+    lot_manager: "LotManager",
+    db_manager: "DatabaseManager",
+) -> None:
+    """Retry a TO_CLOSE that was deferred because shares didn't exist yet.
+
+    This handles spread settlement where TO_OPEN hadn't been processed when
+    the TO_CLOSE first ran.
+    """
+    from src.database.models import LotClosing as LC
+
+    matching_stock = deferred["matching_stock"]
+    option_lot_id = deferred["option_lot_id"]
+    closing_type = deferred["closing_type"]
+    close_long = deferred["close_long"]
+    closing_order_id = deferred["closing_order_id"]
+
+    stock_executed_str = matching_stock.get("executed_at", "")
+    try:
+        stock_executed_dt = datetime.fromisoformat(
+            stock_executed_str.replace("Z", "+00:00")
+        )
+    except Exception:
+        stock_executed_dt = datetime.now()
+
+    pnl, affected_lots = lot_manager.close_lot_fifo(
+        account_number=matching_stock.get("account_number", ""),
+        symbol=matching_stock.get("symbol", ""),
+        quantity_to_close=abs(int(matching_stock.get("quantity", 0))),
+        closing_price=float(matching_stock.get("price", 0)),
+        closing_order_id=closing_order_id,
+        closing_transaction_id=str(matching_stock.get("id", "")),
+        closing_date=stock_executed_dt,
+        closing_type=closing_type,
+        close_long=close_long,
+    )
+
+    if affected_lots:
+        logger.info(
+            "Deferred %s closed %d stock lots, P&L: $%.2f",
+            closing_type, len(affected_lots), pnl,
+        )
+
+        # Link the option LotClosing to the affected stock lot
+        with db_manager.get_session() as session:
+            lc = (
+                session.query(LC)
+                .filter(
+                    LC.lot_id == option_lot_id,
+                    LC.closing_type == closing_type,
+                    LC.resulting_lot_id.is_(None),
+                )
+                .order_by(LC.closing_id.desc())
+                .first()
+            )
+            if lc:
+                lc.resulting_lot_id = affected_lots[0]
+    else:
+        logger.warning(
+            "Deferred %s retry still found no shares to close for stock tx %s",
+            closing_type, matching_stock.get("id", "?"),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -422,8 +629,18 @@ def _find_matching_stock(
     option_tx,
     stock_txs: List[Dict],
     underlying: str,
+    *,
+    strike: Optional[float] = None,
 ) -> Optional[Dict]:
-    """Find a stock transaction matching an assignment/exercise option tx."""
+    """Find a stock transaction matching an assignment/exercise option tx.
+
+    When multiple candidates match (same underlying, time, quantity), prefer
+    the one whose price equals the option's strike.  This prevents
+    cross-matching when two option events settle simultaneously (e.g. spread
+    settlement: two stock txs for the same underlying at the same time).
+    """
+    candidates: List[Dict] = []
+
     for stock_raw in stock_txs:
         stock_underlying = stock_raw.get(
             "underlying_symbol", stock_raw.get("symbol", "")
@@ -449,9 +666,23 @@ def _find_matching_stock(
         if abs(int(stock_raw.get("quantity", 0))) != expected_shares:
             continue
 
-        return stock_raw
+        candidates.append(stock_raw)
 
-    return None
+    if not candidates:
+        return None
+
+    # Single match — return it directly
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Multiple matches — prefer the one whose price equals the strike
+    if strike is not None:
+        for c in candidates:
+            if float(c.get("price", 0)) == strike:
+                return c
+
+    # Still ambiguous — return first match (original behavior)
+    return candidates[0]
 
 
 def _stock_raw_to_dict(stock_raw: Dict) -> Dict:

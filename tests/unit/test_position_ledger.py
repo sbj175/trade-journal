@@ -17,6 +17,7 @@ from tests.conftest import (
     make_option_transaction,
     make_stock_transaction,
     make_assignment_transaction,
+    make_exercise_transaction,
 )
 
 
@@ -423,4 +424,459 @@ class TestAssignmentDerivedStockClosing:
         assert len(open_stock_lots) == 0, (
             f"Expected 0 open stock lots, got {len(open_stock_lots)}: "
             f"{[(l.symbol, l.remaining_quantity) for l in open_stock_lots]}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Assignment / Exercise — full test matrix
+# ---------------------------------------------------------------------------
+
+# Helper that drives process_lots directly (avoids OrderProcessor
+# side-effects and keeps the test focused on position_ledger logic).
+
+def _run_process_lots(db, lot_manager, position_manager, txs, assignment_stocks):
+    from src.pipeline.order_assembler import assemble_orders
+    from src.pipeline.position_ledger import process_lots
+
+    position_manager.clear_all_positions()
+    lot_manager.clear_all_lots()
+
+    assembly = assemble_orders(txs)
+    process_lots(
+        assembly.orders,
+        assignment_stocks,
+        lot_manager,
+        position_manager,
+        db,
+    )
+
+
+# Shared constants for HUT-style spread tests
+_SETTLE_TIME = "2025-06-20T22:00:00+00:00"
+
+
+class TestAssignmentExerciseMatrix:
+    """Full matrix of assignment/exercise scenarios including TO_CLOSE handling."""
+
+    # ------------------------------------------------------------------
+    # 1. Short Put assignment → BTO shares (opens long stock)
+    # ------------------------------------------------------------------
+    def test_short_put_assignment_opens_long_shares(
+        self, db, lot_manager, position_manager,
+    ):
+        txs = [
+            make_option_transaction(
+                id="tx-stp", order_id="ORD-STP", action="SELL_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="HUT   250620P00014000",
+                underlying_symbol="HUT",
+                option_type="Put", strike=14.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            make_assignment_transaction(
+                id="tx-assign",
+                symbol="HUT   250620P00014000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        assignment_stock = make_stock_transaction(
+            id="tx-stock-assign", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="BUY_TO_OPEN", quantity=100, price=14.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Buy to Open",
+        )
+
+        _run_process_lots(db, lot_manager, position_manager, txs, [assignment_stock])
+
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 1
+        assert lots[0].quantity == 100  # long
+        assert lots[0].entry_price == 14.0
+
+    # ------------------------------------------------------------------
+    # 2. Short Call assignment → STO shares (opens short stock)
+    # ------------------------------------------------------------------
+    def test_short_call_assignment_opens_short_shares(
+        self, db, lot_manager, position_manager,
+    ):
+        txs = [
+            make_option_transaction(
+                id="tx-stc", order_id="ORD-STC", action="SELL_TO_OPEN",
+                quantity=1, price=2.00,
+                symbol="HUT   250620C00014000",
+                underlying_symbol="HUT",
+                option_type="Call", strike=14.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            make_assignment_transaction(
+                id="tx-assign",
+                symbol="HUT   250620C00014000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        assignment_stock = make_stock_transaction(
+            id="tx-stock-assign", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="SELL_TO_OPEN", quantity=100, price=14.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Open",
+        )
+
+        _run_process_lots(db, lot_manager, position_manager, txs, [assignment_stock])
+
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 1
+        assert lots[0].quantity == -100  # short
+        assert lots[0].entry_price == 14.0
+
+    # ------------------------------------------------------------------
+    # 3. Short Call assignment closes existing long shares (STC)
+    # ------------------------------------------------------------------
+    def test_short_call_assignment_closes_existing_shares(
+        self, db, lot_manager, position_manager,
+    ):
+        """Short call assigned while holding long shares → STC closes them."""
+        txs = [
+            # First: buy 100 shares
+            make_stock_transaction(
+                id="tx-bto-shares", order_id="ORD-BTO",
+                symbol="HUT", underlying_symbol="HUT",
+                action="BUY_TO_OPEN", quantity=100, price=12.00,
+                executed_at="2025-05-01T10:00:00+00:00",
+            ),
+            # Then: sell short call
+            make_option_transaction(
+                id="tx-stc", order_id="ORD-STC", action="SELL_TO_OPEN",
+                quantity=1, price=3.00,
+                symbol="HUT   250620C00014000",
+                underlying_symbol="HUT",
+                option_type="Call", strike=14.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            # Assignment closes the call
+            make_assignment_transaction(
+                id="tx-assign",
+                symbol="HUT   250620C00014000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        # Stock side: SELL_TO_CLOSE (closing existing long shares)
+        assignment_stock = make_stock_transaction(
+            id="tx-stock-assign", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="SELL_TO_CLOSE", quantity=100, price=14.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Close",
+        )
+
+        _run_process_lots(db, lot_manager, position_manager, txs, [assignment_stock])
+
+        # All stock lots should be closed — no phantom position
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 0, (
+            f"Expected 0 open HUT lots, got {len(lots)}: "
+            f"{[(l.symbol, l.quantity, l.remaining_quantity) for l in lots]}"
+        )
+
+    # ------------------------------------------------------------------
+    # 4. Long Call exercise → BTO shares (opens long stock)
+    # ------------------------------------------------------------------
+    def test_long_call_exercise_opens_long_shares(
+        self, db, lot_manager, position_manager,
+    ):
+        txs = [
+            make_option_transaction(
+                id="tx-btc", order_id="ORD-BTC", action="BUY_TO_OPEN",
+                quantity=1, price=1.00,
+                symbol="HUT   250620C00015000",
+                underlying_symbol="HUT",
+                option_type="Call", strike=15.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            make_exercise_transaction(
+                id="tx-exercise",
+                symbol="HUT   250620C00015000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        exercise_stock = make_stock_transaction(
+            id="tx-stock-exercise", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="BUY_TO_OPEN", quantity=100, price=15.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Buy to Open",
+        )
+
+        _run_process_lots(db, lot_manager, position_manager, txs, [exercise_stock])
+
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 1
+        assert lots[0].quantity == 100  # long
+        assert lots[0].entry_price == 15.0
+
+    # ------------------------------------------------------------------
+    # 5. Long Put exercise closes existing long shares (STC)
+    # ------------------------------------------------------------------
+    def test_long_put_exercise_closes_long_shares(
+        self, db, lot_manager, position_manager,
+    ):
+        """Long put exercised while holding shares → STC closes them."""
+        txs = [
+            # Buy shares first
+            make_stock_transaction(
+                id="tx-bto-shares", order_id="ORD-BTO",
+                symbol="HUT", underlying_symbol="HUT",
+                action="BUY_TO_OPEN", quantity=100, price=16.00,
+                executed_at="2025-05-01T10:00:00+00:00",
+            ),
+            # Buy protective put
+            make_option_transaction(
+                id="tx-btp", order_id="ORD-BTP", action="BUY_TO_OPEN",
+                quantity=1, price=1.00,
+                symbol="HUT   250620P00015000",
+                underlying_symbol="HUT",
+                option_type="Put", strike=15.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            # Exercise the put
+            make_exercise_transaction(
+                id="tx-exercise",
+                symbol="HUT   250620P00015000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        exercise_stock = make_stock_transaction(
+            id="tx-stock-exercise", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="SELL_TO_CLOSE", quantity=100, price=15.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Close",
+        )
+
+        _run_process_lots(db, lot_manager, position_manager, txs, [exercise_stock])
+
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 0
+
+    # ------------------------------------------------------------------
+    # 6. Long Put exercise opens short shares (STO — no existing shares)
+    # ------------------------------------------------------------------
+    def test_long_put_exercise_opens_short_shares(
+        self, db, lot_manager, position_manager,
+    ):
+        """Long put exercised without existing shares → STO creates short stock."""
+        txs = [
+            make_option_transaction(
+                id="tx-btp", order_id="ORD-BTP", action="BUY_TO_OPEN",
+                quantity=1, price=1.00,
+                symbol="HUT   250620P00015000",
+                underlying_symbol="HUT",
+                option_type="Put", strike=15.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            make_exercise_transaction(
+                id="tx-exercise",
+                symbol="HUT   250620P00015000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        exercise_stock = make_stock_transaction(
+            id="tx-stock-exercise", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="SELL_TO_OPEN", quantity=100, price=15.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Open",
+        )
+
+        _run_process_lots(db, lot_manager, position_manager, txs, [exercise_stock])
+
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 1
+        assert lots[0].quantity == -100  # short
+        assert lots[0].entry_price == 15.0
+
+    # ------------------------------------------------------------------
+    # 7. Call spread settlement: short $14 call assigned (STC) +
+    #    long $15 call exercised (BTO) → net zero stock
+    # ------------------------------------------------------------------
+    def test_call_spread_settlement(
+        self, db, lot_manager, position_manager,
+    ):
+        """HUT 14/15 call spread expires ITM.
+
+        Short $14 call → assigned → STC 100 @ $14 (closes shares)
+        Long  $15 call → exercised → BTO 100 @ $15 (opens shares)
+
+        The exercise creates 100 long shares; the assignment closes them.
+        Net result: 0 open stock lots.
+        """
+        txs = [
+            # Open the short $14 call
+            make_option_transaction(
+                id="tx-sto-14", order_id="ORD-SPREAD", action="SELL_TO_OPEN",
+                quantity=1, price=3.00,
+                symbol="HUT   250620C00014000",
+                underlying_symbol="HUT",
+                option_type="Call", strike=14.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            # Open the long $15 call
+            make_option_transaction(
+                id="tx-bto-15", order_id="ORD-SPREAD", action="BUY_TO_OPEN",
+                quantity=1, price=1.50,
+                symbol="HUT   250620C00015000",
+                underlying_symbol="HUT",
+                option_type="Call", strike=15.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            # Assignment on the short call
+            make_assignment_transaction(
+                id="tx-assign",
+                symbol="HUT   250620C00014000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+            # Exercise the long call
+            make_exercise_transaction(
+                id="tx-exercise",
+                symbol="HUT   250620C00015000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        # Stock sides — same underlying, same time, same quantity, different prices
+        assign_stock = make_stock_transaction(
+            id="tx-stock-assign", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="SELL_TO_CLOSE", quantity=100, price=14.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Close",
+        )
+        exercise_stock = make_stock_transaction(
+            id="tx-stock-exercise", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="BUY_TO_OPEN", quantity=100, price=15.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Buy to Open",
+        )
+
+        _run_process_lots(
+            db, lot_manager, position_manager, txs,
+            [assign_stock, exercise_stock],
+        )
+
+        # Net zero — no open stock lots
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 0, (
+            f"Expected 0 open HUT lots (call spread net zero), got {len(lots)}: "
+            f"{[(l.symbol, l.quantity, l.remaining_quantity) for l in lots]}"
+        )
+
+    # ------------------------------------------------------------------
+    # 8. Put spread settlement: short $15 put assigned (BTO) +
+    #    long $14 put exercised (STC) → net zero stock
+    # ------------------------------------------------------------------
+    def test_put_spread_settlement(
+        self, db, lot_manager, position_manager,
+    ):
+        """PUT spread: short $15 put / long $14 put expires ITM.
+
+        Short $15 put → assigned → BTO 100 @ $15 (opens shares)
+        Long  $14 put → exercised → STC 100 @ $14 (closes shares)
+
+        Net result: 0 open stock lots.
+        """
+        txs = [
+            # Open the short $15 put
+            make_option_transaction(
+                id="tx-sto-15", order_id="ORD-SPREAD", action="SELL_TO_OPEN",
+                quantity=1, price=2.50,
+                symbol="HUT   250620P00015000",
+                underlying_symbol="HUT",
+                option_type="Put", strike=15.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            # Open the long $14 put
+            make_option_transaction(
+                id="tx-bto-14", order_id="ORD-SPREAD", action="BUY_TO_OPEN",
+                quantity=1, price=1.00,
+                symbol="HUT   250620P00014000",
+                underlying_symbol="HUT",
+                option_type="Put", strike=14.0, expiration="2025-06-20",
+                executed_at="2025-06-01T10:00:00+00:00",
+            ),
+            # Assignment on the short put
+            make_assignment_transaction(
+                id="tx-assign",
+                symbol="HUT   250620P00015000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+            # Exercise the long put
+            make_exercise_transaction(
+                id="tx-exercise",
+                symbol="HUT   250620P00014000",
+                underlying_symbol="HUT",
+                quantity=1,
+                executed_at=_SETTLE_TIME,
+            ),
+        ]
+
+        assign_stock = make_stock_transaction(
+            id="tx-stock-assign", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="BUY_TO_OPEN", quantity=100, price=15.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Buy to Open",
+        )
+        exercise_stock = make_stock_transaction(
+            id="tx-stock-exercise", order_id=None,
+            symbol="HUT", underlying_symbol="HUT",
+            action="SELL_TO_CLOSE", quantity=100, price=14.00,
+            executed_at=_SETTLE_TIME,
+            transaction_type="Receive Deliver",
+            transaction_sub_type="Sell to Close",
+        )
+
+        _run_process_lots(
+            db, lot_manager, position_manager, txs,
+            [assign_stock, exercise_stock],
+        )
+
+        lots = lot_manager.get_open_lots("ACCT1", symbol="HUT")
+        assert len(lots) == 0, (
+            f"Expected 0 open HUT lots (put spread net zero), got {len(lots)}: "
+            f"{[(l.symbol, l.quantity, l.remaining_quantity) for l in lots]}"
         )
