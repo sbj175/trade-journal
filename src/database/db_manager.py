@@ -163,7 +163,7 @@ class DatabaseManager:
                         user_id=user_id,
                     )
                     # Skip duplicates (on conflict do nothing)
-                    session.execute(stmt.on_conflict_do_nothing(index_elements=['id']))
+                    session.execute(stmt.on_conflict_do_nothing(index_elements=['id', 'user_id']))
                     saved_count += 1
                 except Exception as e:
                     logger.error(f"Failed to save transaction {txn.get('id')}: {e}")
@@ -434,7 +434,7 @@ class DatabaseManager:
                         updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     )
                     session.execute(stmt.on_conflict_do_update(
-                        index_elements=['order_id'],
+                        index_elements=['order_id', 'user_id'],
                         set_={'comment': stmt.excluded.comment, 'updated_at': stmt.excluded.updated_at},
                     ))
                 else:
@@ -469,7 +469,7 @@ class DatabaseManager:
                         updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     )
                     session.execute(stmt.on_conflict_do_update(
-                        index_elements=['note_key'],
+                        index_elements=['note_key', 'user_id'],
                         set_={'note': stmt.excluded.note, 'updated_at': stmt.excluded.updated_at},
                     ))
                 else:

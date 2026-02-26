@@ -239,7 +239,7 @@ async def move_lots(body: LedgerMoveLots, user_id: str = Depends(get_current_use
                 group_id=body.target_group_id, transaction_id=txn_id,
                 user_id=user_id,
             )
-            session.execute(stmt.on_conflict_do_nothing())
+            session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
 
         all_affected = set(source_groups + [body.target_group_id])
         for gid in all_affected:

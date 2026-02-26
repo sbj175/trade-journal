@@ -151,7 +151,8 @@ class Position(Base):
 class Order(Base):
     __tablename__ = "orders"
 
-    order_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String)
     underlying = Column(String)
@@ -168,10 +169,8 @@ class Order(Base):
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
-    # relationships
-    order_positions = relationship("OrderPosition", back_populates="order")
-
     __table_args__ = (
+        UniqueConstraint("order_id", "user_id", name="uq_orders_order_user"),
         Index("idx_orders_account", "account_number"),
         Index("idx_orders_underlying", "underlying"),
         Index("idx_orders_date", "order_date"),
@@ -185,7 +184,7 @@ class OrderPosition(Base):
 
     position_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    order_id = Column(String, ForeignKey("orders.order_id"))
+    order_id = Column(String)
     account_number = Column(String)
     symbol = Column(String)
     underlying = Column(String)
@@ -210,9 +209,6 @@ class OrderPosition(Base):
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
-    # relationships
-    order = relationship("Order", back_populates="order_positions")
-
 
 # ---------------------------------------------------------------------------
 # Order chains
@@ -221,7 +217,8 @@ class OrderPosition(Base):
 class OrderChain(Base):
     __tablename__ = "order_chains"
 
-    chain_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chain_id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     underlying = Column(String)
     account_number = Column(String)
@@ -243,11 +240,8 @@ class OrderChain(Base):
     has_assignment = Column(Boolean, default=False)
     assignment_date = Column(String)
 
-    # relationships
-    members = relationship("OrderChainMember", back_populates="chain")
-    cache_entries = relationship("OrderChainCache", back_populates="chain")
-
     __table_args__ = (
+        UniqueConstraint("chain_id", "user_id", name="uq_order_chains_chain_user"),
         Index("idx_order_chains_account", "account_number"),
         Index("idx_order_chains_underlying", "underlying"),
         Index("idx_order_chains_status", "chain_status"),
@@ -261,12 +255,9 @@ class OrderChainMember(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    chain_id = Column(String, ForeignKey("order_chains.chain_id"))
-    order_id = Column(String, ForeignKey("orders.order_id"))
+    chain_id = Column(String)
+    order_id = Column(String)
     sequence_number = Column(Integer)
-
-    # relationships
-    chain = relationship("OrderChain", back_populates="members")
 
     __table_args__ = (
         UniqueConstraint("chain_id", "order_id"),
@@ -279,13 +270,15 @@ class OrderChainMember(Base):
 class OrderChainCache(Base):
     __tablename__ = "order_chain_cache"
 
-    chain_id = Column(String, ForeignKey("order_chains.chain_id"), primary_key=True)
-    order_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chain_id = Column(String, nullable=False)
+    order_id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     order_data = Column(Text)  # JSON blob
 
-    # relationships
-    chain = relationship("OrderChain", back_populates="cache_entries")
+    __table_args__ = (
+        UniqueConstraint("chain_id", "order_id", "user_id", name="uq_chain_cache_chain_order_user"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +288,8 @@ class OrderChainCache(Base):
 class RawTransaction(Base):
     __tablename__ = "raw_transactions"
 
-    id = Column(String, primary_key=True)
+    row_id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String, nullable=False)
     order_id = Column(String)
@@ -319,6 +313,7 @@ class RawTransaction(Base):
     created_at = Column(String, server_default=func.now())
 
     __table_args__ = (
+        UniqueConstraint("id", "user_id", name="uq_raw_transactions_id_user"),
         Index("idx_raw_transactions_order", "order_id"),
         Index("idx_raw_transactions_account", "account_number"),
         Index("idx_raw_transactions_symbol", "symbol"),
@@ -402,7 +397,7 @@ class PositionLot(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    transaction_id = Column(String, nullable=False, unique=True)
+    transaction_id = Column(String, nullable=False)
     account_number = Column(String, nullable=False)
     symbol = Column(String, nullable=False)
     underlying = Column(String)
@@ -428,6 +423,7 @@ class PositionLot(Base):
     closings = relationship("LotClosing", back_populates="lot", foreign_keys="LotClosing.lot_id")
 
     __table_args__ = (
+        UniqueConstraint("transaction_id", "user_id", name="uq_position_lots_txn_user"),
         Index("idx_lots_account_symbol", "account_number", "symbol"),
         Index("idx_lots_entry_date", "entry_date"),
         Index("idx_lots_chain", "chain_id"),
@@ -475,7 +471,8 @@ class LotClosing(Base):
 class PositionGroup(Base):
     __tablename__ = "position_groups"
 
-    group_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_number = Column(String, nullable=False)
     underlying = Column(String, nullable=False)
@@ -487,11 +484,8 @@ class PositionGroup(Base):
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
-    # relationships
-    group_lots = relationship("PositionGroupLot", back_populates="group",
-                              cascade="all, delete-orphan")
-
     __table_args__ = (
+        UniqueConstraint("group_id", "user_id", name="uq_position_groups_group_user"),
         Index("idx_position_groups_account", "account_number"),
         Index("idx_position_groups_underlying", "underlying"),
         Index("idx_position_groups_status", "status"),
@@ -502,16 +496,14 @@ class PositionGroup(Base):
 class PositionGroupLot(Base):
     __tablename__ = "position_group_lots"
 
-    group_id = Column(String, ForeignKey("position_groups.group_id", ondelete="CASCADE"),
-                      primary_key=True)
-    transaction_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(String, nullable=False)
+    transaction_id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     assigned_at = Column(String, server_default=func.now())
 
-    # relationships
-    group = relationship("PositionGroup", back_populates="group_lots")
-
     __table_args__ = (
+        UniqueConstraint("group_id", "transaction_id", "user_id", name="uq_group_lots_group_txn_user"),
         Index("idx_position_group_lots_txn", "transaction_id"),
     )
 
@@ -523,10 +515,15 @@ class PositionGroupLot(Base):
 class OrderComment(Base):
     __tablename__ = "order_comments"
 
-    order_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     comment = Column(String, nullable=False)
     updated_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("order_id", "user_id", name="uq_order_comments_order_user"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -536,10 +533,15 @@ class OrderComment(Base):
 class PositionNote(Base):
     __tablename__ = "position_notes"
 
-    note_key = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    note_key = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     note = Column(String, nullable=False)
     updated_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("note_key", "user_id", name="uq_position_notes_key_user"),
+    )
 
 
 # ---------------------------------------------------------------------------
