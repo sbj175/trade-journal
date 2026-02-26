@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionLedger Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/tailwind-config.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/static/admin-app.js"></script>
+</head>
+<body class="bg-tv-bg text-tv-text min-h-screen" x-data="adminApp()">
+
+    <!-- Login Screen -->
+    <template x-if="!authenticated">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="bg-tv-panel border border-tv-border rounded-lg p-8 w-full max-w-md">
+                <h1 class="text-2xl font-bold mb-6 text-center">OptionLedger Admin</h1>
+                <form @submit.prevent="login" class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-tv-muted mb-1">Admin Passphrase</label>
+                        <input
+                            type="password"
+                            x-model="passphrase"
+                            class="w-full bg-tv-bg border border-tv-border rounded px-3 py-2 text-tv-text focus:outline-none focus:border-tv-blue"
+                            placeholder="Enter passphrase"
+                            autofocus
+                        >
+                    </div>
+                    <template x-if="authError">
+                        <p class="text-tv-red text-sm" x-text="authError"></p>
+                    </template>
+                    <button
+                        type="submit"
+                        class="w-full bg-tv-blue text-white rounded px-4 py-2 font-medium hover:opacity-90 transition-opacity"
+                    >Sign In</button>
+                </form>
+            </div>
+        </div>
+    </template>
+
+    <!-- Dashboard -->
+    <template x-if="authenticated">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold">OptionLedger Admin</h1>
+                <div class="flex items-center gap-3">
+                    <button
+                        @click="loadData()"
+                        :disabled="loading"
+                        class="bg-tv-panel border border-tv-border rounded px-3 py-1.5 text-sm hover:border-tv-blue transition-colors disabled:opacity-50"
+                    >
+                        <span x-show="!loading">Refresh</span>
+                        <span x-show="loading">Loading...</span>
+                    </button>
+                    <button
+                        @click="logout()"
+                        class="text-tv-muted hover:text-tv-red text-sm transition-colors"
+                    >Sign Out</button>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
+                    <div class="text-tv-muted text-sm mb-1">Total Users</div>
+                    <div class="text-2xl font-bold" x-text="formatNumber(stats.total_users)"></div>
+                </div>
+                <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
+                    <div class="text-tv-muted text-sm mb-1">Active Users</div>
+                    <div class="text-2xl font-bold text-tv-green" x-text="formatNumber(stats.active_users)"></div>
+                </div>
+                <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
+                    <div class="text-tv-muted text-sm mb-1">TT Connected</div>
+                    <div class="text-2xl font-bold text-tv-blue" x-text="formatNumber(stats.tt_connected)"></div>
+                </div>
+                <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
+                    <div class="text-tv-muted text-sm mb-1">Total Accounts</div>
+                    <div class="text-2xl font-bold" x-text="formatNumber(stats.total_accounts)"></div>
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div class="bg-tv-panel border border-tv-border rounded-lg overflow-hidden">
+                <div class="px-4 py-3 border-b border-tv-border">
+                    <h2 class="text-lg font-semibold">Users</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-tv-border text-tv-muted text-left">
+                                <th class="px-4 py-2">Email</th>
+                                <th class="px-4 py-2">Joined</th>
+                                <th class="px-4 py-2 text-center">Accounts</th>
+                                <th class="px-4 py-2 text-center">TT</th>
+                                <th class="px-4 py-2 text-right">Txns</th>
+                                <th class="px-4 py-2 text-right">Chains</th>
+                                <th class="px-4 py-2 text-right">History</th>
+                                <th class="px-4 py-2">Last Sync</th>
+                                <th class="px-4 py-2 text-center">Status</th>
+                                <th class="px-4 py-2 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="user in users" :key="user.id">
+                                <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50 transition-colors">
+                                    <td class="px-4 py-2">
+                                        <span x-text="user.email || 'Default User'" :class="!user.email && 'text-tv-muted italic'"></span>
+                                    </td>
+                                    <td class="px-4 py-2 text-tv-muted" x-text="formatDate(user.created_at)"></td>
+                                    <td class="px-4 py-2 text-center" x-text="user.accounts"></td>
+                                    <td class="px-4 py-2 text-center">
+                                        <span
+                                            :class="user.tt_connected ? 'text-tv-green' : 'text-tv-muted'"
+                                            x-text="user.tt_connected ? 'Yes' : 'No'"
+                                        ></span>
+                                    </td>
+                                    <td class="px-4 py-2 text-right" x-text="formatNumber(user.txn_count)"></td>
+                                    <td class="px-4 py-2 text-right" x-text="formatNumber(user.chains)"></td>
+                                    <td class="px-4 py-2 text-right">
+                                        <span x-text="user.days_of_history != null ? user.days_of_history + 'd' : '-'"></span>
+                                    </td>
+                                    <td class="px-4 py-2 text-tv-muted" x-text="formatDateTime(user.last_sync)"></td>
+                                    <td class="px-4 py-2 text-center">
+                                        <span
+                                            class="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                                            :class="user.is_active
+                                                ? 'bg-tv-green/20 text-tv-green'
+                                                : 'bg-tv-red/20 text-tv-red'"
+                                            x-text="user.is_active ? 'Active' : 'Inactive'"
+                                        ></span>
+                                    </td>
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <button
+                                                @click="resetSync(user)"
+                                                class="text-tv-blue hover:underline text-xs"
+                                                title="Reset sync metadata"
+                                            >Reset Sync</button>
+                                            <button
+                                                @click="toggleActive(user)"
+                                                class="text-xs"
+                                                :class="user.is_active ? 'text-tv-red hover:underline' : 'text-tv-green hover:underline'"
+                                                x-text="user.is_active ? 'Deactivate' : 'Activate'"
+                                            ></button>
+                                            <button
+                                                @click="openDeleteModal(user)"
+                                                class="text-tv-red hover:underline text-xs"
+                                                title="Delete all user data"
+                                            >Delete Data</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="users.length === 0 && !loading">
+                                <tr>
+                                    <td colspan="10" class="px-4 py-8 text-center text-tv-muted">No users found</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Delete Confirmation Modal -->
+    <template x-if="deleteModal.open">
+        <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeDeleteModal()">
+            <div class="bg-tv-panel border border-tv-border rounded-lg p-6 w-full max-w-md">
+                <h3 class="text-lg font-bold text-tv-red mb-2">Delete User Data</h3>
+                <p class="text-sm text-tv-muted mb-4">
+                    This will permanently delete all trading data for
+                    <strong class="text-tv-text" x-text="deleteModal.user?.email || deleteModal.user?.id"></strong>.
+                    The user account itself will be preserved.
+                </p>
+                <p class="text-sm mb-3">
+                    Type <code class="bg-tv-bg px-1 py-0.5 rounded text-tv-red" x-text="deleteModal.user?.email || deleteModal.user?.id"></code> to confirm:
+                </p>
+                <input
+                    type="text"
+                    x-model="deleteModal.confirmEmail"
+                    class="w-full bg-tv-bg border border-tv-border rounded px-3 py-2 text-tv-text mb-4 focus:outline-none focus:border-tv-red"
+                    placeholder="Type to confirm"
+                >
+                <div class="flex justify-end gap-3">
+                    <button
+                        @click="closeDeleteModal()"
+                        class="px-4 py-2 text-sm text-tv-muted hover:text-tv-text transition-colors"
+                    >Cancel</button>
+                    <button
+                        @click="confirmDeleteData()"
+                        :disabled="!canConfirmDelete"
+                        class="px-4 py-2 text-sm bg-tv-red text-white rounded font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                    >Delete All Data</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+</body>
+</html>
