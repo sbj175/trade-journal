@@ -28,6 +28,27 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["process_lots"]
 
+# Cash-settled index options — no stock delivery on assignment/exercise
+_CASH_SETTLED = frozenset({
+    "SPX", "SPXW", "NDX", "VIX", "RUT", "XSP", "DJX", "OEX", "XEO",
+})
+
+
+def _skip_stock_delivery(underlying: str) -> bool:
+    """Return True if this option doesn't deliver stock on assignment/exercise.
+
+    Covers:
+    - Cash-settled index options (SPX, NDX, VIX, etc.)
+    - Adjusted options (symbol ends with digit, e.g. WOLF1) — non-standard
+      deliverables that don't follow the 100-share convention
+    """
+    u = (underlying or "").upper()
+    if u in _CASH_SETTLED:
+        return True
+    if u and u[-1].isdigit():
+        return True
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -194,6 +215,13 @@ def _create_assignment_derived_lot(
 
     underlying = assignment_tx.underlying_symbol
 
+    if _skip_stock_delivery(underlying):
+        logger.debug(
+            "Skipping stock delivery for assignment: %s (cash-settled or adjusted)",
+            assignment_tx.symbol,
+        )
+        return
+
     matching_stock = _find_matching_stock(
         assignment_tx, remaining_stock_txs, underlying,
     )
@@ -260,6 +288,13 @@ def _handle_exercise_inline(
     from src.database.models import PositionLot as PL, LotClosing as LC
 
     underlying = exercise_tx.underlying_symbol
+
+    if _skip_stock_delivery(underlying):
+        logger.debug(
+            "Skipping stock delivery for exercise: %s (cash-settled or adjusted)",
+            exercise_tx.symbol,
+        )
+        return
 
     matching_stock = _find_matching_stock(
         exercise_tx, remaining_stock_txs, underlying,
