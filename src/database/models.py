@@ -57,6 +57,7 @@ class User(Base):
     display_name = Column(String, nullable=True)
     auth_provider = Column(String(20), nullable=True)  # 'supabase' or None for default user
     is_active = Column(Boolean, default=True)
+    last_login_at = Column(String, nullable=True)
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 

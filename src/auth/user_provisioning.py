@@ -6,6 +6,7 @@ a fast PK lookup (no-op if user already exists).
 """
 
 import logging
+from datetime import datetime, timezone
 
 from src.database.models import User, StrategyTarget
 
@@ -25,6 +26,8 @@ def ensure_user_exists(user_id: str, email: str | None = None) -> None:
     with get_session(user_id=user_id) as session:
         user = session.get(User, user_id)
 
+        now = datetime.now(timezone.utc).isoformat()
+
         if user is None:
             display_name = email.split("@")[0] if email else None
             user = User(
@@ -32,13 +35,16 @@ def ensure_user_exists(user_id: str, email: str | None = None) -> None:
                 email=email,
                 display_name=display_name,
                 auth_provider="supabase",
+                last_login_at=now,
             )
             session.add(user)
             _seed_default_strategy_targets(session)
             logger.info("Provisioned new user: %s (%s)", user_id, email)
-        elif email and user.email != email:
-            user.email = email
-            logger.info("Updated email for user %s: %s", user_id, email)
+        else:
+            user.last_login_at = now
+            if email and user.email != email:
+                user.email = email
+                logger.info("Updated email for user %s: %s", user_id, email)
 
 
 def _seed_default_strategy_targets(session) -> None:

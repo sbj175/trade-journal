@@ -151,6 +151,7 @@ async def list_users():
                     "display_name": user.display_name,
                     "is_active": user.is_active,
                     "created_at": user.created_at,
+                    "last_login_at": user.last_login_at,
                     "accounts": account_count,
                     "tt_connected": tt_connected,
                     "txn_count": txn_count,

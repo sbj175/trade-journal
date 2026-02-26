@@ -13,11 +13,52 @@ function adminApp() {
         users: [],
         loading: false,
 
+        // Sorting
+        sortColumn: 'created_at',
+        sortDirection: 'desc',
+
         // Delete confirmation modal
         deleteModal: { open: false, user: null, confirmEmail: '' },
 
         get secret() {
             return sessionStorage.getItem('admin_secret') || '';
+        },
+
+        get sortedUsers() {
+            const col = this.sortColumn;
+            const dir = this.sortDirection === 'asc' ? 1 : -1;
+            return [...this.users].sort((a, b) => {
+                let va = a[col];
+                let vb = b[col];
+                // Nulls always sort last
+                if (va == null && vb == null) return 0;
+                if (va == null) return 1;
+                if (vb == null) return -1;
+                // Booleans: true > false
+                if (typeof va === 'boolean') {
+                    return (va === vb) ? 0 : (va ? -1 : 1) * dir;
+                }
+                // Numbers
+                if (typeof va === 'number') {
+                    return (va - vb) * dir;
+                }
+                // Strings (dates sort correctly as ISO strings)
+                return String(va).localeCompare(String(vb)) * dir;
+            });
+        },
+
+        toggleSort(column) {
+            if (this.sortColumn === column) {
+                this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortColumn = column;
+                this.sortDirection = 'asc';
+            }
+        },
+
+        sortIcon(column) {
+            if (this.sortColumn !== column) return '';
+            return this.sortDirection === 'asc' ? ' \u25B2' : ' \u25BC';
         },
 
         async init() {

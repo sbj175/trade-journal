@@ -90,20 +90,21 @@
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b border-tv-border text-tv-muted text-left">
-                                <th class="px-4 py-2">Email</th>
-                                <th class="px-4 py-2">Joined</th>
-                                <th class="px-4 py-2 text-center">Accounts</th>
-                                <th class="px-4 py-2 text-center">TT</th>
-                                <th class="px-4 py-2 text-right">Txns</th>
-                                <th class="px-4 py-2 text-right">Chains</th>
-                                <th class="px-4 py-2 text-right">History</th>
-                                <th class="px-4 py-2">Last Sync</th>
-                                <th class="px-4 py-2 text-center">Status</th>
+                                <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('email')">Email<span class="text-xs ml-0.5" x-text="sortIcon('email')"></span></th>
+                                <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('created_at')">Joined<span class="text-xs ml-0.5" x-text="sortIcon('created_at')"></span></th>
+                                <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('accounts')">Accounts<span class="text-xs ml-0.5" x-text="sortIcon('accounts')"></span></th>
+                                <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('tt_connected')">TT<span class="text-xs ml-0.5" x-text="sortIcon('tt_connected')"></span></th>
+                                <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('txn_count')">Txns<span class="text-xs ml-0.5" x-text="sortIcon('txn_count')"></span></th>
+                                <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('chains')">Chains<span class="text-xs ml-0.5" x-text="sortIcon('chains')"></span></th>
+                                <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('days_of_history')">History<span class="text-xs ml-0.5" x-text="sortIcon('days_of_history')"></span></th>
+                                <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('last_login_at')">Last Login<span class="text-xs ml-0.5" x-text="sortIcon('last_login_at')"></span></th>
+                                <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('last_sync')">Last Sync<span class="text-xs ml-0.5" x-text="sortIcon('last_sync')"></span></th>
+                                <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('is_active')">Status<span class="text-xs ml-0.5" x-text="sortIcon('is_active')"></span></th>
                                 <th class="px-4 py-2 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <template x-for="user in users" :key="user.id">
+                            <template x-for="user in sortedUsers" :key="user.id">
                                 <tr class="border-b border-tv-border/50 hover:bg-tv-bg/50 transition-colors">
                                     <td class="px-4 py-2">
                                         <span x-text="user.email || 'Default User'" :class="!user.email && 'text-tv-muted italic'"></span>
@@ -121,6 +122,7 @@
                                     <td class="px-4 py-2 text-right">
                                         <span x-text="user.days_of_history != null ? user.days_of_history + 'd' : '-'"></span>
                                     </td>
+                                    <td class="px-4 py-2 text-tv-muted" x-text="formatDateTime(user.last_login_at)"></td>
                                     <td class="px-4 py-2 text-tv-muted" x-text="formatDateTime(user.last_sync)"></td>
                                     <td class="px-4 py-2 text-center">
                                         <span
@@ -155,7 +157,7 @@
                             </template>
                             <template x-if="users.length === 0 && !loading">
                                 <tr>
-                                    <td colspan="10" class="px-4 py-8 text-center text-tv-muted">No users found</td>
+                                    <td colspan="11" class="px-4 py-8 text-center text-tv-muted">No users found</td>
                                 </tr>
                             </template>
                         </tbody>
