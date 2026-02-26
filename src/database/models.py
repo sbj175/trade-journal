@@ -1,11 +1,10 @@
 """
 SQLAlchemy 2.0 declarative models for all OptionLedger tables.
 
-Every table from db_manager.initialize_database(), _add_transaction_columns(),
-and PositionInventoryManager is represented here.  Column types, defaults,
-constraints, and indexes match the existing SQLite schema exactly so that
-SQLAlchemy can coexist with the legacy sqlite3 code during the incremental
-migration.
+Every table from db_manager.initialize_database() and _add_transaction_columns()
+is represented here.  Column types, defaults, constraints, and indexes match
+the existing schema exactly so that SQLAlchemy can coexist with the legacy
+sqlite3 code during the incremental migration.
 """
 
 import uuid
@@ -518,33 +517,6 @@ class PositionGroupLot(Base):
 
     __table_args__ = (
         Index("idx_position_group_lots_txn", "transaction_id"),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Positions inventory (PositionInventoryManager's own table)
-# ---------------------------------------------------------------------------
-
-class PositionsInventory(Base):
-    __tablename__ = "positions_inventory"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    account_number = Column(String, nullable=False)
-    symbol = Column(String, nullable=False)
-    underlying = Column(String, nullable=False)
-    option_type = Column(String)
-    strike = Column(Float)
-    expiration = Column(String)
-    current_quantity = Column(Integer, nullable=False)
-    cost_basis = Column(Float, nullable=False)
-    last_updated = Column(String, server_default=func.now())
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "account_number", "symbol",
-                         name="uq_positions_inventory_user_account_symbol"),
-        Index("idx_positions_account_underlying", "account_number", "underlying"),
-        Index("idx_positions_inv_symbol", "symbol"),
     )
 
 

@@ -142,9 +142,8 @@ class OrderProcessor:
     handled separately by Stage 4 (``chain_graph.derive_chains()``).
     """
 
-    def __init__(self, db_manager, position_manager, lot_manager: 'LotManager'):
+    def __init__(self, db_manager, lot_manager: 'LotManager'):
         self.db = db_manager
-        self.position_manager = position_manager
         self.lot_manager = lot_manager
 
     def process_transactions(self, raw_transactions: List[Dict]) -> None:
@@ -163,6 +162,5 @@ class OrderProcessor:
             assembly.orders,
             assembly.assignment_stock_transactions,
             self.lot_manager,
-            self.position_manager,
             self.db,
         )

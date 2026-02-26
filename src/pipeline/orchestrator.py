@@ -23,7 +23,6 @@ from src.services.ledger_service import net_opposing_equity_lots
 if TYPE_CHECKING:
     from src.database.db_manager import DatabaseManager
     from src.models.lot_manager import LotManager
-    from src.models.position_inventory import PositionInventoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +40,13 @@ class PipelineResult:
 def reprocess(
     db_manager: "DatabaseManager",
     lot_manager: "LotManager",
-    position_manager: "PositionInventoryManager",
     raw_transactions: List[Dict],
     affected_underlyings: Optional[Set[str]] = None,
 ) -> PipelineResult:
     """Run the full processing pipeline on raw transactions.
 
     Composes stages 2-6:
-      1. Clear positions & lots (full or incremental)
+      1. Clear lots (full or incremental)
       2. OrderAssembler.assemble_orders() — produces typed Order objects
       3. position_ledger.process_lots() — creates lots, closings
       4. chain_graph.derive_chains() — graph-based chain derivation
@@ -58,7 +56,6 @@ def reprocess(
     Parameters:
         db_manager: Database manager instance
         lot_manager: LotManager instance
-        position_manager: PositionInventoryManager instance
         raw_transactions: Raw transaction dicts from DB
         affected_underlyings: If set, only reprocess these underlyings (incremental)
 
@@ -75,16 +72,15 @@ def reprocess(
         )
 
     # ── Step 1: Clear existing state ──────────────────────────────────
-    position_manager.clear_all_positions()
     if affected_underlyings:
         lot_manager.clear_all_lots(underlyings=affected_underlyings)
         logger.info(
-            "Cleared position inventory and lots for %d affected underlyings",
+            "Cleared lots for %d affected underlyings",
             len(affected_underlyings),
         )
     else:
         lot_manager.clear_all_lots()
-        logger.info("Cleared position inventory and lots for full reprocessing")
+        logger.info("Cleared lots for full reprocessing")
 
     # ── Step 2: Stage 2 — Order Assembly (stateless) ──────────────────
     assembly = assemble_orders(raw_transactions)
@@ -106,7 +102,6 @@ def reprocess(
             filtered_orders,
             filtered_stock_txs,
             lot_manager,
-            position_manager,
             db_manager,
         )
         logger.info(
@@ -118,7 +113,6 @@ def reprocess(
             assembly.orders,
             assembly.assignment_stock_transactions,
             lot_manager,
-            position_manager,
             db_manager,
         )
         logger.info("Stage 3: full lot processing for %d orders", len(assembly.orders))

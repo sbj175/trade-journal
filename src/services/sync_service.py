@@ -10,7 +10,7 @@ from src.database.models import (
     RawTransaction, OrderChain, OrderChainCache,
     PositionLot as PositionLotModel, PositionGroupLot, PositionGroup,
 )
-from src.dependencies import db, connection_manager, position_manager, lot_manager, order_manager, AUTH_ENABLED
+from src.dependencies import db, connection_manager, lot_manager, order_manager, AUTH_ENABLED
 from src.services import chain_service, ledger_service
 
 
@@ -272,7 +272,7 @@ async def background_incremental_sync(user_id: str = None):
 
             from src.pipeline.orchestrator import reprocess
             raw_transactions = db.get_raw_transactions()
-            result = reprocess(db, lot_manager, position_manager, raw_transactions)
+            result = reprocess(db, lot_manager, raw_transactions)
             logger.info(f"Background sync: reprocessed {result.chains_derived} chains")
 
             db.update_last_sync_timestamp()
