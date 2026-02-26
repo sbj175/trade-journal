@@ -11,6 +11,8 @@ import pytest
 from datetime import datetime
 
 from src.models.order_processor import OrderType
+from src.pipeline.order_assembler import assemble_orders
+from src.pipeline.chain_graph import derive_chains
 from tests.conftest import (
     make_option_transaction,
     make_stock_transaction,
@@ -23,15 +25,18 @@ from tests.conftest import (
 # ---------------------------------------------------------------------------
 
 class TestStockInMainFlow:
-    def test_stock_bto_creates_lot(self, order_processor, lot_manager):
+    def test_stock_bto_creates_lot(self, db, order_processor, lot_manager):
         """Stock BTO flows through process_transactions() and creates a lot."""
         txs = [make_stock_transaction(
             id="tx-stock-bto", order_id="ORD-BTO", action="BUY_TO_OPEN",
             quantity=100, price=150.00,
         )]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+
+        # Derive chains from DB lots
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         # Should create a chain
         assert len(chains) == 1
@@ -67,7 +72,7 @@ class TestStockInMainFlow:
 # ---------------------------------------------------------------------------
 
 class TestStockClosing:
-    def test_stock_stc_closes_long_lot(self, order_processor, lot_manager):
+    def test_stock_stc_closes_long_lot(self, db, order_processor, lot_manager):
         """Stock STC closes long lot with correct P&L (no 100x multiplier)."""
         txs = [
             make_stock_transaction(
@@ -83,8 +88,11 @@ class TestStockClosing:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+
+        # Derive chains from DB lots
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         # Should be one chain with open + close
         assert len(chains) == 1
@@ -151,8 +159,7 @@ class TestMixedOptionEquity:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
 
         # Both should create lots
         all_lots = lot_manager.get_open_lots("ACCT1", underlying="AAPL")
@@ -169,7 +176,7 @@ class TestMixedOptionEquity:
 # ---------------------------------------------------------------------------
 
 class TestAssignmentFlowUnchanged:
-    def test_assignment_creates_derived_stock_lot(self, order_processor, lot_manager):
+    def test_assignment_creates_derived_stock_lot(self, db, order_processor, lot_manager):
         """Option assignment → option lot closed + derived stock lot created."""
         txs = [
             # Open short put
@@ -191,8 +198,11 @@ class TestAssignmentFlowUnchanged:
         # Assignment stock transaction (no order_id — filtered into _assignment_stock_transactions)
         order_processor._assignment_stock_transactions = []
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+
+        # Derive chains from DB lots
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         # Should have a chain
         assert len(chains) >= 1

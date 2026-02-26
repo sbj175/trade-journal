@@ -8,6 +8,8 @@ import pytest
 from datetime import datetime
 
 from src.models.order_processor import OrderProcessor, OrderType, Transaction
+from src.pipeline.order_assembler import assemble_orders
+from src.pipeline.chain_graph import derive_chains
 from tests.conftest import (
     make_option_transaction,
     make_expiration_transaction,
@@ -21,7 +23,7 @@ from tests.conftest import (
 # ---------------------------------------------------------------------------
 
 class TestGroupTransactions:
-    def test_group_transactions_by_order_id(self, order_processor):
+    def test_group_transactions_by_order_id(self, order_processor, db):
         """Transactions with same order_id grouped together."""
         txs = [
             make_option_transaction(
@@ -36,15 +38,16 @@ class TestGroupTransactions:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         # Both should be in same chain since same order
         assert len(chains) == 1
         assert len(chains[0].orders) == 1
         assert len(chains[0].orders[0].transactions) == 2
 
-    def test_split_fills_aggregated(self, order_processor):
+    def test_split_fills_aggregated(self, order_processor, db):
         """Multiple fills for same symbol/action/price within one order → aggregated."""
         txs = [
             make_option_transaction(
@@ -57,8 +60,9 @@ class TestGroupTransactions:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
         order = chains[0].orders[0]
 
         # Should be aggregated into single transaction
@@ -71,19 +75,20 @@ class TestGroupTransactions:
 # ---------------------------------------------------------------------------
 
 class TestOrderClassification:
-    def test_opening_order_creates_chain(self, order_processor):
+    def test_opening_order_creates_chain(self, order_processor, db):
         """First BTO/STO creates a new chain."""
         txs = [make_option_transaction(
             id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
         )]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         assert chains[0].orders[0].order_type == OrderType.OPENING
 
-    def test_closing_order_links_to_chain(self, order_processor):
+    def test_closing_order_links_to_chain(self, order_processor, db):
         """STC/BTC matches to existing chain by symbol + account."""
         txs = [
             make_option_transaction(
@@ -98,13 +103,14 @@ class TestOrderClassification:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         assert len(chains[0].orders) == 2
 
-    def test_rolling_detection(self, order_processor):
+    def test_rolling_detection(self, order_processor, db):
         """Simultaneous close + open in same order detected as ROLLING."""
         txs = [
             # Opening order
@@ -129,8 +135,9 @@ class TestOrderClassification:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         # The roll order should be classified as ROLLING
         roll_orders = [o for c in chains for o in c.orders if o.order_type == OrderType.ROLLING]
@@ -142,7 +149,7 @@ class TestOrderClassification:
 # ---------------------------------------------------------------------------
 
 class TestSpecialEvents:
-    def test_expiration_creates_closing(self, order_processor):
+    def test_expiration_creates_closing(self, order_processor, db):
         """Expiration transaction treated as closing event."""
         txs = [
             make_option_transaction(
@@ -153,14 +160,15 @@ class TestSpecialEvents:
             make_expiration_transaction(id="tx-exp", quantity=1),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         # Chain should have both the opening and the expiration
         assert len(chains[0].orders) >= 1
 
-    def test_multiple_underlyings_separate_chains(self, order_processor):
+    def test_multiple_underlyings_separate_chains(self, order_processor, db):
         """Different underlyings get separate chains."""
         txs = [
             make_option_transaction(
@@ -173,8 +181,9 @@ class TestSpecialEvents:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 2
         underlyings = {c.underlying for c in chains}
@@ -186,7 +195,7 @@ class TestSpecialEvents:
 # ---------------------------------------------------------------------------
 
 class TestProcessPipeline:
-    def test_process_transactions_pipeline(self, order_processor):
+    def test_process_transactions_pipeline(self, order_processor, db):
         """Full 6-stage pipeline with mixed opening/closing/rolling."""
         txs = [
             # Stage 1: Open
@@ -209,8 +218,9 @@ class TestProcessPipeline:
             ),
         ]
 
-        chains_by_acct = order_processor.process_transactions(txs)
-        chains = chains_by_acct.get("ACCT1", [])
+        order_processor.process_transactions(txs)
+        assembly = assemble_orders(txs)
+        chains = derive_chains(db, assembly.orders)
 
         assert len(chains) == 1
         chain = chains[0]

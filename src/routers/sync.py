@@ -8,7 +8,7 @@ from loguru import logger
 
 from src.database.models import OrderChain
 from src.api.tastytrade_client import TastytradeClient
-from src.dependencies import db, connection_manager, order_processor, order_manager, position_manager, lot_manager, get_current_user_id, get_tastytrade_client
+from src.dependencies import db, connection_manager, order_manager, position_manager, lot_manager, get_current_user_id, get_tastytrade_client
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
@@ -92,10 +92,10 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
 
             try:
                 raw_transactions = db.get_raw_transactions()
-                result = reprocess(db, order_processor, lot_manager, position_manager,
+                result = reprocess(db, lot_manager, position_manager,
                                    raw_transactions, affected_underlyings)
-                if result.old_chains:
-                    await update_chain_cache(result.old_chains, affected_underlyings)
+                if result.chains:
+                    await update_chain_cache(result.chains, affected_underlyings)
                     logger.info("Strategy detection and cache update completed")
                 else:
                     logger.warning("No chains created during reprocessing")
@@ -280,9 +280,9 @@ async def initial_sync(
         logger.info("Reprocessing chains with strategy detection after initial sync...")
         try:
             raw_transactions = db.get_raw_transactions()
-            pipeline_result = reprocess(db, order_processor, lot_manager, position_manager, raw_transactions)
-            if pipeline_result.old_chains:
-                await update_chain_cache(pipeline_result.old_chains)
+            pipeline_result = reprocess(db, lot_manager, position_manager, raw_transactions)
+            if pipeline_result.chains:
+                await update_chain_cache(pipeline_result.chains)
             logger.info(f"Chain reprocessing completed: {pipeline_result.chains_derived} chains with strategy detection")
         except Exception as e:
             logger.error(f"Error during chain reprocessing: {str(e)}", exc_info=True)
@@ -311,10 +311,10 @@ async def reprocess_chains(user_id: str = Depends(get_current_user_id)):
         raw_transactions = db.get_raw_transactions()
         logger.info(f"Loaded {len(raw_transactions)} raw transactions from database")
 
-        result = reprocess(db, order_processor, lot_manager, position_manager, raw_transactions)
+        result = reprocess(db, lot_manager, position_manager, raw_transactions)
 
-        if result.old_chains:
-            await update_chain_cache(result.old_chains)
+        if result.chains:
+            await update_chain_cache(result.chains)
         logger.info("Reprocessing completed")
 
         return {
