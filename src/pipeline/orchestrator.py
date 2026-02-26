@@ -128,15 +128,15 @@ def reprocess(
     chains_derived = len(new_chains)
     logger.info("Stage 4: derived %d chains via graph", chains_derived)
 
-    # ── Step 5+6: Stages 5 & 6 — Group Manager (strategy + persistence)
+    # ── Step 5: Equity netting (before groups, so groups see final lot states)
+    equity_lots_netted = net_opposing_equity_lots()
+    if equity_lots_netted:
+        logger.info("Stage 5: equity netting closed %d lot sides", equity_lots_netted)
+
+    # ── Step 6: Group Manager (strategy + persistence) ─────────────
     persister = GroupPersister(db_manager, lot_manager)
     groups_processed = persister.process_groups(new_chains)
     logger.info("Stage 6: processed %d groups", groups_processed)
-
-    # ── Step 7: Equity netting ────────────────────────────────────────
-    equity_lots_netted = net_opposing_equity_lots()
-    if equity_lots_netted:
-        logger.info("Equity netting: closed %d lot sides", equity_lots_netted)
 
     return PipelineResult(
         orders_assembled=orders_assembled,
