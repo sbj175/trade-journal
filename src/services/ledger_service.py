@@ -98,7 +98,7 @@ def seed_position_groups():
                 stmt = dialect_insert(PositionGroupLot).values(
                     group_id=group_id, transaction_id=txn_id, user_id=user_id,
                 )
-                session.execute(stmt.on_conflict_do_nothing())
+                session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
 
             groups_created += 1
 
@@ -148,7 +148,7 @@ def seed_position_groups():
                     stmt = dialect_insert(PositionGroupLot).values(
                         group_id=group_id, transaction_id=txn_id, user_id=user_id,
                     )
-                    session.execute(stmt.on_conflict_do_nothing())
+                    session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
 
     # Refresh statuses — lots may already be closed at seeding time
     _refresh_all_group_statuses()
@@ -342,7 +342,7 @@ def seed_new_lots_into_groups():
                         group_id=group_id, transaction_id=lot.transaction_id,
                         user_id=user_id,
                     )
-                    session.execute(stmt.on_conflict_do_nothing())
+                    session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
                     assigned += 1
             else:
                 # No chain_id — add to ungrouped bucket per underlying/account
@@ -377,7 +377,7 @@ def seed_new_lots_into_groups():
                             group_id=group_id, transaction_id=lot.transaction_id,
                             user_id=user_id,
                         )
-                        session.execute(stmt.on_conflict_do_nothing())
+                        session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
                         assigned += 1
 
     # Update group statuses/dates for affected groups (outside the session above)

@@ -454,8 +454,8 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 )
                 stmt = dialect_insert(OrderChainModel).values(**chain_values)
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=[OrderChainModel.chain_id],
-                    set_={k: stmt.excluded[k] for k in chain_values},
+                    index_elements=['chain_id', 'user_id'],
+                    set_={k: stmt.excluded[k] for k in chain_values if k not in ('chain_id', 'user_id')},
                 )
                 session.execute(stmt)
 
@@ -607,7 +607,7 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                     )
                     stmt = dialect_insert(OrderChainCache).values(**cache_values)
                     stmt = stmt.on_conflict_do_update(
-                        index_elements=['chain_id', 'order_id'],
+                        index_elements=['chain_id', 'order_id', 'user_id'],
                         set_={'order_data': stmt.excluded.order_data},
                     )
                     session.execute(stmt)

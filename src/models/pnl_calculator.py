@@ -86,8 +86,8 @@ class PnLCalculator:
             values["user_id"] = user_id
             stmt = dialect_insert(PositionLotModel).values(**values)
             stmt = stmt.on_conflict_do_update(
-                index_elements=[PositionLotModel.transaction_id],
-                set_={k: stmt.excluded[k] for k in values},
+                index_elements=['transaction_id', 'user_id'],
+                set_={k: stmt.excluded[k] for k in values if k not in ('transaction_id', 'user_id')},
             )
             session.execute(stmt)
     

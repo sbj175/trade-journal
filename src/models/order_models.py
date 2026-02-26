@@ -428,7 +428,7 @@ class OrderManager:
         from src.database.models import Order as OrderModel, OrderPosition as OP
 
         with self.db.get_session() as session:
-            row = session.get(OrderModel, order_id)
+            row = session.query(OrderModel).filter(OrderModel.order_id == order_id).first()
             if not row:
                 return None
             order_dict = row.to_dict()
@@ -514,7 +514,7 @@ class OrderManager:
                     pos_row.pnl = realized_pnl
                     pos_row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            order_row = session.get(OrderModel, order_id)
+            order_row = session.query(OrderModel).filter(OrderModel.order_id == order_id).first()
             if order_row:
                 order_row.total_pnl = total_pnl
                 order_row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1327,7 +1327,7 @@ class OrderManager:
                     linked_order_id=order.linked_order_id, user_id=user_id,
                 )
                 session.execute(stmt.on_conflict_do_update(
-                    index_elements=['order_id'],
+                    index_elements=['order_id', 'user_id'],
                     set_={
                         'account_number': stmt.excluded.account_number,
                         'underlying': stmt.excluded.underlying,
@@ -2011,7 +2011,7 @@ class OrderManager:
                     user_id=user_id,
                 )
                 session.execute(stmt.on_conflict_do_update(
-                    index_elements=['chain_id'],
+                    index_elements=['chain_id', 'user_id'],
                     set_={
                         'underlying': stmt.excluded.underlying,
                         'account_number': stmt.excluded.account_number,
