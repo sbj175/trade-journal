@@ -8,13 +8,12 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # Load .env if present (for ADMIN_SECRET, DATABASE_URL, etc.)
-# Uses export + read loop instead of source to handle values with special chars
+# Uses set -a so every assignment is auto-exported, then sources the file
+# so that variable references like ${POSTGRES_PASSWORD} are expanded.
 if [ -f ".env" ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-        # Skip comments and blank lines
-        [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-        export "$line"
-    done < .env
+    set -a
+    . .env 2>/dev/null || true
+    set +a
 fi
 
 # Activate virtual environment if it exists
