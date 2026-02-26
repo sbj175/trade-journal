@@ -206,14 +206,13 @@ async def initial_sync(
         )
         from src.database.models import Order as OrderModel
         with db.get_session() as session:
-            # Drop dependent tables first (FK order)
+            # Clear data scoped to current user (FK order: dependents first)
             for model in [OrderChainMember, OrderChainCache, OrderChainModel, OrderPosition, OrderModel]:
-                session.execute(model.__table__.delete())
-            # Clear (not drop) data tables
-            session.query(PositionModel).delete()
-            session.query(AccountBalance).delete()
-            session.query(RawTransaction).delete()
-            logger.info("Database cleared successfully")
+                session.query(model).filter(model.user_id == user_id).delete()
+            session.query(PositionModel).filter(PositionModel.user_id == user_id).delete()
+            session.query(AccountBalance).filter(AccountBalance.user_id == user_id).delete()
+            session.query(RawTransaction).filter(RawTransaction.user_id == user_id).delete()
+            logger.info("Database cleared successfully (user-scoped)")
 
         db.initialize_database()
 

@@ -68,7 +68,8 @@ class User(Base):
 class Account(Base):
     __tablename__ = "accounts"
 
-    account_number = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_number = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     account_name = Column(String)
     account_type = Column(String)
@@ -76,10 +77,8 @@ class Account(Base):
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
-    # relationships
-    positions = relationship("Position", back_populates="account")
-
     __table_args__ = (
+        UniqueConstraint("account_number", "user_id", name="uq_accounts_number_user"),
         Index("idx_accounts_active", "is_active"),
     )
 
@@ -114,7 +113,7 @@ class Position(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    account_number = Column(String, ForeignKey("accounts.account_number"), nullable=False)
+    account_number = Column(String, nullable=False)
     symbol = Column(String, nullable=False)
     underlying = Column(String)
     instrument_type = Column(String, nullable=False)
@@ -135,9 +134,6 @@ class Position(Base):
     option_type = Column(String)
     chain_id = Column(String)
     strategy_type = Column(String)
-
-    # relationships
-    account = relationship("Account", back_populates="positions")
 
     __table_args__ = (
         Index("idx_positions_account", "account_number"),
