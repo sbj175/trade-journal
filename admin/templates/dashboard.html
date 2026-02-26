@@ -72,11 +72,11 @@
                     <div class="text-2xl font-bold text-tv-green" x-text="formatNumber(stats.active_users)"></div>
                 </div>
                 <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
-                    <div class="text-tv-muted text-sm mb-1">TT Connected</div>
+                    <div class="text-tv-muted text-sm mb-1">Tastytrade Linked</div>
                     <div class="text-2xl font-bold text-tv-blue" x-text="formatNumber(stats.tt_connected)"></div>
                 </div>
                 <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
-                    <div class="text-tv-muted text-sm mb-1">Total Accounts</div>
+                    <div class="text-tv-muted text-sm mb-1">Brokerage Accounts</div>
                     <div class="text-2xl font-bold" x-text="formatNumber(stats.total_accounts)"></div>
                 </div>
             </div>
@@ -93,7 +93,7 @@
                                 <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('email')">Email<span class="text-xs ml-0.5" x-text="sortIcon('email')"></span></th>
                                 <th class="px-4 py-2 cursor-pointer hover:text-tv-text select-none" @click="toggleSort('created_at')">Joined<span class="text-xs ml-0.5" x-text="sortIcon('created_at')"></span></th>
                                 <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('accounts')">Accounts<span class="text-xs ml-0.5" x-text="sortIcon('accounts')"></span></th>
-                                <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('tt_connected')">TT<span class="text-xs ml-0.5" x-text="sortIcon('tt_connected')"></span></th>
+                                <th class="px-4 py-2 text-center cursor-pointer hover:text-tv-text select-none" @click="toggleSort('tt_connected')">Linked<span class="text-xs ml-0.5" x-text="sortIcon('tt_connected')"></span></th>
                                 <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('txn_count')">Txns<span class="text-xs ml-0.5" x-text="sortIcon('txn_count')"></span></th>
                                 <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('positions')">Positions<span class="text-xs ml-0.5" x-text="sortIcon('positions')"></span></th>
                                 <th class="px-4 py-2 text-right cursor-pointer hover:text-tv-text select-none" @click="toggleSort('days_of_history')">History<span class="text-xs ml-0.5" x-text="sortIcon('days_of_history')"></span></th>
