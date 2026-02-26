@@ -81,11 +81,54 @@ app.include_router(debug.router)
 app.include_router(tastytrade_oauth.router)
 
 
+def _log_startup_banner():
+    """Log a configuration summary banner at startup."""
+    import os
+    from src.database.engine import get_dialect
+
+    dialect = get_dialect()
+    db_backend = "PostgreSQL" if dialect == "postgresql" else "SQLite"
+
+    auth_enabled = AUTH_ENABLED
+    oauth_flow = bool(os.getenv("TASTYTRADE_CLIENT_ID"))
+    encryption_key = bool(os.getenv("CREDENTIAL_ENCRYPTION_KEY"))
+
+    # Single-user Tastytrade credentials (from .env)
+    tt_env_creds = bool(
+        os.getenv("TASTYTRADE_PROVIDER_SECRET")
+        and os.getenv("TASTYTRADE_REFRESH_TOKEN")
+    )
+
+    lines = [
+        "",
+        "=" * 52,
+        "  OptionLedger v1.0.0",
+        "=" * 52,
+        f"  Database           : {db_backend}",
+        f"  Auth (Supabase)    : {'ENABLED' if auth_enabled else 'disabled'}",
+        f"  OAuth2 flow        : {'configured' if oauth_flow else 'not configured'}",
+        f"  Encryption key     : {'set' if encryption_key else 'auto-generated'}",
+    ]
+
+    if auth_enabled:
+        lines.append(f"  Mode               : multi-user (per-user credentials)")
+    else:
+        lines.append(f"  TT credentials     : {'found in .env' if tt_env_creds else 'not configured'}")
+        lines.append(f"  Mode               : single-user")
+
+    lines.append("=" * 52)
+    lines.append("")
+
+    for line in lines:
+        logger.info(line)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and connect to Tastytrade on startup"""
     logger.info("Starting OptionLedger Web App")
     db.initialize_database()
+    _log_startup_banner()
 
     if AUTH_ENABLED:
         # Multi-user mode: each user connects on demand with their own credentials
