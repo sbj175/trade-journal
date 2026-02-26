@@ -201,8 +201,13 @@ class TestAssignLotsToGroups:
         specs = assign_lots_to_groups(lots, chains)
         assert len(specs) == 2
 
-    def test_equity_joins_option_group(self):
-        """Short call + equity lot (same underlying) -> 1 group, Covered Call."""
+    def test_equity_and_option_separate_without_chain_link(self):
+        """Short call + equity lot (no shared chain) -> 2 groups.
+
+        Without a chain link, options and equity stay in separate groups.
+        Only equity lots register in the (account, underlying) index to
+        prevent option groups from stealing the pointer.
+        """
         lots = [
             _lot(chain_id="C1", option_type="Call", strike=180.0, quantity=-1,
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -211,8 +216,7 @@ class TestAssignLotsToGroups:
         ]
         chains = [_chain("C1", order_ids=["O1"])]
         specs = assign_lots_to_groups(lots, chains)
-        assert len(specs) == 1
-        assert specs[0].strategy_label == "Covered Call"
+        assert len(specs) == 2
 
     def test_closed_group_not_merged_into(self):
         """Existing group all CLOSED, new lot same exp -> new group (not merged)."""

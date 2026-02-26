@@ -66,6 +66,10 @@ def assign_lots_to_groups(
        d. Rule 3: create new group
     4. Run strategy engine on each group's lots -> strategy_label
     5. Compute status (OPEN if any lot has remaining_quantity != 0)
+
+    Note: only equity lots update the (account, underlying) -> group index.
+    This prevents option-only groups from stealing the pointer when they close,
+    which would cause subsequent equity purchases to create orphan groups.
     """
     if not lots:
         return []
@@ -110,8 +114,11 @@ def assign_lots_to_groups(
         # Update Rule 2 indexes
         if lot.expiration:
             aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
-        # Always register (account, underlying) so equity lots can find option groups
-        au_to_group[(lot.account_number, lot.underlying)] = gk
+        # Only equity lots register in au_to_group.  This prevents option-only
+        # groups from stealing the (account, underlying) pointer — keeping it
+        # aimed at the group that actually holds shares.
+        if not lot.expiration:
+            au_to_group[(lot.account_number, lot.underlying)] = gk
 
     # --- Step 3: Assign each lot to a group --------------------------------
     for lot in sorted_lots:
