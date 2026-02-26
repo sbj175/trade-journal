@@ -156,17 +156,6 @@ function adminApp() {
             }
         },
 
-        async toggleActive(user) {
-            const action = user.is_active ? 'deactivate' : 'activate';
-            if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} user ${user.email || user.id}?`)) return;
-            try {
-                await this.apiFetch(`/api/admin/users/${user.id}/${action}`, { method: 'POST' });
-                await this.loadData();
-            } catch (err) {
-                alert('Failed: ' + err.message);
-            }
-        },
-
         openDeleteModal(user) {
             this.deleteModal = { open: true, user, confirmEmail: '' };
         },

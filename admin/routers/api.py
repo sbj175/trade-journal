@@ -144,15 +144,15 @@ async def list_users():
                 .scalar()
             )
 
-            # Strategies by account
+            # Strategies by account (from PositionGroup which has strategy labels)
             strategy_rows = (
                 session.query(
-                    Position.account_number,
-                    Position.strategy_type,
-                    func.count(Position.id),
+                    PositionGroup.account_number,
+                    PositionGroup.strategy_label,
+                    func.count(PositionGroup.id),
                 )
-                .filter(Position.user_id == uid)
-                .group_by(Position.account_number, Position.strategy_type)
+                .filter(PositionGroup.user_id == uid)
+                .group_by(PositionGroup.account_number, PositionGroup.strategy_label)
                 .all()
             )
             accounts_detail = {}
@@ -201,39 +201,6 @@ async def reset_sync(user_id: str):
         logger.info("Reset sync for user %s: deleted %d metadata rows", user_id, deleted)
 
     return {"status": "ok", "deleted_rows": deleted}
-
-
-@router.post("/users/{user_id}/deactivate")
-async def deactivate_user(user_id: str):
-    """Set User.is_active=False and UserCredential.is_active=False."""
-    with get_session(unscoped=True) as session:
-        user = session.get(User, user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        user.is_active = False
-
-        session.query(UserCredential).filter(
-            UserCredential.user_id == user_id
-        ).update({"is_active": False})
-
-        logger.info("Deactivated user %s (%s)", user_id, user.email)
-
-    return {"status": "ok"}
-
-
-@router.post("/users/{user_id}/activate")
-async def activate_user(user_id: str):
-    """Set User.is_active=True."""
-    with get_session(unscoped=True) as session:
-        user = session.get(User, user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        user.is_active = True
-        logger.info("Activated user %s (%s)", user_id, user.email)
-
-    return {"status": "ok"}
 
 
 # Tables containing user trading data (order matters for FK constraints)
