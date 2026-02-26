@@ -35,13 +35,12 @@ def ensure_user_exists(user_id: str, email: str | None = None) -> None:
                 email=email,
                 display_name=display_name,
                 auth_provider="supabase",
-                last_login_at=now,
             )
             session.add(user)
             _seed_default_strategy_targets(session)
             logger.info("Provisioned new user: %s (%s)", user_id, email)
         else:
-            user.last_login_at = now
+            user.updated_at = now
             if email and user.email != email:
                 user.email = email
                 logger.info("Updated email for user %s: %s", user_id, email)

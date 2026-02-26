@@ -14,7 +14,7 @@ function adminApp() {
         loading: false,
 
         // Sorting
-        sortColumn: 'created_at',
+        sortColumn: 'last_login_at',
         sortDirection: 'desc',
 
         // Delete confirmation modal

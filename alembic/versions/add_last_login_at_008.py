@@ -1,7 +1,6 @@
-"""Add last_login_at column to users table.
+"""Drop last_login_at column from users table.
 
-Tracks when each user last authenticated. Updated on every
-authenticated API request via ensure_user_exists().
+Column was added then reverted — using updated_at for login tracking instead.
 
 Revision ID: add_last_login_at_008
 Revises: fix_business_key_pks_007
@@ -20,8 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("last_login_at", sa.String(), nullable=True))
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.drop_column("last_login_at")
 
 
 def downgrade() -> None:
-    op.drop_column("users", "last_login_at")
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.add_column(sa.Column("last_login_at", sa.String(), nullable=True))
