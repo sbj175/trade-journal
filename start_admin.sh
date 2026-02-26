@@ -7,15 +7,6 @@ echo "=============================="
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Load .env if present (for ADMIN_SECRET, DATABASE_URL, etc.)
-# Uses set -a so every assignment is auto-exported, then sources the file
-# so that variable references like ${POSTGRES_PASSWORD} are expanded.
-if [ -f ".env" ]; then
-    set -a
-    . .env 2>/dev/null || true
-    set +a
-fi
-
 # Activate virtual environment if it exists
 if [ -d "venv" ]; then
     echo "Activating virtual environment..."
@@ -31,15 +22,8 @@ if ! python3 -c "import uvicorn" 2>/dev/null; then
     exit 1
 fi
 
-# Verify ADMIN_SECRET is set
-if [ -z "$ADMIN_SECRET" ]; then
-    echo "Error: ADMIN_SECRET not set. Add it to .env or export it:"
-    echo "  echo 'ADMIN_SECRET=your-secret' >> .env"
-    exit 1
-fi
-
-# Start the admin dashboard
-echo "Starting Admin Dashboard on http://localhost:${ADMIN_PORT:-8001}"
+# Start the admin dashboard (.env loaded by python-dotenv in admin_app.py)
+echo "Starting Admin Dashboard..."
 echo "Press Ctrl+C to stop the server"
 echo ""
 python3 admin_app.py
