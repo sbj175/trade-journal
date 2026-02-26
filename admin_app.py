@@ -57,4 +57,4 @@ app.include_router(api.router)
 
 if __name__ == "__main__":
     port = int(os.environ.get("ADMIN_PORT", "8001"))
-    uvicorn.run("admin_app:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("admin_app:app", host="0.0.0.0", port=port)
