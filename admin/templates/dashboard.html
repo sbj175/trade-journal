@@ -92,22 +92,34 @@
                             <!-- Top metrics row -->
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div class="bg-tv-bg rounded-lg p-3">
-                                    <div class="text-tv-muted text-xs mb-1">Status</div>
+                                    <div class="text-tv-muted text-xs mb-1 flex items-center gap-1">
+                                        Status
+                                        <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Whether the app can reach PostgreSQL. A failed SELECT 1 query turns this red.">?</span>
+                                    </div>
                                     <div class="text-lg font-bold text-tv-green">Connected</div>
                                     <div class="text-tv-muted text-xs mt-0.5" x-text="dbHealth.dialect"></div>
                                 </div>
                                 <div class="bg-tv-bg rounded-lg p-3">
-                                    <div class="text-tv-muted text-xs mb-1">Query Latency</div>
+                                    <div class="text-tv-muted text-xs mb-1 flex items-center gap-1">
+                                        Query Latency
+                                        <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Round-trip time for a simple SELECT 1 query. Under 5 ms is typical for a local database; higher values may indicate network latency to a remote host.">?</span>
+                                    </div>
                                     <div class="text-lg font-bold" x-text="dbHealth.query_latency_ms + ' ms'"></div>
                                     <div class="text-tv-muted text-xs mt-0.5">SELECT 1 round-trip</div>
                                 </div>
                                 <div class="bg-tv-bg rounded-lg p-3">
-                                    <div class="text-tv-muted text-xs mb-1">Database Size</div>
+                                    <div class="text-tv-muted text-xs mb-1 flex items-center gap-1">
+                                        Database Size
+                                        <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Total disk space used by the database, including tables, indexes, and TOAST data. Reported by pg_database_size().">?</span>
+                                    </div>
                                     <div class="text-lg font-bold" x-text="dbHealth.database_size"></div>
                                     <div class="text-tv-muted text-xs mt-0.5" x-text="formatNumber(dbHealth.database_size_bytes) + ' bytes'"></div>
                                 </div>
                                 <div class="bg-tv-bg rounded-lg p-3">
-                                    <div class="text-tv-muted text-xs mb-1">Schema Version</div>
+                                    <div class="text-tv-muted text-xs mb-1 flex items-center gap-1">
+                                        Schema Version
+                                        <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Current Alembic migration revision. Should match the latest migration in the codebase. A mismatch means pending migrations need to be applied.">?</span>
+                                    </div>
                                     <div class="text-lg font-bold font-mono" x-text="dbHealth.schema_version || 'N/A'"></div>
                                     <div class="text-tv-muted text-xs mt-0.5">alembic revision</div>
                                 </div>
@@ -115,22 +127,37 @@
 
                             <!-- Connection Pool -->
                             <div x-data="{ pool: dbHealth.connection_pool }">
-                                <div class="text-sm font-medium text-tv-muted mb-2">Connection Pool</div>
+                                <div class="text-sm font-medium text-tv-muted mb-2 flex items-center gap-1">
+                                    Connection Pool
+                                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="SQLAlchemy maintains a pool of reusable database connections to avoid the overhead of opening a new connection for every request.">?</span>
+                                </div>
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
-                                        <span class="text-tv-muted text-xs">Pool Size</span>
+                                        <span class="text-tv-muted text-xs flex items-center gap-1">
+                                            Pool Size
+                                            <span class="inline-flex items-center justify-center w-3 h-3 rounded-full border border-tv-muted/50 text-tv-muted text-[8px] cursor-help" title="Maximum number of persistent connections kept in the pool. These stay open and are reused across requests.">?</span>
+                                        </span>
                                         <span class="font-mono text-sm" x-text="pool.pool_size"></span>
                                     </div>
                                     <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
-                                        <span class="text-tv-muted text-xs">Checked Out</span>
+                                        <span class="text-tv-muted text-xs flex items-center gap-1">
+                                            Checked Out
+                                            <span class="inline-flex items-center justify-center w-3 h-3 rounded-full border border-tv-muted/50 text-tv-muted text-[8px] cursor-help" title="Connections currently in use by an active request. These are unavailable to other requests until released.">?</span>
+                                        </span>
                                         <span class="font-mono text-sm" x-text="pool.checked_out"></span>
                                     </div>
                                     <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
-                                        <span class="text-tv-muted text-xs">Checked In</span>
+                                        <span class="text-tv-muted text-xs flex items-center gap-1">
+                                            Checked In
+                                            <span class="inline-flex items-center justify-center w-3 h-3 rounded-full border border-tv-muted/50 text-tv-muted text-[8px] cursor-help" title="Idle connections sitting in the pool, ready to be reused by the next request.">?</span>
+                                        </span>
                                         <span class="font-mono text-sm" x-text="pool.checked_in"></span>
                                     </div>
                                     <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
-                                        <span class="text-tv-muted text-xs">Overflow</span>
+                                        <span class="text-tv-muted text-xs flex items-center gap-1">
+                                            Overflow
+                                            <span class="inline-flex items-center justify-center w-3 h-3 rounded-full border border-tv-muted/50 text-tv-muted text-[8px] cursor-help" title="Extra connections beyond pool_size, shown as current / max. Negative values mean the pool hasn't fully warmed up yet (connections are created lazily). Positive values mean demand exceeded pool_size. These temporary connections are discarded after use.">?</span>
+                                        </span>
                                         <span class="font-mono text-sm" x-text="pool.overflow + ' / ' + pool.max_overflow"></span>
                                     </div>
                                 </div>
@@ -138,7 +165,10 @@
 
                             <!-- Table Sizes -->
                             <div>
-                                <div class="text-sm font-medium text-tv-muted mb-2">Tables</div>
+                                <div class="text-sm font-medium text-tv-muted mb-2 flex items-center gap-1">
+                                    Tables
+                                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Row counts are estimates from pg_stat_user_tables (fast, avoids full table scans). Sizes include table data, indexes, and TOAST storage. Sorted largest first.">?</span>
+                                </div>
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-sm">
                                         <thead>
