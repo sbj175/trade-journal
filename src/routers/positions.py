@@ -210,8 +210,13 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
 
                         if lot.instrument_type == 'EQUITY_OPTION':
                             # Skip expired option legs (they'll vanish on next sync)
-                            if lot.expiration and lot.expiration < date.today():
-                                continue
+                            if lot.expiration:
+                                try:
+                                    exp_date = date.fromisoformat(str(lot.expiration)[:10])
+                                except (ValueError, TypeError):
+                                    exp_date = None
+                                if exp_date and exp_date < date.today():
+                                    continue
                             leg_amount = price * qty * 100 if price else 0
                             leg_cost = leg_amount if qty_direction == 'Short' else -leg_amount
                             open_option_legs.append({
