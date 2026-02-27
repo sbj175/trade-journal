@@ -13,11 +13,15 @@ from src.database.models import (
     OrderChain, PositionLot as PositionLotModel, LotClosing as LotClosingModel,
     PositionGroup, PositionGroupLot,
 )
-from src.dependencies import db, lot_manager
+from src.database.db_manager import DatabaseManager
+from src.models.lot_manager import LotManager
+from src.dependencies import db as _default_db, lot_manager as _default_lot_manager
 
 
-def seed_position_groups():
+def seed_position_groups(*, db: DatabaseManager = None, lot_manager: LotManager = None):
     """Seed position_groups from existing chains. Idempotent — skips chains already seeded."""
+    db = db or _default_db
+    lot_manager = lot_manager or _default_lot_manager
     groups_created = 0
 
     with db.get_session() as session:
@@ -151,13 +155,13 @@ def seed_position_groups():
                     session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
 
     # Refresh statuses — lots may already be closed at seeding time
-    _refresh_all_group_statuses()
+    _refresh_all_group_statuses(db=db)
 
     logger.info(f"Seeded {groups_created} position groups")
     return groups_created
 
 
-def process_equity_transactions(account_number: Optional[str] = None):
+def process_equity_transactions(account_number: Optional[str] = None, *, db: DatabaseManager = None, lot_manager: LotManager = None):
     """Deprecated: equity lots are now created by the unified OrderProcessor pipeline.
 
     This function is kept for backward compatibility. It now only runs the
@@ -167,11 +171,11 @@ def process_equity_transactions(account_number: Optional[str] = None):
         Tuple of (lots_created, lots_closed)
     """
     logger.warning("process_equity_transactions() is deprecated — equity flows through OrderProcessor now. Running netting only.")
-    netted = net_opposing_equity_lots()
+    netted = net_opposing_equity_lots(db=db, lot_manager=lot_manager)
     return (0, netted)
 
 
-def net_opposing_equity_lots() -> int:
+def net_opposing_equity_lots(*, db: DatabaseManager = None, lot_manager: LotManager = None) -> int:
     """Close opposing equity lots (positive vs negative) for the same account+symbol.
 
     When a call assignment creates a derived lot with negative quantity and there are
@@ -181,6 +185,8 @@ def net_opposing_equity_lots() -> int:
     Returns:
         Number of lot sides closed during netting.
     """
+    db = db or _default_db
+    lot_manager = lot_manager or _default_lot_manager
     netted = 0
 
     # Find (account, symbol) pairs that have BOTH positive and negative open equity lots
@@ -286,14 +292,16 @@ def net_opposing_equity_lots() -> int:
     return netted
 
 
-def seed_new_lots_into_groups():
+def seed_new_lots_into_groups(*, db: DatabaseManager = None, lot_manager: LotManager = None):
     """After reprocessing, assign new lots (not in any group) to their chain's group or create new groups."""
+    db = db or _default_db
+    lot_manager = lot_manager or _default_lot_manager
     assigned = 0
 
     unassigned = lot_manager.get_unassigned_lots()
     if not unassigned:
         # Still refresh group statuses even if no new lots to assign
-        _refresh_all_group_statuses()
+        _refresh_all_group_statuses(db=db)
         return 0
 
     with db.get_session() as session:
@@ -302,7 +310,7 @@ def seed_new_lots_into_groups():
         # Check if position_groups table has any rows — if empty, do full seed instead
         group_count = session.query(func.count()).select_from(PositionGroup).scalar()
         if group_count == 0:
-            return seed_position_groups()
+            return seed_position_groups(db=db, lot_manager=lot_manager)
 
         # Group unassigned lots by chain_id
         chain_lots: Dict[Optional[str], list] = {}
@@ -381,19 +389,20 @@ def seed_new_lots_into_groups():
                         assigned += 1
 
     # Update group statuses/dates for affected groups (outside the session above)
-    _refresh_all_group_statuses()
+    _refresh_all_group_statuses(db=db)
 
     logger.info(f"Seeded {assigned} new lots into position groups")
     return assigned
 
 
-def _reconcile_stale_groups():
+def _reconcile_stale_groups(*, db: DatabaseManager = None):
     """Update position_groups whose source_chain_id no longer exists in order_chains.
 
     For groups with lots from multiple chains (e.g. user moved lots on Ledger),
     set source_chain_id to the earliest lot's chain_id as a best-effort match
     for future seeding.
     """
+    db = db or _default_db
     reconciled = 0
     with db.get_session() as session:
         # Fix stale source_chain_id references
@@ -450,15 +459,16 @@ def _reconcile_stale_groups():
     return reconciled
 
 
-def _refresh_group_status(group_id: str, session=None):
+def _refresh_group_status(group_id: str, session=None, *, db: DatabaseManager = None):
     """Recalculate status, opening_date, closing_date for a single group.
 
     If session is provided, uses it (caller manages commit).
     Otherwise opens its own session.
     """
+    db = db or _default_db
     if session is None:
         with db.get_session() as s:
-            return _refresh_group_status(group_id, session=s)
+            return _refresh_group_status(group_id, session=s, db=db)
 
     open_count = session.query(func.count()).select_from(
         PositionGroupLot,
@@ -515,15 +525,16 @@ def _refresh_group_status(group_id: str, session=None):
         group.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
-def _refresh_all_group_statuses(session=None):
+def _refresh_all_group_statuses(session=None, *, db: DatabaseManager = None):
     """Recalculate status for all groups.
 
     If session is provided, uses it. Otherwise opens its own.
     """
+    db = db or _default_db
     if session is None:
         with db.get_session() as s:
-            return _refresh_all_group_statuses(session=s)
+            return _refresh_all_group_statuses(session=s, db=db)
 
     group_ids = [r[0] for r in session.query(PositionGroup.group_id).all()]
     for gid in group_ids:
-        _refresh_group_status(gid, session=session)
+        _refresh_group_status(gid, session=session, db=db)

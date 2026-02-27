@@ -10,12 +10,23 @@ from src.database.models import (
     RawTransaction, OrderChain, OrderChainCache,
     PositionLot as PositionLotModel, PositionGroupLot, PositionGroup,
 )
-from src.dependencies import db, connection_manager, lot_manager, order_manager, AUTH_ENABLED
+from src.database.db_manager import DatabaseManager
+from src.models.lot_manager import LotManager
+from src.models.order_models import OrderManager
+from src.utils.auth_manager import ConnectionManager
+from src.dependencies import (
+    db as _default_db,
+    connection_manager as _default_connection_manager,
+    lot_manager as _default_lot_manager,
+    order_manager as _default_order_manager,
+    AUTH_ENABLED,
+)
 from src.services import chain_service, ledger_service
 
 
-def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str) -> List[Dict[str, Any]]:
+def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str, *, db: DatabaseManager = None) -> List[Dict[str, Any]]:
     """Calculate opening dates for positions based on transaction history - HIGHLY OPTIMIZED"""
+    db = db or _default_db
 
     if not positions:
         return positions
@@ -48,17 +59,18 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
     return positions
 
 
-def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: str) -> bool:
+def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: str, *, db: DatabaseManager = None) -> bool:
     """Enrich positions with chain metadata and save to database.
 
     This runs at sync-time so chain_id and strategy_type are persisted,
     eliminating the need for runtime enrichment on every API call.
     """
+    db = db or _default_db
     if not positions:
         return True
 
     # Calculate opening dates
-    positions_with_dates = calculate_position_opening_dates(positions, account_number)
+    positions_with_dates = calculate_position_opening_dates(positions, account_number, db=db)
 
     # Get open chains for this account
     open_chains = []
@@ -160,12 +172,14 @@ def enrich_and_save_positions(positions: List[Dict[str, Any]], account_number: s
     return db.save_positions(positions_with_dates, account_number)
 
 
-async def sync_unified_internal(user_id: str = None):
+async def sync_unified_internal(user_id: str = None, *, db: DatabaseManager = None, connection_manager: ConnectionManager = None):
     """Internal sync function that can be called without HTTP context.
 
     When *user_id* is provided and AUTH_ENABLED, uses the per-user client.
     Otherwise falls back to the global singleton.
     """
+    db = db or _default_db
+    connection_manager = connection_manager or _default_connection_manager
     if AUTH_ENABLED and user_id:
         tastytrade = await connection_manager.get_user_client(user_id)
     else:
@@ -206,7 +220,7 @@ async def sync_unified_internal(user_id: str = None):
 
     for account_number, positions in all_positions.items():
         if positions:
-            success = enrich_and_save_positions(positions, account_number)
+            success = enrich_and_save_positions(positions, account_number, db=db)
             if success:
                 logger.info(f"Auto-sync: Successfully saved {len(positions)} positions for account {account_number}")
                 total_positions += len(positions)
@@ -228,8 +242,11 @@ async def background_auto_sync():
         logger.error(f"Background auto-sync failed: {e}")
 
 
-async def background_incremental_sync(user_id: str = None):
+async def background_incremental_sync(user_id: str = None, *, db: DatabaseManager = None, connection_manager: ConnectionManager = None, lot_manager: LotManager = None):
     """Background task to perform incremental sync when unmatched positions are detected."""
+    db = db or _default_db
+    connection_manager = connection_manager or _default_connection_manager
+    lot_manager = lot_manager or _default_lot_manager
     try:
         logger.info("Starting background incremental sync...")
 
@@ -264,7 +281,7 @@ async def background_incremental_sync(user_id: str = None):
 
             for account_number, positions in all_positions.items():
                 if positions:
-                    success = enrich_and_save_positions(positions, account_number)
+                    success = enrich_and_save_positions(positions, account_number, db=db)
                     if success:
                         total_positions += len(positions)
 
@@ -286,7 +303,7 @@ async def background_incremental_sync(user_id: str = None):
         logger.error(f"Background incremental sync failed: {e}")
 
 
-async def reconcile_positions_vs_chains():
+async def reconcile_positions_vs_chains(*, db: DatabaseManager = None):
     """Compare TT API positions against position_lots-derived open legs.
 
     Returns a summary with categories:
@@ -295,6 +312,7 @@ async def reconcile_positions_vs_chains():
     - UNLINKED: TT has position, lots don't
     - STALE: lots say open but TT doesn't have it (auto-closes stale lots and groups)
     """
+    db = db or _default_db
     try:
         # 1. Get TT API positions (from positions table)
         tt_positions = db.get_open_positions()
@@ -433,7 +451,7 @@ async def reconcile_positions_vs_chains():
 
             if affected_groups:
                 for gid in affected_groups:
-                    ledger_service._refresh_group_status(gid)
+                    ledger_service._refresh_group_status(gid, db=db)
 
         # Pass 2: Ghost groups — OPEN with no remaining lots and no TT positions
         tt_underlyings_by_acct = {}
@@ -482,7 +500,7 @@ async def reconcile_positions_vs_chains():
 
         if groups_to_close:
             for gid, underlying, acct in groups_to_close:
-                ledger_service._refresh_group_status(gid)
+                ledger_service._refresh_group_status(gid, db=db)
                 auto_closed.append(gid)
                 logger.info(f"Auto-closed ghost group {gid} ({underlying}/{acct})")
 

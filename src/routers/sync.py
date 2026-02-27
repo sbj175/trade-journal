@@ -98,7 +98,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
                 result = reprocess(db, lot_manager,
                                    raw_transactions, affected_underlyings)
                 if result.chains:
-                    await update_chain_cache(result.chains, affected_underlyings)
+                    await update_chain_cache(result.chains, affected_underlyings, db=db)
                     logger.info("Strategy detection and cache update completed")
                 else:
                     logger.warning("No chains created during reprocessing")
@@ -112,7 +112,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
 
         for account_number, positions in all_positions.items():
             if positions:
-                success = enrich_and_save_positions(positions, account_number)
+                success = enrich_and_save_positions(positions, account_number, db=db)
                 if success:
                     logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
                     total_positions += len(positions)
@@ -121,7 +121,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
 
         logger.info(f"Sync completed: {saved_count} transactions processed, {total_positions} positions updated")
 
-        reconciliation = await reconcile_positions_vs_chains()
+        reconciliation = await reconcile_positions_vs_chains(db=db)
 
         return {
             "message": f"Sync completed: {saved_count} new transactions processed",
@@ -245,7 +245,7 @@ async def initial_sync(
 
         for account_number, positions in all_positions.items():
             if positions:
-                positions_with_dates = calculate_position_opening_dates(positions, account_number)
+                positions_with_dates = calculate_position_opening_dates(positions, account_number, db=db)
                 success = db.save_positions(positions_with_dates, account_number)
                 if success:
                     logger.info(f"Successfully saved {len(positions)} positions for account {account_number}")
@@ -270,7 +270,7 @@ async def initial_sync(
         raw_transactions = db.get_raw_transactions()
         pipeline_result = reprocess(db, lot_manager, raw_transactions)
         if pipeline_result.chains:
-            await update_chain_cache(pipeline_result.chains)
+            await update_chain_cache(pipeline_result.chains, db=db)
         logger.info(
             f"INITIAL SYNC completed: {pipeline_result.orders_assembled} orders, "
             f"{pipeline_result.chains_derived} chains, {total_positions} positions"
@@ -302,7 +302,7 @@ async def reprocess_chains(db: DatabaseManager = Depends(get_db), lot_manager: L
         result = reprocess(db, lot_manager, raw_transactions)
 
         if result.chains:
-            await update_chain_cache(result.chains)
+            await update_chain_cache(result.chains, db=db)
         logger.info("Reprocessing completed")
 
         return {

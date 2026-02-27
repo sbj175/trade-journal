@@ -15,9 +15,9 @@ router = APIRouter()
 
 
 @router.get("/api/reconcile")
-async def get_reconciliation(user_id: str = Depends(get_current_user_id)):
+async def get_reconciliation(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Run position reconciliation and return results"""
-    return await reconcile_positions_vs_chains()
+    return await reconcile_positions_vs_chains(db=db)
 
 
 @router.get("/api/debug/strategy/{chain_id}")

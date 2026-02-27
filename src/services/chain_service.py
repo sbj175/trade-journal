@@ -13,11 +13,15 @@ from src.database.models import (
     OrderChain as OrderChainModel, OrderChainMember, OrderChainCache,
     Order as OrderModel, RawTransaction, PositionLot as PositionLotModel,
 )
-from src.dependencies import db, strategy_detector, lot_manager
+from src.database.db_manager import DatabaseManager
+from src.models.strategy_detector import StrategyDetector
+from src.models.lot_manager import LotManager
+from src.dependencies import db as _default_db, strategy_detector as _default_strategy_detector, lot_manager as _default_lot_manager
 
 
-async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None) -> bool:
+async def should_use_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None, *, db: DatabaseManager = None) -> bool:
     """Check if cached chain data exists for the requested account"""
+    db = db or _default_db
     try:
         with db.get_session() as session:
             if account_number == '' or account_number is None:
@@ -46,8 +50,10 @@ async def should_use_cached_chains(account_number: Optional[str] = None, underly
 
 
 async def get_cached_chains(account_number: Optional[str] = None, underlying: Optional[str] = None,
-                          limit: int = 10000, offset: int = 0, chain_id: Optional[str] = None):
+                          limit: int = 10000, offset: int = 0, chain_id: Optional[str] = None,
+                          *, db: DatabaseManager = None):
     """Get chains from cached data in order_chains table"""
+    db = db or _default_db
     try:
         with db.get_session() as session:
             # Build query with filters
@@ -263,7 +269,8 @@ async def get_cached_chains(account_number: Optional[str] = None, underlying: Op
         return None
 
 
-async def update_chain_cache(chains, affected_underlyings: set = None, affected_account: str = None):
+async def update_chain_cache(chains, affected_underlyings: set = None, affected_account: str = None,
+                            *, db: DatabaseManager = None, strategy_detector: StrategyDetector = None, lot_manager: LotManager = None):
     """Update the order_chains table with fresh derivation results
 
     Args:
@@ -271,8 +278,10 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
         affected_underlyings: Optional set of underlyings to update incrementally.
                              If None and no affected_account, clears and rebuilds entire cache.
         affected_account: Optional account number to scope the cache update.
-                         Only clears/rebuilds chains for this account.
     """
+    db = db or _default_db
+    strategy_detector = strategy_detector or _default_strategy_detector
+    lot_manager = lot_manager or _default_lot_manager
     if affected_underlyings:
         logger.info(f"[CACHE UPDATE] Incremental update for {len(affected_underlyings)} underlyings: {affected_underlyings}")
     if affected_account:

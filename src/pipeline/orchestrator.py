@@ -123,7 +123,7 @@ def reprocess(
     logger.info("Stage 4: derived %d chains via graph", chains_derived)
 
     # ── Step 5: Equity netting (before groups, so groups see final lot states)
-    equity_lots_netted = net_opposing_equity_lots()
+    equity_lots_netted = net_opposing_equity_lots(db=db_manager, lot_manager=lot_manager)
     if equity_lots_netted:
         logger.info("Stage 5: equity netting closed %d lot sides", equity_lots_netted)
 

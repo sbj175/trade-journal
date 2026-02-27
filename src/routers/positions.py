@@ -92,7 +92,7 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
             if group_count == 0:
                 lot_count = session.query(func.count()).select_from(PositionLotModel).scalar()
                 if lot_count > 0:
-                    seed_position_groups()
+                    seed_position_groups(db=db, lot_manager=lot_manager)
 
         # Query open position groups
         with db.get_session() as session:

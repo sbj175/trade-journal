@@ -29,7 +29,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
         if group_count == 0:
             lot_count = session.query(func.count()).select_from(PositionLotModel).scalar()
             if lot_count > 0:
-                seed_position_groups()
+                seed_position_groups(db=db, lot_manager=lot_manager)
 
     # Query groups with filters
     with db.get_session() as session:
@@ -187,7 +187,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
 @router.post("/api/ledger/seed")
 async def seed_ledger(db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Explicitly seed position groups from existing chains."""
-    count = seed_position_groups()
+    count = seed_position_groups(db=db, lot_manager=lot_manager)
     return {"message": f"Seeded {count} position groups", "groups_created": count}
 
 
@@ -258,7 +258,7 @@ async def move_lots(body: LedgerMoveLots, db: DatabaseManager = Depends(get_db),
 
         all_affected = set(source_groups + [body.target_group_id])
         for gid in all_affected:
-            _refresh_group_status(gid, session=session)
+            _refresh_group_status(gid, session=session, db=db)
 
     return {"message": f"Moved {len(body.transaction_ids)} lots"}
 
