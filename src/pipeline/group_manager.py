@@ -196,12 +196,48 @@ def assign_lots_to_groups(
 
 
 def _label_from_all_lots(lot_list: List[Lot]) -> Optional[str]:
-    """Derive a strategy label from all lots (including closed) for CLOSED groups."""
+    """Derive a strategy label from all lots (including closed) for CLOSED groups.
+
+    When a group contains rolls (multiple opening orders), only the lots from
+    the latest opening order are used for labeling.  This prevents a rolled
+    bull call spread from being mislabeled as "Custom (4-leg)".
+    """
     # Check if all lots are equity
     if all(lot.instrument_type in ("Equity", "EQUITY") for lot in lot_list):
         return "Shares"
 
-    # Build synthetic legs treating all lots as if open (for labeling only)
+    # If the group has multiple opening orders, use only the most recent
+    # cohort — that's the final shape of the position before it closed.
+    lots_for_label = _latest_opening_cohort(lot_list)
+
+    return _recognize_from_lots(lots_for_label)
+
+
+def _latest_opening_cohort(lot_list: List[Lot]) -> List[Lot]:
+    """Return the lots from the most recent opening order.
+
+    If all lots share the same opening_order_id (or have none), returns all.
+    """
+    # Collect distinct opening_order_ids (ignoring None)
+    order_ids = {lot.opening_order_id for lot in lot_list if lot.opening_order_id}
+
+    if len(order_ids) <= 1:
+        return lot_list
+
+    # Find the latest entry_date per opening_order_id
+    order_latest: Dict[str, datetime] = {}
+    for lot in lot_list:
+        oid = lot.opening_order_id
+        if oid:
+            if oid not in order_latest or lot.entry_date > order_latest[oid]:
+                order_latest[oid] = lot.entry_date
+
+    latest_oid = max(order_latest, key=order_latest.get)
+    return [lot for lot in lot_list if lot.opening_order_id == latest_oid]
+
+
+def _recognize_from_lots(lot_list: List[Lot]) -> Optional[str]:
+    """Run strategy recognition on a list of lots (treating all as open)."""
     from src.pipeline.strategy_engine.types import Leg
 
     leg_groups: dict[tuple, int] = defaultdict(int)
