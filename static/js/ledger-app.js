@@ -20,6 +20,9 @@ document.addEventListener('alpine:init', () => {
         groupNotes: {},
         orderComments: {},
         _noteSaveTimers: {},
+        availableTags: [],
+        tagPopoverGroup: null,
+        tagSearch: '',
         async init() {
             await Auth.requireAuth();
             await Auth.requireTastytrade();
@@ -65,6 +68,7 @@ document.addEventListener('alpine:init', () => {
 
             await this.fetchLedger();
             this.loadNotes();
+            await this.loadAvailableTags();
         },
 
         async loadAccounts() {
@@ -647,6 +651,86 @@ document.addEventListener('alpine:init', () => {
                 }).catch(err => console.error('Error saving order comment:', err));
                 delete this._noteSaveTimers['order_' + orderId];
             }, 500);
+        },
+
+        // ========== Tag Methods ==========
+
+        async loadAvailableTags() {
+            try {
+                const resp = await Auth.authFetch('/api/tags');
+                this.availableTags = await resp.json();
+            } catch (e) { console.error('Error loading tags:', e); }
+        },
+
+        get filteredTagSuggestions() {
+            const search = (this.tagSearch || '').toLowerCase();
+            const group = this.groups.find(g => g.group_id === this.tagPopoverGroup);
+            const appliedIds = (group?.tags || []).map(t => t.id);
+            return this.availableTags
+                .filter(t => !appliedIds.includes(t.id))
+                .filter(t => !search || t.name.toLowerCase().includes(search));
+        },
+
+        openTagPopover(groupId, event) {
+            if (event) event.stopPropagation();
+            this.tagPopoverGroup = this.tagPopoverGroup === groupId ? null : groupId;
+            this.tagSearch = '';
+            if (this.tagPopoverGroup) {
+                this.$nextTick(() => {
+                    const input = document.getElementById('ledger-tag-input-' + groupId);
+                    if (input) input.focus();
+                });
+            }
+        },
+
+        closeTagPopover() {
+            this.tagPopoverGroup = null;
+            this.tagSearch = '';
+        },
+
+        async addTagToGroup(group, nameOrTag) {
+            const payload = typeof nameOrTag === 'string'
+                ? { name: nameOrTag.trim() }
+                : { tag_id: nameOrTag.id };
+            if (payload.name === '' && !payload.tag_id) return;
+            try {
+                const resp = await Auth.authFetch(`/api/ledger/groups/${group.group_id}/tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const tag = await resp.json();
+                if (!group.tags) group.tags = [];
+                if (!group.tags.find(t => t.id === tag.id)) {
+                    group.tags.push(tag);
+                }
+                await this.loadAvailableTags();
+                this.tagSearch = '';
+            } catch (e) { console.error('Error adding tag:', e); }
+        },
+
+        async removeTagFromGroup(group, tagId, event) {
+            if (event) event.stopPropagation();
+            try {
+                await Auth.authFetch(`/api/ledger/groups/${group.group_id}/tags/${tagId}`, {
+                    method: 'DELETE',
+                });
+                group.tags = (group.tags || []).filter(t => t.id !== tagId);
+            } catch (e) { console.error('Error removing tag:', e); }
+        },
+
+        async handleTagInput(event, group) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const search = this.tagSearch.trim();
+                if (!search) return;
+                const exactMatch = this.filteredTagSuggestions.find(
+                    t => t.name.toLowerCase() === search.toLowerCase()
+                );
+                await this.addTagToGroup(group, exactMatch || search);
+            } else if (event.key === 'Escape') {
+                this.closeTagPopover();
+            }
         },
     }));
 });

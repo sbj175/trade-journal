@@ -548,6 +548,37 @@ class PositionNote(Base):
 # User credentials (per-user Tastytrade OAuth, encrypted at rest)
 # ---------------------------------------------------------------------------
 
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    name = Column(String, nullable=False)
+    color = Column(String)
+    created_at = Column(String, server_default=func.now())
+    updated_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("name", "user_id", name="uq_tags_name_user"),
+    )
+
+
+class PositionGroupTag(Base):
+    __tablename__ = "position_group_tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    group_id = Column(String, nullable=False)
+    tag_id = Column(Integer, ForeignKey("tags.id"), nullable=False)
+    created_at = Column(String, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("group_id", "tag_id", "user_id", name="uq_position_group_tags_group_tag_user"),
+        Index("idx_position_group_tags_group", "group_id"),
+        Index("idx_position_group_tags_tag", "tag_id"),
+    )
+
+
 class UserCredential(Base):
     __tablename__ = "user_credentials"
 

@@ -47,6 +47,21 @@ class LedgerCreateGroup(BaseModel):
     strategy_label: Optional[str] = None
 
 
+class TagCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class TagUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class GroupTagAdd(BaseModel):
+    tag_id: Optional[int] = None
+    name: Optional[str] = None
+
+
 class CredentialUpdate(BaseModel):
     provider_secret: str
     refresh_token: str

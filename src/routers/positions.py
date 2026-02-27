@@ -9,7 +9,7 @@ from loguru import logger
 
 from sqlalchemy import func
 
-from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionLot as PositionLotModel
+from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
 from src.dependencies import db, lot_manager, order_manager, get_current_user_id
 from src.services.ledger_service import seed_position_groups
 
@@ -105,6 +105,17 @@ async def get_open_chains(account_number: Optional[str] = None, user_id: str = D
             result = {}
         else:
             group_ids = [g['group_id'] for g in groups_raw]
+
+            # Batch-load tags for all groups
+            tags_by_group: Dict[str, list] = {gid: [] for gid in group_ids}
+            with db.get_session() as session:
+                tag_rows = session.query(
+                    PositionGroupTag.group_id, Tag.id, Tag.name, Tag.color,
+                ).join(Tag, PositionGroupTag.tag_id == Tag.id).filter(
+                    PositionGroupTag.group_id.in_(group_ids),
+                ).all()
+                for gid, tid, tname, tcolor in tag_rows:
+                    tags_by_group[gid].append({"id": tid, "name": tname, "color": tcolor or "#3B82F6"})
 
             # Batch-load lots for all groups
             lots_by_group = lot_manager.get_lots_for_groups_batch(group_ids)
@@ -268,6 +279,7 @@ async def get_open_chains(account_number: Optional[str] = None, user_id: str = D
                     "open_legs": open_option_legs,
                     "equity_legs": open_equity_legs,
                     "equity_summary": equity_summary,
+                    "tags": tags_by_group.get(gid, []),
                 }
                 if open_option_legs or open_equity_legs:
                     result[acct]["chains"].append(group_obj)

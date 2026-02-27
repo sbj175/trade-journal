@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
-from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionLot as PositionLotModel
+from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
 from src.dependencies import db, lot_manager, get_current_user_id
-from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup
+from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup, GroupTagAdd
 from src.services.ledger_service import seed_position_groups, _refresh_group_status
 
 router = APIRouter()
@@ -43,6 +43,17 @@ async def get_ledger(account_number: str = '', underlying: str = '', user_id: st
         return []
 
     group_ids = [g['group_id'] for g in groups_raw]
+
+    # Batch-load tags for all groups
+    tags_by_group: Dict[str, list] = {gid: [] for gid in group_ids}
+    with db.get_session() as session:
+        tag_rows = session.query(
+            PositionGroupTag.group_id, Tag.id, Tag.name, Tag.color,
+        ).join(Tag, PositionGroupTag.tag_id == Tag.id).filter(
+            PositionGroupTag.group_id.in_(group_ids),
+        ).all()
+        for gid, tid, tname, tcolor in tag_rows:
+            tags_by_group[gid].append({"id": tid, "name": tname, "color": tcolor or "#3B82F6"})
 
     # Batch-load lots
     lots_by_group = lot_manager.get_lots_for_groups_batch(group_ids)
@@ -165,6 +176,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', user_id: st
             'open_lot_count': open_lot_count,
             'lots': lots_data,
             'orders': orders_data,
+            'tags': tags_by_group.get(gid, []),
         })
 
     return result
@@ -279,3 +291,49 @@ async def delete_ledger_group(group_id: str, user_id: str = Depends(get_current_
         session.delete(row)
 
     return {"message": "Group deleted"}
+
+
+@router.post("/api/ledger/groups/{group_id}/tags")
+async def add_tag_to_group(group_id: str, body: GroupTagAdd, user_id: str = Depends(get_current_user_id)):
+    """Add a tag to a group. Accepts tag_id or name (find-or-create)."""
+    with db.get_session() as session:
+        # Resolve tag
+        if body.tag_id:
+            tag = session.query(Tag).filter(Tag.id == body.tag_id).first()
+            if not tag:
+                raise HTTPException(status_code=404, detail="Tag not found")
+        elif body.name:
+            name = body.name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Tag name is required")
+            tag = session.query(Tag).filter(Tag.name == name).first()
+            if not tag:
+                tag = Tag(name=name, color="#3B82F6")
+                session.add(tag)
+                session.flush()
+        else:
+            raise HTTPException(status_code=400, detail="Provide tag_id or name")
+
+        # Check if already associated
+        existing = session.query(PositionGroupTag).filter(
+            PositionGroupTag.group_id == group_id,
+            PositionGroupTag.tag_id == tag.id,
+        ).first()
+        if not existing:
+            session.add(PositionGroupTag(group_id=group_id, tag_id=tag.id))
+
+        return {"id": tag.id, "name": tag.name, "color": tag.color or "#3B82F6"}
+
+
+@router.delete("/api/ledger/groups/{group_id}/tags/{tag_id}")
+async def remove_tag_from_group(group_id: str, tag_id: int, user_id: str = Depends(get_current_user_id)):
+    """Remove a tag association from a group."""
+    with db.get_session() as session:
+        deleted = session.query(PositionGroupTag).filter(
+            PositionGroupTag.group_id == group_id,
+            PositionGroupTag.tag_id == tag_id,
+        ).delete()
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Tag association not found")
+
+    return {"message": "Tag removed from group"}
