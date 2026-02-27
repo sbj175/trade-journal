@@ -130,7 +130,22 @@ const Auth = (() => {
                 return new Promise(() => {});
             }
         }
-        return fetch(url, options);
+
+        const response = await fetch(url, options);
+
+        // Beta capacity gate: redirect new users who hit the backend safety net
+        if (response.status === 403) {
+            try {
+                const cloned = response.clone();
+                const body = await cloned.json();
+                if (body.detail === 'beta_full') {
+                    window.location.href = '/beta-full';
+                    return new Promise(() => {});
+                }
+            } catch (e) { /* not JSON or parse error — fall through */ }
+        }
+
+        return response;
     }
 
     /**

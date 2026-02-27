@@ -13,6 +13,19 @@ from src.database.models import User, StrategyTarget
 logger = logging.getLogger(__name__)
 
 
+class BetaFullError(Exception):
+    """Raised when a new user tries to sign up but the beta is at capacity."""
+    pass
+
+
+def _count_supabase_users(session) -> int:
+    """Count users that signed up via Supabase (excludes the default local user)."""
+    from sqlalchemy import func
+    return session.query(func.count(User.id)).filter(
+        User.auth_provider == "supabase"
+    ).scalar() or 0
+
+
 def ensure_user_exists(user_id: str, email: str | None = None) -> None:
     """Create a User row if one doesn't exist for this user_id.
 
@@ -20,8 +33,11 @@ def ensure_user_exists(user_id: str, email: str | None = None) -> None:
     Seeds default strategy targets for new users.
     Uses an unscoped session (no user_id in session.info) because the users
     table is in _GLOBAL_TABLES and not tenant-filtered.
+
+    Raises BetaFullError if BETA_MAX_USERS cap is reached and this is a new user.
     """
     from src.database.engine import get_session
+    from src.dependencies import BETA_MAX_USERS
 
     with get_session(user_id=user_id) as session:
         user = session.get(User, user_id)
@@ -29,6 +45,14 @@ def ensure_user_exists(user_id: str, email: str | None = None) -> None:
         now = datetime.now(timezone.utc).isoformat()
 
         if user is None:
+            # Check beta capacity before provisioning a new user
+            if BETA_MAX_USERS > 0:
+                current_count = _count_supabase_users(session)
+                if current_count >= BETA_MAX_USERS:
+                    raise BetaFullError(
+                        f"Beta is full ({current_count}/{BETA_MAX_USERS} users)"
+                    )
+
             display_name = email.split("@")[0] if email else None
             user = User(
                 id=user_id,

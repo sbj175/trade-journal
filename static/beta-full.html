@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptionLedger - Beta Full</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232962ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='22 12 18 12 15 21 9 3 6 12 2 12'></polyline></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/js/tailwind-config.js"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif; }
+        body { background: #131722; color: #d1d4dc; }
+        [x-cloak] { display: none !important; }
+
+        .glass-card {
+            background: rgba(30, 34, 45, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(42, 46, 57, 0.7);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #2962ff, #7c3aed, #55aa71, #2962ff);
+            background-size: 300% 100%;
+            animation: gradientBar 6s linear infinite;
+        }
+        @keyframes gradientBar {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+        }
+
+        .input-glow {
+            transition: box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+        .input-glow:focus {
+            border-color: #2962ff;
+            box-shadow: 0 0 0 3px rgba(41,98,255,0.25);
+            outline: none;
+        }
+
+        .btn-gradient {
+            background: linear-gradient(135deg, #2962ff, #1e50d4);
+            transition: box-shadow 0.25s ease, transform 0.15s ease;
+        }
+        .btn-gradient:hover:not(:disabled) {
+            box-shadow: 0 6px 20px rgba(41,98,255,0.4);
+            transform: translateY(-1px);
+        }
+        .btn-gradient:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .icon-badge {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 16px;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .anim-fade-up {
+            opacity: 0;
+            animation: fadeInUp 0.7s ease-out forwards;
+        }
+    </style>
+</head>
+<body x-data="betaFullApp" x-cloak>
+
+<div class="min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-md anim-fade-up">
+        <!-- Logo -->
+        <div class="flex items-center justify-center gap-3 mb-8">
+            <div class="icon-badge" style="background: linear-gradient(135deg, #2962ff, #1e50d4);">
+                <i class="fas fa-chart-line text-white"></i>
+            </div>
+            <span class="text-2xl font-bold text-white tracking-tight">OptionLedger</span>
+        </div>
+
+        <div class="glass-card p-8">
+            <div class="pt-3 text-center">
+                <!-- Icon -->
+                <div class="icon-badge mx-auto mb-5" style="background: rgba(254,103,108,0.15); width: 56px; height: 56px; border-radius: 14px; font-size: 22px;">
+                    <i class="fas fa-users-slash text-[#fe676c]"></i>
+                </div>
+
+                <h2 class="text-xl font-semibold text-white mb-2">Beta is Currently Full</h2>
+                <p class="text-tv-muted text-sm mb-6">OptionLedger is in limited beta. Join the waitlist and we'll notify you when a spot opens.</p>
+
+                <!-- Success state -->
+                <template x-if="submitted">
+                    <div class="bg-green-900/20 border border-green-700/50 text-green-400 px-4 py-3 rounded-lg text-sm flex items-center justify-center gap-2">
+                        <i class="fas fa-circle-check text-xs"></i>
+                        <span>You're on the list!</span>
+                    </div>
+                </template>
+
+                <!-- Waitlist form -->
+                <template x-if="!submitted">
+                    <form @submit.prevent="handleSubmit" class="space-y-4">
+                        <!-- Error -->
+                        <div x-show="error"
+                             x-transition
+                             class="bg-red-900/20 border border-red-700/50 text-red-400 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2">
+                            <i class="fas fa-circle-exclamation text-xs"></i>
+                            <span x-text="error"></span>
+                        </div>
+
+                        <div>
+                            <input type="email" x-model="email" required
+                                   class="w-full bg-tv-bg/80 border border-tv-border text-tv-text px-3.5 py-2.5 rounded-lg input-glow text-sm"
+                                   placeholder="you@example.com">
+                        </div>
+
+                        <button type="submit" :disabled="loading"
+                                class="w-full btn-gradient disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-semibold tracking-wide">
+                            <span x-show="!loading">Join Waitlist</span>
+                            <span x-show="loading"><i class="fas fa-spinner fa-spin mr-1"></i>Please wait...</span>
+                        </button>
+                    </form>
+                </template>
+
+                <!-- Sign in link -->
+                <p class="text-tv-muted text-sm mt-5">
+                    Already have an account?
+                    <a href="/login" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign in</a>
+                </p>
+            </div>
+        </div>
+
+        <p class="text-center text-tv-muted/50 text-[11px] mt-6">&copy; 2026 OptionLedger &middot; Encrypted &amp; Private</p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('betaFullApp', () => ({
+        email: '',
+        error: '',
+        loading: false,
+        submitted: false,
+
+        async handleSubmit() {
+            this.error = '';
+            this.loading = true;
+
+            try {
+                const resp = await fetch('/api/waitlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: this.email }),
+                });
+
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => null);
+                    this.error = data?.detail || 'Something went wrong. Please try again.';
+                    return;
+                }
+
+                this.submitted = true;
+            } catch (e) {
+                this.error = 'Network error. Please try again.';
+            } finally {
+                this.loading = false;
+            }
+        },
+    }));
+});
+</script>
+</body>
+</html>

@@ -29,6 +29,9 @@ templates = Jinja2Templates(directory="static")
 # Auth is enabled when Supabase credentials are configured (URL for ES256, or legacy JWT secret for HS256)
 AUTH_ENABLED = bool(os.getenv("SUPABASE_URL") or os.getenv("SUPABASE_JWT_SECRET"))
 
+# Beta capacity gate: 0 or absent = unlimited (no gate)
+BETA_MAX_USERS = int(os.getenv("BETA_MAX_USERS", "0"))
+
 # HTTPBearer with auto_error=False so we can handle missing tokens ourselves
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -53,7 +56,7 @@ async def get_current_user_id(
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     from src.auth.jwt_validator import validate_token, AuthError
-    from src.auth.user_provisioning import ensure_user_exists
+    from src.auth.user_provisioning import ensure_user_exists, BetaFullError
 
     try:
         payload = validate_token(credentials.credentials)
@@ -63,7 +66,11 @@ async def get_current_user_id(
     uid = payload["sub"]
     email = payload.get("email")
 
-    ensure_user_exists(uid, email)
+    try:
+        ensure_user_exists(uid, email)
+    except BetaFullError:
+        raise HTTPException(status_code=403, detail="beta_full")
+
     set_current_user_id(uid)
     return uid
 

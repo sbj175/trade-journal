@@ -579,6 +579,14 @@ class PositionGroupTag(Base):
     )
 
 
+class WaitlistEntry(Base):
+    __tablename__ = "waitlist_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String, unique=True, nullable=False)
+    created_at = Column(String, server_default=func.now())
+
+
 class UserCredential(Base):
     __tablename__ = "user_credentials"
 

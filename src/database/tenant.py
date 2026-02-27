@@ -40,7 +40,7 @@ def get_current_user_id_from_context() -> str | None:
 
 # Models that are global (not tenant-scoped).  These are checked by table name
 # so we don't need to import the model classes here.
-_GLOBAL_TABLES = frozenset({"quote_cache", "users"})
+_GLOBAL_TABLES = frozenset({"quote_cache", "users", "waitlist_entries"})
 
 
 def _is_tenant_scoped(mapper):

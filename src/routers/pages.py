@@ -61,3 +61,9 @@ async def settings_page(request: Request):
 async def login_page(request: Request):
     """Serve the login page (standalone, no nav bar)"""
     return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.get("/beta-full", response_class=HTMLResponse)
+async def beta_full_page(request: Request):
+    """Serve the beta-full standalone page (no nav bar)"""
+    return templates.TemplateResponse("beta-full.html", {"request": request})
