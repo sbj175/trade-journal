@@ -244,7 +244,8 @@
                                 <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                                    @click="group._editingStrategy = true"
                                    title="Edit strategy label"></i>
-                                <i class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+                                <i x-show="groupViewMode(group) === 'positions'"
+                                   class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                                    :class="group._movingLots ? '!text-tv-blue' : ''"
                                    @click="toggleGroupMoveMode(group)"
                                    title="Move lots between groups"></i>
