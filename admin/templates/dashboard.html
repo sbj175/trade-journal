@@ -234,6 +234,11 @@
                                                 class="text-tv-red hover:underline text-xs"
                                                 title="Delete all user data"
                                             >Delete Data</button>
+                                            <button
+                                                @click="openDeleteUserModal(user)"
+                                                class="text-tv-red hover:underline text-xs"
+                                                title="Delete user and all data"
+                                            >Delete User</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -274,7 +279,7 @@
         </div>
     </template>
 
-    <!-- Delete Confirmation Modal -->
+    <!-- Delete Data Confirmation Modal -->
     <template x-if="deleteModal.open">
         <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeDeleteModal()">
             <div class="bg-tv-panel border border-tv-border rounded-lg p-6 w-full max-w-md">
@@ -303,6 +308,40 @@
                         :disabled="!canConfirmDelete"
                         class="px-4 py-2 text-sm bg-tv-red text-white rounded font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                     >Delete All Data</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Delete User Confirmation Modal -->
+    <template x-if="deleteUserModal.open">
+        <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeDeleteUserModal()">
+            <div class="bg-tv-panel border border-tv-border rounded-lg p-6 w-full max-w-md">
+                <h3 class="text-lg font-bold text-tv-red mb-2">Delete User</h3>
+                <p class="text-sm text-tv-muted mb-4">
+                    This will permanently delete the user account
+                    <strong class="text-tv-text" x-text="deleteUserModal.user?.email || deleteUserModal.user?.id"></strong>
+                    and all their trading data. This frees up a beta slot.
+                </p>
+                <p class="text-sm mb-3">
+                    Type <code class="bg-tv-bg px-1 py-0.5 rounded text-tv-red" x-text="deleteUserModal.user?.email || deleteUserModal.user?.id"></code> to confirm:
+                </p>
+                <input
+                    type="text"
+                    x-model="deleteUserModal.confirmEmail"
+                    class="w-full bg-tv-bg border border-tv-border rounded px-3 py-2 text-tv-text mb-4 focus:outline-none focus:border-tv-red"
+                    placeholder="Type to confirm"
+                >
+                <div class="flex justify-end gap-3">
+                    <button
+                        @click="closeDeleteUserModal()"
+                        class="px-4 py-2 text-sm text-tv-muted hover:text-tv-text transition-colors"
+                    >Cancel</button>
+                    <button
+                        @click="confirmDeleteUser()"
+                        :disabled="!canConfirmDeleteUser"
+                        class="px-4 py-2 text-sm bg-tv-red text-white rounded font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                    >Delete User</button>
                 </div>
             </div>
         </div>

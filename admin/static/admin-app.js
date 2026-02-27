@@ -24,6 +24,9 @@ function adminApp() {
         // Delete confirmation modal
         deleteModal: { open: false, user: null, confirmEmail: '' },
 
+        // Delete user confirmation modal
+        deleteUserModal: { open: false, user: null, confirmEmail: '' },
+
         get secret() {
             return sessionStorage.getItem('admin_secret') || '';
         },
@@ -179,6 +182,32 @@ function adminApp() {
             try {
                 await this.apiFetch(`/api/admin/users/${user.id}/data`, { method: 'DELETE' });
                 this.closeDeleteModal();
+                await this.loadData();
+            } catch (err) {
+                alert('Failed: ' + err.message);
+            }
+        },
+
+        openDeleteUserModal(user) {
+            this.deleteUserModal = { open: true, user, confirmEmail: '' };
+        },
+
+        closeDeleteUserModal() {
+            this.deleteUserModal = { open: false, user: null, confirmEmail: '' };
+        },
+
+        get canConfirmDeleteUser() {
+            if (!this.deleteUserModal.user) return false;
+            const target = this.deleteUserModal.user.email || this.deleteUserModal.user.id;
+            return this.deleteUserModal.confirmEmail === target;
+        },
+
+        async confirmDeleteUser() {
+            if (!this.canConfirmDeleteUser) return;
+            const user = this.deleteUserModal.user;
+            try {
+                await this.apiFetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+                this.closeDeleteUserModal();
                 await this.loadData();
             } catch (err) {
                 alert('Failed: ' + err.message);

@@ -24,11 +24,13 @@ from src.database.models import (
     Position,
     PositionGroup,
     PositionGroupLot,
+    PositionGroupTag,
     PositionLot,
     PositionNote,
     RawTransaction,
     StrategyTarget,
     SyncMetadata,
+    Tag,
     User,
     UserCredential,
 )
@@ -290,6 +292,7 @@ async def reset_sync(user_id: str):
 _USER_DATA_TABLES = [
     LotClosing,
     PositionGroupLot,
+    PositionGroupTag,
     PositionGroup,
     PositionLot,
     OrderChainCache,
@@ -304,6 +307,7 @@ _USER_DATA_TABLES = [
     RawTransaction,
     SyncMetadata,
     StrategyTarget,
+    Tag,
     Account,
     UserCredential,
 ]
@@ -331,6 +335,41 @@ async def delete_user_data(user_id: str):
             "Deleted all data for user %s (%s): %s",
             user_id,
             user.email,
+            totals,
+        )
+
+    return {"status": "ok", "deleted": totals}
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str):
+    """Hard-delete a user and all their trading data."""
+    with get_session(unscoped=True) as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        email = user.email
+
+        # Delete all tenant-scoped data first (FK constraints)
+        totals = {}
+        for model in _USER_DATA_TABLES:
+            count = (
+                session.query(model)
+                .filter(model.user_id == user_id)
+                .delete()
+            )
+            if count > 0:
+                totals[model.__tablename__] = count
+
+        # Delete the User row itself
+        session.delete(user)
+        totals["users"] = 1
+
+        logger.info(
+            "Deleted user %s (%s) and all data: %s",
+            user_id,
+            email,
             totals,
         )
 
