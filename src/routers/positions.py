@@ -246,6 +246,22 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                                 "derivation_type": lot.derivation_type,
                             })
 
+                # Consolidate legs with same symbol/strike/exp/direction (OPT-142)
+                consolidated = {}
+                for leg in open_option_legs:
+                    key = (leg['symbol'], leg['strike'], leg['expiration'], leg['quantity_direction'])
+                    if key in consolidated:
+                        c = consolidated[key]
+                        c['quantity'] += leg['quantity']
+                        c['cost_basis'] += leg['cost_basis']
+                    else:
+                        consolidated[key] = {**leg}
+                for c in consolidated.values():
+                    if c['quantity'] > 0:
+                        c['opening_price'] = abs(c['cost_basis']) / c['quantity'] / 100
+                    c['lot_id'] = c['symbol']
+                open_option_legs = list(consolidated.values())
+
                 roll_count = 0
                 order_ids = group_order_ids.get(gid, set())
                 for oid in order_ids:
