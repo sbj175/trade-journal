@@ -5,11 +5,12 @@ Every query uses get_session(unscoped=True) to bypass tenant filtering.
 """
 
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, text
 
-from src.database.engine import get_session
+from src.database.engine import get_engine, get_session
 from src.database.models import (
     Account,
     AccountBalance,
@@ -40,6 +41,88 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 @router.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@router.get("/db-health")
+async def db_health():
+    """PostgreSQL database health metrics."""
+    try:
+        engine = get_engine()
+    except RuntimeError as exc:
+        return {"status": "error", "error": str(exc)}
+
+    dialect = engine.dialect.name
+    if dialect != "postgresql":
+        return {"status": "error", "error": f"Unsupported dialect: {dialect}"}
+
+    try:
+        with get_session(unscoped=True) as session:
+            # Connectivity + latency
+            t0 = time.perf_counter()
+            session.execute(text("SELECT 1"))
+            query_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+            # Database size
+            row = session.execute(text(
+                "SELECT pg_database_size(current_database()), "
+                "pg_size_pretty(pg_database_size(current_database()))"
+            )).one()
+            database_size_bytes = row[0]
+            database_size = row[1]
+
+            # Schema version
+            try:
+                version_row = session.execute(text(
+                    "SELECT version_num FROM alembic_version LIMIT 1"
+                )).first()
+                schema_version = version_row[0] if version_row else None
+            except Exception:
+                schema_version = None
+
+            # Table sizes + estimated row counts
+            table_rows = session.execute(text("""
+                SELECT
+                    c.relname AS name,
+                    COALESCE(s.n_live_tup, 0) AS rows,
+                    pg_total_relation_size(c.oid) AS size_bytes,
+                    pg_size_pretty(pg_total_relation_size(c.oid)) AS size
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+                WHERE n.nspname = 'public'
+                  AND c.relkind = 'r'
+                ORDER BY pg_total_relation_size(c.oid) DESC
+            """)).all()
+
+            tables = [
+                {"name": r.name, "rows": r.rows, "size": r.size, "size_bytes": r.size_bytes}
+                for r in table_rows
+            ]
+
+        # Connection pool (accessed outside session)
+        pool = engine.pool
+        connection_pool = {
+            "pool_size": pool.size(),
+            "max_overflow": engine.pool._max_overflow,
+            "checked_out": pool.checkedout(),
+            "checked_in": pool.checkedin(),
+            "overflow": pool.overflow(),
+        }
+
+        return {
+            "status": "ok",
+            "dialect": dialect,
+            "query_latency_ms": query_latency_ms,
+            "database_size": database_size,
+            "database_size_bytes": database_size_bytes,
+            "schema_version": schema_version,
+            "connection_pool": connection_pool,
+            "tables": tables,
+        }
+
+    except Exception as exc:
+        logger.exception("DB health check failed")
+        return {"status": "error", "error": str(exc)}
 
 
 @router.get("/stats")

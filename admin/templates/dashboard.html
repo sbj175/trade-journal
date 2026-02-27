@@ -81,6 +81,103 @@
                 </div>
             </div>
 
+            <!-- Database Health -->
+            <template x-if="dbHealth && dbHealth.status !== 'error'">
+                <div class="mb-8">
+                    <div class="bg-tv-panel border border-tv-border rounded-lg overflow-hidden">
+                        <div class="px-4 py-3 border-b border-tv-border">
+                            <h2 class="text-lg font-semibold">Database Health</h2>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <!-- Top metrics row -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div class="bg-tv-bg rounded-lg p-3">
+                                    <div class="text-tv-muted text-xs mb-1">Status</div>
+                                    <div class="text-lg font-bold text-tv-green">Connected</div>
+                                    <div class="text-tv-muted text-xs mt-0.5" x-text="dbHealth.dialect"></div>
+                                </div>
+                                <div class="bg-tv-bg rounded-lg p-3">
+                                    <div class="text-tv-muted text-xs mb-1">Query Latency</div>
+                                    <div class="text-lg font-bold" x-text="dbHealth.query_latency_ms + ' ms'"></div>
+                                    <div class="text-tv-muted text-xs mt-0.5">SELECT 1 round-trip</div>
+                                </div>
+                                <div class="bg-tv-bg rounded-lg p-3">
+                                    <div class="text-tv-muted text-xs mb-1">Database Size</div>
+                                    <div class="text-lg font-bold" x-text="dbHealth.database_size"></div>
+                                    <div class="text-tv-muted text-xs mt-0.5" x-text="formatNumber(dbHealth.database_size_bytes) + ' bytes'"></div>
+                                </div>
+                                <div class="bg-tv-bg rounded-lg p-3">
+                                    <div class="text-tv-muted text-xs mb-1">Schema Version</div>
+                                    <div class="text-lg font-bold font-mono" x-text="dbHealth.schema_version || 'N/A'"></div>
+                                    <div class="text-tv-muted text-xs mt-0.5">alembic revision</div>
+                                </div>
+                            </div>
+
+                            <!-- Connection Pool -->
+                            <div x-data="{ pool: dbHealth.connection_pool }">
+                                <div class="text-sm font-medium text-tv-muted mb-2">Connection Pool</div>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
+                                        <span class="text-tv-muted text-xs">Pool Size</span>
+                                        <span class="font-mono text-sm" x-text="pool.pool_size"></span>
+                                    </div>
+                                    <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
+                                        <span class="text-tv-muted text-xs">Checked Out</span>
+                                        <span class="font-mono text-sm" x-text="pool.checked_out"></span>
+                                    </div>
+                                    <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
+                                        <span class="text-tv-muted text-xs">Checked In</span>
+                                        <span class="font-mono text-sm" x-text="pool.checked_in"></span>
+                                    </div>
+                                    <div class="bg-tv-bg rounded px-3 py-2 flex justify-between items-center">
+                                        <span class="text-tv-muted text-xs">Overflow</span>
+                                        <span class="font-mono text-sm" x-text="pool.overflow + ' / ' + pool.max_overflow"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Table Sizes -->
+                            <div>
+                                <div class="text-sm font-medium text-tv-muted mb-2">Tables</div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="border-b border-tv-border text-tv-muted text-left">
+                                                <th class="px-3 py-1.5">Table</th>
+                                                <th class="px-3 py-1.5 text-right">Rows (est.)</th>
+                                                <th class="px-3 py-1.5 text-right">Size</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="t in dbHealth.tables" :key="t.name">
+                                                <tr class="border-b border-tv-border/30">
+                                                    <td class="px-3 py-1.5 font-mono text-xs" x-text="t.name"></td>
+                                                    <td class="px-3 py-1.5 text-right" x-text="formatNumber(t.rows)"></td>
+                                                    <td class="px-3 py-1.5 text-right text-tv-muted" x-text="t.size"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- DB Health Error State -->
+            <template x-if="dbHealth && dbHealth.status === 'error'">
+                <div class="mb-8">
+                    <div class="bg-tv-panel border border-tv-border rounded-lg p-4">
+                        <h2 class="text-lg font-semibold mb-2">Database Health</h2>
+                        <div class="bg-tv-bg rounded-lg p-3 text-tv-red text-sm">
+                            <span class="font-medium">Error:</span>
+                            <span x-text="dbHealth.error"></span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
             <!-- Users Table -->
             <div class="bg-tv-panel border border-tv-border rounded-lg overflow-hidden">
                 <div class="px-4 py-3 border-b border-tv-border">

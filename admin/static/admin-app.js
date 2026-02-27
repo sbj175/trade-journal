@@ -11,6 +11,7 @@ function adminApp() {
         // Data
         stats: { total_users: 0, active_users: 0, tt_connected: 0, total_accounts: 0 },
         users: [],
+        dbHealth: null,
         loading: false,
 
         // Sorting
@@ -133,12 +134,14 @@ function adminApp() {
         async loadData() {
             this.loading = true;
             try {
-                const [statsData, usersData] = await Promise.all([
+                const [statsData, usersData, dbHealthData] = await Promise.all([
                     this.apiFetch('/api/admin/stats'),
                     this.apiFetch('/api/admin/users'),
+                    this.apiFetch('/api/admin/db-health'),
                 ]);
                 if (statsData) this.stats = statsData;
                 if (usersData) this.users = usersData;
+                if (dbHealthData) this.dbHealth = dbHealthData;
             } catch (err) {
                 console.error('Failed to load data:', err);
             } finally {
@@ -208,6 +211,18 @@ function adminApp() {
         formatNumber(n) {
             if (n == null) return '-';
             return n.toLocaleString();
+        },
+
+        formatBytes(bytes) {
+            if (bytes == null) return '-';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            let val = bytes;
+            while (val >= 1024 && i < units.length - 1) {
+                val /= 1024;
+                i++;
+            }
+            return val.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
         },
     };
 }
