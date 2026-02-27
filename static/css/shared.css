@@ -7,8 +7,8 @@
     --bg-tertiary: #334155;
     --text-primary: #f1f5f9;
     --text-secondary: #cbd5e1;
-    --accent-green: #10b981;
-    --accent-red: #ef4444;
+    --accent-green: #55aa71;
+    --accent-red: #fe676c;
     --accent-blue: #3b82f6;
     --accent-purple: #8b5cf6;
 }
@@ -182,7 +182,7 @@ html {
 
 /* Status badges */
 .status-open {
-    background-color: rgba(16, 185, 129, 0.2);
+    background-color: rgba(85, 170, 113, 0.2);
     color: var(--accent-green);
     border: 1px solid var(--accent-green);
 }

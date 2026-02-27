@@ -523,7 +523,7 @@ document.addEventListener('alpine:init', () => {
             const groups = [...this.underlyingGroups].sort((a, b) => Math.abs(b.deltaDollars) - Math.abs(a.deltaDollars)).slice(0, 15);
             const categories = groups.map(g => g.underlying);
             const values = groups.map(g => Math.round(g.deltaDollars));
-            const colors = groups.map(g => g.deltaDollars >= 0 ? '#2ec4b6' : '#f77171');
+            const colors = groups.map(g => g.deltaDollars >= 0 ? '#55aa71' : '#fe676c');
 
             const options = {
                 chart: { type: 'bar', height: 280, background: 'transparent', toolbar: { show: false },
@@ -532,7 +532,7 @@ document.addEventListener('alpine:init', () => {
                 plotOptions: {
                     bar: {
                         horizontal: true, borderRadius: 3, barHeight: '70%',
-                        colors: { ranges: [{ from: -9999999, to: -0.01, color: '#f77171' }, { from: 0, to: 9999999, color: '#2ec4b6' }] }
+                        colors: { ranges: [{ from: -9999999, to: -0.01, color: '#fe676c' }, { from: 0, to: 9999999, color: '#55aa71' }] }
                     }
                 },
                 xaxis: {
@@ -583,11 +583,11 @@ document.addEventListener('alpine:init', () => {
                     type: 'gradient',
                     gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05,
                         stops: [0, 90, 100], colorStops: [
-                            { offset: 0, color: '#2ec4b6', opacity: 0.4 },
-                            { offset: 100, color: '#2ec4b6', opacity: 0.05 }
+                            { offset: 0, color: '#55aa71', opacity: 0.4 },
+                            { offset: 100, color: '#55aa71', opacity: 0.05 }
                         ] }
                 },
-                colors: ['#2ec4b6'],
+                colors: ['#55aa71'],
                 grid: { borderColor: '#2a2e39' },
                 tooltip: {
                     theme: 'dark',
@@ -619,7 +619,7 @@ document.addEventListener('alpine:init', () => {
             const data = groups.map(g => ({
                 x: g.underlying + ' ($' + this._shortNumber(g.maxRisk) + ')',
                 y: Math.round(g.maxRisk),
-                fillColor: g.unrealizedPnl >= 0 ? '#2ec4b6' : '#f77171',
+                fillColor: g.unrealizedPnl >= 0 ? '#55aa71' : '#fe676c',
             }));
 
             const options = {
