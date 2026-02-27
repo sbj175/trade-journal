@@ -233,24 +233,15 @@ python test_expiration.py
 
 ### Sync Behavior by Page
 
-The Sync button behaves differently depending on which page you're on:
+Both the Positions and Chains pages call the same `/api/sync` endpoint:
 
-**Chains Page Sync** (`/api/sync`):
+**Sync** (`/api/sync`):
 - Fetches transactions from Tastytrade → saves to database
+- Reprocesses order chains with strategy detection (if new transactions)
 - Fetches current positions → saves to database
 - Fetches account balances → saves to database
-- Reprocesses order chains with strategy detection
-- Shows notification popup with transaction/position counts
-
-**Positions Page Sync** (`/api/sync-positions-only`):
-- Fetches current positions → saves to database
-- Fetches account balances → saves to database
-- Does NOT fetch transactions or reprocess chains (fast mode)
-
-**Implications**:
-- Syncing on Chains page updates both chains AND positions data
-- Syncing on Positions page only updates positions (faster, but new trades won't appear on Chains until you sync there)
-- The Positions page uses fast mode by default for better responsiveness
+- Runs reconciliation (positions vs lots)
+- Returns transaction/position counts and reconciliation summary
 
 ## Key Implementation Details
 
