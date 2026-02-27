@@ -23,7 +23,6 @@ document.addEventListener('alpine:init', () => {
         availableTags: [],
         tagPopoverGroup: null,
         tagSearch: '',
-        tagHighlightIndex: -1,
         async init() {
             await Auth.requireAuth();
             await Auth.requireTastytrade();
@@ -676,7 +675,6 @@ document.addEventListener('alpine:init', () => {
             if (event) event.stopPropagation();
             this.tagPopoverGroup = this.tagPopoverGroup === groupId ? null : groupId;
             this.tagSearch = '';
-            this.tagHighlightIndex = -1;
             if (this.tagPopoverGroup) {
                 this.$nextTick(() => {
                     const input = document.getElementById('ledger-tag-input-' + groupId);
@@ -688,7 +686,6 @@ document.addEventListener('alpine:init', () => {
         closeTagPopover() {
             this.tagPopoverGroup = null;
             this.tagSearch = '';
-            this.tagHighlightIndex = -1;
         },
 
         async addTagToGroup(group, nameOrTag) {
@@ -723,35 +720,16 @@ document.addEventListener('alpine:init', () => {
         },
 
         async handleTagInput(event, group) {
-            const suggestions = this.filteredTagSuggestions;
-            const hasCreateOption = this.tagSearch.trim() && !suggestions.find(t => t.name.toLowerCase() === this.tagSearch.trim().toLowerCase());
-            const totalItems = suggestions.length + (hasCreateOption ? 1 : 0);
-
-            if (event.key === 'ArrowDown') {
+            if (event.key === 'Enter') {
                 event.preventDefault();
-                this.tagHighlightIndex = this.tagHighlightIndex < totalItems - 1 ? this.tagHighlightIndex + 1 : 0;
-            } else if (event.key === 'ArrowUp') {
-                event.preventDefault();
-                this.tagHighlightIndex = this.tagHighlightIndex > 0 ? this.tagHighlightIndex - 1 : totalItems - 1;
-            } else if (event.key === 'Enter') {
-                event.preventDefault();
-                if (this.tagHighlightIndex >= 0 && this.tagHighlightIndex < suggestions.length) {
-                    await this.addTagToGroup(group, suggestions[this.tagHighlightIndex]);
-                    this.closeTagPopover();
-                } else if (this.tagHighlightIndex === suggestions.length && hasCreateOption) {
-                    await this.addTagToGroup(group, this.tagSearch.trim());
-                    this.closeTagPopover();
-                } else {
-                    const search = this.tagSearch.trim();
-                    if (!search) return;
-                    const exactMatch = suggestions.find(t => t.name.toLowerCase() === search.toLowerCase());
-                    await this.addTagToGroup(group, exactMatch || search);
-                    this.closeTagPopover();
-                }
+                const search = this.tagSearch.trim();
+                if (!search) return;
+                const exactMatch = this.filteredTagSuggestions.find(
+                    t => t.name.toLowerCase() === search.toLowerCase()
+                );
+                await this.addTagToGroup(group, exactMatch || search);
             } else if (event.key === 'Escape') {
                 this.closeTagPopover();
-            } else {
-                this.tagHighlightIndex = -1;
             }
         },
     }));
