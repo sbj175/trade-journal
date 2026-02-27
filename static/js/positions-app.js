@@ -788,6 +788,18 @@ document.addEventListener('alpine:init', () => {
             else if (badges.some(b => b.color === 'yellow' || b.color === 'orange')) borderColor = 'yellow';
             else if (badges.some(b => b.color === 'green')) borderColor = 'green';
 
+            // Net position Greeks
+            const longGreeks = this._getLegGreeks(longLeg, underlyingPrice, getStrike, getOptionType);
+            const shortGreeks = this._getLegGreeks(shortLeg, underlyingPrice, getStrike, getOptionType);
+            const longQty = Math.abs(longLeg.quantity || 0);
+            const shortQty = Math.abs(shortLeg.quantity || 0);
+
+            const netDelta = ((longGreeks.delta * longQty) + (shortGreeks.delta * -shortQty)) * 100;
+            const netGamma = ((longGreeks.gamma * longQty) + (shortGreeks.gamma * -shortQty)) * 100;
+            const netTheta = ((longGreeks.theta * longQty) + (shortGreeks.theta * -shortQty)) * 100;
+            const netVega  = ((longGreeks.vega  * longQty) + (shortGreeks.vega  * -shortQty)) * 100;
+            const greeksSource = (longGreeks.source === 'broker' || shortGreeks.source === 'broker') ? 'broker' : (longGreeks.source === 'bs' || shortGreeks.source === 'bs') ? 'bs' : 'none';
+
             let suggestion = null;
             let urgency = 'low';
             if (parseFloat(pctMaxProfit) >= profitTarget) {
@@ -806,6 +818,7 @@ document.addEventListener('alpine:init', () => {
                 deltaSaturation, proximityToShort, convexity, isCredit,
                 maxProfit: formatNumber(maxProfit, 0),
                 maxLoss: formatNumber(maxLoss, 0),
+                netDelta, netGamma, netTheta, netVega, greeksSource,
                 badges, borderColor, suggestion, urgency
             };
         },
@@ -814,6 +827,54 @@ document.addEventListener('alpine:init', () => {
             if (T <= 0 || sigma <= 0) return isCall ? (S > K ? 1 : 0) : (S < K ? -1 : 0);
             const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
             return isCall ? this._normalCDF(d1) : this._normalCDF(d1) - 1;
+        },
+        _normalPDF(x) {
+            return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
+        },
+        _bsGreeks(S, K, T, r, sigma, isCall) {
+            if (T <= 0.0001 || sigma <= 0 || S <= 0 || K <= 0) {
+                return { delta: 0, gamma: 0, theta: 0, vega: 0 };
+            }
+            const sqrtT = Math.sqrt(T);
+            const d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * sqrtT);
+            const d2 = d1 - sigma * sqrtT;
+            const nd1 = this._normalCDF(d1);
+            const phid1 = this._normalPDF(d1);
+            const Kert = K * Math.exp(-r * T);
+
+            const delta = isCall ? nd1 : nd1 - 1;
+            const gamma = phid1 / (S * sigma * sqrtT);
+            const theta = isCall
+                ? (-(S * phid1 * sigma) / (2 * sqrtT) - r * Kert * this._normalCDF(d2)) / 365
+                : (-(S * phid1 * sigma) / (2 * sqrtT) + r * Kert * this._normalCDF(-d2)) / 365;
+            const vega = S * phid1 * sqrtT / 100;
+
+            return { delta, gamma, theta, vega };
+        },
+        _getLegGreeks(leg, underlyingPrice, getStrike, getOptionType) {
+            const optionQuote = this.underlyingQuotes[leg.symbol];
+
+            // Prefer broker Greeks from DXFeed streaming
+            if (optionQuote && optionQuote.delta != null) {
+                return {
+                    delta: optionQuote.delta,
+                    gamma: optionQuote.gamma || 0,
+                    theta: optionQuote.theta || 0,
+                    vega: optionQuote.vega || 0,
+                    source: 'broker',
+                };
+            }
+
+            // Fallback: Black-Scholes
+            const strike = getStrike(leg);
+            const isCall = getOptionType(leg) === 'C';
+            const dte = this.getMinDTE({ positions: [leg] }) || 0;
+            if (!strike || dte <= 0) return { delta: 0, gamma: 0, theta: 0, vega: 0, source: 'none' };
+
+            const T = Math.max(dte, 0.5) / 365;
+            const iv = this._getEffectiveIV(leg.underlying || '');
+            const greeks = this._bsGreeks(underlyingPrice, strike, T, 0.045, iv, isCall);
+            return { ...greeks, source: 'bs' };
         },
         _normalCDF(x) {
             const t = 1 / (1 + 0.2316419 * Math.abs(x));

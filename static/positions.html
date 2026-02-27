@@ -505,7 +505,8 @@
                                                   }"
                                                   x-text="group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity')"></span>
                                         </div>
-                                        <div class="grid grid-cols-6 gap-2 text-xs mb-2">
+                                        <!-- Row 1: P&L Status -->
+                                        <div class="grid grid-cols-4 gap-2 text-xs mb-2">
                                             <div class="text-center">
                                                 <div class="text-tv-muted">% Max Profit</div>
                                                 <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxProfit) >= 0 ? 'text-tv-green' : 'text-tv-red'"
@@ -522,9 +523,34 @@
                                                      x-text="group.rollAnalysis.rewardToRisk"></div>
                                             </div>
                                             <div class="text-center">
-                                                <div class="text-tv-muted">Delta Sat.</div>
-                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'"
-                                                     x-text="group.rollAnalysis.deltaSaturation + '%'"></div>
+                                                <div class="text-tv-muted">Max P / Max L</div>
+                                                <div class="font-medium text-tv-text"
+                                                     x-text="'$' + group.rollAnalysis.maxProfit + ' / $' + group.rollAnalysis.maxLoss"></div>
+                                            </div>
+                                        </div>
+                                        <!-- Row 2: Greeks + Context -->
+                                        <div class="grid grid-cols-6 gap-2 text-xs border-t border-tv-border/20 pt-2 mb-2">
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Net Delta</div>
+                                                <div class="font-medium"
+                                                     :class="group.rollAnalysis.netDelta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netDelta < -0.01 ? 'text-tv-red' : 'text-tv-text'"
+                                                     x-text="group.rollAnalysis.netDelta.toFixed(2)"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Theta/Day</div>
+                                                <div class="font-medium"
+                                                     :class="group.rollAnalysis.netTheta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netTheta < -0.01 ? 'text-tv-red' : 'text-tv-text'"
+                                                     x-text="'$' + group.rollAnalysis.netTheta.toFixed(2)"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Gamma</div>
+                                                <div class="font-medium text-tv-text"
+                                                     x-text="group.rollAnalysis.netGamma.toFixed(2)"></div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-tv-muted">Vega</div>
+                                                <div class="font-medium text-tv-text"
+                                                     x-text="group.rollAnalysis.netVega.toFixed(2)"></div>
                                             </div>
                                             <div class="text-center">
                                                 <div class="text-tv-muted">Near Short</div>
@@ -532,21 +558,29 @@
                                                      x-text="group.rollAnalysis.proximityToShort + '%'"></div>
                                             </div>
                                             <div class="text-center">
-                                                <div class="text-tv-muted">Max P / Max L</div>
-                                                <div class="font-medium text-tv-text"
-                                                     x-text="'$' + group.rollAnalysis.maxProfit + ' / $' + group.rollAnalysis.maxLoss"></div>
+                                                <div class="text-tv-muted">Delta Sat.</div>
+                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'"
+                                                     x-text="group.rollAnalysis.deltaSaturation + '%'"></div>
                                             </div>
                                         </div>
-                                        <template x-if="group.rollAnalysis.suggestion">
-                                            <div class="mt-2 pl-3 py-2 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r"
-                                                 :class="{
-                                                     'border-red-500': group.rollAnalysis.urgency === 'high',
-                                                     'border-yellow-500': group.rollAnalysis.urgency === 'medium',
-                                                     'border-tv-blue': group.rollAnalysis.urgency === 'low'
-                                                 }">
-                                                <span x-text="group.rollAnalysis.suggestion"></span>
-                                            </div>
-                                        </template>
+                                        <!-- Footer: Suggestion + AI Insight placeholder -->
+                                        <div class="flex items-start justify-between gap-2">
+                                            <template x-if="group.rollAnalysis.suggestion">
+                                                <div class="flex-1 pl-3 py-2 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r"
+                                                     :class="{
+                                                         'border-red-500': group.rollAnalysis.urgency === 'high',
+                                                         'border-yellow-500': group.rollAnalysis.urgency === 'medium',
+                                                         'border-tv-blue': group.rollAnalysis.urgency === 'low'
+                                                     }">
+                                                    <span x-text="group.rollAnalysis.suggestion"></span>
+                                                </div>
+                                            </template>
+                                            <button disabled
+                                                    class="ml-auto text-xs px-2 py-1 rounded border border-tv-border/50 text-tv-muted cursor-not-allowed shrink-0"
+                                                    title="Coming soon">
+                                                <i class="fas fa-wand-magic-sparkles mr-1"></i>AI Insight
+                                            </button>
+                                        </div>
                                     </div>
                                 </template>
                             </div>
