@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, strategy_detector, get_current_user_id
+from src.database.db_manager import DatabaseManager
+from src.models.strategy_detector import StrategyDetector
+from src.dependencies import get_db, get_strategy_detector, get_current_user_id
 from src.pipeline.order_assembler import assemble_orders
 from src.pipeline.chain_graph import derive_chains
 from src.services.sync_service import reconcile_positions_vs_chains
@@ -19,7 +21,7 @@ async def get_reconciliation(user_id: str = Depends(get_current_user_id)):
 
 
 @router.get("/api/debug/strategy/{chain_id}")
-async def debug_strategy(chain_id: str, user_id: str = Depends(get_current_user_id)):
+async def debug_strategy(chain_id: str, db: DatabaseManager = Depends(get_db), strategy_detector: StrategyDetector = Depends(get_strategy_detector), user_id: str = Depends(get_current_user_id)):
     """Debug strategy detection for a specific chain"""
     raw_transactions = db.get_raw_transactions()
     assembly = assemble_orders(raw_transactions)
@@ -71,7 +73,7 @@ async def debug_strategy(chain_id: str, user_id: str = Depends(get_current_user_
 
 
 @router.get("/api/debug/cache-path/{chain_id}")
-async def debug_cache_path(chain_id: str, user_id: str = Depends(get_current_user_id)):
+async def debug_cache_path(chain_id: str, db: DatabaseManager = Depends(get_db), strategy_detector: StrategyDetector = Depends(get_strategy_detector), user_id: str = Depends(get_current_user_id)):
     """Debug strategy detection using the EXACT same code path as cache update"""
     raw_transactions = db.get_raw_transactions()
     assembly = assemble_orders(raw_transactions)
@@ -103,7 +105,7 @@ async def debug_cache_path(chain_id: str, user_id: str = Depends(get_current_use
 
 
 @router.get("/api/debug/cache-update/{chain_id}")
-async def debug_cache_update(chain_id: str, user_id: str = Depends(get_current_user_id)):
+async def debug_cache_update(chain_id: str, db: DatabaseManager = Depends(get_db), strategy_detector: StrategyDetector = Depends(get_strategy_detector), user_id: str = Depends(get_current_user_id)):
     """Debug the full cache update process for a specific chain"""
     try:
         raw_transactions = db.get_raw_transactions()

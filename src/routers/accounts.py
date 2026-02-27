@@ -8,13 +8,14 @@ from sqlalchemy import func
 
 from src.database.models import AccountBalance
 from src.api.tastytrade_client import TastytradeClient
-from src.dependencies import db, connection_manager, get_current_user_id, get_tastytrade_client
+from src.database.db_manager import DatabaseManager
+from src.dependencies import get_db, get_current_user_id, get_tastytrade_client
 
 router = APIRouter()
 
 
 @router.get("/api/accounts")
-async def get_accounts(user_id: str = Depends(get_current_user_id)):
+async def get_accounts(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Get all available accounts"""
     try:
         accounts = db.get_accounts()
@@ -25,7 +26,7 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
 
 
 @router.get("/api/account-balances")
-async def get_account_balances(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+async def get_account_balances(account_number: Optional[str] = None, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Get account balances for specified account or all accounts"""
     try:
         with db.get_session() as session:

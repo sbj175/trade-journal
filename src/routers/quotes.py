@@ -6,13 +6,15 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from loguru import logger
 
-from src.dependencies import db, connection_manager, get_current_user_id, AUTH_ENABLED
+from src.database.db_manager import DatabaseManager
+from src.utils.auth_manager import ConnectionManager
+from src.dependencies import get_db, get_connection_manager, get_current_user_id, AUTH_ENABLED
 
 router = APIRouter()
 
 
 @router.get("/api/quotes")
-async def get_market_quotes(symbols: str, refresh: bool = False, request: Request = None, user_id: str = Depends(get_current_user_id)):
+async def get_market_quotes(symbols: str, refresh: bool = False, request: Request = None, db: DatabaseManager = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager), user_id: str = Depends(get_current_user_id)):
     """Get current market quotes for symbols (cached or fresh)"""
     try:
         symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
@@ -81,7 +83,7 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
 
 
 @router.websocket("/ws/quotes")
-async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None)):
+async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None), db: DatabaseManager = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """WebSocket endpoint for streaming live quotes"""
     # Validate JWT for WebSocket if auth is enabled
     payload = None

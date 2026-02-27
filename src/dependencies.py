@@ -26,6 +26,39 @@ pnl_calculator = PnLCalculator(db, lot_manager)
 connection_manager = ConnectionManager()
 templates = Jinja2Templates(directory="static")
 
+
+# ---------------------------------------------------------------------------
+# DI provider functions — return the module-level singletons so routers can
+# declare what they need via ``Depends(get_db)`` etc.
+# ---------------------------------------------------------------------------
+
+def get_db() -> DatabaseManager:
+    return db
+
+
+def get_order_manager() -> OrderManager:
+    return order_manager
+
+
+def get_lot_manager() -> LotManager:
+    return lot_manager
+
+
+def get_order_processor() -> OrderProcessor:
+    return order_processor
+
+
+def get_strategy_detector() -> StrategyDetector:
+    return strategy_detector
+
+
+def get_pnl_calculator() -> PnLCalculator:
+    return pnl_calculator
+
+
+def get_connection_manager() -> ConnectionManager:
+    return connection_manager
+
 # Auth is enabled when Supabase credentials are configured (URL for ES256, or legacy JWT secret for HS256)
 AUTH_ENABLED = bool(os.getenv("SUPABASE_URL") or os.getenv("SUPABASE_JWT_SECRET"))
 

@@ -5,14 +5,15 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.database.models import Tag, PositionGroupTag
-from src.dependencies import db, get_current_user_id
+from src.database.db_manager import DatabaseManager
+from src.dependencies import get_db, get_current_user_id
 from src.schemas import TagCreate, TagUpdate
 
 router = APIRouter()
 
 
 @router.get("/api/tags")
-async def list_tags(user_id: str = Depends(get_current_user_id)):
+async def list_tags(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """List all tags for the current user."""
     with db.get_session() as session:
         rows = session.query(Tag).order_by(Tag.name.asc()).all()
@@ -23,7 +24,7 @@ async def list_tags(user_id: str = Depends(get_current_user_id)):
 
 
 @router.post("/api/tags")
-async def create_tag(body: TagCreate, user_id: str = Depends(get_current_user_id)):
+async def create_tag(body: TagCreate, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Create a new tag."""
     name = body.name.strip()
     if not name:
@@ -41,7 +42,7 @@ async def create_tag(body: TagCreate, user_id: str = Depends(get_current_user_id
 
 
 @router.put("/api/tags/{tag_id}")
-async def update_tag(tag_id: int, body: TagUpdate, user_id: str = Depends(get_current_user_id)):
+async def update_tag(tag_id: int, body: TagUpdate, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Update a tag's name or color."""
     with db.get_session() as session:
         tag = session.query(Tag).filter(Tag.id == tag_id).first()
@@ -58,7 +59,7 @@ async def update_tag(tag_id: int, body: TagUpdate, user_id: str = Depends(get_cu
 
 
 @router.delete("/api/tags/{tag_id}")
-async def delete_tag(tag_id: int, user_id: str = Depends(get_current_user_id)):
+async def delete_tag(tag_id: int, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Delete a tag and all its associations."""
     with db.get_session() as session:
         tag = session.query(Tag).filter(Tag.id == tag_id).first()

@@ -8,7 +8,10 @@ from loguru import logger
 
 from src.database.models import OrderChain
 from src.api.tastytrade_client import TastytradeClient
-from src.dependencies import db, connection_manager, order_manager, lot_manager, get_current_user_id, get_tastytrade_client
+from src.database.db_manager import DatabaseManager
+from src.models.order_models import OrderManager
+from src.models.lot_manager import LotManager
+from src.dependencies import get_db, get_order_manager, get_lot_manager, get_current_user_id, get_tastytrade_client
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
@@ -20,7 +23,7 @@ router = APIRouter()
 
 
 @router.post("/api/sync")
-async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_client), user_id: str = Depends(get_current_user_id)):
+async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_client), db: DatabaseManager = Depends(get_db), order_manager: OrderManager = Depends(get_order_manager), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Unified sync endpoint with smart date range calculation"""
     try:
 
@@ -133,7 +136,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
 
 
 @router.post("/api/migrate-realized-pnl")
-async def migrate_realized_pnl(user_id: str = Depends(get_current_user_id)):
+async def migrate_realized_pnl(db: DatabaseManager = Depends(get_db), order_manager: OrderManager = Depends(get_order_manager), user_id: str = Depends(get_current_user_id)):
     """One-time migration to populate realized_pnl for existing chains"""
     try:
         logger.info("Starting realized P&L migration...")
@@ -164,6 +167,8 @@ async def migrate_realized_pnl(user_id: str = Depends(get_current_user_id)):
 @router.post("/api/sync/initial")
 async def initial_sync(
     tastytrade: TastytradeClient = Depends(get_tastytrade_client),
+    db: DatabaseManager = Depends(get_db),
+    lot_manager: LotManager = Depends(get_lot_manager),
     user_id: str = Depends(get_current_user_id),
     start_date: Optional[str] = Body(None, embed=True),
 ):
@@ -286,7 +291,7 @@ async def initial_sync(
 
 
 @router.post("/api/reprocess-chains")
-async def reprocess_chains(user_id: str = Depends(get_current_user_id)):
+async def reprocess_chains(db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Reprocess orders and chains from existing raw transactions"""
     try:
         logger.info("Starting chain reprocessing from database")

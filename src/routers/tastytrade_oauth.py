@@ -17,10 +17,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from loguru import logger
 
+from src.database.db_manager import DatabaseManager
+from src.utils.auth_manager import ConnectionManager
 from src.dependencies import (
     AUTH_ENABLED,
-    db,
-    connection_manager,
+    get_db,
+    get_connection_manager,
     get_current_user_id,
 )
 from src.utils.credential_encryption import encrypt_credential, decrypt_credential
@@ -77,7 +79,7 @@ def _decode_state(state: str) -> dict:
 
 
 @router.post("/api/auth/tastytrade/authorize")
-async def tastytrade_authorize(user_id: str = Depends(get_current_user_id)):
+async def tastytrade_authorize(connection_manager: ConnectionManager = Depends(get_connection_manager), user_id: str = Depends(get_current_user_id)):
     """Build Tastytrade authorization URL and return it to the frontend."""
     if not AUTH_ENABLED:
         raise HTTPException(
@@ -112,6 +114,8 @@ async def tastytrade_callback(
     code: str = Query(None),
     state: str = Query(None),
     error: str = Query(None),
+    db: DatabaseManager = Depends(get_db),
+    connection_manager: ConnectionManager = Depends(get_connection_manager),
 ):
     """Handle the redirect from Tastytrade after user authorizes.
 
@@ -243,7 +247,7 @@ async def tastytrade_callback(
 
 
 @router.post("/api/auth/tastytrade/disconnect")
-async def tastytrade_disconnect(user_id: str = Depends(get_current_user_id)):
+async def tastytrade_disconnect(db: DatabaseManager = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager), user_id: str = Depends(get_current_user_id)):
     """Remove Tastytrade credentials and disconnect."""
     if not AUTH_ENABLED:
         raise HTTPException(

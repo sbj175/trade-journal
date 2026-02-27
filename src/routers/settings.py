@@ -7,21 +7,23 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
-from src.dependencies import db, connection_manager, get_current_user_id, AUTH_ENABLED
+from src.database.db_manager import DatabaseManager
+from src.utils.auth_manager import ConnectionManager
+from src.dependencies import get_db, get_connection_manager, get_current_user_id, AUTH_ENABLED
 from src.schemas import StrategyTarget, CredentialUpdate
 
 router = APIRouter()
 
 
 @router.get("/api/settings/targets")
-async def get_strategy_targets(user_id: str = Depends(get_current_user_id)):
+async def get_strategy_targets(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Get all strategy P&L targets"""
     targets = db.get_strategy_targets()
     return targets
 
 
 @router.post("/api/settings/targets")
-async def save_strategy_targets(targets: List[StrategyTarget], user_id: str = Depends(get_current_user_id)):
+async def save_strategy_targets(targets: List[StrategyTarget], db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Save strategy P&L targets"""
     target_dicts = [t.model_dump() for t in targets]
     success = db.save_strategy_targets(target_dicts)
@@ -31,7 +33,7 @@ async def save_strategy_targets(targets: List[StrategyTarget], user_id: str = De
 
 
 @router.post("/api/settings/targets/reset")
-async def reset_strategy_targets(user_id: str = Depends(get_current_user_id)):
+async def reset_strategy_targets(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Reset strategy targets to defaults"""
     success = db.reset_strategy_targets()
     if not success:
@@ -40,7 +42,7 @@ async def reset_strategy_targets(user_id: str = Depends(get_current_user_id)):
 
 
 @router.get("/api/settings/credentials")
-async def get_credentials_status(user_id: str = Depends(get_current_user_id)):
+async def get_credentials_status(db: DatabaseManager = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager), user_id: str = Depends(get_current_user_id)):
     """Check if OAuth credentials are configured (never expose actual secrets)"""
     if AUTH_ENABLED:
         from src.database.models import UserCredential
@@ -54,7 +56,7 @@ async def get_credentials_status(user_id: str = Depends(get_current_user_id)):
 
 
 @router.post("/api/settings/credentials")
-async def save_credentials(creds: CredentialUpdate, user_id: str = Depends(get_current_user_id)):
+async def save_credentials(creds: CredentialUpdate, db: DatabaseManager = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager), user_id: str = Depends(get_current_user_id)):
     """Save OAuth credentials — to DB (auth enabled) or .env (auth disabled)"""
     try:
         if AUTH_ENABLED:
@@ -142,7 +144,7 @@ async def save_credentials(creds: CredentialUpdate, user_id: str = Depends(get_c
 
 
 @router.delete("/api/settings/credentials")
-async def delete_credentials(user_id: str = Depends(get_current_user_id)):
+async def delete_credentials(db: DatabaseManager = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager), user_id: str = Depends(get_current_user_id)):
     """Remove stored OAuth credentials (auth-enabled only)"""
     if not AUTH_ENABLED:
         raise HTTPException(status_code=400, detail="Credential deletion only available in multi-user mode")

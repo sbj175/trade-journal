@@ -10,7 +10,9 @@ from loguru import logger
 from sqlalchemy import func
 
 from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
-from src.dependencies import db, lot_manager, get_current_user_id
+from src.database.db_manager import DatabaseManager
+from src.models.lot_manager import LotManager
+from src.dependencies import get_db, get_lot_manager, get_current_user_id
 from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup, GroupTagAdd
 from src.services.ledger_service import seed_position_groups, _refresh_group_status
 
@@ -18,7 +20,7 @@ router = APIRouter()
 
 
 @router.get("/api/ledger")
-async def get_ledger(account_number: str = '', underlying: str = '', user_id: str = Depends(get_current_user_id)):
+async def get_ledger(account_number: str = '', underlying: str = '', db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Main Ledger data endpoint — returns position groups with lots and derived orders."""
 
     # Auto-seed if position_groups is empty
@@ -183,14 +185,14 @@ async def get_ledger(account_number: str = '', underlying: str = '', user_id: st
 
 
 @router.post("/api/ledger/seed")
-async def seed_ledger(user_id: str = Depends(get_current_user_id)):
+async def seed_ledger(db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Explicitly seed position groups from existing chains."""
     count = seed_position_groups()
     return {"message": f"Seeded {count} position groups", "groups_created": count}
 
 
 @router.put("/api/ledger/groups/{group_id}")
-async def update_ledger_group(group_id: str, body: LedgerGroupUpdate, user_id: str = Depends(get_current_user_id)):
+async def update_ledger_group(group_id: str, body: LedgerGroupUpdate, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Update group metadata (strategy label)."""
     with db.get_session() as session:
         row = session.query(PositionGroup).filter(
@@ -207,7 +209,7 @@ async def update_ledger_group(group_id: str, body: LedgerGroupUpdate, user_id: s
 
 
 @router.post("/api/ledger/move-lots")
-async def move_lots(body: LedgerMoveLots, user_id: str = Depends(get_current_user_id)):
+async def move_lots(body: LedgerMoveLots, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Move lots between position groups. All lots and target must share underlying + account."""
     if not body.transaction_ids:
         raise HTTPException(status_code=400, detail="No transaction_ids provided")
@@ -262,7 +264,7 @@ async def move_lots(body: LedgerMoveLots, user_id: str = Depends(get_current_use
 
 
 @router.post("/api/ledger/groups")
-async def create_ledger_group(body: LedgerCreateGroup, user_id: str = Depends(get_current_user_id)):
+async def create_ledger_group(body: LedgerCreateGroup, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Create a new empty position group."""
     group_id = str(_uuid.uuid4())
 
@@ -279,7 +281,7 @@ async def create_ledger_group(body: LedgerCreateGroup, user_id: str = Depends(ge
 
 
 @router.delete("/api/ledger/groups/{group_id}")
-async def delete_ledger_group(group_id: str, user_id: str = Depends(get_current_user_id)):
+async def delete_ledger_group(group_id: str, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Delete a group. Orphaned lots become unassigned (picked up by next seed)."""
     with db.get_session() as session:
         row = session.query(PositionGroup).filter(
@@ -294,7 +296,7 @@ async def delete_ledger_group(group_id: str, user_id: str = Depends(get_current_
 
 
 @router.post("/api/ledger/groups/{group_id}/tags")
-async def add_tag_to_group(group_id: str, body: GroupTagAdd, user_id: str = Depends(get_current_user_id)):
+async def add_tag_to_group(group_id: str, body: GroupTagAdd, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Add a tag to a group. Accepts tag_id or name (find-or-create)."""
     with db.get_session() as session:
         # Resolve tag
@@ -326,7 +328,7 @@ async def add_tag_to_group(group_id: str, body: GroupTagAdd, user_id: str = Depe
 
 
 @router.delete("/api/ledger/groups/{group_id}/tags/{tag_id}")
-async def remove_tag_from_group(group_id: str, tag_id: int, user_id: str = Depends(get_current_user_id)):
+async def remove_tag_from_group(group_id: str, tag_id: int, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Remove a tag association from a group."""
     with db.get_session() as session:
         deleted = session.query(PositionGroupTag).filter(

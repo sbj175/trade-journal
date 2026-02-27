@@ -7,14 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from src.database.models import OrderChain
-from src.dependencies import db, order_manager, get_current_user_id
+from src.database.db_manager import DatabaseManager
+from src.models.order_models import OrderManager
+from src.dependencies import get_db, get_order_manager, get_current_user_id
 from src.services.report_service import calculate_max_risk_reward
 
 router = APIRouter()
 
 
 @router.get("/api/dashboard")
-async def get_dashboard_data(account_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+async def get_dashboard_data(account_number: Optional[str] = None, db: DatabaseManager = Depends(get_db), order_manager: OrderManager = Depends(get_order_manager), user_id: str = Depends(get_current_user_id)):
     """Get dashboard summary data using the new order-based system"""
     try:
         chains = order_manager.get_order_chains(account_number=account_number)
@@ -126,7 +128,7 @@ async def get_dashboard_data(account_number: Optional[str] = None, user_id: str 
 
 
 @router.get("/api/performance/monthly")
-async def get_monthly_performance(year: int = None, user_id: str = Depends(get_current_user_id)):
+async def get_monthly_performance(year: int = None, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Get monthly performance data"""
     try:
         if year is None:
@@ -140,7 +142,7 @@ async def get_monthly_performance(year: int = None, user_id: str = Depends(get_c
 
 
 @router.get("/api/reports/strategies")
-async def get_available_strategies(user_id: str = Depends(get_current_user_id)):
+async def get_available_strategies(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Get list of strategies that have been used in closed trades"""
     try:
         with db.get_session() as session:
@@ -163,6 +165,7 @@ async def get_performance_report(
     account_number: Optional[str] = None,
     days: str = "90",
     strategies: str = "",
+    db: DatabaseManager = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     """Get performance report data for closed trades"""
