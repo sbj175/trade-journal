@@ -505,62 +505,71 @@
                                                   }"
                                                   x-text="group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity')"></span>
                                         </div>
-                                        <!-- Row 1: P&L Status -->
-                                        <div class="grid grid-cols-4 gap-2 text-xs mb-2">
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">% Max Profit</div>
-                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxProfit) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                     x-text="group.rollAnalysis.pctMaxProfit + '%'"></div>
+                                        <!-- Compact 3-column layout -->
+                                        <div class="flex gap-6 text-xs mb-2">
+                                            <!-- P&L Status -->
+                                            <div class="space-y-1">
+                                                <div class="text-[10px] text-tv-muted uppercase tracking-wider font-semibold mb-1.5">P&L Status</div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">% Max Profit</span>
+                                                    <span class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxProfit) >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="group.rollAnalysis.pctMaxProfit + '%'"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">% Max Loss</span>
+                                                    <span class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxLoss) > 0 ? 'text-tv-red' : 'text-tv-muted'"
+                                                          x-text="group.rollAnalysis.pctMaxLoss + '%'"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Reward:Risk</span>
+                                                    <span class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'"
+                                                          x-text="group.rollAnalysis.rewardToRisk"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Max P / L</span>
+                                                    <span class="font-medium text-tv-text"
+                                                          x-text="'$' + group.rollAnalysis.maxProfit + ' / $' + group.rollAnalysis.maxLoss"></span>
+                                                </div>
                                             </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">% Max Loss</div>
-                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxLoss) > 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                                     x-text="group.rollAnalysis.pctMaxLoss + '%'"></div>
+                                            <!-- Greeks -->
+                                            <div class="space-y-1 border-l border-tv-border/20 pl-6">
+                                                <div class="text-[10px] text-tv-muted uppercase tracking-wider font-semibold mb-1.5">Greeks</div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Net Delta</span>
+                                                    <span class="font-medium"
+                                                          :class="group.rollAnalysis.netDelta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netDelta < -0.01 ? 'text-tv-red' : 'text-tv-text'"
+                                                          x-text="group.rollAnalysis.netDelta.toFixed(2)"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Theta/Day</span>
+                                                    <span class="font-medium"
+                                                          :class="group.rollAnalysis.netTheta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netTheta < -0.01 ? 'text-tv-red' : 'text-tv-text'"
+                                                          x-text="'$' + group.rollAnalysis.netTheta.toFixed(2)"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Gamma</span>
+                                                    <span class="font-medium text-tv-text"
+                                                          x-text="group.rollAnalysis.netGamma.toFixed(2)"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Vega</span>
+                                                    <span class="font-medium text-tv-text"
+                                                          x-text="group.rollAnalysis.netVega.toFixed(2)"></span>
+                                                </div>
                                             </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Reward:Risk</div>
-                                                <div class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'"
-                                                     x-text="group.rollAnalysis.rewardToRisk"></div>
-                                            </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Max P / Max L</div>
-                                                <div class="font-medium text-tv-text"
-                                                     x-text="'$' + group.rollAnalysis.maxProfit + ' / $' + group.rollAnalysis.maxLoss"></div>
-                                            </div>
-                                        </div>
-                                        <!-- Row 2: Greeks + Context -->
-                                        <div class="grid grid-cols-6 gap-2 text-xs border-t border-tv-border/20 pt-2 mb-2">
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Net Delta</div>
-                                                <div class="font-medium"
-                                                     :class="group.rollAnalysis.netDelta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netDelta < -0.01 ? 'text-tv-red' : 'text-tv-text'"
-                                                     x-text="group.rollAnalysis.netDelta.toFixed(2)"></div>
-                                            </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Theta/Day</div>
-                                                <div class="font-medium"
-                                                     :class="group.rollAnalysis.netTheta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netTheta < -0.01 ? 'text-tv-red' : 'text-tv-text'"
-                                                     x-text="'$' + group.rollAnalysis.netTheta.toFixed(2)"></div>
-                                            </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Gamma</div>
-                                                <div class="font-medium text-tv-text"
-                                                     x-text="group.rollAnalysis.netGamma.toFixed(2)"></div>
-                                            </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Vega</div>
-                                                <div class="font-medium text-tv-text"
-                                                     x-text="group.rollAnalysis.netVega.toFixed(2)"></div>
-                                            </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Near Short</div>
-                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.proximityToShort) < 3 ? 'text-yellow-400' : 'text-tv-text'"
-                                                     x-text="group.rollAnalysis.proximityToShort + '%'"></div>
-                                            </div>
-                                            <div class="text-center">
-                                                <div class="text-tv-muted">Delta Sat.</div>
-                                                <div class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'"
-                                                     x-text="group.rollAnalysis.deltaSaturation + '%'"></div>
+                                            <!-- Context -->
+                                            <div class="space-y-1 border-l border-tv-border/20 pl-6">
+                                                <div class="text-[10px] text-tv-muted uppercase tracking-wider font-semibold mb-1.5">Context</div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Near Short</span>
+                                                    <span class="font-medium" :class="parseFloat(group.rollAnalysis.proximityToShort) < 3 ? 'text-yellow-400' : 'text-tv-text'"
+                                                          x-text="group.rollAnalysis.proximityToShort + '%'"></span>
+                                                </div>
+                                                <div class="flex justify-between gap-3">
+                                                    <span class="text-tv-muted">Delta Sat.</span>
+                                                    <span class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'"
+                                                          x-text="group.rollAnalysis.deltaSaturation + '%'"></span>
+                                                </div>
                                             </div>
                                         </div>
                                         <!-- Footer: Suggestion + AI Insight placeholder -->

@@ -773,9 +773,10 @@ document.addEventListener('alpine:init', () => {
 
             let convexity;
             if (isCredit) {
-                const lossRatio = parseFloat(pctMaxLoss);
-                if (lossRatio < 50) convexity = 'Low Risk';
-                else if (lossRatio < 100) convexity = 'Elevated Risk';
+                // Use credit-loss metric: how much of the credit received has been given back
+                const creditLoss = currentPnL < 0 ? Math.abs(parseFloat(pctMaxProfit)) : 0;
+                if (creditLoss < 50) convexity = 'Low Risk';
+                else if (creditLoss < 100) convexity = 'Elevated Risk';
                 else convexity = 'High Risk';
             } else {
                 if (rewardToRiskRaw > 2) convexity = 'High';
