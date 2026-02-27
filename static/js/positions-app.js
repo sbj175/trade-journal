@@ -728,6 +728,20 @@ document.addEventListener('alpine:init', () => {
             const pctMaxProfit = ((currentPnL / maxProfit) * 100).toFixed(1);
             const pctMaxLoss = currentPnL < 0 ? ((Math.abs(currentPnL) / maxLoss) * 100).toFixed(1) : '0.0';
 
+            // Single adaptive P&L metric for display
+            let pnlLabel, pnlValue, pnlPositive;
+            if (currentPnL >= 0) {
+                pnlLabel = 'Profit Captured';
+                pnlValue = pctMaxProfit + '%';
+                pnlPositive = true;
+            } else {
+                pnlLabel = 'Loss Incurred';
+                // Use same scale as loss-limit alert: credit spreads = % of credit given back, debit = % of debit lost
+                const lossMetric = isCredit ? Math.abs(parseFloat(pctMaxProfit)) : parseFloat(pctMaxLoss);
+                pnlValue = lossMetric.toFixed(1) + '%';
+                pnlPositive = false;
+            }
+
             const rewardRemaining = maxProfit - currentPnL;
             const riskRemaining = maxLoss + currentPnL;
             const rewardToRiskRaw = riskRemaining > 0 ? rewardRemaining / riskRemaining : 99;
@@ -815,6 +829,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             return {
+                pnlLabel, pnlValue, pnlPositive,
                 pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
                 deltaSaturation, proximityToShort, convexity, isCredit,
                 maxProfit: formatNumber(maxProfit, 0),

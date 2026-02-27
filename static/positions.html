@@ -511,14 +511,9 @@
                                             <div class="space-y-1">
                                                 <div class="text-[10px] text-tv-muted uppercase tracking-wider font-semibold mb-1.5">P&L Status</div>
                                                 <div class="flex justify-between gap-3">
-                                                    <span class="text-tv-muted">% Max Profit</span>
-                                                    <span class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxProfit) >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                                                          x-text="group.rollAnalysis.pctMaxProfit + '%'"></span>
-                                                </div>
-                                                <div class="flex justify-between gap-3">
-                                                    <span class="text-tv-muted">% Max Loss</span>
-                                                    <span class="font-medium" :class="parseFloat(group.rollAnalysis.pctMaxLoss) > 0 ? 'text-tv-red' : 'text-tv-muted'"
-                                                          x-text="group.rollAnalysis.pctMaxLoss + '%'"></span>
+                                                    <span class="text-tv-muted" x-text="group.rollAnalysis.pnlLabel"></span>
+                                                    <span class="font-medium" :class="group.rollAnalysis.pnlPositive ? 'text-tv-green' : 'text-tv-red'"
+                                                          x-text="group.rollAnalysis.pnlValue"></span>
                                                 </div>
                                                 <div class="flex justify-between gap-3">
                                                     <span class="text-tv-muted">Reward:Risk</span>
