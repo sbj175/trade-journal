@@ -446,7 +446,7 @@
                                                         const expB = b.expiration || '';
                                                         if (expA !== expB) return expA.localeCompare(expB);
                                                         return (a.strike || 0) - (b.strike || 0);
-                                                    })" :key="leg.symbol">
+                                                    })" :key="leg.lot_id || leg.symbol">
                                                         <div class="flex items-center text-sm py-0.5">
                                                             <span class="w-10 text-right font-medium"
                                                                   :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'"
