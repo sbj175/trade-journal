@@ -344,16 +344,20 @@
                                                    class="w-full bg-tv-bg border border-tv-border text-tv-text text-xs px-2 py-1 rounded outline-none focus:border-tv-blue/50"
                                                    placeholder="Type tag name...">
                                             <div class="max-h-28 overflow-y-auto mt-1">
-                                                <template x-for="tag in filteredTagSuggestions" :key="tag.id">
+                                                <template x-for="(tag, idx) in filteredTagSuggestions" :key="tag.id">
                                                     <button @click="addTagToGroup(group, tag); closeTagPopover()"
-                                                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-text hover:bg-tv-panel rounded">
+                                                            @mouseenter="tagHighlightIndex = idx"
+                                                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-text rounded"
+                                                            :class="tagHighlightIndex === idx ? 'bg-tv-panel' : 'hover:bg-tv-panel'">
                                                         <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background: ${tag.color}`"></span>
                                                         <span x-text="tag.name"></span>
                                                     </button>
                                                 </template>
                                                 <template x-if="tagSearch.trim() && !filteredTagSuggestions.find(t => t.name.toLowerCase() === tagSearch.trim().toLowerCase())">
                                                     <button @click="addTagToGroup(group, tagSearch.trim()); closeTagPopover()"
-                                                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-blue hover:bg-tv-panel rounded">
+                                                            @mouseenter="tagHighlightIndex = filteredTagSuggestions.length"
+                                                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-blue rounded"
+                                                            :class="tagHighlightIndex === filteredTagSuggestions.length ? 'bg-tv-panel' : 'hover:bg-tv-panel'">
                                                         <i class="fas fa-plus text-[8px]"></i>
                                                         <span>Create "<span x-text="tagSearch.trim()"></span>"</span>
                                                     </button>

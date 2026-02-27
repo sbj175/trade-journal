@@ -49,6 +49,7 @@ document.addEventListener('alpine:init', () => {
         availableTags: [],
         tagPopoverGroup: null,
         tagSearch: '',
+        tagHighlightIndex: -1,
 
         // Reconciliation state
         reconciliation: null,
@@ -276,6 +277,7 @@ document.addEventListener('alpine:init', () => {
             if (event) event.stopPropagation();
             this.tagPopoverGroup = this.tagPopoverGroup === groupId ? null : groupId;
             this.tagSearch = '';
+            this.tagHighlightIndex = -1;
             if (this.tagPopoverGroup) {
                 this.$nextTick(() => {
                     const input = document.getElementById('tag-input-' + groupId);
@@ -287,6 +289,7 @@ document.addEventListener('alpine:init', () => {
         closeTagPopover() {
             this.tagPopoverGroup = null;
             this.tagSearch = '';
+            this.tagHighlightIndex = -1;
         },
 
         async addTagToGroup(group, nameOrTag) {
@@ -322,17 +325,35 @@ document.addEventListener('alpine:init', () => {
         },
 
         async handleTagInput(event, group) {
-            if (event.key === 'Enter') {
+            const suggestions = this.filteredTagSuggestions;
+            const hasCreateOption = this.tagSearch.trim() && !suggestions.find(t => t.name.toLowerCase() === this.tagSearch.trim().toLowerCase());
+            const totalItems = suggestions.length + (hasCreateOption ? 1 : 0);
+
+            if (event.key === 'ArrowDown') {
                 event.preventDefault();
-                const search = this.tagSearch.trim();
-                if (!search) return;
-                // Check if there's an exact match in suggestions
-                const exactMatch = this.filteredTagSuggestions.find(
-                    t => t.name.toLowerCase() === search.toLowerCase()
-                );
-                await this.addTagToGroup(group, exactMatch || search);
+                this.tagHighlightIndex = this.tagHighlightIndex < totalItems - 1 ? this.tagHighlightIndex + 1 : 0;
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                this.tagHighlightIndex = this.tagHighlightIndex > 0 ? this.tagHighlightIndex - 1 : totalItems - 1;
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (this.tagHighlightIndex >= 0 && this.tagHighlightIndex < suggestions.length) {
+                    await this.addTagToGroup(group, suggestions[this.tagHighlightIndex]);
+                    this.closeTagPopover();
+                } else if (this.tagHighlightIndex === suggestions.length && hasCreateOption) {
+                    await this.addTagToGroup(group, this.tagSearch.trim());
+                    this.closeTagPopover();
+                } else {
+                    const search = this.tagSearch.trim();
+                    if (!search) return;
+                    const exactMatch = suggestions.find(t => t.name.toLowerCase() === search.toLowerCase());
+                    await this.addTagToGroup(group, exactMatch || search);
+                    this.closeTagPopover();
+                }
             } else if (event.key === 'Escape') {
                 this.closeTagPopover();
+            } else {
+                this.tagHighlightIndex = -1;
             }
         },
 
