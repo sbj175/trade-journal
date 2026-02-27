@@ -17,6 +17,9 @@ document.addEventListener('alpine:init', () => {
         stats: { totalPnl: 0, openCount: 0, closedCount: 0 },
         filterDirection: [],
         filterType: [],
+        groupNotes: {},
+        orderComments: {},
+        _noteSaveTimers: {},
         async init() {
             await Auth.requireAuth();
             await Auth.requireTastytrade();
@@ -61,6 +64,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             await this.fetchLedger();
+            this.loadNotes();
         },
 
         async loadAccounts() {
@@ -583,6 +587,66 @@ document.addEventListener('alpine:init', () => {
         formatClosingCreditDebit(order) {
             const d = this.calculateClosingCreditDebit(order);
             return d ? `${d.amount.toFixed(2)} ${d.type}` : '';
+        },
+
+        // ========== Notes (DB-persisted) ==========
+
+        async loadNotes() {
+            try {
+                const [notesResp, commentsResp] = await Promise.all([
+                    Auth.authFetch('/api/position-notes'),
+                    Auth.authFetch('/api/order-comments'),
+                ]);
+                if (notesResp.ok) {
+                    const data = await notesResp.json();
+                    this.groupNotes = data.notes || {};
+                }
+                if (commentsResp.ok) {
+                    const data = await commentsResp.json();
+                    this.orderComments = data.comments || {};
+                }
+            } catch (error) {
+                console.error('Error loading notes:', error);
+            }
+        },
+
+        getGroupNote(group) {
+            return this.groupNotes['group_' + group.group_id] || '';
+        },
+
+        updateGroupNote(group, value) {
+            const key = 'group_' + group.group_id;
+            this.groupNotes[key] = value;
+            if (this._noteSaveTimers[key]) {
+                clearTimeout(this._noteSaveTimers[key]);
+            }
+            this._noteSaveTimers[key] = setTimeout(() => {
+                Auth.authFetch(`/api/position-notes/${encodeURIComponent(key)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note: value })
+                }).catch(err => console.error('Error saving group note:', err));
+                delete this._noteSaveTimers[key];
+            }, 500);
+        },
+
+        getOrderComment(orderId) {
+            return this.orderComments[orderId] || '';
+        },
+
+        updateOrderComment(orderId, value) {
+            this.orderComments[orderId] = value;
+            if (this._noteSaveTimers['order_' + orderId]) {
+                clearTimeout(this._noteSaveTimers['order_' + orderId]);
+            }
+            this._noteSaveTimers['order_' + orderId] = setTimeout(() => {
+                Auth.authFetch(`/api/order-comments/${encodeURIComponent(orderId)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: value })
+                }).catch(err => console.error('Error saving order comment:', err));
+                delete this._noteSaveTimers['order_' + orderId];
+            }, 500);
         },
     }));
 });
