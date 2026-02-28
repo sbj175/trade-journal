@@ -413,10 +413,9 @@
                                      :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'"
                                      x-text="getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : ''"></div>
 
-                                <!-- Comment indicator -->
-                                <div class="flex-1 text-tv-muted text-sm truncate pl-2"
-                                     x-show="getPositionComment(group)"
-                                     x-text="getPositionComment(group)"></div>
+                                <!-- Note indicator -->
+                                <i class="fas fa-sticky-note text-yellow-400 text-sm pl-2"
+                                   x-show="getPositionComment(group)" title="Has notes"></i>
 
                             </div>
 
