@@ -164,12 +164,14 @@
                             </div>
 
                             <!-- Table Sizes -->
-                            <div>
-                                <div class="text-sm font-medium text-tv-muted mb-2 flex items-center gap-1">
+                            <div x-data="{ tablesOpen: false }">
+                                <button @click="tablesOpen = !tablesOpen" class="text-sm font-medium text-tv-muted mb-2 flex items-center gap-1 hover:text-tv-text transition-colors">
+                                    <span class="text-xs" x-text="tablesOpen ? '\u25BC' : '\u25B6'"></span>
                                     Tables
-                                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Row counts are estimates from pg_stat_user_tables (fast, avoids full table scans). Sizes include table data, indexes, and TOAST storage. Sorted largest first.">?</span>
-                                </div>
-                                <div class="overflow-x-auto">
+                                    <span class="text-tv-muted/70 font-normal" x-text="'(' + dbHealth.tables.length + ')'"></span>
+                                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" @click.stop title="Row counts are estimates from pg_stat_user_tables (fast, avoids full table scans). Sizes include table data, indexes, and TOAST storage. Sorted largest first.">?</span>
+                                </button>
+                                <div x-show="tablesOpen" x-collapse class="overflow-x-auto">
                                     <table class="w-full text-sm">
                                         <thead>
                                             <tr class="border-b border-tv-border text-tv-muted text-left">
