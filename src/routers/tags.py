@@ -66,7 +66,12 @@ async def delete_tag(tag_id: int, db: DatabaseManager = Depends(get_db), user_id
         if not tag:
             raise HTTPException(status_code=404, detail="Tag not found")
 
-        session.query(PositionGroupTag).filter(PositionGroupTag.tag_id == tag_id).delete()
+        from src.database.tenant import DEFAULT_USER_ID
+        uid = session.info.get("user_id", DEFAULT_USER_ID)
+        session.query(PositionGroupTag).filter(
+            PositionGroupTag.tag_id == tag_id,
+            PositionGroupTag.user_id == uid,
+        ).delete()
         session.delete(tag)
 
     return {"message": "Tag deleted"}

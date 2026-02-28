@@ -331,9 +331,12 @@ async def add_tag_to_group(group_id: str, body: GroupTagAdd, db: DatabaseManager
 async def remove_tag_from_group(group_id: str, tag_id: int, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Remove a tag association from a group."""
     with db.get_session() as session:
+        from src.database.tenant import DEFAULT_USER_ID
+        uid = session.info.get("user_id", DEFAULT_USER_ID)
         deleted = session.query(PositionGroupTag).filter(
             PositionGroupTag.group_id == group_id,
             PositionGroupTag.tag_id == tag_id,
+            PositionGroupTag.user_id == uid,
         ).delete()
         if not deleted:
             raise HTTPException(status_code=404, detail="Tag association not found")

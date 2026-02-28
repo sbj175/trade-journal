@@ -1262,7 +1262,10 @@ class OrderManager:
 
                 deleted_count = (
                     session.query(OP)
-                    .filter(OP.order_id.in_(order_ids))
+                    .filter(
+                        OP.order_id.in_(order_ids),
+                        OP.user_id == session.info.get("user_id", DEFAULT_USER_ID),
+                    )
                     .delete(synchronize_session='fetch')
                 )
                 logger.info(f"Deleted {deleted_count} existing positions")

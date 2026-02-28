@@ -437,8 +437,11 @@ async def reconcile_positions_vs_chains(*, db: DatabaseManager = None):
                         ).all()
                         if txn_rows:
                             txn_ids = [r[0] for r in txn_rows]
+                            from src.database.tenant import DEFAULT_USER_ID
+                            uid = session.info.get("user_id", DEFAULT_USER_ID)
                             session.query(PositionLotModel).filter(
                                 PositionLotModel.transaction_id.in_(txn_ids),
+                                PositionLotModel.user_id == uid,
                             ).update({
                                 PositionLotModel.remaining_quantity: 0,
                                 PositionLotModel.status: 'CLOSED',
