@@ -163,8 +163,9 @@ class DatabaseManager:
                         user_id=user_id,
                     )
                     # Skip duplicates (on conflict do nothing)
-                    session.execute(stmt.on_conflict_do_nothing(index_elements=['id', 'user_id']))
-                    saved_count += 1
+                    result = session.execute(stmt.on_conflict_do_nothing(index_elements=['id', 'user_id']))
+                    if result.rowcount > 0:
+                        saved_count += 1
                 except Exception as e:
                     logger.error(f"Failed to save transaction {txn.get('id')}: {e}")
                     continue

@@ -259,6 +259,7 @@ async function fetchPositions(includeSync = false) {
       })
     }
     migrateCommentKeys()
+    await loadComments()
     applyFilters()
   } catch (err) {
     console.error('Failed to load positions:', err)

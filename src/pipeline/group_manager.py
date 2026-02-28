@@ -299,6 +299,8 @@ class GroupPersister:
         from src.database.models import (
             PositionGroup,
             PositionGroupLot,
+            PositionGroupTag,
+            PositionNote,
             PositionLot as PositionLotModel,
             LotClosing as LotClosingModel,
         )
@@ -321,39 +323,81 @@ class GroupPersister:
         if not specs:
             return 0
 
-        # --- Match new specs to existing DB groups by txn overlap ----------
+        # --- Match new specs to existing DB groups by source_chain_id ------
         with self.db.get_session() as session:
             user_id = session.info.get("user_id", DEFAULT_USER_ID)
 
-            # Build txn_id -> existing group_id mapping
-            existing_links = session.query(
-                PositionGroupLot.transaction_id,
-                PositionGroupLot.group_id,
-            ).all()
-            txn_to_existing_group: Dict[str, str] = {
-                row[0]: row[1] for row in existing_links
+            # Build source_chain_id -> existing group_id mapping
+            existing_groups = session.query(
+                PositionGroup.source_chain_id,
+                PositionGroup.group_id,
+            ).filter(PositionGroup.source_chain_id.isnot(None)).all()
+            chain_to_existing_group: Dict[str, str] = {
+                row[0]: row[1] for row in existing_groups
             }
+            existing_group_ids = set(row[1] for row in existing_groups)
 
-            # Existing group_ids that we want to keep
-            existing_group_ids = set(txn_to_existing_group.values())
+            # Also include groups without source_chain_id (multi-chain)
+            all_db_group_ids = {
+                row[0] for row in session.query(PositionGroup.group_id).all()
+            }
+            existing_group_ids = all_db_group_ids
 
             # Track which existing groups are covered by new specs
             covered_existing: Set[str] = set()
             count = 0
 
             for spec in specs:
-                # Find existing group that overlaps with this spec's txn_ids
+                # Determine source_chain_id for this spec
+                source_chain_id = None
+                if len(spec.source_chain_ids) == 1:
+                    source_chain_id = next(iter(spec.source_chain_ids))
+
+                # Find existing group by source_chain_id
                 overlapping_group_id = None
-                for txn_id in spec.lot_transaction_ids:
-                    if txn_id in txn_to_existing_group:
-                        overlapping_group_id = txn_to_existing_group[txn_id]
-                        break
+                if source_chain_id:
+                    overlapping_group_id = chain_to_existing_group.get(source_chain_id)
+
+                # Determine the target group_id (deterministic = source_chain_id)
+                if source_chain_id:
+                    target_group_id = source_chain_id  # deterministic
+                else:
+                    target_group_id = str(_uuid.uuid4())  # multi-chain or no-chain
 
                 if overlapping_group_id:
-                    group_id = overlapping_group_id
-                    covered_existing.add(group_id)
+                    old_group_id = overlapping_group_id
+                    covered_existing.add(old_group_id)
+
+                    # Auto-migrate: rename old UUID group_id to deterministic chain_id
+                    if old_group_id != target_group_id:
+                        logger.info(f"Migrating group_id {old_group_id} -> {target_group_id}")
+                        # Update PositionGroupTag
+                        session.query(PositionGroupTag).filter(
+                            PositionGroupTag.group_id == old_group_id,
+                            PositionGroupTag.user_id == user_id,
+                        ).update({"group_id": target_group_id}, synchronize_session=False)
+                        # Update PositionNote (note_key = "group_<group_id>")
+                        old_note_key = f"group_{old_group_id}"
+                        new_note_key = f"group_{target_group_id}"
+                        session.query(PositionNote).filter(
+                            PositionNote.note_key == old_note_key,
+                            PositionNote.user_id == user_id,
+                        ).update({"note_key": new_note_key}, synchronize_session=False)
+                        # Update PositionGroupLot
+                        session.query(PositionGroupLot).filter(
+                            PositionGroupLot.group_id == old_group_id,
+                            PositionGroupLot.user_id == user_id,
+                        ).update({"group_id": target_group_id}, synchronize_session=False)
+                        # Update PositionGroup itself
+                        session.query(PositionGroup).filter(
+                            PositionGroup.group_id == old_group_id,
+                        ).update({"group_id": target_group_id}, synchronize_session=False)
+                        # Track the new id as covered
+                        covered_existing.add(target_group_id)
+
+                    group_id = target_group_id
                 else:
-                    group_id = str(_uuid.uuid4())
+                    group_id = target_group_id
 
                 # Compute closing_date for CLOSED groups
                 closing_date = None
@@ -370,11 +414,6 @@ class GroupPersister:
                         ).filter(
                             LotClosingModel.lot_id.in_(lot_ids),
                         ).scalar()
-
-                # Source chain: use first chain_id if only one, else NULL
-                source_chain_id = None
-                if len(spec.source_chain_ids) == 1:
-                    source_chain_id = next(iter(spec.source_chain_ids))
 
                 # Upsert PositionGroup
                 existing_group = session.query(PositionGroup).filter(
@@ -426,6 +465,10 @@ class GroupPersister:
             # Delete orphan groups (existing groups no longer covered)
             orphans = existing_group_ids - covered_existing
             if orphans:
+                session.query(PositionGroupTag).filter(
+                    PositionGroupTag.group_id.in_(orphans),
+                    PositionGroupTag.user_id == user_id,
+                ).delete(synchronize_session=False)
                 session.query(PositionGroupLot).filter(
                     PositionGroupLot.group_id.in_(orphans),
                     PositionGroupLot.user_id == user_id,

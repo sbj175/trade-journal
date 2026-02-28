@@ -12,7 +12,6 @@ from sqlalchemy import func
 from src.database.models import (
     PositionLot as PositionLotModel,
     LotClosing as LotClosingModel,
-    PositionGroup,
     PositionGroupLot,
 )
 
@@ -526,11 +525,7 @@ class LotManager:
                     PositionGroupLot.transaction_id.in_(lot_txn_ids_sub),
                     PositionGroupLot.user_id == user_id,
                 ).delete(synchronize_session='fetch')
-                # Delete groups for matching underlyings
-                session.query(PositionGroup).filter(
-                    PositionGroup.underlying.in_(underlying_list),
-                    PositionGroup.user_id == user_id,
-                ).delete(synchronize_session='fetch')
+                # Note: PositionGroup rows are preserved (GroupPersister handles orphan cleanup)
                 # Delete closings for matching lots
                 lot_ids_sub = session.query(PositionLotModel.id).filter(
                     PositionLotModel.underlying.in_(underlying_list),
@@ -548,7 +543,7 @@ class LotManager:
                 logger.info(f"Cleared lots, closings, and groups for {len(underlyings)} underlyings")
             else:
                 session.query(PositionGroupLot).filter(PositionGroupLot.user_id == user_id).delete()
-                session.query(PositionGroup).filter(PositionGroup.user_id == user_id).delete()
+                # Note: PositionGroup rows are preserved (GroupPersister handles orphan cleanup)
                 session.query(LotClosingModel).filter(LotClosingModel.user_id == user_id).delete()
                 session.query(PositionLotModel).filter(PositionLotModel.user_id == user_id).delete()
-                logger.warning("Cleared all lots, closings, and groups (user-scoped)")
+                logger.warning("Cleared all lots, closings, and group-lot links (user-scoped)")

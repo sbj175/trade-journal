@@ -81,7 +81,7 @@ def seed_position_groups(*, db: DatabaseManager = None, lot_manager: LotManager 
                     PositionLotModel, LotClosingModel.lot_id == PositionLotModel.id,
                 ).filter(PositionLotModel.chain_id == chain_id).scalar()
 
-            group_id = str(_uuid.uuid4())
+            group_id = chain_id  # deterministic: use chain_id as group_id
             session.add(PositionGroup(
                 group_id=group_id,
                 account_number=account_number,
