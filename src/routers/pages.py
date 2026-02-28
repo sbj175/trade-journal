@@ -47,8 +47,8 @@ async def risk_dashboard(request: Request):
 
 @router.get("/ledger", response_class=HTMLResponse)
 async def ledger_page(request: Request):
-    """Serve the Position Ledger page"""
-    return templates.TemplateResponse("ledger.html", _nav_context(request, "/ledger"))
+    """Serve the Position Ledger page (Vue 3 — no Jinja2 context needed)"""
+    return templates.TemplateResponse("ledger.html", {"request": request})
 
 
 @router.get("/settings", response_class=HTMLResponse)

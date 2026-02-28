@@ -13,6 +13,7 @@ export default defineConfig({
         settings: resolve(__dirname, 'src/pages/settings/main.js'),
         reports: resolve(__dirname, 'src/pages/reports/main.js'),
         risk: resolve(__dirname, 'src/pages/risk/main.js'),
+        ledger: resolve(__dirname, 'src/pages/ledger/main.js'),
       },
       output: {
         entryFileNames: '[name].js',
