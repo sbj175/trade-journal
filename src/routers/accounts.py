@@ -32,13 +32,18 @@ async def get_account_balances(account_number: Optional[str] = None, db: Databas
         with db.get_session() as session:
             if account_number:
                 rows = session.query(AccountBalance).filter(
-                    AccountBalance.account_number == account_number
+                    AccountBalance.account_number == account_number,
+                    AccountBalance.user_id == user_id,
                 ).order_by(AccountBalance.timestamp.desc()).limit(1).all()
             else:
-                # Subquery for latest timestamp per account
+                # Subquery for latest timestamp per account.
+                # Must explicitly filter by user_id — ORM tenant filter
+                # does NOT apply inside .subquery().
                 latest = session.query(
                     AccountBalance.account_number,
                     func.max(AccountBalance.timestamp).label("max_ts"),
+                ).filter(
+                    AccountBalance.user_id == user_id,
                 ).group_by(AccountBalance.account_number).subquery()
 
                 rows = session.query(AccountBalance).join(
