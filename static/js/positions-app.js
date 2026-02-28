@@ -1051,6 +1051,7 @@ document.addEventListener('alpine:init', () => {
         },
         _migrateCommentKeys() {
             // Migrate notes from old chain_{source_chain_id} keys to new group_{group_id} keys
+            // After migrating, delete the old key so it can't resurrect deleted notes
             try {
                 for (const item of this.allItems) {
                     if (item._isSubtotal) continue;
@@ -1070,6 +1071,15 @@ document.addEventListener('alpine:init', () => {
                             body: JSON.stringify({ note: this.positionComments[oldKey] })
                         }).catch(err => console.error('Comment key migration error:', err));
                     }
+                    // Delete old key so it doesn't re-trigger migration
+                    if (this.positionComments[oldKey]) {
+                        delete this.positionComments[oldKey];
+                        Auth.authFetch(`/api/position-notes/${encodeURIComponent(oldKey)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ note: '' })
+                        }).catch(err => console.error('Old key cleanup error:', err));
+                    }
 
                     // Also check the old chain_{chain_id} key (chain_id === group_id now)
                     const oldChainKey = `chain_${groupId}`;
@@ -1080,6 +1090,15 @@ document.addEventListener('alpine:init', () => {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ note: this.positionComments[oldChainKey] })
                         }).catch(err => console.error('Comment key migration error:', err));
+                    }
+                    // Delete old chain key
+                    if (this.positionComments[oldChainKey]) {
+                        delete this.positionComments[oldChainKey];
+                        Auth.authFetch(`/api/position-notes/${encodeURIComponent(oldChainKey)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ note: '' })
+                        }).catch(err => console.error('Old key cleanup error:', err));
                     }
                 }
             } catch (e) { /* ignore migration errors */ }
