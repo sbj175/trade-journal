@@ -1,6 +1,43 @@
 name: optionledger
 
 services:
+  app:
+    build: .
+    container_name: optionledger-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://optionledger:${POSTGRES_PASSWORD}@postgres:5432/optionledger
+      REDIS_URL: redis://redis:6379/0
+      APP_MODULE: app:app
+      APP_PORT: "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  admin:
+    build: .
+    container_name: optionledger-admin
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./:/app
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://optionledger:${POSTGRES_PASSWORD}@postgres:5432/optionledger
+      REDIS_URL: redis://redis:6379/0
+      APP_MODULE: admin_app:app
+      APP_PORT: "8001"
+      SKIP_MIGRATIONS: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     container_name: optionledger-postgres
     image: postgres:16-alpine
@@ -18,5 +55,19 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    container_name: optionledger-redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/var/lib/redis/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
+  redisdata:

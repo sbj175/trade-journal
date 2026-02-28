@@ -19,5 +19,8 @@ pytz>=2023.3
 # Authentication
 PyJWT[crypto]>=2.8.0
 
+# Caching / Rate Limiting
+redis>=5.0
+
 # Logging
 loguru>=0.7.0
