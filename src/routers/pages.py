@@ -53,8 +53,8 @@ async def ledger_page(request: Request):
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
-    """Serve the Settings page"""
-    return templates.TemplateResponse("settings.html", _nav_context(request, "/settings", "settings"))
+    """Serve the Settings page (Vue 3 — no Jinja2 context needed)"""
+    return templates.TemplateResponse("settings.html", {"request": request})
 
 
 @router.get("/login", response_class=HTMLResponse)

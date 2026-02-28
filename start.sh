@@ -22,6 +22,12 @@ if ! python3 -c "import uvicorn" 2>/dev/null; then
     exit 1
 fi
 
+# Build frontend (Vue pages) if node_modules exist
+if [ -d "frontend/node_modules" ]; then
+    echo "Building frontend..."
+    (cd frontend && npx vite build)
+fi
+
 # Start the application
 echo "Starting FastAPI server on http://localhost:8000"
 echo "Press Ctrl+C to stop the server"

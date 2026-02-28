@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles matching the existing TV theme */
+* {
+  font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+}
+
+body {
+  background: #131722;
+  color: #d1d4dc;
+  font-size: 16px;
+}
+
+/* Custom scrollbar */
+.tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.tv-scrollbar::-webkit-scrollbar-track { background: #1e222d; }
+.tv-scrollbar::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
+.tv-scrollbar::-webkit-scrollbar-thumb:hover { background: #363a45; }
+
+/* Vue cloak (hide until mounted) */
+[v-cloak] { display: none !important; }
+
+/* Number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
