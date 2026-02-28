@@ -155,6 +155,17 @@ function adminApp() {
             }
         },
 
+        async reprocessChains(user) {
+            if (!confirm(`Reprocess chains for ${user.email || user.id}? This will rebuild order chains from existing transactions.`)) return;
+            try {
+                const result = await this.apiFetch(`/api/admin/users/${user.id}/reprocess-chains`, { method: 'POST' });
+                alert(`Reprocess complete: ${result.orders_processed} orders, ${result.chains_created} chains`);
+                await this.loadData();
+            } catch (err) {
+                alert('Reprocess failed: ' + err.message);
+            }
+        },
+
         async resetSync(user) {
             if (!confirm(`Reset sync metadata for ${user.email || user.id}? This will force a full re-sync on their next login.`)) return;
             try {

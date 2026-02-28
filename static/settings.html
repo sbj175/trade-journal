@@ -158,30 +158,14 @@
                         </div>
                     </div>
 
-                    <!-- Reprocess Chains -->
-                    <div class="bg-tv-panel border border-tv-border rounded">
-                        <div class="p-5 flex items-start justify-between">
-                            <div>
-                                <h3 class="text-tv-text font-medium mb-1">
-                                    <i class="fas fa-link mr-2 text-tv-muted"></i>Reprocess Chains
-                                </h3>
-                                <p class="text-tv-muted text-sm">Re-analyzes existing transactions to rebuild order chains and strategy detection. Does not fetch new data from Tastytrade. Use this after a software update.</p>
-                            </div>
-                            <button @click="reprocessChains()" :disabled="initialSyncing || reprocessing"
-                                    class="flex-shrink-0 ml-6 bg-tv-blue/20 hover:bg-tv-blue/30 text-tv-blue border border-tv-blue/30 px-5 py-2.5 rounded text-sm disabled:opacity-50 whitespace-nowrap">
-                                <i class="fas fa-link mr-2" :class="{'animate-spin': reprocessing}"></i>
-                                <span x-text="reprocessing ? 'Processing...' : 'Reprocess Chains'"></span>
-                            </button>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Progress overlay -->
-                <div x-show="initialSyncing || reprocessing" x-cloak
+                <div x-show="initialSyncing" x-cloak
                      class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
                     <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl">
                         <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
-                        <p class="text-tv-text text-lg font-medium" x-text="initialSyncing ? 'Rebuilding database...' : 'Reprocessing chains...'"></p>
+                        <p class="text-tv-text text-lg font-medium">Rebuilding database...</p>
                         <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
                     </div>
                 </div>

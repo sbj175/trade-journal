@@ -1,4 +1,4 @@
-"""Sync routes — unified sync, initial sync, reprocess chains, migrate P&L."""
+"""Sync routes — unified sync, initial sync, migrate P&L."""
 
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -290,29 +290,3 @@ async def initial_sync(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/reprocess-chains")
-async def reprocess_chains(db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
-    """Reprocess orders and chains from existing raw transactions"""
-    try:
-        logger.info("Starting chain reprocessing from database")
-
-        raw_transactions = db.get_raw_transactions()
-        logger.info(f"Loaded {len(raw_transactions)} raw transactions from database")
-
-        result = reprocess(db, lot_manager, raw_transactions)
-
-        if result.chains:
-            await update_chain_cache(result.chains, db=db)
-        logger.info("Reprocessing completed")
-
-        return {
-            "message": "Reprocessing completed successfully",
-            "orders_processed": len(raw_transactions),
-            "orders_saved": len(raw_transactions),
-            "chains_created": result.chains_derived,
-            "chains_saved": result.chains_derived,
-        }
-
-    except Exception as e:
-        logger.error(f"Error during reprocessing: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))

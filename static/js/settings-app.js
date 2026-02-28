@@ -56,7 +56,6 @@ document.addEventListener('alpine:init', () => {
         privacyMode: 'off',
         activeTab: 'connection',
         initialSyncing: false,
-        reprocessing: false,
 
         async init() {
             await Auth.requireAuth();
@@ -289,23 +288,6 @@ document.addEventListener('alpine:init', () => {
                 this.showNotification('Initial sync failed: ' + error.message, 'error');
             } finally {
                 this.initialSyncing = false;
-            }
-        },
-
-        async reprocessChains() {
-            this.reprocessing = true;
-            try {
-                const response = await Auth.authFetch('/api/reprocess-chains', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                if (!response.ok) throw new Error(`Reprocessing failed: ${response.statusText}`);
-                await response.json();
-                this.showNotification('Chain reprocessing completed successfully!', 'success');
-            } catch (error) {
-                this.showNotification('Reprocessing failed: ' + error.message, 'error');
-            } finally {
-                this.reprocessing = false;
             }
         },
 

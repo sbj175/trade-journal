@@ -8,6 +8,7 @@ import logging
 import time
 
 from fastapi import APIRouter, HTTPException
+from loguru import logger as loguru_logger
 from sqlalchemy import func, text
 
 from src.database.engine import get_engine, get_session
@@ -359,6 +360,54 @@ async def list_waitlist():
             }
             for e in entries
         ]
+
+
+@router.post("/users/{user_id}/reprocess-chains")
+async def reprocess_chains(user_id: str):
+    """Reprocess order chains for a specific user from their raw transactions."""
+    from src.database.db_manager import DatabaseManager
+    from src.database.tenant import set_current_user_id
+    from src.models.lot_manager import LotManager
+    from src.pipeline.orchestrator import reprocess
+    from src.services.chain_service import update_chain_cache
+
+    with get_session(unscoped=True) as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    # Scope all subsequent ORM operations to this user
+    set_current_user_id(user_id)
+
+    try:
+        import os
+        admin_db = DatabaseManager(db_url=os.getenv("DATABASE_URL"))
+        admin_lot_manager = LotManager(admin_db)
+
+        raw_transactions = admin_db.get_raw_transactions()
+        loguru_logger.info(
+            "Admin reprocess for user {}: {} raw transactions",
+            user_id, len(raw_transactions),
+        )
+
+        result = reprocess(admin_db, admin_lot_manager, raw_transactions)
+
+        if result.chains:
+            await update_chain_cache(result.chains, db=admin_db)
+
+        loguru_logger.info(
+            "Admin reprocess completed for user {}: {} orders, {} chains",
+            user_id, result.orders_assembled, result.chains_derived,
+        )
+
+        return {
+            "status": "ok",
+            "orders_processed": result.orders_assembled,
+            "chains_created": result.chains_derived,
+        }
+    except Exception as exc:
+        loguru_logger.error("Reprocess failed for user {}: {}", user_id, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.delete("/users/{user_id}")

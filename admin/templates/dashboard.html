@@ -257,6 +257,11 @@
                                     <td class="px-4 py-2 text-right" @click.stop>
                                         <div class="flex items-center justify-end gap-2">
                                             <button
+                                                @click="reprocessChains(user)"
+                                                class="text-tv-blue hover:underline text-xs"
+                                                title="Reprocess order chains"
+                                            >Reprocess</button>
+                                            <button
                                                 @click="resetSync(user)"
                                                 class="text-tv-blue hover:underline text-xs"
                                                 title="Reset sync metadata"
