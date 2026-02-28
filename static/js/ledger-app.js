@@ -67,7 +67,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             await this.fetchLedger();
-            this.loadNotes();
+            await this.loadNotes();
             await this.loadAvailableTags();
         },
 
@@ -629,6 +629,8 @@ document.addEventListener('alpine:init', () => {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ note: value })
+                }).then(res => {
+                    if (!res.ok) console.error(`Failed to save group note (HTTP ${res.status})`);
                 }).catch(err => console.error('Error saving group note:', err));
                 delete this._noteSaveTimers[key];
             }, 500);
@@ -648,6 +650,8 @@ document.addEventListener('alpine:init', () => {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ comment: value })
+                }).then(res => {
+                    if (!res.ok) console.error(`Failed to save order comment (HTTP ${res.status})`);
                 }).catch(err => console.error('Error saving order comment:', err));
                 delete this._noteSaveTimers['order_' + orderId];
             }, 500);
