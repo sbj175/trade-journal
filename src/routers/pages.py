@@ -7,30 +7,12 @@ from src.dependencies import templates
 
 router = APIRouter()
 
-# Nav links - single source of truth for all pages
-NAV_LINKS = [
-    {"href": "/positions", "label": "Positions"},
-    {"href": "/ledger", "label": "Ledger"},
-    {"href": "/reports", "label": "Reports"},
-    {"href": "/risk", "label": "Risk"},
-]
-
-
-def _nav_context(request: Request, active_path: str, variant: str = "standard") -> dict:
-    """Build template context with nav bar variables"""
-    return {
-        "request": request,
-        "nav_links": NAV_LINKS,
-        "active_path": active_path,
-        "nav_variant": variant,
-    }
-
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("/positions", response_class=HTMLResponse)
 async def root(request: Request):
-    """Serve the main application - Open Positions Page"""
-    return templates.TemplateResponse("positions.html", _nav_context(request, "/positions"))
+    """Serve the main application - Open Positions Page (Vue 3 — no Jinja2 context needed)"""
+    return templates.TemplateResponse("positions.html", {"request": request})
 
 
 @router.get("/reports", response_class=HTMLResponse)
