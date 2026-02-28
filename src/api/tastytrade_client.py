@@ -440,7 +440,7 @@ class TastytradeClient:
                 missing_symbols.append(symbol)
 
         if cached_symbols:
-            logger.info(f"Using cached quotes for: {cached_symbols}")
+            logger.info(f"Using {len(cached_symbols)} cached quotes, {len(missing_symbols)} to fetch")
 
         # Only fetch missing symbols
         if missing_symbols:
@@ -560,7 +560,7 @@ class TastytradeClient:
                     self._quote_cache_time[symbol] = current_time
                     quotes[symbol] = quote_data
 
-                    logger.info(f"Market data for {symbol}: price=${current_price:.2f}, change={change:+.2f} ({change_percent:+.2f}%), IVR={ivr}, IV={iv}")
+                    logger.debug(f"Market data for {symbol}: price=${current_price:.2f}, change={change:+.2f} ({change_percent:+.2f}%), IVR={ivr}, IV={iv}")
 
                 # Try to get market metrics (IV/IVR) for equity symbols
                 if symbol_types['equities']:
@@ -570,7 +570,7 @@ class TastytradeClient:
                         for symbol, metric_data in metrics.items():
                             if symbol in quotes:
                                 quotes[symbol].update(metric_data)
-                                logger.info(f"Added IV data to {symbol}: {metric_data}")
+                                logger.debug(f"Added IV data to {symbol}: {metric_data}")
                     except Exception as metrics_error:
                         logger.warning(f"Failed to get market metrics: {metrics_error}")
 
@@ -586,7 +586,7 @@ class TastytradeClient:
                     quotes[symbol] = quote_data
 
         # Return only successfully retrieved quotes (real data only)
-        logger.info(f"Returning {len(quotes)} real quotes for symbols: {list(quotes.keys())}")
+        logger.info(f"Returning {len(quotes)} quotes for {len(symbols)} requested symbols")
         if len(quotes) < len(symbols):
             failed_symbols = [s for s in symbols if s not in quotes]
             logger.warning(f"Failed to get quotes for: {failed_symbols}")

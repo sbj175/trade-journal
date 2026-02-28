@@ -18,7 +18,7 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
     """Get current market quotes for symbols (cached or fresh)"""
     try:
         symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
-        logger.info(f"GET /api/quotes requested for symbols: {symbol_list}")
+        logger.debug(f"GET /api/quotes requested for {len(symbol_list)} symbols")
 
         if not symbol_list:
             raise HTTPException(status_code=400, detail="No symbols provided")
@@ -27,9 +27,7 @@ async def get_market_quotes(symbols: str, refresh: bool = False, request: Reques
         if not refresh:
             logger.info(f"Attempting to get cached quotes for: {symbol_list}")
             cached_quotes = db.get_cached_quotes(symbol_list)
-            logger.info(f"Cache lookup returned {len(cached_quotes) if cached_quotes else 0} quotes")
             if cached_quotes:
-                logger.info(f"Returning {len(cached_quotes)} cached quotes for: {list(cached_quotes.keys())}")
                 for symbol, quote_data in cached_quotes.items():
                     if 'mark' in quote_data and quote_data['mark'] is not None:
                         quote_data['price'] = quote_data['mark']

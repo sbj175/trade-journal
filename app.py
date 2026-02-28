@@ -33,11 +33,18 @@ from src.routers import (
 )
 
 # Configure logging
+import os
+logger.remove()  # remove default stderr sink (DEBUG level)
 logger.add(
     "logs/webapp_{time}.log",
     rotation="1 day",
     retention="7 days",
-    level="INFO"
+    level="INFO",
+)
+logger.add(
+    lambda msg: print(msg, end=""),
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    colorize=True,
 )
 
 # Initialize FastAPI app
