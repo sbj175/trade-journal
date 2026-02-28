@@ -308,6 +308,35 @@
                     </table>
                 </div>
             </div>
+            <!-- Waitlist -->
+            <div class="bg-tv-panel border border-tv-border rounded-lg overflow-hidden mt-8">
+                <div class="px-4 py-3 border-b border-tv-border flex items-center justify-between">
+                    <h2 class="text-lg font-semibold">Waitlist <span class="text-tv-muted font-normal text-sm" x-text="'(' + waitlist.length + ')'"></span></h2>
+                </div>
+                <template x-if="waitlist.length > 0">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-tv-border text-tv-muted text-left">
+                                    <th class="px-4 py-2">Email</th>
+                                    <th class="px-4 py-2">Signed Up</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="entry in waitlist" :key="entry.id">
+                                    <tr class="border-b border-tv-border/50">
+                                        <td class="px-4 py-2" x-text="entry.email"></td>
+                                        <td class="px-4 py-2 text-tv-muted" x-text="formatDateTime(entry.created_at)"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template x-if="waitlist.length === 0 && !loading">
+                    <div class="px-4 py-8 text-center text-tv-muted">No waitlist entries</div>
+                </template>
+            </div>
         </div>
     </template>
 

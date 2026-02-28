@@ -12,6 +12,7 @@ function adminApp() {
         stats: { total_users: 0, active_users: 0, tt_connected: 0, total_accounts: 0 },
         users: [],
         dbHealth: null,
+        waitlist: [],
         loading: false,
 
         // Sorting
@@ -137,14 +138,16 @@ function adminApp() {
         async loadData() {
             this.loading = true;
             try {
-                const [statsData, usersData, dbHealthData] = await Promise.all([
+                const [statsData, usersData, dbHealthData, waitlistData] = await Promise.all([
                     this.apiFetch('/api/admin/stats'),
                     this.apiFetch('/api/admin/users'),
                     this.apiFetch('/api/admin/db-health'),
+                    this.apiFetch('/api/admin/waitlist'),
                 ]);
                 if (statsData) this.stats = statsData;
                 if (usersData) this.users = usersData;
                 if (dbHealthData) this.dbHealth = dbHealthData;
+                if (waitlistData) this.waitlist = waitlistData;
             } catch (err) {
                 console.error('Failed to load data:', err);
             } finally {

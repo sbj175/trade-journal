@@ -33,6 +33,7 @@ from src.database.models import (
     Tag,
     User,
     UserCredential,
+    WaitlistEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -339,6 +340,25 @@ async def delete_user_data(user_id: str):
         )
 
     return {"status": "ok", "deleted": totals}
+
+
+@router.get("/waitlist")
+async def list_waitlist():
+    """Waitlist entries, newest first."""
+    with get_session(unscoped=True) as session:
+        entries = (
+            session.query(WaitlistEntry)
+            .order_by(WaitlistEntry.created_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": e.id,
+                "email": e.email,
+                "created_at": e.created_at,
+            }
+            for e in entries
+        ]
 
 
 @router.delete("/users/{user_id}")
