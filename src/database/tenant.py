@@ -58,7 +58,7 @@ def register_tenant_events():
     @event.listens_for(Session, "do_orm_execute")
     def _inject_tenant_filter(orm_execute_state):
         """For SELECT statements on tenant-scoped models, append WHERE user_id = ?."""
-        if not orm_execute_state.is_select:
+        if not (orm_execute_state.is_select or orm_execute_state.is_delete or orm_execute_state.is_update):
             return
 
         user_id = orm_execute_state.session.info.get("user_id")
@@ -70,7 +70,7 @@ def register_tenant_events():
         for mapper in orm_execute_state.all_mappers:
             if _is_tenant_scoped(mapper):
                 entity = mapper.entity
-                orm_execute_state.statement = orm_execute_state.statement.filter(
+                orm_execute_state.statement = orm_execute_state.statement.where(
                     entity.user_id == user_id
                 )
 

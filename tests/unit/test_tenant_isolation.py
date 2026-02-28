@@ -123,6 +123,88 @@ def test_sync_metadata_scoped_per_user(tenant_db):
         assert row.value == "2025-06-01"
 
 
+def test_bulk_delete_scoped_to_user(tenant_db):
+    """Bulk delete should only remove the current user's rows."""
+    # User A creates 2 accounts
+    with tenant_db.get_session(user_id=USER_A) as session:
+        session.add(Account(account_number="DEL-A1", account_name="A1", account_type="Individual"))
+        session.add(Account(account_number="DEL-A2", account_name="A2", account_type="Individual"))
+
+    # User B creates 1 account
+    with tenant_db.get_session(user_id=USER_B) as session:
+        session.add(Account(account_number="DEL-B1", account_name="B1", account_type="Individual"))
+
+    # User A bulk-deletes all accounts (should only affect User A's rows)
+    with tenant_db.get_session(user_id=USER_A) as session:
+        deleted = session.query(Account).delete()
+        assert deleted == 2
+
+    # User B's account should still exist
+    with tenant_db.get_session(user_id=USER_B) as session:
+        accounts = session.query(Account).all()
+        assert len(accounts) == 1
+        assert accounts[0].account_number == "DEL-B1"
+
+
+def test_bulk_update_scoped_to_user(tenant_db):
+    """Bulk update should only modify the current user's rows."""
+    with tenant_db.get_session(user_id=USER_A) as session:
+        session.add(Account(account_number="UPD-A", account_name="Original A", account_type="Individual"))
+
+    with tenant_db.get_session(user_id=USER_B) as session:
+        session.add(Account(account_number="UPD-B", account_name="Original B", account_type="Individual"))
+
+    # User A bulk-updates all accounts (should only affect User A's rows)
+    with tenant_db.get_session(user_id=USER_A) as session:
+        updated = session.query(Account).update({"account_name": "UPDATED"})
+        assert updated == 1
+
+    # User B's account should be unchanged
+    with tenant_db.get_session(user_id=USER_B) as session:
+        acct = session.query(Account).first()
+        assert acct.account_name == "Original B"
+
+    # User A's account should be updated
+    with tenant_db.get_session(user_id=USER_A) as session:
+        acct = session.query(Account).first()
+        assert acct.account_name == "UPDATED"
+
+
+def test_subquery_scoped_to_user(tenant_db):
+    """Subqueries bypass ORM tenant events — explicit user_id filter required.
+
+    Documents that .subquery() results are executed via Core (not ORM),
+    so the do_orm_execute listener does NOT inject a tenant filter.
+    Call sites using subqueries must add .filter(Model.user_id == user_id).
+    """
+    with tenant_db.get_session(user_id=USER_A) as session:
+        session.add(SyncMetadata(key="sub_test", value="A-value"))
+
+    with tenant_db.get_session(user_id=USER_B) as session:
+        session.add(SyncMetadata(key="sub_test", value="B-value"))
+
+    with tenant_db.get_session(user_id=USER_A) as session:
+        # Without explicit user_id filter, subquery leaks cross-tenant data
+        from sqlalchemy import select
+        unscoped_subq = (
+            session.query(SyncMetadata.value)
+            .filter(SyncMetadata.key == "sub_test")
+            .subquery()
+        )
+        leaked = session.execute(select(unscoped_subq.c.value)).scalars().all()
+        assert len(leaked) == 2  # BOTH users' data — demonstrates the gap
+
+        # With explicit user_id filter, subquery is properly scoped
+        scoped_subq = (
+            session.query(SyncMetadata.value)
+            .filter(SyncMetadata.key == "sub_test")
+            .filter(SyncMetadata.user_id == USER_A)
+            .subquery()
+        )
+        result = session.execute(select(scoped_subq.c.value)).scalars().all()
+        assert result == ["A-value"]
+
+
 def test_raw_transactions_isolated(tenant_db):
     """Raw transactions should be scoped to their user."""
     with tenant_db.get_session(user_id=USER_A) as session:
