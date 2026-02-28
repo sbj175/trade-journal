@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         settings: resolve(__dirname, 'src/pages/settings/main.js'),
         reports: resolve(__dirname, 'src/pages/reports/main.js'),
+        risk: resolve(__dirname, 'src/pages/risk/main.js'),
       },
       output: {
         entryFileNames: '[name].js',

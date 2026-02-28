@@ -41,8 +41,8 @@ async def reports_page(request: Request):
 
 @router.get("/risk", response_class=HTMLResponse)
 async def risk_dashboard(request: Request):
-    """Serve the Portfolio Risk X-Ray page"""
-    return templates.TemplateResponse("risk-dashboard.html", _nav_context(request, "/risk"))
+    """Serve the Portfolio Risk X-Ray page (Vue 3 — no Jinja2 context needed)"""
+    return templates.TemplateResponse("risk-dashboard.html", {"request": request})
 
 
 @router.get("/ledger", response_class=HTMLResponse)
