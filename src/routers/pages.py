@@ -35,8 +35,8 @@ async def root(request: Request):
 
 @router.get("/reports", response_class=HTMLResponse)
 async def reports_page(request: Request):
-    """Serve the Performance Reports page"""
-    return templates.TemplateResponse("reports.html", _nav_context(request, "/reports"))
+    """Serve the Performance Reports page (Vue 3 — no Jinja2 context needed)"""
+    return templates.TemplateResponse("reports.html", {"request": request})
 
 
 @router.get("/risk", response_class=HTMLResponse)
