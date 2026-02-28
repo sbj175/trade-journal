@@ -70,11 +70,8 @@ class TestSeedNewLotsIntoGroups:
     OPEN group for the same account+underlying, even if that group is a
     Covered Call (has source_chain_id and strategy_label != 'Shares')."""
 
-    def test_new_equity_lot_joins_covered_call_group(self, db, lot_manager, monkeypatch):
+    def test_new_equity_lot_joins_covered_call_group(self, db, lot_manager):
         """New equity lot with no chain_id should join an existing Covered Call group."""
-        monkeypatch.setattr(ledger_service, 'db', db)
-        monkeypatch.setattr(ledger_service, 'lot_manager', lot_manager)
-
         cc_group_id = str(uuid.uuid4())
         chain_id = 'chain-cc-001'
 
@@ -93,7 +90,7 @@ class TestSeedNewLotsIntoGroups:
                                  chain_id=None, quantity=100,
                                  entry_date='2025-02-10T10:00:00')
 
-        assigned = ledger_service.seed_new_lots_into_groups()
+        assigned = ledger_service.seed_new_lots_into_groups(db=db, lot_manager=lot_manager)
 
         with db.get_session() as session:
             lots_in_group = _get_group_lots(session, cc_group_id)
@@ -103,11 +100,8 @@ class TestSeedNewLotsIntoGroups:
         assert len(groups) == 1
         assert groups[0][1] == 'Covered Call'
 
-    def test_new_equity_lot_creates_shares_group_when_none_exists(self, db, lot_manager, monkeypatch):
+    def test_new_equity_lot_creates_shares_group_when_none_exists(self, db, lot_manager):
         """When no OPEN group exists for the underlying, a new 'Shares' group is created."""
-        monkeypatch.setattr(ledger_service, 'db', db)
-        monkeypatch.setattr(ledger_service, 'lot_manager', lot_manager)
-
         with db.get_session() as session:
             _insert_position_group(session, group_id=str(uuid.uuid4()),
                                    account_number='ACCT1', underlying='AAPL',
@@ -117,7 +111,7 @@ class TestSeedNewLotsIntoGroups:
                                  account_number='ACCT1', underlying='SPY',
                                  chain_id=None, quantity=50)
 
-        assigned = ledger_service.seed_new_lots_into_groups()
+        assigned = ledger_service.seed_new_lots_into_groups(db=db, lot_manager=lot_manager)
 
         with db.get_session() as session:
             groups = _get_all_groups(session, 'ACCT1', 'SPY')
@@ -129,11 +123,8 @@ class TestSeedNewLotsIntoGroups:
             lots = _get_group_lots(session, groups[0][0])
         assert 'tx-new-spy' in lots
 
-    def test_new_equity_lot_ignores_closed_groups(self, db, lot_manager, monkeypatch):
+    def test_new_equity_lot_ignores_closed_groups(self, db, lot_manager):
         """Chainless equity lots should NOT be added to CLOSED groups."""
-        monkeypatch.setattr(ledger_service, 'db', db)
-        monkeypatch.setattr(ledger_service, 'lot_manager', lot_manager)
-
         closed_group_id = str(uuid.uuid4())
 
         with db.get_session() as session:
@@ -155,7 +146,7 @@ class TestSeedNewLotsIntoGroups:
                                  account_number='ACCT1', underlying='IBIT',
                                  chain_id=None, quantity=100)
 
-        ledger_service.seed_new_lots_into_groups()
+        ledger_service.seed_new_lots_into_groups(db=db, lot_manager=lot_manager)
 
         with db.get_session() as session:
             lots_in_closed = _get_group_lots(session, closed_group_id)
@@ -175,12 +166,9 @@ class TestSeedPositionGroupsUngrouped:
     """seed_position_groups should add chainless lots to an existing OPEN group
     (created from chain-based seeding) instead of always creating a new 'Shares' group."""
 
-    def test_ungrouped_lots_join_existing_open_group(self, db, lot_manager, monkeypatch):
+    def test_ungrouped_lots_join_existing_open_group(self, db, lot_manager):
         """During initial seeding, chainless lots should join an existing OPEN group
         for the same account+underlying rather than creating a duplicate."""
-        monkeypatch.setattr(ledger_service, 'db', db)
-        monkeypatch.setattr(ledger_service, 'lot_manager', lot_manager)
-
         chain_id = 'chain-cc-002'
         cc_group_id = str(uuid.uuid4())
 
@@ -199,7 +187,7 @@ class TestSeedPositionGroupsUngrouped:
                                  account_number='ACCT1', underlying='IBIT',
                                  chain_id=None, quantity=100)
 
-        groups_created = ledger_service.seed_position_groups()
+        groups_created = ledger_service.seed_position_groups(db=db, lot_manager=lot_manager)
 
         with db.get_session() as session:
             groups = _get_all_groups(session, 'ACCT1', 'IBIT')

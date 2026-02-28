@@ -218,11 +218,9 @@ class TestAssignmentFlowUnchanged:
 # ---------------------------------------------------------------------------
 
 class TestNettingStillWorks:
-    def test_net_opposing_equity_lots(self, db, lot_manager, monkeypatch):
+    def test_net_opposing_equity_lots(self, db, lot_manager):
         """Opposing equity lots (long vs short) net against each other."""
         from src.services import ledger_service
-        monkeypatch.setattr(ledger_service, 'db', db)
-        monkeypatch.setattr(ledger_service, 'lot_manager', lot_manager)
 
         # Create a long lot
         long_tx = make_stock_transaction(
@@ -238,7 +236,7 @@ class TestNettingStillWorks:
         )
         lot_manager.create_lot(short_tx, chain_id="chain-short")
 
-        netted = ledger_service.net_opposing_equity_lots()
+        netted = ledger_service.net_opposing_equity_lots(db=db, lot_manager=lot_manager)
 
         assert netted > 0
 
