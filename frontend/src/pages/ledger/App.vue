@@ -51,10 +51,10 @@ onMounted(async () => {
   await Auth.requireAuth()
   await Auth.requireTastytrade()
 
-  authEnabled.value = Auth.isAuthEnabled?.() || false
+  authEnabled.value = Auth.isAuthEnabled()
   if (authEnabled.value) {
-    const user = Auth.getUser?.()
-    userEmail.value = user?.email || ''
+    const user = await Auth.getUser()
+    if (user) userEmail.value = user.email || ''
   }
 
   await loadAccounts()
