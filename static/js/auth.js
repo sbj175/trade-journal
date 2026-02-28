@@ -13,7 +13,7 @@
  * are no-ops and authFetch behaves like regular fetch.
  */
 
-const Auth = (() => {
+window.Auth = (() => {
     let _config = null;       // { auth_enabled, supabase_url, supabase_anon_key }
     let _supabase = null;     // Supabase client instance
     let _initialized = false;
