@@ -33,6 +33,12 @@ async def ledger_page(request: Request):
     return templates.TemplateResponse("ledger.html", {"request": request})
 
 
+@router.get("/privacy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    """Serve the Privacy & Data Practices page (public, no auth required)"""
+    return templates.TemplateResponse("privacy.html", {"request": request})
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     """Serve the Settings page (Vue 3 — no Jinja2 context needed)"""

@@ -22,6 +22,9 @@ const onboarding = ref(false)
 const authEnabled = ref(false)
 const connecting = ref(false)
 
+// Data consent
+const consentAcknowledged = ref(false)
+
 // Initial Sync
 const syncStartDate = ref(new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10))
 const syncMinDate = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10)
@@ -288,6 +291,15 @@ async function initialSync() {
   }
 }
 
+function toggleConsent() {
+  consentAcknowledged.value = !consentAcknowledged.value
+  if (consentAcknowledged.value) {
+    localStorage.setItem('dataConsentAcknowledged', 'true')
+  } else {
+    localStorage.removeItem('dataConsentAcknowledged')
+  }
+}
+
 function showNotification(message, type) {
   notification.value = { message, type }
   setTimeout(() => { notification.value = null }, 3000)
@@ -312,6 +324,7 @@ onMounted(async () => {
   await loadTargets()
   loadRollAlerts()
   privacyMode.value = localStorage.getItem('privacyMode') || 'off'
+  consentAcknowledged.value = localStorage.getItem('dataConsentAcknowledged') === 'true'
 })
 
 // Nav links (matches pages.py NAV_LINKS)
@@ -479,7 +492,25 @@ const navLinks = [
                   <span>Revoke anytime &mdash; disconnect here or revoke access on Tastytrade</span>
                 </div>
               </div>
-              <button @click="connectTastytrade()" :disabled="connecting"
+              <!-- Data disclosure consent -->
+              <div class="bg-tv-bg border border-tv-border rounded p-4 text-left max-w-lg mx-auto mb-5">
+                <p class="text-tv-text text-sm font-medium mb-2">
+                  <i class="fas fa-shield-halved mr-1 text-tv-blue"></i>Data disclosure
+                </p>
+                <p class="text-tv-muted text-xs mb-2">
+                  OptionLedger will access your account info, transaction history, positions, and real-time quotes (read-only).
+                  Your OAuth token is encrypted at rest. Your data is never shared with third parties.
+                </p>
+                <a href="/privacy" target="_blank" class="text-tv-blue hover:underline text-xs">
+                  <i class="fas fa-external-link-alt mr-1"></i>Full privacy & data practices
+                </a>
+                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                  <input type="checkbox" :checked="consentAcknowledged" @change="toggleConsent()"
+                         class="w-4 h-4 rounded border-tv-border bg-tv-bg text-tv-blue focus:ring-tv-blue">
+                  <span class="text-tv-text text-sm">I understand what data OptionLedger will access and store</span>
+                </label>
+              </div>
+              <button @click="connectTastytrade()" :disabled="connecting || !consentAcknowledged"
                       class="bg-tv-blue hover:bg-tv-blue/80 text-white px-8 py-3 rounded-lg text-base font-medium disabled:opacity-50 transition-colors">
                 <i v-if="!connecting" class="fas fa-right-to-bracket mr-2"></i>
                 <i v-if="connecting" class="fas fa-spinner fa-spin mr-2"></i>
@@ -504,8 +535,22 @@ const navLinks = [
                   <span class="text-tv-muted">{{ acct.account_name }}</span>
                 </div>
               </div>
+              <!-- Data consent (shown when not yet connected) -->
+              <div v-if="!connectionStatus?.configured" class="bg-tv-bg border border-tv-border rounded p-3 text-sm">
+                <p class="text-tv-muted text-xs mb-2">
+                  <i class="fas fa-shield-halved mr-1 text-tv-blue"></i>
+                  OptionLedger will access your account info, transactions, positions, and quotes (read-only).
+                  Your token is encrypted at rest. Data is never shared with third parties.
+                  <a href="/privacy" target="_blank" class="text-tv-blue hover:underline ml-1">Learn more</a>
+                </p>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" :checked="consentAcknowledged" @change="toggleConsent()"
+                         class="w-4 h-4 rounded border-tv-border bg-tv-bg text-tv-blue focus:ring-tv-blue">
+                  <span class="text-tv-text text-sm">I understand what data OptionLedger will access and store</span>
+                </label>
+              </div>
               <div class="flex items-center gap-3">
-                <button @click="connectTastytrade()" :disabled="connecting"
+                <button @click="connectTastytrade()" :disabled="connecting || (!connectionStatus?.configured && !consentAcknowledged)"
                         class="bg-tv-blue hover:bg-tv-blue/80 text-white px-5 py-2 rounded text-sm disabled:opacity-50">
                   <i v-if="!connecting" class="fas fa-right-to-bracket mr-1"></i>
                   <i v-if="connecting" class="fas fa-spinner fa-spin mr-1"></i>
@@ -518,6 +563,12 @@ const navLinks = [
                   <i v-if="deletingCredentials" class="fas fa-spinner fa-spin mr-1"></i>
                   {{ deletingCredentials ? 'Disconnecting...' : 'Disconnect' }}
                 </button>
+              </div>
+              <!-- Privacy link (always visible) -->
+              <div class="mt-2">
+                <a href="/privacy" target="_blank" class="text-tv-muted hover:text-tv-blue text-xs">
+                  <i class="fas fa-shield-halved mr-1"></i>Privacy & Data Practices
+                </a>
               </div>
             </div>
           </div>
