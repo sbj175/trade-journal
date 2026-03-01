@@ -89,7 +89,7 @@ const navLinks = [
           </li>
           <li class="flex items-start gap-2">
             <i class="fas fa-list text-tv-green w-5 text-center mt-0.5"></i>
-            <span><strong>Transaction history</strong> &mdash; imported trades, positions, and account balances are stored in the database for analysis and display.</span>
+            <span><strong>Transaction history</strong> &mdash; imported equities and options trades, positions, and account balances are stored in the database for analysis and display. Futures data is not imported or stored.</span>
           </li>
           <li class="flex items-start gap-2">
             <i class="fas fa-clock text-tv-green w-5 text-center mt-0.5"></i>
