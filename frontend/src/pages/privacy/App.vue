@@ -179,7 +179,7 @@ const navLinks = [
       <div class="p-5 text-sm text-tv-text">
         <p>
           If you have questions about our data practices or want to request data deletion, please contact us at
-          <a href="mailto:support@optionledger.com" class="text-tv-blue hover:underline">support@optionledger.com</a>.
+          <a href="mailto:support@optionledger.app" class="text-tv-blue hover:underline">support@optionledger.app</a>.
         </p>
       </div>
     </section>
