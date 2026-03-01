@@ -1,6 +1,5 @@
 /**
  * Shared constants for OptionLedger Vue pages.
- * Mirrors static/js/constants.js for Alpine pages.
  */
 
 export const STRATEGY_CATEGORIES = {

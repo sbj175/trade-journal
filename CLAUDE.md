@@ -411,7 +411,7 @@ When auth is disabled (single-user/self-hosted), the Settings page shows the exi
 
 - **`src/routers/tastytrade_oauth.py`**: Three endpoints (authorize, callback, disconnect)
 - **`static/js/auth.js` → `requireTastytrade()`**: Checks if user has credentials, redirects to Settings if not
-- **`static/js/settings-app.js`**: `connectTastytrade()` and `disconnectTastytrade()` methods
+- **`frontend/src/pages/settings/App.vue`**: `connectTastytrade()` and `disconnectTastytrade()` methods
 - **`src/utils/auth_manager.py`**: `_load_user_credentials()` falls back to env var when `encrypted_provider_secret` is NULL
 
 ### Environment Variables

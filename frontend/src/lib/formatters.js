@@ -1,6 +1,5 @@
 /**
  * Shared formatting utilities for OptionLedger Vue pages.
- * Mirrors static/js/utils.js for Alpine pages.
  */
 
 export function formatNumber(value, decimals = 2) {
