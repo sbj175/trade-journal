@@ -922,7 +922,7 @@ function getRollAnalysis(group) {
   const rewardRemaining = maxProfit - currentPnL
   const riskRemaining = maxLoss + currentPnL
   const rewardToRiskRaw = riskRemaining > 0 ? rewardRemaining / riskRemaining : 99
-  const rewardToRisk = rewardToRiskRaw >= 10 ? '10+' : rewardToRiskRaw.toFixed(2)
+  const rewardToRisk = rewardToRiskRaw >= 10 ? '10:1+' : rewardToRiskRaw.toFixed(1) + ':1'
 
   const dte = getMinDTE(group) || 0
 
@@ -956,7 +956,7 @@ function getRollAnalysis(group) {
     badges.push({ label: `${dte}d Left`, color: 'yellow' })
   }
   if (rollAlertSettings.value.lowRewardToRisk && rewardToRiskRaw < (isCredit ? 0.3 : 0.6)) {
-    badges.push({ label: `R:R ${rewardToRisk}`, color: 'orange' })
+    badges.push({ label: rewardToRisk, color: 'orange' })
   }
 
   let convexity
@@ -1568,7 +1568,7 @@ onUnmounted(() => {
               <!-- DTE -->
               <div class="w-12 text-center"
                    :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'">
-                {{ getMinDTE(group) !== null ? getMinDTE(group) : '' }}
+                {{ getMinDTE(group) !== null ? getMinDTE(group) + 'd' : '' }}
               </div>
 
               <!-- Days -->
