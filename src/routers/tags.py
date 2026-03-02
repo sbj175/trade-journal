@@ -3,8 +3,9 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 
-from src.database.models import Tag, PositionGroupTag
+from src.database.models import Tag, PositionGroupTag, PositionGroup
 from src.database.db_manager import DatabaseManager
 from src.dependencies import get_db, get_current_user_id
 from src.schemas import TagCreate, TagUpdate
@@ -16,10 +17,25 @@ router = APIRouter()
 async def list_tags(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """List all tags for the current user."""
     with db.get_session() as session:
-        rows = session.query(Tag).order_by(Tag.name.asc()).all()
+        from src.database.tenant import DEFAULT_USER_ID
+        uid = session.info.get("user_id", DEFAULT_USER_ID)
+        rows = (
+            session.query(Tag, func.count(PositionGroup.id).label("group_count"))
+            .outerjoin(
+                PositionGroupTag,
+                (Tag.id == PositionGroupTag.tag_id) & (PositionGroupTag.user_id == uid),
+            )
+            .outerjoin(
+                PositionGroup,
+                (PositionGroupTag.group_id == PositionGroup.group_id) & (PositionGroup.user_id == uid),
+            )
+            .group_by(Tag.id)
+            .order_by(Tag.name.asc())
+            .all()
+        )
         return [
-            {"id": t.id, "name": t.name, "color": t.color or "#3B82F6"}
-            for t in rows
+            {"id": t.id, "name": t.name, "color": t.color or "#3B82F6", "group_count": cnt}
+            for t, cnt in rows
         ]
 
 

@@ -81,11 +81,12 @@ onMounted(async () => {
   // URL params override saved state
   const urlParams = new URLSearchParams(window.location.search)
   const underlyingParam = urlParams.get('underlying')
+  const groupParam = urlParams.get('group')
   if (underlyingParam) {
     filterUnderlying.value = underlyingParam.toUpperCase()
     timePeriod.value = 'all'
     showOpen.value = true
-    showClosed.value = true
+    showClosed.value = groupParam ? false : true
   } else {
     const savedUnderlying = localStorage.getItem('trade_journal_selected_underlying')
     if (savedUnderlying) filterUnderlying.value = savedUnderlying
@@ -94,6 +95,17 @@ onMounted(async () => {
   await fetchLedger()
   await loadNotes()
   await loadAvailableTags()
+
+  // Auto-expand and scroll to a specific group if linked from Positions page
+  if (groupParam) {
+    const target = filteredGroups.value.find(g => g.group_id === groupParam)
+    if (target) {
+      target.expanded = true
+      await nextTick()
+      const el = document.getElementById('group-' + groupParam)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
 })
 
 // ==================== DATA FETCHING ====================
@@ -957,7 +969,7 @@ const navLinks = [
     </div>
 
     <div class="px-4 pt-2">
-      <div v-for="group in filteredGroups" :key="group.group_id" class="mb-2">
+      <div v-for="group in filteredGroups" :key="group.group_id" :id="'group-' + group.group_id" class="mb-2">
         <!-- Group Header Row -->
         <div @click="onGroupHeaderClick(group)"
              class="flex items-center px-4 py-3 bg-tv-panel cursor-pointer border border-tv-border rounded-sm transition-colors"

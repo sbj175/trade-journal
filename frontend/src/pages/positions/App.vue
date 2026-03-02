@@ -20,7 +20,7 @@ const isLoading = ref(false)
 const error = ref(null)
 const liveQuotesActive = ref(false)
 const lastQuoteUpdate = ref(null)
-const reconciliation = ref(null)
+const syncSummary = ref(null)
 const strategyTargets = ref({})
 const rollAlertSettings = ref({ enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true })
 const privacyMode = ref('off')
@@ -225,11 +225,16 @@ async function fetchPositions(includeSync = false) {
   error.value = null
   try {
     if (includeSync) {
+      syncSummary.value = null
       const syncResp = await Auth.authFetch('/api/sync', { method: 'POST' })
       if (syncResp.ok) {
         const syncData = await syncResp.json()
-        if (syncData.reconciliation) {
-          reconciliation.value = syncData.reconciliation
+        const n = syncData.new_transactions || 0
+        const syms = syncData.symbols || []
+        if (n > 0) {
+          syncSummary.value = `Imported ${n} transaction${n === 1 ? '' : 's'} on ${syms.join(', ')}`
+        } else {
+          syncSummary.value = 'No new transactions'
         }
       }
     }
@@ -1320,21 +1325,14 @@ onUnmounted(() => {
     <p class="text-tv-muted mb-4">No open positions found</p>
   </div>
 
-  <!-- Reconciliation Banner -->
-  <div v-show="reconciliation && !isLoading" class="mx-2 mt-2">
-    <div class="px-4 py-2 rounded text-sm flex items-center justify-between"
-         :class="reconciliation && (reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length)
-                 ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-                 : 'bg-tv-green/10 border border-tv-green/30 text-tv-green'">
+  <!-- Sync Summary Banner -->
+  <div v-show="syncSummary && !isLoading" class="mx-2 mt-2">
+    <div class="px-4 py-2 rounded text-sm flex items-center justify-between bg-tv-blue/10 border border-tv-blue/30 text-tv-blue">
       <span>
-        <i class="fas fa-check-circle mr-1" v-show="reconciliation && !reconciliation.unlinked?.length && !reconciliation.quantity_mismatch?.length && !reconciliation.stale?.length"></i>
-        <i class="fas fa-exclamation-triangle mr-1" v-show="reconciliation && (reconciliation.unlinked?.length || reconciliation.quantity_mismatch?.length || reconciliation.stale?.length)"></i>
-        <span>{{ reconciliation ? reconciliation.matched + '/' + reconciliation.total + ' options matched' : '' }}</span>
-        <span v-show="reconciliation?.unlinked?.length" class="ml-2">{{ reconciliation?.unlinked?.length + ' unlinked' }}</span>
-        <span v-show="reconciliation?.stale?.length" class="ml-2">{{ reconciliation?.stale?.length + ' stale' }}</span>
-        <span v-show="reconciliation?.auto_closed?.length" class="ml-2 text-tv-green">{{ reconciliation?.auto_closed?.length + ' auto-closed' }}</span>
+        <i class="fas fa-sync-alt mr-1"></i>
+        {{ syncSummary }}
       </span>
-      <button @click="reconciliation = null" class="text-tv-muted hover:text-tv-text text-xs ml-4">
+      <button @click="syncSummary = null" class="text-tv-muted hover:text-tv-text text-xs ml-4">
         <i class="fas fa-times"></i>
       </button>
     </div>
@@ -1502,7 +1500,7 @@ onUnmounted(() => {
 
               <!-- Ledger Link -->
               <div class="w-12">
-                <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying)"
+                <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
                    class="text-tv-blue hover:text-blue-400"
                    title="View in Ledger">

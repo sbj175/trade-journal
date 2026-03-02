@@ -31,6 +31,13 @@ const syncMinDate = new Date(Date.now() - 730 * 86400000).toISOString().slice(0,
 const syncMaxDate = new Date().toISOString().slice(0, 10)
 const initialSyncing = ref(false)
 
+// Tags
+const tags = ref([])
+const editingTag = ref(null)
+const editName = ref('')
+const editColor = ref('')
+const deletingTagId = ref(null)
+
 // Roll alerts
 const rollAlerts = ref({
   enabled: true,
@@ -252,6 +259,72 @@ function saveRollAlerts() {
   setTimeout(() => { if (saveStatus.value === 'saved') saveStatus.value = null }, 2000)
 }
 
+async function loadTags() {
+  try {
+    const resp = await Auth.authFetch('/api/tags')
+    if (resp.ok) tags.value = await resp.json()
+  } catch (e) {
+    showNotification('Failed to load tags', 'error')
+  }
+}
+
+function startEditTag(tag) {
+  editingTag.value = tag.id
+  editName.value = tag.name
+  editColor.value = tag.color
+}
+
+function cancelEditTag() {
+  editingTag.value = null
+  editName.value = ''
+  editColor.value = ''
+}
+
+async function saveTag() {
+  if (!editName.value.trim()) {
+    showNotification('Tag name cannot be empty', 'error')
+    return
+  }
+  try {
+    const resp = await Auth.authFetch(`/api/tags/${editingTag.value}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editName.value.trim(), color: editColor.value }),
+    })
+    if (resp.ok) {
+      showNotification('Tag updated', 'success')
+      cancelEditTag()
+      await loadTags()
+    } else {
+      const data = await resp.json().catch(() => ({}))
+      showNotification(data.detail || 'Failed to update tag', 'error')
+    }
+  } catch (e) {
+    showNotification('Failed to update tag', 'error')
+  }
+}
+
+async function deleteTag(tag) {
+  const msg = tag.group_count > 0
+    ? `Delete "${tag.name}"? It is used by ${tag.group_count} position group${tag.group_count === 1 ? '' : 's'} and will be removed from all of them.`
+    : `Delete "${tag.name}"?`
+  if (!confirm(msg)) return
+  deletingTagId.value = tag.id
+  try {
+    const resp = await Auth.authFetch(`/api/tags/${tag.id}`, { method: 'DELETE' })
+    if (resp.ok) {
+      showNotification('Tag deleted', 'success')
+      await loadTags()
+    } else {
+      const data = await resp.json().catch(() => ({}))
+      showNotification(data.detail || 'Failed to delete tag', 'error')
+    }
+  } catch (e) {
+    showNotification('Failed to delete tag', 'error')
+  }
+  deletingTagId.value = null
+}
+
 function savePrivacyMode() {
   localStorage.setItem('privacyMode', privacyMode.value)
   saveStatus.value = 'saved'
@@ -322,6 +395,7 @@ onMounted(async () => {
   await updateNavAuth()
   await checkConnection()
   await loadTargets()
+  await loadTags()
   loadRollAlerts()
   privacyMode.value = localStorage.getItem('privacyMode') || 'off'
   consentAcknowledged.value = localStorage.getItem('dataConsentAcknowledged') === 'true'
@@ -406,6 +480,7 @@ const navLinks = [
           { id: 'privacy', icon: 'fa-eye-slash', label: 'Privacy' },
           { id: 'targets', icon: 'fa-bullseye', label: 'Strategy Targets' },
           { id: 'alerts', icon: 'fa-bell', label: 'Roll Alerts' },
+          { id: 'tags', icon: 'fa-tags', label: 'Tags' },
         ]" :key="tab.id"
           @click="activeTab = tab.id"
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
@@ -844,6 +919,70 @@ const navLinks = [
               </label>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ==================== Tags Tab ==================== -->
+      <div v-show="activeTab === 'tags'">
+        <div class="mb-6">
+          <h2 class="text-xl font-semibold text-tv-text mb-1">
+            <i class="fas fa-tags mr-2 text-tv-blue"></i>Tags
+          </h2>
+          <p class="text-tv-muted text-sm">Manage tags used to organize your position groups</p>
+        </div>
+
+        <div class="bg-tv-bg border border-tv-border rounded p-3 text-sm text-tv-muted mb-5">
+          <i class="fas fa-info-circle mr-1 text-tv-blue"></i>
+          Tags are created from the Ledger or Positions page. Use this section to rename, recolor, or delete existing tags.
+        </div>
+
+        <!-- Tag list -->
+        <div v-if="tags.length > 0" class="bg-tv-panel border border-tv-border rounded">
+          <div v-for="tag in tags" :key="tag.id"
+               class="flex items-center gap-3 px-4 py-3 border-b border-tv-border/50 last:border-b-0">
+
+            <!-- View mode -->
+            <template v-if="editingTag !== tag.id">
+              <span class="w-5 h-5 rounded-full flex-shrink-0 border border-tv-border"
+                    :style="{ backgroundColor: tag.color }"></span>
+              <span class="text-tv-text text-sm font-medium flex-1">{{ tag.name }}</span>
+              <span class="text-tv-muted text-xs bg-tv-bg border border-tv-border rounded px-2 py-0.5">
+                {{ tag.group_count }} {{ tag.group_count === 1 ? 'position' : 'positions' }}
+              </span>
+              <button @click="startEditTag(tag)"
+                      class="text-tv-muted hover:text-tv-blue text-sm p-1" title="Edit tag">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button @click="deleteTag(tag)" :disabled="deletingTagId === tag.id"
+                      class="text-tv-muted hover:text-tv-red text-sm p-1 disabled:opacity-50" title="Delete tag">
+                <i :class="deletingTagId === tag.id ? 'fas fa-spinner fa-spin' : 'fas fa-trash-alt'"></i>
+              </button>
+            </template>
+
+            <!-- Edit mode -->
+            <template v-else>
+              <input type="color" v-model="editColor"
+                     class="w-7 h-7 rounded cursor-pointer border border-tv-border bg-transparent flex-shrink-0"
+                     title="Pick color">
+              <input type="text" v-model="editName"
+                     class="flex-1 bg-tv-bg border border-tv-border text-tv-text px-3 py-1.5 rounded text-sm focus:outline-none focus:border-tv-blue"
+                     @keyup.enter="saveTag()" @keyup.escape="cancelEditTag()">
+              <button @click="saveTag()"
+                      class="bg-tv-blue hover:bg-tv-blue/80 text-white px-3 py-1.5 rounded text-sm">
+                <i class="fas fa-check mr-1"></i>Save
+              </button>
+              <button @click="cancelEditTag()"
+                      class="text-tv-muted hover:text-tv-text border border-tv-border px-3 py-1.5 rounded text-sm">
+                Cancel
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div v-else class="bg-tv-panel border border-tv-border rounded p-8 text-center">
+          <i class="fas fa-tags text-tv-muted text-3xl mb-3"></i>
+          <p class="text-tv-muted text-sm">No tags yet. Create tags from the Ledger or Positions page.</p>
         </div>
       </div>
 

@@ -123,9 +123,18 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
 
         reconciliation = await reconcile_positions_vs_chains(db=db)
 
+        # Collect unique symbols from newly saved transactions
+        synced_symbols = sorted({
+            txn.get('underlying_symbol', '').split()[0] if ' ' in txn.get('underlying_symbol', '') else txn.get('underlying_symbol', '')
+            for txn in transactions
+            if txn.get('underlying_symbol')
+        })
+
         return {
             "message": f"Sync completed: {saved_count} new transactions processed",
             "transactions_processed": saved_count,
+            "new_transactions": raw_saved,
+            "symbols": synced_symbols,
             "positions_updated": total_positions,
             "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None,
             "reconciliation": reconciliation
