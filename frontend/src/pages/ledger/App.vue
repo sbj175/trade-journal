@@ -891,14 +891,17 @@ const navLinks = [
 
       <!-- Status Filter -->
       <div class="flex items-center gap-2">
-        <label class="flex items-center gap-2 text-tv-muted">
-          <input type="checkbox" v-model="showOpen" @change="applyFilters(); saveState()" class="w-4 h-4">
-          <span class="text-tv-green text-sm">Open</span>
-        </label>
-        <label class="flex items-center gap-2 text-tv-muted">
-          <input type="checkbox" v-model="showClosed" @change="applyFilters(); saveState()" class="w-4 h-4">
-          <span class="text-tv-muted text-sm">Closed</span>
-        </label>
+        <span class="text-tv-muted">Status:</span>
+        <button @click="showOpen = !showOpen; applyFilters(); saveState()"
+                :class="showOpen ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                class="px-3 py-1.5 text-sm border rounded transition-colors">
+          Open
+        </button>
+        <button @click="showClosed = !showClosed; applyFilters(); saveState()"
+                :class="showClosed ? 'bg-tv-muted/20 text-tv-text border-tv-muted/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                class="px-3 py-1.5 text-sm border rounded transition-colors">
+          Closed
+        </button>
       </div>
 
       <!-- Sort direction indicator -->
