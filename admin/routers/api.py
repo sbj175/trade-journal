@@ -120,20 +120,26 @@ async def db_health():
             ]
             total_dead_tuples = sum(t["dead_tuples"] for t in tables)
 
-            # Cache and index hit ratios
-            hit_row = session.execute(text("""
+            # Cache hit ratio (database-level)
+            cache_row = session.execute(text("""
                 SELECT
-                    CASE WHEN (heap_blks_hit + heap_blks_read) > 0
-                         THEN round(100.0 * heap_blks_hit / (heap_blks_hit + heap_blks_read), 2)
-                         ELSE 100 END AS cache_hit_ratio,
-                    CASE WHEN (idx_blks_hit + idx_blks_read) > 0
-                         THEN round(100.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2)
-                         ELSE 100 END AS index_hit_ratio
+                    CASE WHEN (blks_hit + blks_read) > 0
+                         THEN round(100.0 * blks_hit / (blks_hit + blks_read), 2)
+                         ELSE 100 END AS cache_hit_ratio
                 FROM pg_stat_database
                 WHERE datname = current_database()
             """)).first()
-            cache_hit_ratio = float(hit_row.cache_hit_ratio) if hit_row else None
-            index_hit_ratio = float(hit_row.index_hit_ratio) if hit_row else None
+            cache_hit_ratio = float(cache_row.cache_hit_ratio) if cache_row else None
+
+            # Index hit ratio (aggregated from user tables)
+            idx_row = session.execute(text("""
+                SELECT
+                    CASE WHEN (sum(idx_blks_hit) + sum(idx_blks_read)) > 0
+                         THEN round(100.0 * sum(idx_blks_hit) / (sum(idx_blks_hit) + sum(idx_blks_read)), 2)
+                         ELSE 100 END AS index_hit_ratio
+                FROM pg_statio_user_indexes
+            """)).first()
+            index_hit_ratio = float(idx_row.index_hit_ratio) if idx_row else None
 
         # Connection pool (accessed outside session)
         pool = engine.pool
