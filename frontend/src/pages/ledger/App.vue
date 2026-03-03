@@ -362,7 +362,7 @@ function sortedLots(group) {
     const aExp = a.expiration || ''
     const bExp = b.expiration || ''
     if (aExp !== bExp) return bExp.localeCompare(aExp)
-    return (b.strike || 0) - (a.strike || 0)
+    return (a.strike || 0) - (b.strike || 0)
   })
 }
 
