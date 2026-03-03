@@ -452,13 +452,13 @@
                                     <template x-if="!isSignUp">
                                         <p class="text-tv-muted">
                                             Don't have an account?
-                                            <button @click="isSignUp = true; error = ''; success = ''" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign up</button>
+                                            <button @click="isSignUp = true; error = ''; success = ''; $nextTick(() => { const el = document.querySelector('input[type=email]'); if (el) el.focus(); })" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign up</button>
                                         </p>
                                     </template>
                                     <template x-if="isSignUp">
                                         <p class="text-tv-muted">
                                             Already have an account?
-                                            <button @click="isSignUp = false; error = ''; success = ''" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign in</button>
+                                            <button @click="isSignUp = false; error = ''; success = ''; $nextTick(() => { const el = document.querySelector('input[type=email]'); if (el) el.focus(); })" class="text-[#2962ff] hover:text-blue-400 font-medium ml-1">Sign in</button>
                                         </p>
                                     </template>
                                 </div>

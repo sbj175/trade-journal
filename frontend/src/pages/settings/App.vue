@@ -736,7 +736,7 @@ const navLinks = [
               <div class="flex items-start justify-between">
                 <div>
                   <h3 class="text-tv-text font-medium mb-1">
-                    <i class="fas fa-database mr-2 text-tv-muted"></i>Initial Sync
+                    <i class="fas fa-database mr-2 text-tv-muted"></i>Import Transactions
                   </h3>
                   <p class="text-tv-muted text-sm">Clears the existing database and rebuilds it from scratch. Fetches all transactions from the selected start date.</p>
                 </div>
@@ -746,7 +746,7 @@ const navLinks = [
                           ? 'bg-tv-blue hover:bg-tv-blue/80 text-white'
                           : 'bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30'">
                   <i class="fas fa-database mr-2" :class="{ 'animate-spin': initialSyncing }"></i>
-                  {{ initialSyncing ? 'Importing...' : (onboarding ? 'Import Trades' : 'Initial Sync') }}
+                  {{ initialSyncing ? 'Importing...' : 'Import Transactions' }}
                 </button>
               </div>
               <div class="mt-4 flex items-center gap-3 ml-7">
@@ -764,7 +764,7 @@ const navLinks = [
         <div v-if="initialSyncing" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
           <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl">
             <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
-            <p class="text-tv-text text-lg font-medium">Rebuilding database...</p>
+            <p class="text-tv-text text-lg font-medium">Importing transactions...</p>
             <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
           </div>
         </div>
