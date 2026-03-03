@@ -273,7 +273,7 @@ async def background_incremental_sync(user_id: str = None, *, db: DatabaseManage
             transactions = await tastytrade.get_transactions(days_back=days_back)
             logger.info(f"Background sync: fetched {len(transactions)} transactions")
 
-            raw_saved = db.save_raw_transactions(transactions)
+            raw_saved, _ = db.save_raw_transactions(transactions)
             logger.info(f"Background sync: saved {raw_saved} raw transactions")
 
             all_positions = await tastytrade.get_positions()

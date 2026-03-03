@@ -136,13 +136,18 @@ class DatabaseManager:
     
     # Legacy trade methods removed - use order system instead
 
-    def save_raw_transactions(self, transactions: List[Dict]) -> int:
-        """Save raw transactions to database for order-based grouping"""
+    def save_raw_transactions(self, transactions: List[Dict]) -> tuple[int, set[str]]:
+        """Save raw transactions to database for order-based grouping.
+
+        Returns (saved_count, new_symbols) where new_symbols is the set of
+        underlying symbols from transactions that were actually inserted.
+        """
         from src.database.engine import dialect_insert
         from src.database.models import RawTransaction
         from src.database.tenant import DEFAULT_USER_ID
         self.ensure_initialized()
         saved_count = 0
+        new_symbols: set[str] = set()
 
         with self.get_session() as session:
             user_id = session.info.get("user_id", DEFAULT_USER_ID)
@@ -166,13 +171,17 @@ class DatabaseManager:
                     result = session.execute(stmt.on_conflict_do_nothing(index_elements=['id', 'user_id']))
                     if result.rowcount > 0:
                         saved_count += 1
+                        underlying = txn.get('underlying_symbol', '')
+                        if underlying:
+                            underlying = underlying.split()[0] if ' ' in underlying else underlying
+                            new_symbols.add(underlying)
                 except Exception as e:
                     logger.error(f"Failed to save transaction {txn.get('id')}: {e}")
                     continue
 
             logger.info(f"Saved {saved_count} raw transactions to database")
 
-        return saved_count
+        return saved_count, new_symbols
     
     def get_raw_transactions(
         self,

@@ -57,10 +57,8 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
         logger.info(f"Fetched {len(transactions)} transactions")
 
         logger.info("Saving raw transactions...")
-        raw_saved = db.save_raw_transactions(transactions)
+        raw_saved, new_symbols = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
-
-        saved_count = len(transactions)
 
         # Fetch account balances for all accounts
         logger.info("Fetching account balances...")
@@ -119,22 +117,15 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
                 else:
                     logger.error(f"Failed to save positions for account {account_number}")
 
-        logger.info(f"Sync completed: {saved_count} transactions processed, {total_positions} positions updated")
+        logger.info(f"Sync completed: {len(transactions)} transactions processed, {total_positions} positions updated")
 
         reconciliation = await reconcile_positions_vs_chains(db=db)
 
-        # Collect unique symbols from newly saved transactions
-        synced_symbols = sorted({
-            txn.get('underlying_symbol', '').split()[0] if ' ' in txn.get('underlying_symbol', '') else txn.get('underlying_symbol', '')
-            for txn in transactions
-            if txn.get('underlying_symbol')
-        })
-
         return {
-            "message": f"Sync completed: {saved_count} new transactions processed",
-            "transactions_processed": saved_count,
+            "message": f"Sync completed: {raw_saved} new transactions processed",
+            "transactions_processed": len(transactions),
             "new_transactions": raw_saved,
-            "symbols": synced_symbols,
+            "symbols": sorted(new_symbols),
             "positions_updated": total_positions,
             "last_sync": db.get_last_sync_timestamp().isoformat() if db.get_last_sync_timestamp() else None,
             "reconciliation": reconciliation
@@ -245,7 +236,7 @@ async def initial_sync(
         logger.info(f"Fetched {len(transactions)} transactions")
 
         logger.info("Saving raw transactions...")
-        raw_saved = db.save_raw_transactions(transactions)
+        raw_saved, _ = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
 
         logger.info("Fetching current positions from all accounts...")
