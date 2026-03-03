@@ -388,6 +388,36 @@ function equityAggregate(group) {
   }
 }
 
+function lotCloseDate(lot) {
+  const closings = lot.closings || []
+  if (closings.length === 0) return null
+  return closings.reduce((latest, c) =>
+    !latest || (c.closing_date > latest) ? c.closing_date : latest, null)
+}
+
+function lotHoldingDays(lot) {
+  const closeDate = lotCloseDate(lot)
+  if (!closeDate || !lot.entry_date) return null
+  const entry = new Date(lot.entry_date)
+  const close = new Date(closeDate)
+  return Math.round((close - entry) / (1000 * 60 * 60 * 24))
+}
+
+function lotCloseSummary(lot) {
+  const closings = lot.closings || []
+  if (closings.length === 0) return null
+  const multiplier = lot.option_type ? 100 : 1
+  let totalQty = 0, totalValue = 0
+  for (const c of closings) {
+    totalQty += c.quantity_closed
+    totalValue += c.quantity_closed * (c.closing_price || 0) * multiplier
+  }
+  return {
+    avgPrice: totalQty > 0 ? totalValue / totalQty / multiplier : 0,
+    proceeds: totalValue,
+  }
+}
+
 function toggleAllEquityLots(group) {
   const ids = openEquityLots(group).map(l => l.transaction_id)
   const allSelected = ids.every(id => selectedLots.value.includes(id))
@@ -1121,6 +1151,8 @@ const navLinks = [
                 <span class="w-5"></span>
                 <span v-show="group._movingLots" class="w-8"></span>
                 <span class="w-32">Entry Date</span>
+                <span class="w-24">Close Date</span>
+                <span class="w-10">Days</span>
                 <span class="w-10 text-right">Qty</span>
                 <span class="w-16 text-center mx-2">Exp</span>
                 <span class="w-10">DTE</span>
@@ -1129,7 +1161,9 @@ const navLinks = [
                 <span class="w-20 text-center ml-3">Status</span>
                 <span class="w-20 text-right">Entry $</span>
                 <span class="w-24 text-right ml-2">Cost Basis</span>
-                <span class="w-24 text-right ml-4">Realized</span>
+                <span class="w-20 text-right ml-2">Close $</span>
+                <span class="w-24 text-right ml-2">Proceeds</span>
+                <span class="w-24 text-right ml-2">Realized</span>
               </div>
 
               <!-- Section A: Equity Aggregate -->
@@ -1148,6 +1182,8 @@ const navLinks = [
                              class="w-4 h-4">
                     </span>
                     <span class="w-32 text-tv-muted">{{ equityAggregate(group).lotCount }} lots</span>
+                    <span class="w-24"></span>
+                    <span class="w-10"></span>
                     <span class="w-10 text-right font-medium"
                           :class="equityAggregate(group).quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
                       {{ equityAggregate(group).quantity }}
@@ -1159,7 +1195,9 @@ const navLinks = [
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">OPEN</span>
                     <span class="w-20 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
                     <span class="w-24 text-right text-tv-muted ml-2">${{ formatNumber(equityAggregate(group).costBasis) }}</span>
-                    <span class="w-24 text-right ml-4"></span>
+                    <span class="w-20 text-right ml-2"></span>
+                    <span class="w-24 text-right ml-2"></span>
+                    <span class="w-24 text-right ml-2"></span>
                   </div>
 
                   <!-- Expanded individual equity lots -->
@@ -1180,6 +1218,8 @@ const navLinks = [
                           <span v-if="lot.derivation_type" class="text-tv-muted mr-1">&#8627;</span>
                           {{ formatOrderDate(lot.entry_date) }}
                         </span>
+                        <span class="w-24 text-tv-muted">{{ lotCloseDate(lot) ? formatOrderDate(lotCloseDate(lot)) : '' }}</span>
+                        <span class="w-10 text-tv-muted">{{ lotHoldingDays(lot) != null ? lotHoldingDays(lot) + 'd' : '' }}</span>
                         <span class="w-10 text-right font-medium"
                               :class="(lot.remaining_quantity ?? lot.quantity) > 0 ? 'text-tv-green' : 'text-tv-red'">
                           {{ lot.remaining_quantity ?? lot.quantity }}
@@ -1191,7 +1231,9 @@ const navLinks = [
                         <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">{{ lot.status }}</span>
                         <span class="w-20 text-right text-tv-muted">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
                         <span class="w-24 text-right text-tv-muted ml-2">{{ lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '' }}</span>
-                        <span class="w-24 text-right ml-4"
+                        <span class="w-20 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).avgPrice) : '' }}</span>
+                        <span class="w-24 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).proceeds) : '' }}</span>
+                        <span class="w-24 text-right ml-2"
                               :class="lot.realized_pnl > 0 ? 'text-tv-green' : lot.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
                           {{ lot.realized_pnl ? '$' + formatNumber(lot.realized_pnl) : '' }}
                         </span>
@@ -1204,6 +1246,8 @@ const navLinks = [
                           <span v-show="group._movingLots" class="w-8"></span>
                           <span class="w-8"></span>
                           <span class="w-24">{{ formatOrderDate(lot.entry_date) }}</span>
+                          <span class="w-24"></span>
+                          <span class="w-10"></span>
                           <span class="w-10 text-right" :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
                             {{ (lot.quantity > 0 ? '+' : '') + lot.quantity }}
                           </span>
@@ -1220,7 +1264,9 @@ const navLinks = [
                                 :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
                             {{ lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : '' }}
                           </span>
-                          <span class="w-24 ml-4"></span>
+                          <span class="w-20 text-right ml-2"></span>
+                          <span class="w-24 text-right ml-2"></span>
+                          <span class="w-24 ml-2"></span>
                         </div>
                         <div v-for="closing in (lot.closings || [])" :key="closing.closing_id"
                              class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
@@ -1228,6 +1274,8 @@ const navLinks = [
                           <span v-show="group._movingLots" class="w-8"></span>
                           <span class="w-8"></span>
                           <span class="w-24">{{ formatOrderDate(closing.closing_date) }}</span>
+                          <span class="w-24"></span>
+                          <span class="w-10"></span>
                           <span class="w-10 text-right" :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
                             {{ (lot.quantity < 0 ? '+' : '-') + closing.quantity_closed }}
                           </span>
@@ -1239,12 +1287,14 @@ const navLinks = [
                                 :class="getClosingTypeBadgeClass(closing.closing_type, lot.quantity)">
                             {{ getClosingTypeLabel(closing.closing_type, lot.quantity) }}
                           </span>
-                          <span class="w-20 text-right">{{ closing.closing_price ? '$' + formatNumber(closing.closing_price) : '' }}</span>
+                          <span class="w-20 text-right ml-2"></span>
+                          <span class="w-24 text-right ml-2"></span>
+                          <span class="w-20 text-right ml-2">{{ closing.closing_price ? '$' + formatNumber(closing.closing_price) : '' }}</span>
                           <span class="w-24 text-right ml-2 whitespace-nowrap"
                                 :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'">
                             {{ closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : '' }}
                           </span>
-                          <span class="w-24 ml-4"></span>
+                          <span class="w-24 ml-2"></span>
                         </div>
                       </div>
                     </div>
@@ -1277,6 +1327,8 @@ const navLinks = [
                       <span v-if="lot.derivation_type" class="text-tv-muted mr-1">&#8627;</span>
                       {{ formatOrderDate(lot.entry_date) }}
                     </span>
+                    <span class="w-24 text-tv-muted">{{ lotCloseDate(lot) ? formatOrderDate(lotCloseDate(lot)) : '' }}</span>
+                    <span class="w-10 text-tv-muted">{{ lotHoldingDays(lot) != null ? lotHoldingDays(lot) + 'd' : '' }}</span>
                     <span class="w-10 text-right font-medium"
                           :class="(lot.remaining_quantity ?? lot.quantity) > 0 ? 'text-tv-green' : (lot.remaining_quantity ?? lot.quantity) < 0 ? 'text-tv-red' : 'text-tv-muted'">
                       {{ lot.remaining_quantity ?? lot.quantity }}
@@ -1300,8 +1352,10 @@ const navLinks = [
                       {{ lot.status }}
                     </span>
                     <span class="w-20 text-right text-tv-muted">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">{{ lot.status === 'CLOSED' ? '' : (lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '') }}</span>
-                    <span class="w-24 text-right ml-4"
+                    <span class="w-24 text-right text-tv-muted ml-2">{{ lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '' }}</span>
+                    <span class="w-20 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).avgPrice) : '' }}</span>
+                    <span class="w-24 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).proceeds) : '' }}</span>
+                    <span class="w-24 text-right ml-2"
                           :class="lot.realized_pnl > 0 ? 'text-tv-green' : lot.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
                       {{ lot.realized_pnl ? '$' + formatNumber(lot.realized_pnl) : '' }}
                     </span>
@@ -1314,6 +1368,8 @@ const navLinks = [
                       <span v-show="group._movingLots" class="w-8"></span>
                       <span class="w-8"></span>
                       <span class="w-24">{{ formatOrderDate(lot.entry_date) }}</span>
+                      <span class="w-24"></span>
+                      <span class="w-10"></span>
                       <span class="w-10 text-right" :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
                         {{ (lot.quantity > 0 ? '+' : '') + lot.quantity }}
                       </span>
@@ -1330,7 +1386,9 @@ const navLinks = [
                             :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
                         {{ lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : '' }}
                       </span>
-                      <span class="w-24 ml-4"></span>
+                      <span class="w-20 text-right ml-2"></span>
+                      <span class="w-24 text-right ml-2"></span>
+                      <span class="w-24 ml-2"></span>
                     </div>
                     <div v-for="closing in (lot.closings || [])" :key="closing.closing_id"
                          class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
@@ -1338,6 +1396,8 @@ const navLinks = [
                       <span v-show="group._movingLots" class="w-8"></span>
                       <span class="w-8"></span>
                       <span class="w-24">{{ formatOrderDate(closing.closing_date) }}</span>
+                      <span class="w-24"></span>
+                      <span class="w-10"></span>
                       <span class="w-10 text-right" :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
                         {{ (lot.quantity < 0 ? '+' : '-') + closing.quantity_closed }}
                       </span>
@@ -1349,12 +1409,14 @@ const navLinks = [
                             :class="getClosingTypeBadgeClass(closing.closing_type, lot.quantity)">
                         {{ getClosingTypeLabel(closing.closing_type, lot.quantity) }}
                       </span>
-                      <span class="w-20 text-right">{{ closing.closing_price ? '$' + formatNumber(closing.closing_price) : '' }}</span>
+                      <span class="w-20 text-right ml-2"></span>
+                      <span class="w-24 text-right ml-2"></span>
+                      <span class="w-20 text-right ml-2">{{ closing.closing_price ? '$' + formatNumber(closing.closing_price) : '' }}</span>
                       <span class="w-24 text-right ml-2 whitespace-nowrap"
                             :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'">
                         {{ closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : '' }}
                       </span>
-                      <span class="w-24 ml-4"></span>
+                      <span class="w-24 ml-2"></span>
                     </div>
                   </div>
                 </div>

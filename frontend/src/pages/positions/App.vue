@@ -1003,6 +1003,8 @@ function getRollAnalysis(group) {
   return {
     pnlLabel, pnlValue, pnlPositive,
     pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
+    rewardRemaining: formatNumber(rewardRemaining, 0),
+    riskRemaining: formatNumber(riskRemaining, 0),
     deltaSaturation, proximityToShort, convexity, isCredit,
     maxProfit: formatNumber(maxProfit, 0),
     maxLoss: formatNumber(maxLoss, 0),
@@ -1762,15 +1764,17 @@ onUnmounted(() => {
                         </span>
                       </div>
                       <div class="flex justify-between gap-3">
+                        <span class="text-tv-muted">Remaining Reward</span>
+                        <span class="font-medium text-tv-green">${{ group.rollAnalysis.rewardRemaining }}</span>
+                      </div>
+                      <div class="flex justify-between gap-3">
+                        <span class="text-tv-muted">Remaining Risk</span>
+                        <span class="font-medium text-tv-red">${{ group.rollAnalysis.riskRemaining }}</span>
+                      </div>
+                      <div class="flex justify-between gap-3">
                         <span class="text-tv-muted">Reward:Risk</span>
                         <span class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'">
                           {{ group.rollAnalysis.rewardToRisk }}
-                        </span>
-                      </div>
-                      <div class="flex justify-between gap-3">
-                        <span class="text-tv-muted">Max P / L</span>
-                        <span class="font-medium text-tv-text">
-                          ${{ group.rollAnalysis.maxProfit }} / ${{ group.rollAnalysis.maxLoss }}
                         </span>
                       </div>
                     </div>
