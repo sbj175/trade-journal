@@ -771,22 +771,6 @@ const navLinks = [
           </div>
         </div>
 
-        <!-- Import success modal -->
-        <div v-if="importResult" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl max-w-sm">
-            <i class="fas fa-check-circle text-green-500 text-4xl mb-4"></i>
-            <h3 class="text-tv-text text-lg font-semibold mb-2">Import Complete!</h3>
-            <p class="text-tv-muted text-sm mb-6">
-              {{ importResult.transactions_processed || 0 }} transactions imported across
-              {{ importResult.orders_assembled || 0 }} orders in
-              {{ importResult.chains_derived || 0 }} chains
-            </p>
-            <button @click="goToPositions"
-                    class="bg-tv-blue hover:bg-tv-blue/80 text-white font-medium px-6 py-2 rounded transition-colors">
-              Go to Positions
-            </button>
-          </div>
-        </div>
       </div>
 
       <!-- ==================== Privacy Mode Tab ==================== -->
@@ -1005,6 +989,23 @@ const navLinks = [
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Import success modal (outside tab wrappers so v-show doesn't hide it) -->
+  <div v-if="importResult" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl max-w-sm">
+      <i class="fas fa-check-circle text-green-500 text-4xl mb-4"></i>
+      <h3 class="text-tv-text text-lg font-semibold mb-2">Import Complete!</h3>
+      <p class="text-tv-muted text-sm mb-6">
+        {{ importResult.transactions_processed || 0 }} transactions imported across
+        {{ importResult.orders_assembled || 0 }} orders in
+        {{ importResult.chains_derived || 0 }} chains
+      </p>
+      <button @click="goToPositions"
+              class="bg-tv-blue hover:bg-tv-blue/80 text-white font-medium px-6 py-2 rounded transition-colors">
+        Go to Positions
+      </button>
     </div>
   </div>
 </template>
