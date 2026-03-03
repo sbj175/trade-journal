@@ -4,11 +4,13 @@ Admin API endpoints — all require X-Admin-Secret header (enforced by middlewar
 Every query uses get_session(unscoped=True) to bypass tenant filtering.
 """
 
+import asyncio
 import logging
 import time
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger as loguru_logger
+from pydantic import BaseModel
 from sqlalchemy import func, text
 
 from src.database.engine import get_engine, get_session
@@ -40,6 +42,9 @@ from src.database.models import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Lock to prevent concurrent VACUUM operations
+_vacuum_lock = asyncio.Lock()
 
 
 @router.get("/health")
@@ -83,13 +88,16 @@ async def db_health():
             except Exception:
                 schema_version = None
 
-            # Table sizes + estimated row counts
+            # Table sizes + estimated row counts + dead tuples + autovacuum
             table_rows = session.execute(text("""
                 SELECT
                     c.relname AS name,
                     COALESCE(s.n_live_tup, 0) AS rows,
+                    COALESCE(s.n_dead_tup, 0) AS dead_tuples,
                     pg_total_relation_size(c.oid) AS size_bytes,
-                    pg_size_pretty(pg_total_relation_size(c.oid)) AS size
+                    pg_size_pretty(pg_total_relation_size(c.oid)) AS size,
+                    s.last_autovacuum,
+                    s.last_autoanalyze
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
                 LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
@@ -99,9 +107,33 @@ async def db_health():
             """)).all()
 
             tables = [
-                {"name": r.name, "rows": r.rows, "size": r.size, "size_bytes": r.size_bytes}
+                {
+                    "name": r.name,
+                    "rows": r.rows,
+                    "size": r.size,
+                    "size_bytes": r.size_bytes,
+                    "dead_tuples": r.dead_tuples,
+                    "last_autovacuum": r.last_autovacuum.isoformat() if r.last_autovacuum else None,
+                    "last_autoanalyze": r.last_autoanalyze.isoformat() if r.last_autoanalyze else None,
+                }
                 for r in table_rows
             ]
+            total_dead_tuples = sum(t["dead_tuples"] for t in tables)
+
+            # Cache and index hit ratios
+            hit_row = session.execute(text("""
+                SELECT
+                    CASE WHEN (heap_blks_hit + heap_blks_read) > 0
+                         THEN round(100.0 * heap_blks_hit / (heap_blks_hit + heap_blks_read), 2)
+                         ELSE 100 END AS cache_hit_ratio,
+                    CASE WHEN (idx_blks_hit + idx_blks_read) > 0
+                         THEN round(100.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2)
+                         ELSE 100 END AS index_hit_ratio
+                FROM pg_stat_database
+                WHERE datname = current_database()
+            """)).first()
+            cache_hit_ratio = float(hit_row.cache_hit_ratio) if hit_row else None
+            index_hit_ratio = float(hit_row.index_hit_ratio) if hit_row else None
 
         # Connection pool (accessed outside session)
         pool = engine.pool
@@ -120,6 +152,9 @@ async def db_health():
             "database_size": database_size,
             "database_size_bytes": database_size_bytes,
             "schema_version": schema_version,
+            "cache_hit_ratio": cache_hit_ratio,
+            "index_hit_ratio": index_hit_ratio,
+            "total_dead_tuples": total_dead_tuples,
             "connection_pool": connection_pool,
             "tables": tables,
         }
@@ -127,6 +162,63 @@ async def db_health():
     except Exception as exc:
         logger.exception("DB health check failed")
         return {"status": "error", "error": str(exc)}
+
+
+class VacuumRequest(BaseModel):
+    table: str
+
+
+@router.post("/db-maintenance/vacuum")
+async def vacuum_analyze(req: VacuumRequest):
+    """Run VACUUM ANALYZE on a specific table or the entire database."""
+    try:
+        engine = get_engine()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if engine.dialect.name != "postgresql":
+        raise HTTPException(status_code=400, detail="VACUUM is only supported on PostgreSQL")
+
+    # Validate table name against actual public-schema tables
+    if req.table != "all":
+        with get_session(unscoped=True) as session:
+            valid_tables = {
+                row[0]
+                for row in session.execute(text(
+                    "SELECT relname FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND c.relkind = 'r'"
+                )).all()
+            }
+        if req.table not in valid_tables:
+            raise HTTPException(status_code=400, detail=f"Unknown table: {req.table}")
+
+    # Only one VACUUM at a time
+    if _vacuum_lock.locked():
+        raise HTTPException(status_code=409, detail="A VACUUM operation is already in progress")
+
+    async with _vacuum_lock:
+        t0 = time.perf_counter()
+        try:
+            raw_conn = engine.raw_connection()
+            try:
+                raw_conn.set_isolation_level(0)  # autocommit — required for VACUUM
+                cursor = raw_conn.cursor()
+                if req.table == "all":
+                    cursor.execute("VACUUM ANALYZE")
+                else:
+                    # Table name is validated against pg_class whitelist above
+                    cursor.execute(f"VACUUM ANALYZE {req.table}")
+                cursor.close()
+            finally:
+                raw_conn.close()
+        except Exception as exc:
+            logger.exception("VACUUM ANALYZE failed")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+        logger.info("VACUUM ANALYZE %s completed in %s ms", req.table, duration_ms)
+        return {"status": "ok", "table": req.table, "duration_ms": duration_ms}
 
 
 @router.get("/stats")

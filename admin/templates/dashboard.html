@@ -163,6 +163,40 @@
                                 </div>
                             </div>
 
+                            <!-- Performance -->
+                            <div class="text-sm font-medium text-tv-muted mb-2 flex items-center gap-1">
+                                Performance
+                                <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-tv-muted/50 text-tv-muted text-[9px] cursor-help" title="Key database performance indicators. Cache hit ratio should be >99% for a healthy database. Dead tuples are rows marked for deletion but not yet reclaimed by VACUUM.">?</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 mb-4">
+                                <div class="bg-tv-bg rounded-lg p-3">
+                                    <div class="text-tv-muted text-xs mb-1 flex items-center gap-1">
+                                        Cache Hit Ratio
+                                        <span class="inline-flex items-center justify-center w-3 h-3 rounded-full border border-tv-muted/50 text-tv-muted text-[8px] cursor-help" title="Percentage of data reads served from shared_buffers (RAM) vs. disk. >=99% is excellent, 95-99% is acceptable, <95% indicates the database is reading too much from disk.">?</span>
+                                    </div>
+                                    <div class="text-lg font-bold"
+                                         :class="dbHealth.cache_hit_ratio >= 99 ? 'text-tv-green' : dbHealth.cache_hit_ratio >= 95 ? 'text-tv-yellow' : 'text-tv-red'"
+                                         x-text="dbHealth.cache_hit_ratio != null ? dbHealth.cache_hit_ratio + '%' : 'N/A'"></div>
+                                    <div class="text-tv-muted text-xs mt-0.5" x-show="dbHealth.index_hit_ratio != null">
+                                        Index hit: <span x-text="dbHealth.index_hit_ratio + '%'"></span>
+                                    </div>
+                                </div>
+                                <div class="bg-tv-bg rounded-lg p-3">
+                                    <div class="text-tv-muted text-xs mb-1 flex items-center gap-1">
+                                        Dead Tuples
+                                        <span class="inline-flex items-center justify-center w-3 h-3 rounded-full border border-tv-muted/50 text-tv-muted text-[8px] cursor-help" title="Rows deleted or updated but not yet reclaimed. High counts indicate VACUUM is needed. Autovacuum handles this automatically, but manual VACUUM can help after large bulk operations.">?</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-lg font-bold" x-text="formatNumber(dbHealth.total_dead_tuples)"></span>
+                                        <button
+                                            @click="vacuumAnalyze('all')"
+                                            class="text-xs text-tv-blue hover:underline"
+                                        >VACUUM ALL</button>
+                                    </div>
+                                    <div class="text-tv-muted text-xs mt-0.5">across all tables</div>
+                                </div>
+                            </div>
+
                             <!-- Table Sizes -->
                             <div x-data="{ tablesOpen: false }">
                                 <button @click="tablesOpen = !tablesOpen" class="text-sm font-medium text-tv-muted mb-2 flex items-center gap-1 hover:text-tv-text transition-colors">
@@ -177,7 +211,10 @@
                                             <tr class="border-b border-tv-border text-tv-muted text-left">
                                                 <th class="px-3 py-1.5">Table</th>
                                                 <th class="px-3 py-1.5 text-right">Rows (est.)</th>
+                                                <th class="px-3 py-1.5 text-right">Dead Tuples</th>
                                                 <th class="px-3 py-1.5 text-right">Size</th>
+                                                <th class="px-3 py-1.5">Last Autovacuum</th>
+                                                <th class="px-3 py-1.5 text-right">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -185,7 +222,12 @@
                                                 <tr class="border-b border-tv-border/30">
                                                     <td class="px-3 py-1.5 font-mono text-xs" x-text="t.name"></td>
                                                     <td class="px-3 py-1.5 text-right" x-text="formatNumber(t.rows)"></td>
+                                                    <td class="px-3 py-1.5 text-right" :class="t.dead_tuples > 0 ? 'text-tv-yellow' : 'text-tv-muted'" x-text="formatNumber(t.dead_tuples)"></td>
                                                     <td class="px-3 py-1.5 text-right text-tv-muted" x-text="t.size"></td>
+                                                    <td class="px-3 py-1.5 text-tv-muted text-xs" x-text="t.last_autovacuum ? formatDateTime(t.last_autovacuum) : 'never'"></td>
+                                                    <td class="px-3 py-1.5 text-right">
+                                                        <button @click="vacuumAnalyze(t.name)" class="text-xs text-tv-blue hover:underline">VACUUM</button>
+                                                    </td>
                                                 </tr>
                                             </template>
                                         </tbody>

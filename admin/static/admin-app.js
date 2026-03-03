@@ -155,6 +155,21 @@ function adminApp() {
             }
         },
 
+        async vacuumAnalyze(tableName) {
+            const label = tableName === 'all' ? 'the entire database' : `table "${tableName}"`;
+            if (!confirm(`Run VACUUM ANALYZE on ${label}? This may take a moment.`)) return;
+            try {
+                const result = await this.apiFetch('/api/admin/db-maintenance/vacuum', {
+                    method: 'POST',
+                    body: JSON.stringify({ table: tableName }),
+                });
+                alert(`VACUUM ANALYZE completed in ${result.duration_ms} ms`);
+                await this.loadData();
+            } catch (err) {
+                alert('VACUUM failed: ' + err.message);
+            }
+        },
+
         async reprocessChains(user) {
             if (!confirm(`Reprocess chains for ${user.email || user.id}? This will rebuild order chains from existing transactions.`)) return;
             try {
