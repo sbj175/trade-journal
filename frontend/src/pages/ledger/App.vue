@@ -356,6 +356,17 @@ function sortedLots(group) {
     const aOpen = a.status !== 'CLOSED' ? 0 : 1
     const bOpen = b.status !== 'CLOSED' ? 0 : 1
     if (aOpen !== bOpen) return aOpen - bOpen
+
+    if (aOpen === 0) {
+      // Open/partial: expiration asc, strike asc, entry date desc
+      const aExp = a.expiration || ''
+      const bExp = b.expiration || ''
+      if (aExp !== bExp) return aExp.localeCompare(bExp)
+      if ((a.strike || 0) !== (b.strike || 0)) return (a.strike || 0) - (b.strike || 0)
+      return (b.entry_date || '').localeCompare(a.entry_date || '')
+    }
+
+    // Closed: entry date desc, expiration desc, strike asc
     const aDate = a.entry_date || ''
     const bDate = b.entry_date || ''
     if (aDate !== bDate) return bDate.localeCompare(aDate)
