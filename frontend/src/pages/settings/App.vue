@@ -30,6 +30,8 @@ const syncStartDate = ref(new Date(Date.now() - 365 * 86400000).toISOString().sl
 const syncMinDate = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10)
 const syncMaxDate = new Date().toISOString().slice(0, 10)
 const initialSyncing = ref(false)
+const importResult = ref(null)
+function goToPositions() { window.location.href = '/positions' }
 
 // Tags
 const tags = ref([])
@@ -349,12 +351,12 @@ async function initialSync() {
     const result = await response.json()
 
     if (onboarding.value) {
-      window.location.href = '/positions'
+      importResult.value = result
       return
     }
     showNotification(
       `Initial sync completed! ${result.transactions_processed || 0} transactions, ` +
-      `${result.orders_saved || 0} orders in ${result.chains_saved || 0} chains`,
+      `${result.orders_assembled || 0} orders in ${result.chains_derived || 0} chains`,
       'success',
     )
   } catch (error) {
@@ -766,6 +768,23 @@ const navLinks = [
             <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
             <p class="text-tv-text text-lg font-medium">Importing transactions...</p>
             <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
+          </div>
+        </div>
+
+        <!-- Import success modal -->
+        <div v-if="importResult" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl max-w-sm">
+            <i class="fas fa-check-circle text-green-500 text-4xl mb-4"></i>
+            <h3 class="text-tv-text text-lg font-semibold mb-2">Import Complete!</h3>
+            <p class="text-tv-muted text-sm mb-6">
+              {{ importResult.transactions_processed || 0 }} transactions imported across
+              {{ importResult.orders_assembled || 0 }} orders in
+              {{ importResult.chains_derived || 0 }} chains
+            </p>
+            <button @click="goToPositions"
+                    class="bg-tv-blue hover:bg-tv-blue/80 text-white font-medium px-6 py-2 rounded transition-colors">
+              Go to Positions
+            </button>
           </div>
         </div>
       </div>
