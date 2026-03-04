@@ -1,9 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
-// Eagerly import Risk — its chunk consistently triggers Firefox
-// NS_ERROR_CORRUPTED_CONTENT when loaded as a separate dynamic chunk.
+// Eagerly import Risk and Components — their chunks consistently trigger
+// Firefox NS_ERROR_CORRUPTED_CONTENT when loaded as separate dynamic chunks.
 import RiskPage from '@/pages/risk/App.vue'
+import ComponentsPage from '@/pages/components/App.vue'
 
 const routes = [
   {
@@ -17,7 +18,7 @@ const routes = [
       { path: 'risk', name: 'risk', component: RiskPage, meta: { requiresAuth: true, requiresTastytrade: true, title: 'Risk' } },
       { path: 'settings', name: 'settings', component: () => import('@/pages/settings/App.vue'), meta: { requiresAuth: true, requiresTastytrade: false, title: 'Settings' } },
       { path: 'privacy', name: 'privacy', component: () => import('@/pages/privacy/App.vue'), meta: { requiresAuth: false, title: 'Privacy' } },
-      { path: 'components', name: 'components', component: () => import('@/pages/components/App.vue'), meta: { requiresAuth: false, title: 'Component Library' } },
+      { path: 'components', name: 'components', component: ComponentsPage, meta: { requiresAuth: false, title: 'Component Library' } },
     ],
   },
 ]
