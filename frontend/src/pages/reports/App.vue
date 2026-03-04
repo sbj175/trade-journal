@@ -222,6 +222,17 @@ const columns = [
 </script>
 
 <template>
+  <Teleport to="#nav-right">
+    <select v-model="selectedAccount" @change="onAccountChange()"
+            class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
+      <option value="">All Accounts</option>
+      <option v-for="account in accounts" :key="account.account_number"
+              :value="account.account_number">
+        ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
+      </option>
+    </select>
+  </Teleport>
+
   <!-- Filters Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center gap-8">
     <!-- Time Filter -->
