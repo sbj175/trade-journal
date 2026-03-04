@@ -811,6 +811,9 @@ function sortPositions(positions) {
     </select>
   </Teleport>
 
+  <!-- Sticky header block (filters + stats + column headers) -->
+  <div class="sticky top-14 z-30">
+
   <!-- Action Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-4"></div>
@@ -928,6 +931,33 @@ function sortPositions(positions) {
     </span>
   </div>
 
+  <!-- Column Headers -->
+  <div v-if="!loading && filteredGroups.length > 0"
+       class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
+    <span class="w-6"></span>
+    <span class="w-8 mr-3"></span>
+    <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('underlying')">
+      Symbol <span v-if="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+    <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('strategy_label')">
+      Strategy <span v-if="sortColumn === 'strategy_label'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+    <span class="w-20 mr-6 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('status')">
+      Status <span v-if="sortColumn === 'status'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+    <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('opening_date')">
+      Opened <span v-if="sortColumn === 'opening_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+    <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
+      Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+    <span class="ml-auto cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('total_pnl')">
+      Realized P&amp;L <span v-if="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+  </div>
+
+  </div><!-- /sticky header block -->
+
   <!-- Loading State -->
   <div v-if="loading" class="text-center py-16">
     <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
@@ -942,32 +972,7 @@ function sortPositions(positions) {
   </div>
 
   <!-- Group List -->
-  <div v-else class="p-4">
-   <div class="bg-tv-panel border border-tv-border rounded">
-    <!-- Column Headers -->
-    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-14 z-10">
-      <span class="w-6"></span>
-      <span class="w-8 mr-3"></span>
-      <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('underlying')">
-        Symbol <span v-if="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </span>
-      <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('strategy_label')">
-        Strategy <span v-if="sortColumn === 'strategy_label'" class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </span>
-      <span class="w-20 mr-6 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('status')">
-        Status <span v-if="sortColumn === 'status'" class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </span>
-      <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('opening_date')">
-        Opened <span v-if="sortColumn === 'opening_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </span>
-      <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
-        Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </span>
-      <span class="ml-auto cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('total_pnl')">
-        Realized P&amp;L <span v-if="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </span>
-    </div>
-
+  <div v-else class="bg-tv-panel border-x border-b border-tv-border">
     <div class="divide-y divide-tv-border">
       <div v-for="group in filteredGroups" :key="group.group_id" :id="'group-' + group.group_id">
         <!-- Group Header Row -->
@@ -1507,7 +1512,6 @@ function sortPositions(positions) {
         </div>
       </div>
     </div>
-   </div>
   </div>
 
   <!-- Floating Action Bar (Move Mode) -->
