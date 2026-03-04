@@ -84,14 +84,14 @@ const colorTokens = [
   { name: 'border', hex: '#1e2536', usage: 'Borders, dividers' },
   { name: 'hover', hex: '#283148', usage: 'Hover states, active rows' },
   { name: 'text', hex: '#e6e9f0', usage: 'Primary text' },
-  { name: 'muted', hex: '#6b7385', usage: 'Secondary text, labels' },
+  { name: 'muted', hex: '#7f8a9a', usage: 'Secondary text, labels' },
   { name: 'green', hex: '#00dc82', usage: 'Profit, positive, long' },
   { name: 'red', hex: '#ff4757', usage: 'Loss, negative, short' },
   { name: 'blue', hex: '#3b82f6', usage: 'Brand, interactive, links' },
   { name: 'amber', hex: '#f59e0b', usage: 'Warnings, DTE, gamma' },
   { name: 'orange', hex: '#f97316', usage: 'Assignments, severe warnings' },
   { name: 'cyan', hex: '#06b6d4', usage: 'Credit filter, info highlights' },
-  { name: 'purple', hex: '#8b5cf6', usage: 'Vega, exercise, account badges' },
+  { name: 'purple', hex: '#9d7aff', usage: 'Vega, exercise, account badges' },
 ]
 
 // Tag popover
@@ -206,14 +206,14 @@ const sampleTags = ['Earnings Play', 'Hedge', 'Momentum', 'Theta Gang', 'LEAPS']
         <div class="bg-tv-panel border border-tv-border rounded p-5">
           <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-medium">Solid Buttons</div>
           <div class="flex items-center gap-3 flex-wrap">
-            <button class="px-4 py-2 bg-tv-blue text-white text-sm font-medium rounded hover:bg-tv-blue/80 transition-colors">
+            <button class="px-4 py-2 bg-tv-blue text-white text-sm font-semibold rounded hover:bg-tv-blue/80 transition-colors">
               <i class="fas fa-plus mr-1.5"></i>Primary
             </button>
-            <button class="px-4 py-2 bg-tv-green text-white text-sm font-medium rounded hover:bg-tv-green/80 transition-colors"
+            <button class="px-4 py-2 bg-tv-green text-tv-bg text-sm font-bold rounded hover:bg-tv-green/80 transition-colors"
                     @click="showToast('Sync complete — 42 transactions imported')">
               <i class="fas fa-sync mr-1.5"></i>Sync Trades
             </button>
-            <button class="px-4 py-2 bg-tv-red text-white text-sm font-medium rounded hover:bg-tv-red/80 transition-colors">
+            <button class="px-4 py-2 bg-tv-red text-white text-sm font-semibold rounded hover:bg-tv-red/80 transition-colors">
               <i class="fas fa-trash mr-1.5"></i>Delete
             </button>
           </div>
@@ -774,7 +774,7 @@ const sampleTags = ['Earnings Play', 'Hedge', 'Momentum', 'Theta Gang', 'LEAPS']
               </div>
             </div>
             <button @click="showToast('Position note saved successfully')"
-                    class="px-4 py-2 bg-tv-green text-white text-sm font-medium rounded hover:bg-tv-green/80 transition-colors">
+                    class="px-4 py-2 bg-tv-green text-tv-bg text-sm font-bold rounded hover:bg-tv-green/80 transition-colors">
               <i class="fas fa-check mr-1.5"></i>Show Toast
             </button>
           </div>

@@ -19,7 +19,7 @@ export const colors = {
   border:   '#1e2536',
   hover:    '#283148',
   text:     '#e6e9f0',
-  muted:    '#6b7385',
+  muted:    '#7f8a9a',
 
   // Accents — bold and unmistakable
   green:    '#00dc82',   // profit, positive values, long positions
@@ -28,7 +28,7 @@ export const colors = {
   amber:    '#f59e0b',   // warnings, DTE, gamma, expiration, order types
   orange:   '#f97316',   // assignments, derived positions, severe warnings
   cyan:     '#06b6d4',   // credit filter, informational highlights
-  purple:   '#8b5cf6',   // vega, exercise, account badges, shares filter
+  purple:   '#9d7aff',   // vega, exercise, account badges, shares filter
 }
 
 // ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ export const chart = {
   green:      '#00dc82',
   red:        '#ff4757',
   blue:       '#3b82f6',
-  muted:      '#6b7385',
+  muted:      '#7f8a9a',
   text:       '#e6e9f0',
   grid:       '#1e2536',
   tooltipBg:  '#141926',
