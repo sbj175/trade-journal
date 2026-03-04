@@ -913,7 +913,7 @@ function sortPositions(positions) {
   </div>
 
   <!-- Stats Bar -->
-  <div class="bg-tv-panel/50 border-b border-tv-border px-4 py-2 flex items-center gap-8 text-base">
+  <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center gap-8 text-base">
     <span class="text-tv-muted">
       Groups: <span class="text-tv-text">{{ filteredGroups.length }}</span>
     </span>
