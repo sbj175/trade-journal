@@ -123,11 +123,11 @@
         <ul class="space-y-2 ml-1">
           <li class="flex items-start gap-2">
             <i class="fas fa-unlink text-tv-muted w-5 text-center mt-0.5"></i>
-            <span><strong>Disconnect Tastytrade</strong> &mdash; go to <a href="/settings" class="text-tv-blue hover:underline">Settings</a> and click "Disconnect" to remove your OAuth credentials.</span>
+            <span><strong>Disconnect Tastytrade</strong> &mdash; go to <router-link to="/settings" class="text-tv-blue hover:underline">Settings</router-link> and click "Disconnect" to remove your OAuth credentials.</span>
           </li>
           <li class="flex items-start gap-2">
             <i class="fas fa-database text-tv-muted w-5 text-center mt-0.5"></i>
-            <span><strong>Delete trade data</strong> &mdash; use the "Initial Sync" feature in <a href="/settings" class="text-tv-blue hover:underline">Settings</a> to clear and rebuild the database, or contact us for full account deletion.</span>
+            <span><strong>Delete trade data</strong> &mdash; use the "Initial Sync" feature in <router-link to="/settings" class="text-tv-blue hover:underline">Settings</router-link> to clear and rebuild the database, or contact us for full account deletion.</span>
           </li>
           <li class="flex items-start gap-2">
             <i class="fas fa-rotate-left text-tv-muted w-5 text-center mt-0.5"></i>

@@ -968,7 +968,7 @@ function sortPositions(positions) {
   <div v-else-if="filteredGroups.length === 0" class="text-center py-16">
     <i class="fas fa-book-open text-3xl text-tv-muted mb-3"></i>
     <p class="text-tv-muted">No position groups found.</p>
-    <p class="text-tv-muted mt-2">Sync your data from the <a href="/positions" class="text-tv-blue hover:underline">Positions</a> page first.</p>
+    <p class="text-tv-muted mt-2">Sync your data from the <router-link to="/positions" class="text-tv-blue hover:underline">Positions</router-link> page first.</p>
   </div>
 
   <!-- Group List -->

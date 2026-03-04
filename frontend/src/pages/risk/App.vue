@@ -894,7 +894,7 @@ function shortNumber(v) {
   <div v-else-if="allPositions.length === 0" class="text-center py-24">
     <i class="fas fa-shield-halved text-6xl text-tv-border mb-6"></i>
     <p class="text-tv-muted text-xl mb-2">No open positions found</p>
-    <p class="text-tv-muted">Sync your data from the <a href="/positions" class="text-tv-blue hover:underline">Positions</a> page first.</p>
+    <p class="text-tv-muted">Sync your data from the <router-link to="/positions" class="text-tv-blue hover:underline">Positions</router-link> page first.</p>
   </div>
 
   <!-- Main Content -->
