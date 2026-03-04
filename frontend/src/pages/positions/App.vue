@@ -502,10 +502,7 @@ function formatDollar(value) {
 }
 
 function dollarSizeClass(value) {
-  const abs = Math.abs(value || 0)
-  if (abs >= 1000000) return 'text-xs'
-  if (abs >= 100000) return 'text-[13px]'
-  return ''
+  return Math.abs(value || 0) >= 1000000 ? 'text-xs' : ''
 }
 
 // --- P&L Calculations ---
