@@ -141,7 +141,7 @@ function sortGroups(column) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
   } else {
     sortColumn.value = column
-    if (column === 'opening_date' || column === 'closing_date' || column === 'total_pnl') {
+    if (column === 'opening_date' || column === 'closing_date' || column === 'realized_pnl' || column === 'total_pnl') {
       sortDirection.value = 'desc'
     } else {
       sortDirection.value = 'asc'
@@ -211,9 +211,12 @@ function applyFilters() {
     } else if (col === 'lot_count') {
       va = a.lot_count || 0
       vb = b.lot_count || 0
-    } else if (col === 'total_pnl') {
+    } else if (col === 'realized_pnl') {
       va = a.realized_pnl || 0
       vb = b.realized_pnl || 0
+    } else if (col === 'total_pnl') {
+      va = a.total_pnl || 0
+      vb = b.total_pnl || 0
     } else {
       va = a[col] || ''
       vb = b[col] || ''
@@ -951,8 +954,11 @@ function sortPositions(positions) {
     <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
       Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
-    <span class="ml-auto cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('total_pnl')">
-      Realized P&amp;L <span v-if="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    <span class="ml-auto w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('realized_pnl')">
+      Realized <span v-if="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
+    </span>
+    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('total_pnl')">
+      Total <span v-if="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
   </div>
 
@@ -1077,11 +1083,17 @@ function sortPositions(positions) {
           <!-- Note indicator -->
           <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
 
-          <!-- P&L -->
-          <span class="ml-auto text-base font-medium"
+          <!-- Realized P&L -->
+          <span class="ml-auto w-[6.5rem] text-right text-base font-medium"
                 :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
                 v-show="group.realized_pnl">
             ${{ formatNumber(group.realized_pnl) }}
+          </span>
+          <!-- Total P&L -->
+          <span class="w-[6.5rem] text-right text-base font-medium"
+                :class="group.total_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
+                v-show="group.total_pnl">
+            ${{ formatNumber(group.total_pnl) }}
           </span>
         </div>
 
