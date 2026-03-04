@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatDate, formatOrderDate, formatExpirationShort, calculateDTE } from '@/lib/formatters'
 
 const Auth = useAuth()
+const route = useRoute()
 
 // ==================== STATE ====================
 const groups = ref([])
@@ -29,10 +31,6 @@ const availableTags = ref([])
 const tagPopoverGroup = ref(null)
 const tagSearch = ref('')
 
-// Nav auth
-const authEnabled = ref(false)
-const userEmail = ref('')
-
 // Internal (non-reactive)
 const noteSaveTimers = {}
 
@@ -48,15 +46,6 @@ const filteredTagSuggestions = computed(() => {
 
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
-  await Auth.requireAuth()
-  await Auth.requireTastytrade()
-
-  authEnabled.value = Auth.isAuthEnabled()
-  if (authEnabled.value) {
-    const user = await Auth.getUser()
-    if (user) userEmail.value = user.email || ''
-  }
-
   await loadAccounts()
 
   // Restore state from localStorage
@@ -78,10 +67,9 @@ onMounted(async () => {
   const savedAccount = localStorage.getItem('trade_journal_selected_account')
   if (savedAccount) selectedAccount.value = savedAccount
 
-  // URL params override saved state
-  const urlParams = new URLSearchParams(window.location.search)
-  const underlyingParam = urlParams.get('underlying')
-  const groupParam = urlParams.get('group')
+  // URL params override saved state (via vue-router query)
+  const underlyingParam = route.query.underlying
+  const groupParam = route.query.group
   if (underlyingParam) {
     filterUnderlying.value = underlyingParam.toUpperCase()
     timePeriod.value = 'all'
@@ -809,53 +797,9 @@ function sortPositions(positions) {
   )
 }
 
-// ==================== NAV ====================
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
 </script>
 
 <template>
-  <!-- Navigation -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-16 px-4">
-      <div class="flex items-center gap-8">
-        <span class="text-tv-blue font-semibold text-2xl">
-          <i class="fas fa-chart-line mr-2"></i>OptionLedger
-        </span>
-        <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="px-4 py-2 text-lg"
-             :class="link.href === '/ledger' ? 'text-tv-text bg-tv-border rounded-sm' : 'text-tv-muted hover:text-tv-text'">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-6 text-base">
-        <select v-model="selectedAccount" @change="onAccountChange()"
-                class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-          <option value="">All Accounts</option>
-          <option v-for="account in accounts" :key="account.account_number"
-                  :value="account.account_number">
-            ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-          </option>
-        </select>
-        <div v-if="authEnabled && userEmail" class="flex items-center gap-3 border-l border-tv-border pl-6">
-          <span class="text-tv-muted text-sm truncate max-w-[150px]" :title="userEmail">{{ userEmail }}</span>
-          <button @click="Auth.signOut()" class="text-tv-muted hover:text-tv-red" title="Sign out">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
-        <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-          <i class="fas fa-cog"></i>
-        </a>
-      </div>
-    </div>
-  </nav>
-
   <!-- Action Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-4"></div>
@@ -990,7 +934,7 @@ const navLinks = [
   <div v-else class="p-4">
    <div class="bg-tv-panel border border-tv-border rounded">
     <!-- Column Headers -->
-    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
+    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-14 z-10">
       <span class="w-6"></span>
       <span class="w-8 mr-3"></span>
       <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('underlying')">

@@ -10,13 +10,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        settings: resolve(__dirname, 'src/pages/settings/main.js'),
-        reports: resolve(__dirname, 'src/pages/reports/main.js'),
-        risk: resolve(__dirname, 'src/pages/risk/main.js'),
-        ledger: resolve(__dirname, 'src/pages/ledger/main.js'),
-        positions: resolve(__dirname, 'src/pages/positions/main.js'),
-        privacy: resolve(__dirname, 'src/pages/privacy/main.js'),
-        components: resolve(__dirname, 'src/pages/components/main.js'),
+        app: resolve(__dirname, 'src/main.js'),
       },
       output: {
         entryFileNames: '[name].js',

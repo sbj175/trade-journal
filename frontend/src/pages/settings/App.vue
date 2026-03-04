@@ -1,8 +1,13 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useAuthStore } from '@/stores/auth'
 
 const Auth = useAuth()
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 
 // --- Reactive state ---
 const targets = ref([])
@@ -31,7 +36,7 @@ const syncMinDate = new Date(Date.now() - 730 * 86400000).toISOString().slice(0,
 const syncMaxDate = new Date().toISOString().slice(0, 10)
 const initialSyncing = ref(false)
 const importResult = ref(null)
-function goToPositions() { window.location.href = '/positions' }
+function goToPositions() { router.push('/positions') }
 
 // Tags
 const tags = ref([])
@@ -76,14 +81,6 @@ const debitStrategies = computed(() => targets.value.filter(t => DEBIT_NAMES.inc
 const mixedStrategies = computed(() => targets.value.filter(t => MIXED_NAMES.includes(t.strategy_name)))
 const equityStrategies = computed(() => targets.value.filter(t => EQUITY_NAMES.includes(t.strategy_name)))
 
-// --- Nav auth controls ---
-const userEmail = ref('')
-
-async function updateNavAuth() {
-  if (!Auth.isAuthEnabled()) return
-  const user = await Auth.getUser()
-  if (user) userEmail.value = user.email || ''
-}
 
 // --- Methods ---
 async function checkConnection() {
@@ -382,19 +379,15 @@ function showNotification(message, type) {
 
 // --- Lifecycle ---
 onMounted(async () => {
-  await Auth.requireAuth()
-
-  // Parse URL query params
-  const params = new URLSearchParams(window.location.search)
-  if (params.get('tab')) activeTab.value = params.get('tab')
-  onboarding.value = params.get('onboarding') === '1'
+  // Parse URL query params (via vue-router)
+  if (route.query.tab) activeTab.value = route.query.tab
+  onboarding.value = route.query.onboarding === '1'
   authEnabled.value = Auth.isAuthEnabled()
 
   // Show error from OAuth callback redirect
-  const errorParam = params.get('error')
+  const errorParam = route.query.error
   if (errorParam) showNotification(decodeURIComponent(errorParam), 'error')
 
-  await updateNavAuth()
   await checkConnection()
   await loadTargets()
   await loadTags()
@@ -403,52 +396,9 @@ onMounted(async () => {
   consentAcknowledged.value = localStorage.getItem('dataConsentAcknowledged') === 'true'
 })
 
-// Nav links (matches pages.py NAV_LINKS)
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
 </script>
 
 <template>
-  <!-- Navigation -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-16 px-4">
-      <div class="flex items-center gap-8">
-        <span class="text-tv-blue font-semibold text-2xl">
-          <i class="fas fa-chart-line mr-2"></i>OptionLedger
-        </span>
-        <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-4 text-base">
-        <div v-if="connectionStatus" class="flex items-center gap-2 text-sm">
-          <span v-if="connectionStatus.connected" class="text-tv-green">
-            <i class="fas fa-circle text-[8px] mr-1"></i>Connected
-          </span>
-          <span v-else class="text-tv-red">
-            <i class="fas fa-circle text-[8px] mr-1"></i>Disconnected
-          </span>
-        </div>
-        <div v-if="authEnabled && userEmail" class="flex items-center gap-3">
-          <span class="text-tv-muted text-sm">{{ userEmail }}</span>
-          <button @click="Auth.signOut()" class="text-tv-muted hover:text-tv-red text-sm" title="Sign out">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
-        <a href="/settings" class="text-tv-blue hover:text-tv-text px-3 py-1 border border-tv-blue rounded text-sm">
-          <i class="fas fa-cog mr-1"></i>Settings
-        </a>
-      </div>
-    </div>
-  </nav>
-
   <!-- Notification Toast -->
   <Transition
     enter-active-class="transition ease-out duration-200"
@@ -466,7 +416,7 @@ const navLinks = [
   </Transition>
 
   <!-- Main Content -->
-  <div class="flex" style="height: calc(100vh - 64px)">
+  <div class="flex" style="height: calc(100vh - 56px)">
 
     <!-- Left Sidebar Tabs -->
     <div class="w-56 flex-shrink-0 bg-tv-panel border-r border-tv-border py-4">

@@ -19,10 +19,6 @@ const greeksSource = ref('Black-Scholes')
 const sortColumn = ref('deltaDollars')
 const sortDirection = ref('desc')
 
-// Nav auth
-const authEnabled = ref(false)
-const userEmail = ref('')
-
 // Internal (non-reactive)
 let ws = null
 let chartTimer = null
@@ -127,17 +123,19 @@ const bpUtilization = computed(() => {
 })
 
 // ==================== LIFECYCLE ====================
+async function ensureApexCharts() {
+  if (window.ApexCharts) return
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdn.jsdelivr.net/npm/apexcharts'
+    s.onload = resolve
+    s.onerror = reject
+    document.head.appendChild(s)
+  })
+}
+
 onMounted(async () => {
-  await Auth.requireAuth()
-  await Auth.requireTastytrade()
-
-  // Auth info for nav
-  authEnabled.value = Auth.isAuthEnabled()
-  if (authEnabled.value) {
-    const user = await Auth.getUser()
-    if (user) userEmail.value = user.email || ''
-  }
-
+  await ensureApexCharts()
   await fetchData()
   selectedAccount.value = localStorage.getItem('trade_journal_selected_account') || ''
   connectWebSocket()
@@ -850,53 +848,9 @@ function shortNumber(v) {
   return v.toFixed(0)
 }
 
-// ==================== NAV ====================
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
 </script>
 
 <template>
-  <!-- Navigation -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-16 px-4">
-      <div class="flex items-center gap-8">
-        <span class="text-tv-blue font-semibold text-2xl">
-          <i class="fas fa-chart-line mr-2"></i>OptionLedger
-        </span>
-        <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="px-4 py-2 text-lg"
-             :class="link.href === '/risk' ? 'text-tv-text bg-tv-border rounded-sm' : 'text-tv-muted hover:text-tv-text'">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-6 text-base">
-        <select v-model="selectedAccount" @change="onAccountChange()"
-                class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-          <option value="">All Accounts</option>
-          <option v-for="account in accounts" :key="account.account_number"
-                  :value="account.account_number">
-            ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-          </option>
-        </select>
-        <div v-if="authEnabled && userEmail" class="flex items-center gap-3 border-l border-tv-border pl-6">
-          <span class="text-tv-muted text-sm truncate max-w-[150px]" :title="userEmail">{{ userEmail }}</span>
-          <button @click="Auth.signOut()" class="text-tv-muted hover:text-tv-red" title="Sign out">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
-        <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-          <i class="fas fa-cog"></i>
-        </a>
-      </div>
-    </div>
-  </nav>
-
   <!-- Status Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center justify-between text-sm">
     <div class="flex items-center gap-6">
@@ -1183,9 +1137,6 @@ const navLinks = [
 </template>
 
 <style>
-.metric-card { transition: border-color 0.2s ease; }
-.metric-card:hover { border-color: #363a45; } /* tv.hover */
-
 .greek-symbol {
   font-family: 'Times New Roman', Georgia, serif;
   font-style: italic;
@@ -1198,11 +1149,5 @@ const navLinks = [
 .apexcharts-xaxistooltip, .apexcharts-yaxistooltip { background: #1e222d !important; border: 1px solid #2a2e39 !important; color: #d1d4dc !important; }
 .apexcharts-xaxistooltip:after, .apexcharts-xaxistooltip:before { border-bottom-color: #2a2e39 !important; }
 
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-}
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+/* pulse-dot and metric-card are in main.css */
 </style>

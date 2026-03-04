@@ -94,14 +94,6 @@ const colorTokens = [
   { name: 'purple', hex: '#a78bfa', usage: 'Vega, exercise, account badges' },
 ]
 
-// Nav (minimal — not linked from main nav)
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
-
 // Tag popover
 const tagPopoverOpen = ref(false)
 const tagSearch = ref('')
@@ -109,33 +101,6 @@ const sampleTags = ['Earnings Play', 'Hedge', 'Momentum', 'Theta Gang', 'LEAPS']
 </script>
 
 <template>
-  <!-- Navigation -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-14 px-5">
-      <div class="flex items-center h-full gap-8">
-        <a href="/positions" class="flex items-center gap-2.5">
-          <span class="w-7 h-7 rounded bg-tv-blue/10 border border-tv-blue/25 flex items-center justify-center">
-            <i class="fas fa-chart-line text-tv-blue text-xs"></i>
-          </span>
-          <span class="text-lg font-semibold tracking-tight">Option<span class="text-tv-blue">Ledger</span></span>
-        </a>
-        <div class="flex items-center h-full gap-1">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="h-full flex items-center px-3 text-sm font-medium tracking-wide border-b-2 border-transparent text-tv-muted hover:text-tv-text transition-colors">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-3 text-sm">
-        <span class="text-tv-muted text-xs uppercase tracking-wider font-medium">Component Library</span>
-        <a href="/settings" class="text-tv-muted hover:text-tv-text transition-colors flex items-center gap-1.5">
-          <i class="fas fa-cog text-sm"></i>
-        </a>
-      </div>
-    </div>
-  </nav>
-
-  <!-- Main Content -->
   <div class="max-w-6xl mx-auto px-6 py-8">
 
     <div class="mb-10">

@@ -29,9 +29,6 @@ const summary = ref({
 })
 const strategyBreakdown = ref([])
 
-// Nav auth
-const authEnabled = ref(false)
-const userEmail = ref('')
 
 // --- Computed ---
 const activeStrategyCount = computed(() => getActiveStrategies().length)
@@ -205,27 +202,10 @@ function applySortToBreakdown() {
 
 // --- Lifecycle ---
 onMounted(async () => {
-  await Auth.requireAuth()
-  await Auth.requireTastytrade()
-
-  authEnabled.value = Auth.isAuthEnabled()
-  if (authEnabled.value) {
-    const user = await Auth.getUser()
-    if (user) userEmail.value = user.email || ''
-  }
-
   await loadAccounts()
   loadSavedFilters()
   await fetchReport()
 })
-
-// Nav links
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
 
 // Sortable columns config
 const columns = [
@@ -242,43 +222,6 @@ const columns = [
 </script>
 
 <template>
-  <!-- Navigation -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-16 px-4">
-      <div class="flex items-center gap-8">
-        <span class="text-tv-blue font-semibold text-2xl">
-          <i class="fas fa-chart-line mr-2"></i>OptionLedger
-        </span>
-        <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="px-4 py-2 text-lg"
-             :class="link.href === '/reports' ? 'text-tv-text bg-tv-border rounded-sm' : 'text-tv-muted hover:text-tv-text'">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-6 text-base">
-        <select v-model="selectedAccount" @change="onAccountChange()"
-                class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-          <option value="">All Accounts</option>
-          <option v-for="account in accounts" :key="account.account_number"
-                  :value="account.account_number">
-            ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-          </option>
-        </select>
-        <div v-if="authEnabled && userEmail" class="flex items-center gap-3 border-l border-tv-border pl-6">
-          <span class="text-tv-muted text-sm truncate max-w-[150px]" :title="userEmail">{{ userEmail }}</span>
-          <button @click="Auth.signOut()" class="text-tv-muted hover:text-tv-red" title="Sign out">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
-        <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-          <i class="fas fa-cog"></i>
-        </a>
-      </div>
-    </div>
-  </nav>
-
   <!-- Filters Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center gap-8">
     <!-- Time Filter -->
@@ -352,51 +295,53 @@ const columns = [
     <!-- Summary Stats Row -->
     <div class="grid grid-cols-6 gap-3 mb-4">
       <!-- Total P&L -->
-      <div class="bg-tv-panel border border-tv-border p-4">
-        <div class="text-tv-muted text-sm mb-1">Total Realized P&L</div>
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2"
+           :class="summary.totalPnl >= 0 ? 'border-l-tv-green' : 'border-l-tv-red'">
+        <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">Total Realized P&L</div>
         <div class="text-2xl font-bold" :class="summary.totalPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
           <span v-if="summary.totalPnl < 0">-</span>${{ formatNumber(Math.abs(summary.totalPnl)) }}
         </div>
-        <div class="text-tv-muted text-sm mt-1">{{ summary.totalTrades }} closed trades</div>
+        <div class="text-xs text-tv-muted mt-1">{{ summary.totalTrades }} closed trades</div>
       </div>
 
       <!-- Win Rate -->
-      <div class="bg-tv-panel border border-tv-border p-4">
-        <div class="text-tv-muted text-sm mb-1">Win Rate</div>
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-tv-blue">
+        <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">Win Rate</div>
         <div class="text-2xl font-bold text-tv-blue">{{ formatPercent(summary.winRate) }}%</div>
-        <div class="text-tv-muted text-sm mt-1">
+        <div class="text-xs text-tv-muted mt-1">
           <span class="text-tv-green">{{ summary.wins }}</span> W /
           <span class="text-tv-red">{{ summary.losses }}</span> L
         </div>
       </div>
 
       <!-- Avg P&L -->
-      <div class="bg-tv-panel border border-tv-border p-4">
-        <div class="text-tv-muted text-sm mb-1">Avg P&L / Trade</div>
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2"
+           :class="summary.avgPnl >= 0 ? 'border-l-tv-green' : 'border-l-tv-red'">
+        <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">Avg P&L / Trade</div>
         <div class="text-2xl font-bold" :class="summary.avgPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
           <span v-if="summary.avgPnl < 0">-</span>${{ formatNumber(Math.abs(summary.avgPnl)) }}
         </div>
-        <div class="text-tv-muted text-sm mt-1">
+        <div class="text-xs text-tv-muted mt-1">
           W: ${{ formatNumber(summary.avgWin) }} |
           L: ${{ formatNumber(Math.abs(summary.avgLoss)) }}
         </div>
       </div>
 
       <!-- Largest Win -->
-      <div class="bg-tv-panel border border-tv-border p-4">
-        <div class="text-tv-muted text-sm mb-1">Largest Win</div>
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-tv-green">
+        <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">Largest Win</div>
         <div class="text-2xl font-bold text-tv-green">${{ formatNumber(summary.largestWin) }}</div>
       </div>
 
       <!-- Largest Loss -->
-      <div class="bg-tv-panel border border-tv-border p-4">
-        <div class="text-tv-muted text-sm mb-1">Largest Loss</div>
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-tv-red">
+        <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">Largest Loss</div>
         <div class="text-2xl font-bold text-tv-red">-${{ formatNumber(Math.abs(summary.largestLoss)) }}</div>
       </div>
 
       <!-- Risk/Reward -->
-      <div class="bg-tv-panel border border-tv-border p-4">
-        <div class="text-tv-muted text-sm mb-1">Avg Risk / Reward</div>
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-tv-amber">
+        <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">Avg Risk / Reward</div>
         <div class="text-lg font-bold">
           <span class="text-tv-amber">${{ formatNumber(summary.avgMaxRisk) }}</span>
           <span class="text-tv-muted mx-1">/</span>
@@ -408,7 +353,7 @@ const columns = [
     <!-- Strategy Breakdown Table -->
     <div class="bg-tv-panel border border-tv-border rounded">
       <!-- Table Header -->
-      <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
+      <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-14 z-10">
         <span v-for="col in columns" :key="col.key"
               class="cursor-pointer hover:text-tv-text flex items-center gap-1"
               :class="[col.width, col.align]"

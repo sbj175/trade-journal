@@ -73,9 +73,8 @@ static_dir.mkdir(exist_ok=True)
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Register routers
+# Register routers (pages.router MUST be last — it has a catch-all route)
 app.include_router(auth.router)
-app.include_router(pages.router)
 app.include_router(health.router)
 app.include_router(notes.router)
 app.include_router(settings.router)
@@ -88,6 +87,7 @@ app.include_router(reports.router)
 app.include_router(debug.router)
 app.include_router(tags.router)
 app.include_router(tastytrade_oauth.router)
+app.include_router(pages.router)
 
 
 def _log_startup_banner():

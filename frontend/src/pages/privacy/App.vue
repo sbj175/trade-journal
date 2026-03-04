@@ -1,36 +1,4 @@
-<script setup>
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
-</script>
-
 <template>
-  <!-- Navigation -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-16 px-4">
-      <div class="flex items-center gap-8">
-        <span class="text-tv-blue font-semibold text-2xl">
-          <i class="fas fa-chart-line mr-2"></i>OptionLedger
-        </span>
-        <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="text-tv-muted hover:text-tv-text px-4 py-2 text-lg">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-4 text-base">
-        <a href="/settings" class="text-tv-blue hover:text-tv-text px-3 py-1 border border-tv-blue rounded text-sm">
-          <i class="fas fa-cog mr-1"></i>Settings
-        </a>
-      </div>
-    </div>
-  </nav>
-
-  <!-- Main Content -->
   <div class="max-w-3xl mx-auto px-6 py-10">
     <h1 class="text-2xl font-bold text-tv-text mb-2">
       <i class="fas fa-shield-halved mr-2 text-tv-blue"></i>Privacy & Data Practices

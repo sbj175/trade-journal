@@ -34,9 +34,6 @@ const tagSearch = ref('')
 const sortColumn = ref('underlying')
 const sortDirection = ref('asc')
 
-// Nav auth
-const authEnabled = ref(false)
-const userEmail = ref('')
 
 // Expanded rows tracking
 const expandedRows = ref(new Set())
@@ -53,13 +50,6 @@ let ws = null
 let wsReconnectTimer = null
 const _noteSaveTimers = {}
 
-// Nav links
-const navLinks = [
-  { href: '/positions', label: 'Positions' },
-  { href: '/ledger', label: 'Ledger' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/risk', label: 'Risk' },
-]
 
 // --- OptionStrat URL builder ---
 function buildOptionStratUrl(strategyType, underlying, legs) {
@@ -1181,14 +1171,6 @@ function onDocumentClick(event) {
 
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
-  await Auth.requireAuth()
-  await Auth.requireTastytrade()
-
-  authEnabled.value = Auth.isAuthEnabled()
-  if (authEnabled.value) {
-    const user = await Auth.getUser()
-    if (user) userEmail.value = user.email || ''
-  }
 
   await loadComments()
   loadRollAlertSettings()
@@ -1219,43 +1201,6 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Nav Bar -->
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
-    <div class="flex items-center justify-between h-16 px-4">
-      <div class="flex items-center gap-8">
-        <span class="text-tv-blue font-semibold text-2xl">
-          <i class="fas fa-chart-line mr-2"></i>OptionLedger
-        </span>
-        <div class="flex items-center border-l border-tv-border pl-8 gap-4">
-          <a v-for="link in navLinks" :key="link.href" :href="link.href"
-             class="px-4 py-2 text-lg"
-             :class="link.href === '/positions' ? 'text-tv-text bg-tv-border rounded-sm' : 'text-tv-muted hover:text-tv-text'">
-            {{ link.label }}
-          </a>
-        </div>
-      </div>
-      <div class="flex items-center gap-6 text-base">
-        <select v-model="selectedAccount" @change="onAccountChange()"
-                class="bg-tv-bg border border-tv-border text-tv-text text-base px-4 py-2 focus:outline-none focus:border-tv-blue">
-          <option value="">All Accounts</option>
-          <option v-for="account in accounts" :key="account.account_number"
-                  :value="account.account_number">
-            ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-          </option>
-        </select>
-        <div v-if="authEnabled && userEmail" class="flex items-center gap-3 border-l border-tv-border pl-6">
-          <span class="text-tv-muted text-sm truncate max-w-[150px]" :title="userEmail">{{ userEmail }}</span>
-          <button @click="Auth.signOut()" class="text-tv-muted hover:text-tv-red" title="Sign out">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
-        <a href="/settings" class="border-l border-tv-border pl-6 text-tv-muted hover:text-tv-text">
-          <i class="fas fa-cog"></i>
-        </a>
-      </div>
-    </div>
-  </nav>
-
   <!-- Action Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-4">
@@ -1344,7 +1289,7 @@ onUnmounted(() => {
   <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" class="p-4">
    <div class="bg-tv-panel border border-tv-border rounded">
     <!-- Column Headers -->
-    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
+    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-14 z-10">
       <span class="w-8"></span>
       <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
       <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
