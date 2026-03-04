@@ -1,19 +1,37 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
+/**
+ * Wrap a dynamic import with retry logic. On first failure (e.g., Firefox
+ * NS_ERROR_CORRUPTED_CONTENT from stale cache), adds a cache-busting
+ * timestamp query parameter and retries once.
+ */
+function lazyLoad(importFn) {
+  return async () => {
+    try {
+      return await importFn()
+    } catch (err) {
+      // Dynamic import failed — likely a stale/corrupted cached chunk.
+      // Hard-navigate to force a fresh load of all assets.
+      window.location.reload()
+      return new Promise(() => {}) // halt while reload happens
+    }
+  }
+}
+
 const routes = [
   {
     path: '/',
     component: DefaultLayout,
     children: [
       { path: '', redirect: '/positions' },
-      { path: 'positions', name: 'positions', component: () => import('@/pages/positions/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Positions' } },
-      { path: 'ledger', name: 'ledger', component: () => import('@/pages/ledger/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Ledger' } },
-      { path: 'reports', name: 'reports', component: () => import('@/pages/reports/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Reports' } },
-      { path: 'risk', name: 'risk', component: () => import('@/pages/risk/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Risk' } },
-      { path: 'settings', name: 'settings', component: () => import('@/pages/settings/App.vue'), meta: { requiresAuth: true, requiresTastytrade: false, title: 'Settings' } },
-      { path: 'privacy', name: 'privacy', component: () => import('@/pages/privacy/App.vue'), meta: { requiresAuth: false, title: 'Privacy' } },
-      { path: 'components', name: 'components', component: () => import('@/pages/components/App.vue'), meta: { requiresAuth: false, title: 'Component Library' } },
+      { path: 'positions', name: 'positions', component: lazyLoad(() => import('@/pages/positions/App.vue')), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Positions' } },
+      { path: 'ledger', name: 'ledger', component: lazyLoad(() => import('@/pages/ledger/App.vue')), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Ledger' } },
+      { path: 'reports', name: 'reports', component: lazyLoad(() => import('@/pages/reports/App.vue')), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Reports' } },
+      { path: 'risk', name: 'risk', component: lazyLoad(() => import('@/pages/risk/App.vue')), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Risk' } },
+      { path: 'settings', name: 'settings', component: lazyLoad(() => import('@/pages/settings/App.vue')), meta: { requiresAuth: true, requiresTastytrade: false, title: 'Settings' } },
+      { path: 'privacy', name: 'privacy', component: lazyLoad(() => import('@/pages/privacy/App.vue')), meta: { requiresAuth: false, title: 'Privacy' } },
+      { path: 'components', name: 'components', component: lazyLoad(() => import('@/pages/components/App.vue')), meta: { requiresAuth: false, title: 'Component Library' } },
     ],
   },
 ]
@@ -67,13 +85,10 @@ router.afterEach((to) => {
   if (to.name === 'settings') tastytradeConfigured = null
 })
 
-// Handle chunk loading failures (e.g., after a deployment with new hashes)
+// Catch-all: any navigation error triggers a hard reload to recover
 router.onError((error, to) => {
-  if (error.message?.includes('Failed to fetch dynamically imported module') ||
-      error.message?.includes('Importing a module script failed') ||
-      error.message?.includes('error loading dynamically imported module')) {
-    window.location.href = to.fullPath
-  }
+  console.error('Navigation error:', error)
+  window.location.href = to.fullPath
 })
 
 export default router
