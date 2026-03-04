@@ -498,11 +498,14 @@ function clearSymbolFilter() {
 
 function formatDollar(value) {
   const abs = Math.abs(value || 0)
-  return formatNumber(abs, abs >= 100000 ? 0 : 2)
+  return formatNumber(abs, abs >= 10000 ? 0 : 2)
 }
 
 function dollarSizeClass(value) {
-  return Math.abs(value || 0) >= 1000000 ? 'text-xs' : ''
+  const abs = Math.abs(value || 0)
+  if (abs >= 1000000) return 'text-xs'
+  if (abs >= 100000) return 'text-[13px]'
+  return ''
 }
 
 // --- P&L Calculations ---
@@ -1316,36 +1319,36 @@ onUnmounted(() => {
       Price
       <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-12"></span>
-    <span class="w-36 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
+    <span class="w-10"></span>
+    <span class="w-32 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
       Strategy
       <span v-show="sortColumn === 'strategy'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
+    <span class="w-10 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
       DTE
       <span v-show="sortColumn === 'dte'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
+    <span class="w-10 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
       Days
       <span v-show="sortColumn === 'days'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
+    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
       Cost Basis
       <span v-show="sortColumn === 'cost_basis'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('net_liq')">
+    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('net_liq')">
       Net Liq
       <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('realized_pnl')">
+    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('realized_pnl')">
       Realized
       <span v-show="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
+    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
       Open
       <span v-show="sortColumn === 'open_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('total_pnl')">
+    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('total_pnl')">
       Total
       <span v-show="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -1373,37 +1376,37 @@ onUnmounted(() => {
           </div>
           <div class="w-8 mr-1"></div>
           <div class="w-40"></div>
-          <div class="w-12"></div>
+          <div class="w-10"></div>
           <!-- Strategy -->
-          <div class="w-36 text-xs text-tv-muted">{{ group._childCount }} positions</div>
+          <div class="w-32 text-xs text-tv-muted">{{ group._childCount }} positions</div>
           <!-- DTE -->
-          <div class="w-12"></div>
+          <div class="w-10"></div>
           <!-- Days -->
-          <div class="w-12"></div>
+          <div class="w-10"></div>
           <!-- Cost Basis -->
-          <div class="w-24 text-right font-medium"
+          <div class="w-[6.5rem] text-right font-medium"
                :class="(group._subtotalCostBasis >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalCostBasis)">
             <span v-show="group._subtotalCostBasis < 0">-</span>${{ formatDollar(group._subtotalCostBasis) }}
           </div>
           <!-- Net Liq -->
-          <div class="w-24 text-right font-medium"
+          <div class="w-[6.5rem] text-right font-medium"
                :class="(group._subtotalNetLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalNetLiq)">
             <span v-show="group._subtotalNetLiq < 0">-</span>${{ formatDollar(group._subtotalNetLiq) }}
           </div>
           <!-- Realized -->
-          <div class="w-24 text-right font-medium"
+          <div class="w-[6.5rem] text-right font-medium"
                :class="(group._subtotalRealizedPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalRealizedPnL)">
             <span v-show="group._subtotalRealizedPnL !== 0">
               <span v-show="group._subtotalRealizedPnL < 0">-</span>${{ formatDollar(group._subtotalRealizedPnL) }}
             </span>
           </div>
           <!-- Open P/L -->
-          <div class="w-24 text-right font-medium"
+          <div class="w-[6.5rem] text-right font-medium"
                :class="(group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalOpenPnL)">
             <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
           </div>
           <!-- Total P/L -->
-          <div class="w-24 text-right font-bold"
+          <div class="w-[6.5rem] text-right font-bold"
                :class="(group._subtotalTotalPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalTotalPnL)">
             <span v-show="group._subtotalTotalPnL < 0">-</span>${{ formatDollar(group._subtotalTotalPnL) }}
           </div>
@@ -1464,7 +1467,7 @@ onUnmounted(() => {
               </div>
 
               <!-- Ledger Link -->
-              <div class="w-12">
+              <div class="w-10">
                 <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
                    class="text-tv-blue hover:text-tv-blue"
@@ -1475,7 +1478,7 @@ onUnmounted(() => {
               </div>
 
               <!-- Strategy -->
-              <div class="w-36 relative">
+              <div class="w-32 relative">
                 <div class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}</div>
                 <template v-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
                   <div class="flex flex-wrap gap-1 mt-0.5">
@@ -1531,28 +1534,28 @@ onUnmounted(() => {
               </div>
 
               <!-- DTE -->
-              <div class="w-12 text-center"
+              <div class="w-10 text-center"
                    :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-tv-amber' : 'text-tv-text'">
                 {{ getMinDTE(group) !== null ? getMinDTE(group) + 'd' : '' }}
               </div>
 
               <!-- Days -->
-              <div class="w-12 text-center text-tv-text">{{ getGroupDaysOpen(group) || '' }}</div>
+              <div class="w-10 text-center text-tv-text">{{ getGroupDaysOpen(group) || '' }}</div>
 
               <!-- Cost Basis -->
-              <div class="w-24 text-right"
+              <div class="w-[6.5rem] text-right"
                    :class="(getGroupCostBasis(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupCostBasis(group))">
                 <span v-show="getGroupCostBasis(group) < 0">-</span>${{ formatDollar(getGroupCostBasis(group)) }}
               </div>
 
               <!-- Net Liq -->
-              <div class="w-24 text-right font-medium"
+              <div class="w-[6.5rem] text-right font-medium"
                    :class="(getGroupNetLiqWithLiveQuotes(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupNetLiqWithLiveQuotes(group))">
                 <span v-show="getGroupNetLiqWithLiveQuotes(group) < 0">-</span>${{ formatDollar(getGroupNetLiqWithLiveQuotes(group)) }}
               </div>
 
               <!-- Realized P/L -->
-              <div class="w-24 text-right"
+              <div class="w-[6.5rem] text-right"
                    :class="(getGroupRealizedPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupRealizedPnL(group))">
                 <template v-if="getGroupRealizedPnL(group) !== 0">
                   <span v-show="getGroupRealizedPnL(group) < 0">-</span>${{ formatDollar(getGroupRealizedPnL(group)) }}
@@ -1560,13 +1563,13 @@ onUnmounted(() => {
               </div>
 
               <!-- Open P/L -->
-              <div class="w-24 text-right font-medium"
+              <div class="w-[6.5rem] text-right font-medium"
                    :class="(getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupOpenPnL(group))">
                 <span v-show="getGroupOpenPnL(group) < 0">-</span>${{ formatDollar(getGroupOpenPnL(group)) }}
               </div>
 
               <!-- Total P/L -->
-              <div class="w-24 text-right font-bold"
+              <div class="w-[6.5rem] text-right font-bold"
                    :class="(getGroupTotalPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupTotalPnL(group))">
                 <span v-show="getGroupTotalPnL(group) < 0">-</span>${{ formatDollar(getGroupTotalPnL(group)) }}
               </div>
@@ -1597,7 +1600,7 @@ onUnmounted(() => {
                           <span class="w-10">DTE</span>
                           <span class="w-16 text-center mx-2">Strike</span>
                           <span class="w-6">Type</span>
-                          <span class="w-24 text-right ml-4">Cost Basis</span>
+                          <span class="w-[6.5rem] text-right ml-4">Cost Basis</span>
                           <span class="w-20 text-right">Net Liq</span>
                           <span class="w-20 text-right">Open P/L</span>
                         </div>
@@ -1620,7 +1623,7 @@ onUnmounted(() => {
                             {{ getStrikePrice(leg) }}
                           </span>
                           <span class="w-6 text-tv-muted">{{ getOptionType(leg) }}</span>
-                          <span class="w-24 text-right ml-4"
+                          <span class="w-[6.5rem] text-right ml-4"
                                 :class="(leg.cost_basis || 0) >= 0 ? 'text-tv-green' : 'text-tv-red'">
                             ${{ formatNumber(leg.cost_basis || 0) }}
                           </span>
@@ -1641,14 +1644,14 @@ onUnmounted(() => {
                         <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
                           <span class="w-16">Shares</span>
                           <span class="w-20 text-right">Avg Price</span>
-                          <span class="w-24 text-right ml-4">Cost Basis</span>
+                          <span class="w-[6.5rem] text-right ml-4">Cost Basis</span>
                           <span class="w-20 text-right">Mkt Value</span>
                           <span class="w-20 text-right">Open P/L</span>
                         </div>
                         <div class="flex items-center text-sm py-0.5">
                           <span class="w-16 font-medium text-tv-text">{{ group.equitySummary?.quantity || 0 }}</span>
                           <span class="w-20 text-right text-tv-muted">${{ formatNumber(group.equitySummary?.average_price || 0) }}</span>
-                          <span class="w-24 text-right ml-4 text-tv-muted">
+                          <span class="w-[6.5rem] text-right ml-4 text-tv-muted">
                             ${{ formatNumber(group.equitySummary?.cost_basis || 0) }}
                           </span>
                           <span class="w-20 text-right text-tv-muted">
