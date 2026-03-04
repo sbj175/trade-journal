@@ -1406,7 +1406,7 @@ onUnmounted(() => {
             <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
           </div>
           <!-- Total P/L -->
-          <div class="w-[6.5rem] text-right font-bold"
+          <div class="w-[6.5rem] text-right font-medium"
                :class="(group._subtotalTotalPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalTotalPnL)">
             <span v-show="group._subtotalTotalPnL < 0">-</span>${{ formatDollar(group._subtotalTotalPnL) }}
           </div>
@@ -1569,7 +1569,7 @@ onUnmounted(() => {
               </div>
 
               <!-- Total P/L -->
-              <div class="w-[6.5rem] text-right font-bold"
+              <div class="w-[6.5rem] text-right font-medium"
                    :class="(getGroupTotalPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupTotalPnL(group))">
                 <span v-show="getGroupTotalPnL(group) < 0">-</span>${{ formatDollar(getGroupTotalPnL(group)) }}
               </div>
