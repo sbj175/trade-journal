@@ -48,7 +48,7 @@ export const chart = {
   green:      '#00dc82',
   red:        '#ff4757',
   blue:       '#3b82f6',
-  muted:      '#7f8a9a',
+  muted:      '#bfc5cd',
   text:       '#e6e9f0',
   grid:       '#1e2536',
   tooltipBg:  '#141926',
