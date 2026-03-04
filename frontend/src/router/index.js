@@ -23,6 +23,12 @@ const router = createRouter({
   routes,
 })
 
+// Cache the tastytrade credentials check so it only runs once per session.
+// Without this, every navigation to a data page makes an API call that delays
+// the route transition long enough for the user to click again, causing Vue
+// Router to cancel the pending navigation.
+let tastytradeConfigured = null
+
 router.beforeEach(async (to, from, next) => {
   document.title = to.meta.title ? `OptionLedger - ${to.meta.title}` : 'OptionLedger'
 
@@ -40,7 +46,7 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  if (to.meta.requiresTastytrade) {
+  if (to.meta.requiresTastytrade && tastytradeConfigured !== true) {
     try {
       const resp = await Auth.authFetch('/api/settings/credentials')
       if (resp.ok) {
@@ -48,6 +54,7 @@ router.beforeEach(async (to, from, next) => {
         if (!data.configured) {
           return next({ name: 'settings', query: { tab: 'connection', onboarding: '1' } })
         }
+        tastytradeConfigured = true
       }
     } catch (e) {
       // If credentials check fails, continue anyway
@@ -55,6 +62,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   next()
+})
+
+// Reset the credentials cache when navigating to settings (user may disconnect)
+router.afterEach((to) => {
+  if (to.name === 'settings') tastytradeConfigured = null
 })
 
 export default router

@@ -135,7 +135,7 @@ async function ensureApexCharts() {
 }
 
 onMounted(async () => {
-  await ensureApexCharts()
+  try { await ensureApexCharts() } catch (e) { console.warn('ApexCharts failed to load:', e) }
   await fetchData()
   selectedAccount.value = localStorage.getItem('trade_journal_selected_account') || ''
   connectWebSocket()
