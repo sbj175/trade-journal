@@ -8,26 +8,27 @@
  */
 
 // ---------------------------------------------------------------------------
-// Palette
+// Palette — "Deep Finance"
+// Deeper backgrounds for bolder contrast; vivid accents that pop.
 // ---------------------------------------------------------------------------
 
 export const colors = {
-  // Neutrals
-  bg:       '#131722',
-  panel:    '#1e222d',
-  border:   '#2a2e39',
-  hover:    '#363a45',
-  text:     '#d1d4dc',
-  muted:    '#868c99',
+  // Neutrals — deep layered dark with cool undertone
+  bg:       '#0b0f19',
+  panel:    '#141926',
+  border:   '#1e2536',
+  hover:    '#283148',
+  text:     '#e6e9f0',
+  muted:    '#6b7385',
 
-  // Accents
-  green:    '#55aa71',   // profit, positive values, long positions
-  red:      '#fe676c',   // loss, negative values, short positions
-  blue:     '#2962ff',   // brand, interactive, links
-  amber:    '#fbbf24',   // warnings, DTE, gamma, expiration, order types
-  orange:   '#fb923c',   // assignments, derived positions, severe warnings
-  cyan:     '#22d3ee',   // credit filter, informational highlights
-  purple:   '#a78bfa',   // vega, exercise, account badges, shares filter
+  // Accents — bold and unmistakable
+  green:    '#00dc82',   // profit, positive values, long positions
+  red:      '#ff4757',   // loss, negative values, short positions
+  blue:     '#3b82f6',   // brand, interactive, links
+  amber:    '#f59e0b',   // warnings, DTE, gamma, expiration, order types
+  orange:   '#f97316',   // assignments, derived positions, severe warnings
+  cyan:     '#06b6d4',   // credit filter, informational highlights
+  purple:   '#8b5cf6',   // vega, exercise, account badges, shares filter
 }
 
 // ---------------------------------------------------------------------------
@@ -35,8 +36,8 @@ export const colors = {
 // ---------------------------------------------------------------------------
 
 export const fonts = {
-  sans: ['-apple-system', 'BlinkMacSystemFont', 'Trebuchet MS', 'Roboto', 'Ubuntu', 'sans-serif'],
-  mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+  sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+  mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
 }
 
 // ---------------------------------------------------------------------------
@@ -44,13 +45,13 @@ export const fonts = {
 // ---------------------------------------------------------------------------
 
 export const chart = {
-  green:      '#55aa71',
-  red:        '#fe676c',
-  blue:       '#2962ff',
-  muted:      '#868c99',
-  text:       '#d1d4dc',
-  grid:       '#2a2e39',
-  tooltipBg:  '#1e222d',
-  tooltipHdr: '#131722',
+  green:      '#00dc82',
+  red:        '#ff4757',
+  blue:       '#3b82f6',
+  muted:      '#6b7385',
+  text:       '#e6e9f0',
+  grid:       '#1e2536',
+  tooltipBg:  '#141926',
+  tooltipHdr: '#0b0f19',
   white:      '#ffffff',
 }

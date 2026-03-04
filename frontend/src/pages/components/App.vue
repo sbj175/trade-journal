@@ -14,7 +14,7 @@ const sampleText = ref('')
 const sampleTextarea = ref('')
 const sampleNumber = ref(-234.50)
 const sampleDate = ref('2025-03-15')
-const sampleColor = ref('#2962ff')
+const sampleColor = ref('#3b82f6')
 const symbolFilter = ref('')
 const tableExpanded = ref(false)
 const tableSortCol = ref('symbol')
@@ -69,8 +69,8 @@ const fontSamples = [
 ]
 
 const comparisonFonts = [
-  'JetBrains Mono',
   'IBM Plex Mono',
+  'JetBrains Mono',
   'Fira Code',
   'Space Mono',
   'DM Mono',
@@ -79,19 +79,19 @@ const comparisonFonts = [
 
 // Color tokens
 const colorTokens = [
-  { name: 'bg', hex: '#131722', usage: 'Page background' },
-  { name: 'panel', hex: '#1e222d', usage: 'Card / section backgrounds' },
-  { name: 'border', hex: '#2a2e39', usage: 'Borders, dividers' },
-  { name: 'hover', hex: '#363a45', usage: 'Hover states, active rows' },
-  { name: 'text', hex: '#d1d4dc', usage: 'Primary text' },
-  { name: 'muted', hex: '#868c99', usage: 'Secondary text, labels' },
-  { name: 'green', hex: '#55aa71', usage: 'Profit, positive, long' },
-  { name: 'red', hex: '#fe676c', usage: 'Loss, negative, short' },
-  { name: 'blue', hex: '#2962ff', usage: 'Brand, interactive, links' },
-  { name: 'amber', hex: '#fbbf24', usage: 'Warnings, DTE, gamma' },
-  { name: 'orange', hex: '#fb923c', usage: 'Assignments, severe warnings' },
-  { name: 'cyan', hex: '#22d3ee', usage: 'Credit filter, info highlights' },
-  { name: 'purple', hex: '#a78bfa', usage: 'Vega, exercise, account badges' },
+  { name: 'bg', hex: '#0b0f19', usage: 'Page background' },
+  { name: 'panel', hex: '#141926', usage: 'Card / section backgrounds' },
+  { name: 'border', hex: '#1e2536', usage: 'Borders, dividers' },
+  { name: 'hover', hex: '#283148', usage: 'Hover states, active rows' },
+  { name: 'text', hex: '#e6e9f0', usage: 'Primary text' },
+  { name: 'muted', hex: '#6b7385', usage: 'Secondary text, labels' },
+  { name: 'green', hex: '#00dc82', usage: 'Profit, positive, long' },
+  { name: 'red', hex: '#ff4757', usage: 'Loss, negative, short' },
+  { name: 'blue', hex: '#3b82f6', usage: 'Brand, interactive, links' },
+  { name: 'amber', hex: '#f59e0b', usage: 'Warnings, DTE, gamma' },
+  { name: 'orange', hex: '#f97316', usage: 'Assignments, severe warnings' },
+  { name: 'cyan', hex: '#06b6d4', usage: 'Credit filter, info highlights' },
+  { name: 'purple', hex: '#8b5cf6', usage: 'Vega, exercise, account badges' },
 ]
 
 // Tag popover
@@ -120,12 +120,12 @@ const sampleTags = ['Earnings Play', 'Hedge', 'Momentum', 'Theta Gang', 'LEAPS']
         <span class="w-6 h-6 rounded bg-tv-blue/10 flex items-center justify-center text-xs text-tv-blue font-bold">1</span>
         Typography & Font Comparison
       </h2>
-      <p class="text-tv-muted text-sm mb-4">Outfit for UI chrome, JetBrains Mono for financial data.</p>
+      <p class="text-tv-muted text-sm mb-4">Plus Jakarta Sans for UI chrome, IBM Plex Mono for financial data.</p>
 
       <div class="grid grid-cols-2 gap-5 mb-6">
-        <!-- Outfit specimens -->
+        <!-- Plus Jakarta Sans specimens -->
         <div class="bg-tv-panel border border-tv-border rounded p-5">
-          <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-medium">Outfit (Sans)</div>
+          <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-medium">Plus Jakarta Sans</div>
           <div class="space-y-2">
             <div class="text-2xl font-bold text-tv-text">Heading 2XL Bold</div>
             <div class="text-xl font-semibold text-tv-text">Heading XL Semibold</div>
@@ -137,9 +137,9 @@ const sampleTags = ['Earnings Play', 'Hedge', 'Momentum', 'Theta Gang', 'LEAPS']
           </div>
         </div>
 
-        <!-- JetBrains Mono specimens -->
+        <!-- IBM Plex Mono specimens -->
         <div class="bg-tv-panel border border-tv-border rounded p-5">
-          <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-medium">JetBrains Mono</div>
+          <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-medium">IBM Plex Mono</div>
           <div class="space-y-2 font-mono">
             <div class="text-2xl font-semibold text-tv-green">$128,432.57</div>
             <div class="text-xl font-medium text-tv-red">-$3,891.20</div>
@@ -913,5 +913,5 @@ const sampleTags = ['Earnings Play', 'Hedge', 'Momentum', 'Theta Gang', 'LEAPS']
 
 <style scoped>
 /* Font comparison — load additional mono fonts (scoped to this page) */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Space+Mono:wght@400;700&family=DM+Mono:wght@400;500&family=Inconsolata:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Space+Mono:wght@400;700&family=DM+Mono:wght@400;500&family=Inconsolata:wght@400;500&display=swap');
 </style>

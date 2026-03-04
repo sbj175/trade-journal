@@ -1,8 +1,15 @@
+/* Plus Jakarta Sans — bold geometric sans for UI chrome
+   IBM Plex Mono — institutional mono for financial data */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Base styles */
+/* =================================================================
+   Base
+   ================================================================= */
+
 * {
   font-family: theme('fontFamily.sans');
 }
@@ -11,13 +18,38 @@ body {
   background: theme('colors.tv.bg');
   color: theme('colors.tv.text');
   font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar */
-.tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-.tv-scrollbar::-webkit-scrollbar-track { background: theme('colors.tv.panel'); }
-.tv-scrollbar::-webkit-scrollbar-thumb { background: theme('colors.tv.border'); border-radius: 3px; }
-.tv-scrollbar::-webkit-scrollbar-thumb:hover { background: theme('colors.tv.hover'); }
+/* Text selection */
+::selection {
+  background: theme('colors.tv.blue / 0.30');
+  color: #fff;
+}
+
+/* Tabular nums on mono — aligned columns for financial data */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* =================================================================
+   Scrollbar
+   ================================================================= */
+
+.tv-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.tv-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.tv-scrollbar::-webkit-scrollbar-thumb {
+  background: theme('colors.tv.border');
+  border-radius: 3px;
+}
+.tv-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.tv.hover');
+}
+
+/* =================================================================
+   Utilities
+   ================================================================= */
 
 /* Vue cloak (hide until mounted) */
 [v-cloak] { display: none !important; }
@@ -33,7 +65,60 @@ input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
   border-radius: 50%;
   width: 16px;
   height: 16px;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
   display: inline-block;
 }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* =================================================================
+   Component Layer
+   ================================================================= */
+
+@layer components {
+
+  /* --- Select dropdowns ----------------------------------------- */
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7385' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    padding-right: 2rem;
+    cursor: pointer;
+  }
+
+  /* --- Focus states for all form controls ----------------------- */
+  select:focus,
+  input:focus,
+  textarea:focus {
+    outline: none;
+    border-color: theme('colors.tv.blue / 0.6');
+    box-shadow: 0 0 0 2px theme('colors.tv.blue / 0.15');
+  }
+
+  /* --- Metric card (summary cards on Reports / Risk) ------------ */
+  .metric-card {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .metric-card:hover {
+    border-color: theme('colors.tv.hover');
+    box-shadow: 0 2px 12px theme('colors.tv.bg / 0.6');
+  }
+
+  /* --- Live status pulse dot ------------------------------------ */
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+}

@@ -15,17 +15,18 @@ const navLinks = [
 
 <template>
   <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
+    <div class="h-[2px] bg-tv-blue"></div>
     <div class="flex items-center justify-between h-14 px-5">
       <div class="flex items-center h-full gap-8">
         <router-link to="/positions" class="flex items-center gap-2.5">
-          <span class="w-7 h-7 rounded bg-tv-blue/10 border border-tv-blue/25 flex items-center justify-center">
-            <i class="fas fa-chart-line text-tv-blue text-xs"></i>
+          <span class="w-8 h-8 rounded-lg bg-tv-blue flex items-center justify-center shadow-lg shadow-tv-blue/25">
+            <i class="fas fa-chart-line text-white text-sm"></i>
           </span>
-          <span class="text-lg font-semibold tracking-tight">Option<span class="text-tv-blue">Ledger</span></span>
+          <span class="text-lg font-bold tracking-tight">Option<span class="text-tv-blue">Ledger</span></span>
         </router-link>
         <div class="flex items-center h-full gap-1">
           <router-link v-for="link in navLinks" :key="link.to" :to="link.to"
-             class="h-full flex items-center px-3 text-sm font-medium tracking-wide border-b-2 transition-colors"
+             class="h-full flex items-center px-3.5 text-sm font-semibold tracking-wide border-b-2 transition-colors"
              :class="route.path === link.to
                ? 'text-tv-text border-tv-blue'
                : 'text-tv-muted border-transparent hover:text-tv-text'">
