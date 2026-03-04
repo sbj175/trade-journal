@@ -1234,6 +1234,7 @@ onUnmounted(() => {
                @keyup.enter="onSymbolEnterOrBlur()"
                @blur="onSymbolEnterOrBlur()"
                placeholder="Symbol"
+               maxlength="5"
                class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
                :class="selectedUnderlying ? 'pr-8' : ''">
         <button v-show="selectedUnderlying"
