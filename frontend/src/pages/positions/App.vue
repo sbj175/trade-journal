@@ -1269,7 +1269,10 @@ onUnmounted(() => {
 
       <span class="text-sm text-tv-muted ml-4" v-show="lastQuoteUpdate">
         Quotes: {{ lastQuoteUpdate }}
-        <span v-show="liveQuotesActive" class="text-tv-green ml-1">LIVE</span>
+        <span v-show="liveQuotesActive" class="inline-flex items-center gap-1.5 ml-1">
+          <span class="pulse-dot bg-tv-green"></span>
+          <span class="text-tv-green">LIVE</span>
+        </span>
       </span>
     </div>
   </div>
