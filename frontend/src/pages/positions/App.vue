@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import { formatNumber } from '@/lib/formatters'
+import { formatNumber, formatDate } from '@/lib/formatters'
 
 const Auth = useAuth()
 
@@ -1602,8 +1602,8 @@ onUnmounted(() => {
                           <span class="w-16 text-center mx-2">Strike</span>
                           <span class="w-6">Type</span>
                           <span class="w-[6.5rem] text-right ml-4">Cost Basis</span>
-                          <span class="w-20 text-right">Net Liq</span>
-                          <span class="w-20 text-right">Open P/L</span>
+                          <span class="w-20 text-right ml-3">Net Liq</span>
+                          <span class="w-20 text-right ml-3">Open P/L</span>
                         </div>
 
                         <!-- Option legs -->
@@ -1628,10 +1628,10 @@ onUnmounted(() => {
                                 :class="(leg.cost_basis || 0) >= 0 ? 'text-tv-green' : 'text-tv-red'">
                             ${{ formatNumber(leg.cost_basis || 0) }}
                           </span>
-                          <span class="w-20 text-right text-tv-muted">
+                          <span class="w-20 text-right ml-3 text-tv-muted">
                             ${{ formatNumber(calculateLegMarketValue(leg)) }}
                           </span>
-                          <span class="w-20 text-right font-medium"
+                          <span class="w-20 text-right ml-3 font-medium"
                                 :class="calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'">
                             ${{ formatNumber(calculateLegPnL(leg)) }}
                           </span>
@@ -1646,8 +1646,8 @@ onUnmounted(() => {
                           <span class="w-16">Shares</span>
                           <span class="w-20 text-right">Avg Price</span>
                           <span class="w-[6.5rem] text-right ml-4">Cost Basis</span>
-                          <span class="w-20 text-right">Mkt Value</span>
-                          <span class="w-20 text-right">Open P/L</span>
+                          <span class="w-20 text-right ml-3">Mkt Value</span>
+                          <span class="w-20 text-right ml-3">Open P/L</span>
                         </div>
                         <div class="flex items-center text-sm py-0.5">
                           <span class="w-16 font-medium text-tv-text">{{ group.equitySummary?.quantity || 0 }}</span>
@@ -1655,10 +1655,10 @@ onUnmounted(() => {
                           <span class="w-[6.5rem] text-right ml-4 text-tv-muted">
                             ${{ formatNumber(group.equitySummary?.cost_basis || 0) }}
                           </span>
-                          <span class="w-20 text-right text-tv-muted">
+                          <span class="w-20 text-right ml-3 text-tv-muted">
                             ${{ formatNumber(calculateEquityMarketValue(group)) }}
                           </span>
-                          <span class="w-20 text-right font-medium"
+                          <span class="w-20 text-right ml-3 font-medium"
                                 :class="(calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) >= 0 ? 'text-tv-green' : 'text-tv-red'">
                             ${{ formatNumber(calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) }}
                           </span>
@@ -1676,7 +1676,7 @@ onUnmounted(() => {
 
                     <!-- Chain summary -->
                     <div class="flex items-center text-xs text-tv-muted mt-2 pt-1 border-t border-tv-border/30 gap-4">
-                      <span>Opened: {{ group.opening_date || 'N/A' }}</span>
+                      <span>Opened: {{ formatDate(group.opening_date) || 'N/A' }}</span>
                       <span>Orders: {{ group.order_count || 1 }}</span>
                       <span v-show="group.roll_count > 0" class="text-tv-blue">Rolls: {{ group.roll_count }}</span>
                       <span v-show="group.realized_pnl !== 0"
