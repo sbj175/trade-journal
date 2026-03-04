@@ -51,6 +51,12 @@ async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
 
+@router.get("/components", response_class=HTMLResponse)
+async def components_page(request: Request):
+    """Serve the Component Library page (dev/design tool, no auth required)"""
+    return templates.TemplateResponse("components.html", {"request": request})
+
+
 @router.get("/beta-full", response_class=HTMLResponse)
 async def beta_full_page(request: Request):
     """Serve the beta-full standalone page (no nav bar)"""
