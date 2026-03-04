@@ -24,26 +24,24 @@ const router = createRouter({
 })
 
 // Cache the tastytrade credentials check so it only runs once per session.
-// Without this, every navigation to a data page makes an API call that delays
-// the route transition long enough for the user to click again, causing Vue
-// Router to cancel the pending navigation.
 let tastytradeConfigured = null
 
-router.beforeEach(async (to, from, next) => {
+// Modern return-style guard (no next() callback — avoids known Vue Router 4 quirks)
+router.beforeEach(async (to, from) => {
   document.title = to.meta.title ? `OptionLedger - ${to.meta.title}` : 'OptionLedger'
 
-  if (!to.meta.requiresAuth) return next()
+  if (!to.meta.requiresAuth) return true
 
   const Auth = window.Auth
-  if (!Auth) return next()
+  if (!Auth) return true
 
   await Auth.init()
-  if (!Auth.isAuthEnabled()) return next()
+  if (!Auth.isAuthEnabled()) return true
 
   const token = await Auth.getAccessToken()
   if (!token) {
     window.location.href = '/login'
-    return
+    return false
   }
 
   if (to.meta.requiresTastytrade && tastytradeConfigured !== true) {
@@ -52,7 +50,7 @@ router.beforeEach(async (to, from, next) => {
       if (resp.ok) {
         const data = await resp.json()
         if (!data.configured) {
-          return next({ name: 'settings', query: { tab: 'connection', onboarding: '1' } })
+          return { name: 'settings', query: { tab: 'connection', onboarding: '1' } }
         }
         tastytradeConfigured = true
       }
@@ -61,12 +59,21 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  next()
+  return true
 })
 
 // Reset the credentials cache when navigating to settings (user may disconnect)
 router.afterEach((to) => {
   if (to.name === 'settings') tastytradeConfigured = null
+})
+
+// Handle chunk loading failures (e.g., after a deployment with new hashes)
+router.onError((error, to) => {
+  if (error.message?.includes('Failed to fetch dynamically imported module') ||
+      error.message?.includes('Importing a module script failed') ||
+      error.message?.includes('error loading dynamically imported module')) {
+    window.location.href = to.fullPath
+  }
 })
 
 export default router
