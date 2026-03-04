@@ -1316,15 +1316,15 @@ onUnmounted(() => {
   </div>
 
   <!-- Loading State -->
-  <div v-show="isLoading" class="text-center py-12">
-    <i class="fas fa-spinner fa-spin text-4xl text-tv-blue mb-4"></i>
+  <div v-show="isLoading" class="text-center py-16">
+    <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
     <p class="text-tv-muted">Loading positions...</p>
   </div>
 
   <!-- Empty State -->
-  <div v-show="!isLoading && !error && filteredItems.length === 0" class="text-center py-12">
-    <i class="fas fa-layer-group text-4xl text-tv-muted mb-4"></i>
-    <p class="text-tv-muted mb-4">No open positions found</p>
+  <div v-show="!isLoading && !error && filteredItems.length === 0" class="text-center py-16">
+    <i class="fas fa-layer-group text-3xl text-tv-muted mb-3"></i>
+    <p class="text-tv-muted">No open positions found</p>
   </div>
 
   <!-- Sync Summary Banner -->
@@ -1341,9 +1341,10 @@ onUnmounted(() => {
   </div>
 
   <!-- Main Content -->
-  <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" class="p-2">
+  <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" class="p-4">
+   <div class="bg-tv-panel border border-tv-border rounded">
     <!-- Column Headers -->
-    <div class="flex items-center px-4 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16">
+    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
       <span class="w-8"></span>
       <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
       <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
@@ -1402,7 +1403,7 @@ onUnmounted(() => {
       <div v-for="(group, index) in groupedPositions" :key="group.groupKey">
 
         <!-- Subtotal Row -->
-        <div v-if="group._isSubtotal" class="flex items-center px-4 py-2 bg-blue-500/10 border-l-2 border-tv-blue">
+        <div v-if="group._isSubtotal" class="flex items-center px-4 h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
           <div class="w-8"></div>
           <div class="w-6" v-show="selectedAccount === ''"></div>
           <div class="w-14">
@@ -1452,7 +1453,7 @@ onUnmounted(() => {
         <template v-else>
           <div>
             <!-- Group Row -->
-            <div class="flex items-center px-4 py-2 hover:bg-tv-border/30 cursor-pointer transition-colors"
+            <div class="flex items-center px-4 h-12 hover:bg-tv-border/20 cursor-pointer transition-colors"
                  @click="toggleExpanded(group.groupKey)">
               <!-- Chevron -->
               <div class="w-8">
@@ -1475,7 +1476,7 @@ onUnmounted(() => {
 
               <!-- IVR -->
               <div class="w-8 text-right mr-1"
-                   :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-yellow-400' : 'text-tv-muted'">
+                   :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-tv-amber' : 'text-tv-muted'">
                 {{ getUnderlyingIVR(group.underlying) !== null ? getUnderlyingIVR(group.underlying) : '' }}
               </div>
 
@@ -1485,12 +1486,12 @@ onUnmounted(() => {
                   <div class="flex items-center gap-2">
                     <div class="w-20 px-2 py-1 rounded-sm text-base font-medium border text-right"
                          style="font-variant-numeric: tabular-nums"
-                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-green-900/60 text-green-400 border-green-700/50' : 'bg-tv-border text-tv-muted border-tv-border'">
+                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-border text-tv-muted border-tv-border'">
                       {{ formatNumber(getUnderlyingQuote(group.underlying).price || 0) }}
                     </div>
                     <div class="w-16 text-right text-sm"
                          style="font-variant-numeric: tabular-nums"
-                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-green-400' : 'text-tv-muted'">
+                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-tv-green' : 'text-tv-muted'">
                       {{ ((getUnderlyingQuote(group.underlying).change || 0) >= 0 ? '+' : '') + (getUnderlyingQuote(group.underlying).changePercent || 0).toFixed(2) + '%' }}
                     </div>
                   </div>
@@ -1504,7 +1505,7 @@ onUnmounted(() => {
               <div class="w-12">
                 <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
-                   class="text-tv-blue hover:text-blue-400"
+                   class="text-tv-blue hover:text-tv-blue"
                    title="View in Ledger">
                   <i class="fas fa-book"></i>
                   <span v-show="group.roll_count > 0" class="text-xs text-tv-muted ml-0.5">R{{ group.roll_count }}</span>
@@ -1519,10 +1520,10 @@ onUnmounted(() => {
                     <span v-for="badge in group.rollAnalysis.badges" :key="badge.label"
                           class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
                           :class="{
-                            'bg-green-500/20 text-green-400 border-green-500/50': badge.color === 'green',
-                            'bg-red-500/20 text-red-400 border-red-500/50': badge.color === 'red',
-                            'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': badge.color === 'yellow',
-                            'bg-orange-500/20 text-orange-400 border-orange-500/50': badge.color === 'orange'
+                            'bg-tv-green/20 text-tv-green border-tv-green/50': badge.color === 'green',
+                            'bg-tv-red/20 text-tv-red border-tv-red/50': badge.color === 'red',
+                            'bg-tv-amber/20 text-tv-amber border-tv-amber/50': badge.color === 'yellow',
+                            'bg-tv-orange/20 text-tv-orange border-tv-orange/50': badge.color === 'orange'
                           }">{{ badge.label }}</span>
                   </div>
                 </template>
@@ -1541,7 +1542,7 @@ onUnmounted(() => {
                 </div>
                 <!-- Tag popover -->
                 <div v-if="tagPopoverGroup === group.group_id"
-                     class="absolute top-full left-0 mt-1 z-50 bg-[#1e222d] border border-tv-border rounded shadow-lg p-1.5 w-44"
+                     class="absolute top-full left-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-lg p-1.5 w-44"
                      data-tag-popover
                      @click.stop>
                   <input type="text"
@@ -1569,7 +1570,7 @@ onUnmounted(() => {
 
               <!-- DTE -->
               <div class="w-12 text-center"
-                   :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-yellow-400' : 'text-tv-text'">
+                   :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-tv-amber' : 'text-tv-text'">
                 {{ getMinDTE(group) !== null ? getMinDTE(group) + 'd' : '' }}
               </div>
 
@@ -1615,7 +1616,7 @@ onUnmounted(() => {
               </div>
 
               <!-- Note indicator -->
-              <i class="fas fa-sticky-note text-yellow-400 text-sm pl-2"
+              <i class="fas fa-sticky-note text-tv-amber text-sm pl-2"
                  v-show="getPositionComment(group)" title="Has notes"></i>
             </div>
 
@@ -1650,7 +1651,7 @@ onUnmounted(() => {
                             {{ getExpirationDate(leg) }}
                           </span>
                           <span class="w-10 text-tv-muted"
-                                :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 30 ? 'text-yellow-400' : ''">
+                                :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 30 ? 'text-tv-amber' : ''">
                             {{ getDTE(leg) !== null ? getDTE(leg) + 'd' : '' }}
                           </span>
                           <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text">
@@ -1736,18 +1737,18 @@ onUnmounted(() => {
               <template v-if="group.rollAnalysis">
                 <div class="mx-4 mb-3 p-3 bg-tv-panel rounded border-l-2"
                      :class="{
-                       'border-green-500 border border-l-2 border-green-500/30': group.rollAnalysis.borderColor === 'green',
-                       'border-red-500 border border-l-2 border-red-500/30': group.rollAnalysis.borderColor === 'red',
-                       'border-yellow-500 border border-l-2 border-yellow-500/30': group.rollAnalysis.borderColor === 'yellow',
+                       'border-tv-green border border-l-2 border-tv-green/30': group.rollAnalysis.borderColor === 'green',
+                       'border-tv-red border border-l-2 border-tv-red/30': group.rollAnalysis.borderColor === 'red',
+                       'border-tv-amber border border-l-2 border-tv-amber/30': group.rollAnalysis.borderColor === 'yellow',
                        'border-tv-blue border border-l-2 border-tv-blue/30': group.rollAnalysis.borderColor === 'blue'
                      }">
                   <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-semibold text-tv-text">Roll Analysis</span>
                     <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
                           :class="{
-                            'bg-green-500/20 text-green-400 border-green-500/50': group.rollAnalysis.convexity === 'High' || group.rollAnalysis.convexity === 'Low Risk',
-                            'bg-yellow-500/20 text-yellow-400 border-yellow-500/50': group.rollAnalysis.convexity === 'Diminishing' || group.rollAnalysis.convexity === 'Elevated Risk',
-                            'bg-red-500/20 text-red-400 border-red-500/50': group.rollAnalysis.convexity === 'Low' || group.rollAnalysis.convexity === 'High Risk'
+                            'bg-tv-green/20 text-tv-green border-tv-green/50': group.rollAnalysis.convexity === 'High' || group.rollAnalysis.convexity === 'Low Risk',
+                            'bg-tv-amber/20 text-tv-amber border-tv-amber/50': group.rollAnalysis.convexity === 'Diminishing' || group.rollAnalysis.convexity === 'Elevated Risk',
+                            'bg-tv-red/20 text-tv-red border-tv-red/50': group.rollAnalysis.convexity === 'Low' || group.rollAnalysis.convexity === 'High Risk'
                           }">
                       {{ group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity') }}
                     </span>
@@ -1773,7 +1774,7 @@ onUnmounted(() => {
                       </div>
                       <div class="flex justify-between gap-3">
                         <span class="text-tv-muted">Reward:Risk</span>
-                        <span class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-orange-400' : 'text-tv-text'">
+                        <span class="font-medium" :class="group.rollAnalysis.rewardToRiskRaw < (group.rollAnalysis.isCredit ? 0.3 : 0.6) ? 'text-tv-orange' : 'text-tv-text'">
                           {{ group.rollAnalysis.rewardToRisk }}
                         </span>
                       </div>
@@ -1809,13 +1810,13 @@ onUnmounted(() => {
                       <div class="text-[10px] text-tv-muted uppercase tracking-wider font-semibold mb-1.5">Context</div>
                       <div class="flex justify-between gap-3">
                         <span class="text-tv-muted">Near Short</span>
-                        <span class="font-medium" :class="parseFloat(group.rollAnalysis.proximityToShort) < 3 ? 'text-yellow-400' : 'text-tv-text'">
+                        <span class="font-medium" :class="parseFloat(group.rollAnalysis.proximityToShort) < 3 ? 'text-tv-amber' : 'text-tv-text'">
                           {{ group.rollAnalysis.proximityToShort }}%
                         </span>
                       </div>
                       <div class="flex justify-between gap-3">
                         <span class="text-tv-muted">Delta Sat.</span>
-                        <span class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-orange-400') : 'text-tv-text'">
+                        <span class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-tv-orange') : 'text-tv-text'">
                           {{ group.rollAnalysis.deltaSaturation }}%
                         </span>
                       </div>
@@ -1826,8 +1827,8 @@ onUnmounted(() => {
                     <template v-if="group.rollAnalysis.suggestion">
                       <div class="flex-1 pl-3 py-2 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r"
                            :class="{
-                             'border-red-500': group.rollAnalysis.urgency === 'high',
-                             'border-yellow-500': group.rollAnalysis.urgency === 'medium',
+                             'border-tv-red': group.rollAnalysis.urgency === 'high',
+                             'border-tv-amber': group.rollAnalysis.urgency === 'medium',
                              'border-tv-blue': group.rollAnalysis.urgency === 'low'
                            }">
                         {{ group.rollAnalysis.suggestion }}
@@ -1847,5 +1848,6 @@ onUnmounted(() => {
 
       </div>
     </div>
+   </div>
   </main>
 </template>

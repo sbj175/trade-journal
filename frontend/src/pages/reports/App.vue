@@ -316,12 +316,12 @@ const columns = [
       <span class="text-tv-muted">Type:</span>
       <button @click="toggleFilter('type', 'credit')"
               class="px-3 py-1.5 text-sm border rounded transition-colors"
-              :class="filterType.includes('credit') ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+              :class="filterType.includes('credit') ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
         Credit
       </button>
       <button @click="toggleFilter('type', 'debit')"
               class="px-3 py-1.5 text-sm border rounded transition-colors"
-              :class="filterType.includes('debit') ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+              :class="filterType.includes('debit') ? 'bg-tv-amber/20 text-tv-amber border-tv-amber/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
         Debit
       </button>
     </div>
@@ -330,7 +330,7 @@ const columns = [
     <div class="flex items-center gap-2 text-base">
       <button @click="toggleShares()"
               class="px-3 py-1.5 text-sm border rounded transition-colors"
-              :class="filterShares ? 'bg-purple-500/20 text-purple-400 border-purple-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+              :class="filterShares ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
         Shares
       </button>
     </div>
@@ -342,8 +342,8 @@ const columns = [
   </div>
 
   <!-- Loading State -->
-  <div v-if="loading" class="text-center py-12">
-    <div class="spinner mx-auto mb-4" style="width: 40px; height: 40px; border-width: 4px;"></div>
+  <div v-if="loading" class="text-center py-16">
+    <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
     <p class="text-tv-muted">Loading report data...</p>
   </div>
 
@@ -398,17 +398,17 @@ const columns = [
       <div class="bg-tv-panel border border-tv-border p-4">
         <div class="text-tv-muted text-sm mb-1">Avg Risk / Reward</div>
         <div class="text-lg font-bold">
-          <span class="text-amber-400">${{ formatNumber(summary.avgMaxRisk) }}</span>
+          <span class="text-tv-amber">${{ formatNumber(summary.avgMaxRisk) }}</span>
           <span class="text-tv-muted mx-1">/</span>
-          <span class="text-cyan-400">${{ formatNumber(summary.avgMaxReward) }}</span>
+          <span class="text-tv-cyan">${{ formatNumber(summary.avgMaxReward) }}</span>
         </div>
       </div>
     </div>
 
     <!-- Strategy Breakdown Table -->
-    <div class="bg-tv-panel border border-tv-border">
+    <div class="bg-tv-panel border border-tv-border rounded">
       <!-- Table Header -->
-      <div class="flex items-center px-4 py-3 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50">
+      <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
         <span v-for="col in columns" :key="col.key"
               class="cursor-pointer hover:text-tv-text flex items-center gap-1"
               :class="[col.width, col.align]"
@@ -425,7 +425,7 @@ const columns = [
       <!-- Table Body -->
       <div class="divide-y divide-tv-border">
         <div v-for="row in strategyBreakdown" :key="row.strategy"
-             class="flex items-center px-4 py-3 text-base hover:bg-tv-border/30 transition-colors">
+             class="flex items-center px-4 h-12 hover:bg-tv-border/20 transition-colors">
           <span class="w-48 font-medium text-tv-text">{{ row.strategy }}</span>
           <span class="w-28 text-center">
             {{ row.totalTrades }}
@@ -446,11 +446,11 @@ const columns = [
           <span class="w-28 text-right text-tv-red">-${{ formatNumber(Math.abs(row.avgLoss)) }}</span>
           <span class="w-28 text-right text-tv-green">${{ formatNumber(row.largestWin) }}</span>
           <span class="w-28 text-right text-tv-red">-${{ formatNumber(Math.abs(row.largestLoss)) }}</span>
-          <span class="w-28 text-right text-amber-400">
+          <span class="w-28 text-right text-tv-amber">
             <template v-if="row.avgMaxRisk > 0">${{ formatNumber(row.avgMaxRisk) }}</template>
             <span v-else class="text-tv-muted">-</span>
           </span>
-          <span class="w-28 text-right text-cyan-400">
+          <span class="w-28 text-right text-tv-cyan">
             <template v-if="row.avgMaxReward > 0">${{ formatNumber(row.avgMaxReward) }}</template>
             <span v-else class="text-tv-muted">-</span>
           </span>
@@ -458,26 +458,10 @@ const columns = [
       </div>
 
       <!-- Empty State -->
-      <div v-if="strategyBreakdown.length === 0" class="px-4 py-12 text-center text-tv-muted">
-        <i class="fas fa-chart-bar text-4xl mb-4"></i>
+      <div v-if="strategyBreakdown.length === 0" class="px-4 py-16 text-center text-tv-muted">
+        <i class="fas fa-chart-bar text-3xl mb-3"></i>
         <p>No closed trades found for the selected filters.</p>
       </div>
     </div>
   </main>
 </template>
-
-<style scoped>
-.spinner {
-  border: 2px solid #2a2e39;
-  border-top: 2px solid #2962ff;
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-</style>

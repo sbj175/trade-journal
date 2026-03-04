@@ -2,22 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base styles matching the existing TV theme */
+/* Base styles */
 * {
-  font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+  font-family: theme('fontFamily.sans');
 }
 
 body {
-  background: #131722;
-  color: #d1d4dc;
+  background: theme('colors.tv.bg');
+  color: theme('colors.tv.text');
   font-size: 16px;
 }
 
 /* Custom scrollbar */
 .tv-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-.tv-scrollbar::-webkit-scrollbar-track { background: #1e222d; }
-.tv-scrollbar::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 3px; }
-.tv-scrollbar::-webkit-scrollbar-thumb:hover { background: #363a45; }
+.tv-scrollbar::-webkit-scrollbar-track { background: theme('colors.tv.panel'); }
+.tv-scrollbar::-webkit-scrollbar-thumb { background: theme('colors.tv.border'); border-radius: 3px; }
+.tv-scrollbar::-webkit-scrollbar-thumb:hover { background: theme('colors.tv.hover'); }
 
 /* Vue cloak (hide until mounted) */
 [v-cloak] { display: none !important; }
@@ -25,3 +25,15 @@ body {
 /* Number input spinners */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+
+/* Shared spinner */
+.spinner {
+  border: 2px solid theme('colors.tv.border');
+  border-top: 2px solid theme('colors.tv.blue');
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }

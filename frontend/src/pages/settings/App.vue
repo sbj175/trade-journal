@@ -504,7 +504,7 @@ const navLinks = [
       <!-- Save status indicator -->
       <div class="flex items-center justify-end mb-4 h-5">
         <span v-if="saveStatus === 'pending'" class="text-xs text-tv-muted">
-          <i class="fas fa-circle text-yellow-500 text-[8px] mr-1"></i>Unsaved
+          <i class="fas fa-circle text-tv-amber text-[8px] mr-1"></i>Unsaved
         </span>
         <span v-if="saveStatus === 'saving'" class="text-xs text-tv-muted">
           <i class="fas fa-spinner fa-spin mr-1"></i>Saving...
@@ -535,7 +535,7 @@ const navLinks = [
               <i class="fas fa-exclamation-circle mr-1"></i>Connection Failed
             </span>
             <span v-else
-                  class="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-3 py-1 rounded text-xs font-medium">
+                  class="bg-tv-amber/20 text-tv-amber border border-tv-amber/30 px-3 py-1 rounded text-xs font-medium">
               <i class="fas fa-info-circle mr-1"></i>Not Configured
             </span>
           </div>
@@ -877,7 +877,7 @@ const navLinks = [
       <div v-show="activeTab === 'alerts'">
         <div class="mb-6">
           <h2 class="text-xl font-semibold text-tv-text mb-1">
-            <i class="fas fa-bell mr-2 text-yellow-400"></i>Roll Suggestion Alerts
+            <i class="fas fa-bell mr-2 text-tv-amber"></i>Roll Suggestion Alerts
           </h2>
           <p class="text-tv-muted text-sm">Configure which roll/close suggestions appear on the Positions page for debit spreads</p>
         </div>
@@ -903,9 +903,9 @@ const navLinks = [
               <label v-for="alert in [
                 { key: 'profitTarget', label: 'Profit Target', desc: 'Alert when position reaches your configured profit target', color: 'bg-tv-green' },
                 { key: 'lossLimit', label: 'Loss Limit', desc: 'Alert when position reaches your configured loss threshold', color: 'bg-tv-red' },
-                { key: 'lateStage', label: 'Late-Stage', desc: 'Alert when multiple maturing indicators converge (low DTE, high delta, etc.)', color: 'bg-yellow-500' },
-                { key: 'deltaSaturation', label: 'Delta Saturation', desc: 'Alert when spread delta exceeds 65% (diminishing convexity)', color: 'bg-orange-500' },
-                { key: 'lowRewardToRisk', label: 'Low Reward-to-Risk', desc: 'Alert when remaining reward-to-risk ratio falls below 0.6', color: 'bg-orange-500' },
+                { key: 'lateStage', label: 'Late-Stage', desc: 'Alert when multiple maturing indicators converge (low DTE, high delta, etc.)', color: 'bg-tv-amber' },
+                { key: 'deltaSaturation', label: 'Delta Saturation', desc: 'Alert when spread delta exceeds 65% (diminishing convexity)', color: 'bg-tv-orange' },
+                { key: 'lowRewardToRisk', label: 'Low Reward-to-Risk', desc: 'Alert when remaining reward-to-risk ratio falls below 0.6', color: 'bg-tv-orange' },
               ]" :key="alert.key"
                 class="flex items-center justify-between py-1.5 cursor-pointer">
                 <div>
@@ -995,7 +995,7 @@ const navLinks = [
   <!-- Import success modal (outside tab wrappers so v-show doesn't hide it) -->
   <div v-if="importResult" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
     <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl max-w-sm">
-      <i class="fas fa-check-circle text-green-500 text-4xl mb-4"></i>
+      <i class="fas fa-check-circle text-tv-green text-4xl mb-4"></i>
       <h3 class="text-tv-text text-lg font-semibold mb-2">Import Complete!</h3>
       <p class="text-tv-muted text-sm mb-6">
         {{ importResult.transactions_processed || 0 }} transactions imported across

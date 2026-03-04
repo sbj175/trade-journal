@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber } from '@/lib/formatters'
+import { chart as C } from '@/lib/design-tokens'
 
 const Auth = useAuth()
 
@@ -544,15 +545,15 @@ function renderDeltaChart() {
     plotOptions: {
       bar: {
         horizontal: true, borderRadius: 3, barHeight: '70%',
-        colors: { ranges: [{ from: -9999999, to: -0.01, color: '#fe676c' }, { from: 0, to: 9999999, color: '#55aa71' }] },
+        colors: { ranges: [{ from: -9999999, to: -0.01, color: C.red }, { from: 0, to: 9999999, color: C.green }] },
       },
     },
     xaxis: {
       categories,
-      labels: { style: { colors: '#868c99', fontSize: '11px' }, formatter: v => '$' + shortNumber(v) },
+      labels: { style: { colors: C.muted, fontSize: '11px' }, formatter: v => '$' + shortNumber(v) },
     },
-    yaxis: { labels: { style: { colors: '#d1d4dc', fontSize: '12px', fontWeight: 600 } } },
-    grid: { borderColor: '#2a2e39', xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } },
+    yaxis: { labels: { style: { colors: C.text, fontSize: '12px', fontWeight: 600 } } },
+    grid: { borderColor: C.grid, xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } },
     tooltip: {
       theme: 'dark',
       y: { formatter: v => (v >= 0 ? '+$' : '-$') + formatNumber(Math.abs(v)) + ' delta exposure' },
@@ -579,7 +580,7 @@ function renderThetaChart() {
     xaxis: {
       categories: projection.days,
       labels: {
-        style: { colors: '#868c99', fontSize: '11px' },
+        style: { colors: C.muted, fontSize: '11px' },
         formatter: (v, i) => {
           if (i === 0) return 'Today'
           if (i % 7 === 0) return 'Day ' + v
@@ -589,7 +590,7 @@ function renderThetaChart() {
       tickAmount: 7,
     },
     yaxis: {
-      labels: { style: { colors: '#868c99', fontSize: '11px' }, formatter: v => '$' + shortNumber(v) },
+      labels: { style: { colors: C.muted, fontSize: '11px' }, formatter: v => '$' + shortNumber(v) },
     },
     stroke: { curve: 'smooth', width: 2 },
     fill: {
@@ -598,13 +599,13 @@ function renderThetaChart() {
         shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05,
         stops: [0, 90, 100],
         colorStops: [
-          { offset: 0, color: '#55aa71', opacity: 0.4 },
-          { offset: 100, color: '#55aa71', opacity: 0.05 },
+          { offset: 0, color: C.green, opacity: 0.4 },
+          { offset: 100, color: C.green, opacity: 0.05 },
         ],
       },
     },
-    colors: ['#55aa71'],
-    grid: { borderColor: '#2a2e39' },
+    colors: [C.green],
+    grid: { borderColor: C.grid },
     tooltip: {
       theme: 'dark',
       x: { formatter: (v) => 'Day ' + v },
@@ -613,12 +614,12 @@ function renderThetaChart() {
     annotations: {
       xaxis: projection.expirationMarkers.map(m => ({
         x: m.day,
-        borderColor: '#868c99',
+        borderColor: C.muted,
         strokeDashArray: 4,
         label: {
           text: m.label,
-          style: { color: '#d1d4dc', background: '#2a2e39', fontSize: '10px' },
-          borderColor: '#2a2e39', orientation: 'horizontal', offsetY: -5,
+          style: { color: C.text, background: C.grid, fontSize: '10px' },
+          borderColor: C.grid, orientation: 'horizontal', offsetY: -5,
         },
       })),
     },
@@ -638,7 +639,7 @@ function renderTreemapChart() {
   const data = groups.map(g => ({
     x: g.underlying + ' ($' + shortNumber(g.maxRisk) + ')',
     y: Math.round(g.maxRisk),
-    fillColor: g.unrealizedPnl >= 0 ? '#55aa71' : '#fe676c',
+    fillColor: g.unrealizedPnl >= 0 ? C.green : C.red,
   }))
 
   const options = {
@@ -667,7 +668,7 @@ function renderTreemapChart() {
     },
     dataLabels: {
       enabled: true,
-      style: { fontSize: '13px', fontWeight: 600, colors: ['#fff'] },
+      style: { fontSize: '13px', fontWeight: 600, colors: [C.white] },
       formatter: (text, op) => [text.split(' ')[0], '$' + shortNumber(op.value)],
       offsetY: -2,
     },
@@ -691,12 +692,12 @@ function renderScenarioChart() {
     series: [{ name: 'Portfolio P&L Change', data: scenarios.pnl }],
     xaxis: {
       categories: scenarios.labels,
-      labels: { style: { colors: '#868c99', fontSize: '11px' } },
+      labels: { style: { colors: C.muted, fontSize: '11px' } },
       axisBorder: { show: false },
     },
     yaxis: {
       labels: {
-        style: { colors: '#868c99', fontSize: '11px' },
+        style: { colors: C.muted, fontSize: '11px' },
         formatter: v => (v >= 0 ? '+$' : '-$') + shortNumber(Math.abs(v)),
       },
     },
@@ -705,16 +706,16 @@ function renderScenarioChart() {
       type: 'gradient',
       gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05, stops: [0, 90, 100] },
     },
-    colors: ['#2962ff'],
-    grid: { borderColor: '#2a2e39' },
+    colors: [C.blue],
+    grid: { borderColor: C.grid },
     annotations: {
       yaxis: [{
-        y: 0, borderColor: '#868c99', strokeDashArray: 3,
-        label: { text: 'Break Even', style: { color: '#868c99', background: 'transparent', fontSize: '10px' } },
+        y: 0, borderColor: C.muted, strokeDashArray: 3,
+        label: { text: 'Break Even', style: { color: C.muted, background: 'transparent', fontSize: '10px' } },
       }],
       xaxis: [{
-        x: '0%', borderColor: '#868c99', strokeDashArray: 3,
-        label: { text: 'Current', style: { color: '#d1d4dc', background: '#2a2e39', fontSize: '10px' }, borderColor: '#2a2e39' },
+        x: '0%', borderColor: C.muted, strokeDashArray: 3,
+        label: { text: 'Current', style: { color: C.text, background: C.grid, fontSize: '10px' }, borderColor: C.grid },
       }],
     },
     tooltip: {
@@ -976,11 +977,11 @@ const navLinks = [
       </div>
 
       <!-- Net Gamma -->
-      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-amber-500">
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-tv-amber">
         <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">
           <span class="greek-symbol">&#915;</span> Net Gamma
         </div>
-        <div class="text-2xl font-bold" :class="portfolioTotals.netGamma >= 0 ? 'text-amber-400' : 'text-amber-500'">
+        <div class="text-2xl font-bold" :class="portfolioTotals.netGamma >= 0 ? 'text-tv-amber' : 'text-tv-amber'">
           {{ formatDelta(portfolioTotals.netGamma) }}
         </div>
         <div class="text-xs text-tv-muted mt-1">
@@ -989,11 +990,11 @@ const navLinks = [
       </div>
 
       <!-- Net Vega -->
-      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-purple-500">
+      <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2 border-l-tv-purple">
         <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">
           <span class="greek-symbol">&#957;</span> Net Vega
         </div>
-        <div class="text-2xl font-bold" :class="portfolioTotals.netVega >= 0 ? 'text-purple-400' : 'text-purple-500'">
+        <div class="text-2xl font-bold" :class="portfolioTotals.netVega >= 0 ? 'text-tv-purple' : 'text-tv-purple'">
           {{ portfolioTotals.netVega >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(portfolioTotals.netVega)) }}
         </div>
         <div class="text-xs text-tv-muted mt-1">
@@ -1003,10 +1004,10 @@ const navLinks = [
 
       <!-- Buying Power Utilization -->
       <div class="metric-card bg-tv-panel border border-tv-border p-4 border-l-2"
-           :class="bpUtilization < 50 ? 'border-l-tv-green' : bpUtilization < 75 ? 'border-l-amber-500' : 'border-l-tv-red'">
+           :class="bpUtilization < 50 ? 'border-l-tv-green' : bpUtilization < 75 ? 'border-l-tv-amber' : 'border-l-tv-red'">
         <div class="text-tv-muted text-xs uppercase tracking-wider mb-2">BP Utilization</div>
         <div class="text-2xl font-bold"
-             :class="bpUtilization < 50 ? 'text-tv-green' : bpUtilization < 75 ? 'text-amber-400' : 'text-tv-red'">
+             :class="bpUtilization < 50 ? 'text-tv-green' : bpUtilization < 75 ? 'text-tv-amber' : 'text-tv-red'">
           {{ bpUtilization.toFixed(1) }}%
         </div>
         <div class="text-xs text-tv-muted mt-1">
@@ -1042,7 +1043,7 @@ const navLinks = [
       <!-- Portfolio Concentration Treemap -->
       <div class="bg-tv-panel border border-tv-border p-4">
         <div class="text-sm text-tv-muted uppercase tracking-wider mb-3">
-          <i class="fas fa-th-large mr-1 text-cyan-400"></i>Portfolio Concentration
+          <i class="fas fa-th-large mr-1 text-tv-cyan"></i>Portfolio Concentration
           <span class="text-xs font-normal ml-2">(sized by max risk, colored by P&amp;L)</span>
         </div>
         <div id="chart-treemap" style="min-height: 280px;"></div>
@@ -1051,7 +1052,7 @@ const navLinks = [
       <!-- Market Scenario Analysis -->
       <div class="bg-tv-panel border border-tv-border p-4">
         <div class="text-sm text-tv-muted uppercase tracking-wider mb-3">
-          <i class="fas fa-flask mr-1 text-amber-400"></i>Market Scenario Analysis
+          <i class="fas fa-flask mr-1 text-tv-amber"></i>Market Scenario Analysis
           <span class="text-xs font-normal ml-2">(P&amp;L at correlated market moves)</span>
         </div>
         <div id="chart-scenario" style="min-height: 280px;"></div>
@@ -1119,14 +1120,14 @@ const navLinks = [
                   :class="group.deltaDollars >= 0 ? 'text-tv-green' : 'text-tv-red'">
                 {{ (group.deltaDollars >= 0 ? '+$' : '-$') + formatNumber(Math.abs(group.deltaDollars)) }}
               </td>
-              <td class="text-right px-3 py-3 font-mono text-amber-400">
+              <td class="text-right px-3 py-3 font-mono text-tv-amber">
                 {{ formatDelta(group.netGamma) }}
               </td>
               <td class="text-right px-3 py-3 font-mono"
                   :class="group.netTheta >= 0 ? 'text-tv-green' : 'text-tv-red'">
                 {{ (group.netTheta >= 0 ? '+$' : '-$') + formatNumber(Math.abs(group.netTheta)) }}
               </td>
-              <td class="text-right px-3 py-3 font-mono text-purple-400">
+              <td class="text-right px-3 py-3 font-mono text-tv-purple">
                 {{ (group.netVega >= 0 ? '+$' : '-$') + formatNumber(Math.abs(group.netVega)) }}
               </td>
               <td class="text-right px-3 py-3 text-tv-text">${{ formatNumber(group.maxRisk) }}</td>
@@ -1151,14 +1152,14 @@ const navLinks = [
                   :class="portfolioTotals.deltaDollars >= 0 ? 'text-tv-green' : 'text-tv-red'">
                 {{ (portfolioTotals.deltaDollars >= 0 ? '+$' : '-$') + formatNumber(Math.abs(portfolioTotals.deltaDollars)) }}
               </td>
-              <td class="text-right px-3 py-3 font-mono text-amber-400">
+              <td class="text-right px-3 py-3 font-mono text-tv-amber">
                 {{ formatDelta(portfolioTotals.netGamma) }}
               </td>
               <td class="text-right px-3 py-3 font-mono"
                   :class="portfolioTotals.netTheta >= 0 ? 'text-tv-green' : 'text-tv-red'">
                 {{ (portfolioTotals.netTheta >= 0 ? '+$' : '-$') + formatNumber(Math.abs(portfolioTotals.netTheta)) }}
               </td>
-              <td class="text-right px-3 py-3 font-mono text-purple-400">
+              <td class="text-right px-3 py-3 font-mono text-tv-purple">
                 {{ (portfolioTotals.netVega >= 0 ? '+$' : '-$') + formatNumber(Math.abs(portfolioTotals.netVega)) }}
               </td>
               <td class="text-right px-3 py-3 text-tv-text">${{ formatNumber(portfolioTotals.totalMaxRisk) }}</td>
@@ -1182,19 +1183,8 @@ const navLinks = [
 </template>
 
 <style>
-.spinner {
-  border: 2px solid #2a2e39;
-  border-top: 2px solid #2962ff;
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
 .metric-card { transition: border-color 0.2s ease; }
-.metric-card:hover { border-color: #363a45; }
+.metric-card:hover { border-color: #363a45; } /* tv.hover */
 
 .greek-symbol {
   font-family: 'Times New Roman', Georgia, serif;
@@ -1202,8 +1192,9 @@ const navLinks = [
   font-weight: bold;
 }
 
-.apexcharts-tooltip { background: #1e222d !important; border: 1px solid #2a2e39 !important; color: #d1d4dc !important; }
-.apexcharts-tooltip-title { background: #131722 !important; border-bottom: 1px solid #2a2e39 !important; color: #d1d4dc !important; }
+/* ApexCharts tooltip overrides — hex must match design-tokens.js */
+.apexcharts-tooltip { background: #1e222d !important; border: 1px solid #2a2e39 !important; color: #d1d4dc !important; } /* panel, border, text */
+.apexcharts-tooltip-title { background: #131722 !important; border-bottom: 1px solid #2a2e39 !important; color: #d1d4dc !important; } /* bg, border, text */
 .apexcharts-xaxistooltip, .apexcharts-yaxistooltip { background: #1e222d !important; border: 1px solid #2a2e39 !important; color: #d1d4dc !important; }
 .apexcharts-xaxistooltip:after, .apexcharts-xaxistooltip:before { border-bottom-color: #2a2e39 !important; }
 

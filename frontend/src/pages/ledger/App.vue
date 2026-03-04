@@ -563,9 +563,9 @@ function getAccountSymbol(accountNumber) {
 
 function getAccountBadgeClass(accountNumber) {
   const symbol = getAccountSymbol(accountNumber)
-  if (symbol === 'R') return 'bg-purple-900/60 text-purple-400'
-  if (symbol === 'I') return 'bg-blue-900/60 text-blue-400'
-  if (symbol === 'T') return 'bg-green-900/60 text-green-400'
+  if (symbol === 'R') return 'bg-tv-purple/20 text-tv-purple'
+  if (symbol === 'I') return 'bg-tv-blue/20 text-tv-blue'
+  if (symbol === 'T') return 'bg-tv-green/20 text-tv-green'
   return 'bg-tv-border text-tv-muted'
 }
 
@@ -792,8 +792,8 @@ function getClosingTypeBadgeClass(closingType, lotQuantity) {
   if ((closingType === 'MANUAL' || closingType === 'EXPIRATION') && lotQuantity >= 0) {
     return 'bg-tv-red/20 text-tv-red border-tv-red/50'
   }
-  if (closingType === 'ASSIGNMENT') return 'bg-orange-500/20 text-orange-400 border-orange-500/50'
-  if (closingType === 'EXERCISE') return 'bg-purple-500/20 text-purple-400 border-purple-500/50'
+  if (closingType === 'ASSIGNMENT') return 'bg-tv-orange/20 text-tv-orange border-tv-orange/50'
+  if (closingType === 'EXERCISE') return 'bg-tv-purple/20 text-tv-purple border-tv-purple/50'
   return 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
 }
 
@@ -919,12 +919,12 @@ const navLinks = [
       <div class="flex items-center gap-2">
         <span class="text-tv-muted">Type:</span>
         <button @click="toggleFilter('type', 'credit')"
-                :class="filterType.includes('credit') ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                :class="filterType.includes('credit') ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                 class="px-3 py-1.5 text-sm border rounded transition-colors">
           Credit
         </button>
         <button @click="toggleFilter('type', 'debit')"
-                :class="filterType.includes('debit') ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+                :class="filterType.includes('debit') ? 'bg-tv-amber/20 text-tv-amber border-tv-amber/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                 class="px-3 py-1.5 text-sm border rounded transition-colors">
           Debit
         </button>
@@ -974,22 +974,23 @@ const navLinks = [
   </div>
 
   <!-- Loading State -->
-  <div v-if="loading" class="flex items-center justify-center py-20">
-    <div class="spinner mr-3"></div>
-    <span class="text-tv-muted text-lg">Loading ledger data...</span>
+  <div v-if="loading" class="text-center py-16">
+    <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
+    <p class="text-tv-muted">Loading ledger data...</p>
   </div>
 
   <!-- Empty State -->
-  <div v-else-if="filteredGroups.length === 0" class="text-center py-20">
-    <i class="fas fa-book-open text-4xl text-tv-muted mb-4"></i>
-    <p class="text-tv-muted text-lg">No position groups found.</p>
+  <div v-else-if="filteredGroups.length === 0" class="text-center py-16">
+    <i class="fas fa-book-open text-3xl text-tv-muted mb-3"></i>
+    <p class="text-tv-muted">No position groups found.</p>
     <p class="text-tv-muted mt-2">Sync your data from the <a href="/positions" class="text-tv-blue hover:underline">Positions</a> page first.</p>
   </div>
 
   <!-- Group List -->
-  <div v-else class="py-2">
+  <div v-else class="p-4">
+   <div class="bg-tv-panel border border-tv-border rounded">
     <!-- Column Headers -->
-    <div class="flex items-center px-8 py-2 text-sm text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
+    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-16 z-10">
       <span class="w-6"></span>
       <span class="w-8 mr-3"></span>
       <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('underlying')">
@@ -1012,14 +1013,13 @@ const navLinks = [
       </span>
     </div>
 
-    <div class="px-4 pt-2">
-      <div v-for="group in filteredGroups" :key="group.group_id" :id="'group-' + group.group_id" class="mb-2">
+    <div class="divide-y divide-tv-border">
+      <div v-for="group in filteredGroups" :key="group.group_id" :id="'group-' + group.group_id">
         <!-- Group Header Row -->
         <div @click="onGroupHeaderClick(group)"
-             class="flex items-center px-4 py-3 bg-tv-panel cursor-pointer border border-tv-border rounded-sm transition-colors"
+             class="flex items-center px-4 h-12 cursor-pointer transition-colors"
              :class="{
-               'border-b-0 rounded-b-none': group.expanded,
-               'hover:bg-tv-border/50': selectedLots.length === 0,
+               'hover:bg-tv-border/20': selectedLots.length === 0,
                'border-l-4 !border-l-tv-blue bg-tv-blue/10 hover:bg-tv-blue/20': selectedLots.length > 0 && isEligibleTarget(group),
                'opacity-40': selectedLots.length > 0 && isSourceGroup(group),
                'opacity-60': selectedLots.length > 0 && !isEligibleTarget(group) && !isSourceGroup(group)
@@ -1077,7 +1077,7 @@ const navLinks = [
             </div>
             <!-- Tag popover -->
             <div v-if="tagPopoverGroup === group.group_id"
-                 class="absolute top-full left-0 mt-1 z-50 bg-[#1e222d] border border-tv-border rounded shadow-lg p-1.5 w-44"
+                 class="absolute top-full left-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-lg p-1.5 w-44"
                  @click.stop>
               <input type="text"
                      :id="'ledger-tag-input-' + group.group_id"
@@ -1115,7 +1115,7 @@ const navLinks = [
           <span class="w-28 text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '\u2014' }}</span>
 
           <!-- Note indicator -->
-          <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-yellow-400 text-sm" title="Has notes"></i>
+          <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
 
           <!-- P&L -->
           <span class="ml-auto text-base font-medium"
@@ -1127,7 +1127,7 @@ const navLinks = [
 
         <!-- Expanded Detail -->
         <div v-show="group.expanded"
-             class="bg-tv-bg border border-tv-border border-t-0 rounded-b-sm px-2 py-2">
+             class="bg-tv-bg border-t border-tv-border/50 px-4 py-3">
 
           <!-- Per-group view toggle -->
           <div class="flex justify-start px-4 pt-1 pb-1">
@@ -1348,7 +1348,7 @@ const navLinks = [
                       {{ lot.expiration ? formatExpirationShort(lot.expiration) : (lot.instrument_type === 'EQUITY' ? 'Shares' : '\u2014') }}
                     </span>
                     <span class="w-10 text-tv-muted"
-                          :class="lot.expiration && calculateDTE(lot.expiration) <= 21 ? 'text-amber-400 font-bold' : ''">
+                          :class="lot.expiration && calculateDTE(lot.expiration) <= 21 ? 'text-tv-amber font-bold' : ''">
                       {{ lot.expiration ? calculateDTE(lot.expiration) + 'd' : '\u2014' }}
                     </span>
                     <span class="w-16 text-center mx-2 py-0.5 rounded"
@@ -1359,7 +1359,7 @@ const navLinks = [
                       {{ lot.option_type ? (lot.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put') : (lot.instrument_type === 'EQUITY' ? 'Stk' : '\u2014') }}
                     </span>
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3"
-                          :class="lot.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : lot.status === 'PARTIAL' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
+                          :class="lot.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : lot.status === 'PARTIAL' ? 'bg-tv-amber/20 text-tv-amber border-tv-amber/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
                       {{ lot.status }}
                     </span>
                     <span class="w-20 text-right text-tv-muted">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
@@ -1444,7 +1444,7 @@ const navLinks = [
                 <div class="flex items-center text-base">
                   <span class="w-8 text-tv-muted">{{ (group.orders || []).length - index }}</span>
                   <span class="w-32 text-tv-muted">{{ formatOrderDate(order.order_date) }}</span>
-                  <span class="w-28 text-amber-400">{{ order.display_type || order.order_type }}</span>
+                  <span class="w-28 text-tv-amber">{{ order.display_type || order.order_type }}</span>
                   <!-- Credit/Debit badges -->
                   <span v-if="order.order_type === 'ROLLING' && formatCreditDebit(order, 'ROLLING')"
                         class="text-base px-3 py-1 rounded-sm"
@@ -1467,7 +1467,7 @@ const navLinks = [
                     Order# <span class="text-tv-text">{{ order.order_id }}</span>
                   </span>
                   <span v-if="order.order_id && order.order_id.startsWith('SYSTEM_Expiration')"
-                        class="ml-4 text-sm font-mono text-amber-400">
+                        class="ml-4 text-sm font-mono text-tv-amber">
                     EXPIRATION
                   </span>
                   <!-- P&L -->
@@ -1512,7 +1512,7 @@ const navLinks = [
                       <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-tv-text">{{ position.strike }}</span>
                       <span class="w-6 text-tv-muted">{{ (position.option_type || '').toUpperCase().startsWith('C') ? 'C' : 'P' }}</span>
                       <span class="w-12 ml-4"
-                            :class="order.order_id?.startsWith('SYSTEM_Expiration') ? 'text-amber-400' : position.opening_action?.includes('BUY') ? 'text-tv-green' : 'text-tv-red'">
+                            :class="order.order_id?.startsWith('SYSTEM_Expiration') ? 'text-tv-amber' : position.opening_action?.includes('BUY') ? 'text-tv-green' : 'text-tv-red'">
                         {{ order.order_id?.startsWith('SYSTEM_Expiration') ? 'EXPIRED' : formatAction(position.opening_action) }}
                       </span>
                       <span class="w-20 text-right text-tv-muted ml-auto">${{ formatNumber(position.opening_price) }}</span>
@@ -1520,8 +1520,8 @@ const navLinks = [
                             :class="position.pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
                         ${{ formatNumber(position.pnl) }}
                       </span>
-                      <span v-if="position.closing_action?.includes('EXPIRED')" class="text-amber-400 ml-2">EXP</span>
-                      <span v-if="position.closing_action?.includes('ASSIGNED')" class="text-orange-400 ml-2">ASN</span>
+                      <span v-if="position.closing_action?.includes('EXPIRED')" class="text-tv-amber ml-2">EXP</span>
+                      <span v-if="position.closing_action?.includes('ASSIGNED')" class="text-tv-orange ml-2">ASN</span>
                     </div>
                     <!-- Derived positions -->
                     <template v-if="position.derived_positions && position.derived_positions.length > 0">
@@ -1533,7 +1533,7 @@ const navLinks = [
                           {{ derived.quantity }}
                         </span>
                         <span class="w-20 text-center text-tv-text mx-2">{{ derived.symbol }}</span>
-                        <span class="w-20 text-orange-400">{{ derived.derivation_type }}</span>
+                        <span class="w-20 text-tv-orange">{{ derived.derivation_type }}</span>
                         <span class="w-20 text-right text-tv-muted ml-auto">${{ formatNumber(derived.entry_price) }}</span>
                         <span class="w-24 text-right text-tv-muted">{{ derived.status }}</span>
                       </div>
@@ -1552,6 +1552,7 @@ const navLinks = [
         </div>
       </div>
     </div>
+   </div>
   </div>
 
   <!-- Floating Action Bar (Move Mode) -->
@@ -1573,16 +1574,3 @@ const navLinks = [
     </div>
   </div>
 </template>
-
-<style>
-.spinner {
-  border: 2px solid #2a2e39;
-  border-top: 2px solid #2962ff;
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-</style>
