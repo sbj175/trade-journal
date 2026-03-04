@@ -1352,7 +1352,7 @@ onUnmounted(() => {
       Total
       <span v-show="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
+    <span class="w-20 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
       % Rtn
       <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -1411,7 +1411,7 @@ onUnmounted(() => {
             <span v-show="group._subtotalTotalPnL < 0">-</span>${{ formatDollar(group._subtotalTotalPnL) }}
           </div>
           <!-- % Rtn -->
-          <div class="w-14"></div>
+          <div class="w-20"></div>
         </div>
 
         <!-- Regular Row (Chain or Share) -->
@@ -1575,7 +1575,7 @@ onUnmounted(() => {
               </div>
 
               <!-- % Rtn -->
-              <div class="w-14 text-right"
+              <div class="w-20 text-right"
                    :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'">
                 {{ getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : '' }}
               </div>
