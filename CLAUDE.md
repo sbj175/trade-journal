@@ -50,7 +50,7 @@ The application solves several key problems for options traders:
 
 The application follows a modern web architecture:
 - **Backend**: Python FastAPI server providing REST API and WebSocket endpoints
-- **Frontend**: Multi-page app with per-page Alpine.js components for reactivity
+- **Frontend**: Vue 3 Single-Page App (SPA) with Vue Router, Pinia stores, and Tailwind CSS (built by Vite)
 - **Database**: SQLAlchemy ORM with dual-dialect support (SQLite default, PostgreSQL optional via Docker)
 - **Real-time Data**: WebSocket integration for live market quotes
 - **Authentication**: OAuth2 via tastytrade SDK v12 (provider_secret + refresh_token in `.env`)
@@ -69,7 +69,7 @@ The system maintains two main views:
 
 ## Project Overview
 
-OptionLedger is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Alpine.js/Tailwind CSS for the frontend, and SQLAlchemy ORM for data persistence (SQLite by default, PostgreSQL optional).
+OptionLedger is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Vue 3 / Vue Router / Tailwind CSS for the frontend (built by Vite), and SQLAlchemy ORM for data persistence (SQLite by default, PostgreSQL optional).
 
 ## Common Development Commands
 
@@ -85,7 +85,7 @@ start.bat
 python app.py
 ```
 
-The application runs on http://localhost:8000 with auto-reload enabled during development. The default page is the Open Positions page, with Order Chains accessible at /chains.
+The application runs on http://localhost:8000 with auto-reload enabled during development. The default route (`/`) redirects to `/positions`.
 
 ### Authentication
 
@@ -201,19 +201,39 @@ python test_expiration.py
 
 ### Frontend Structure
 
-- **Open Positions Page** (default): `static/positions.html` with live quotes and position management
-- **Order Chains Dashboard**: `static/chains.html` at `/chains` with `static/js/app.js` (advanced strategy detection)
-- **Position Ledger**: `static/ledger.html` at `/ledger` with position-group model, lot lifecycle view, action/order toggle, and group management using inline `ledgerApp()` Alpine component
-- **Performance Reports**: `static/reports.html` at `/reports` with strategy breakdown and historical performance
-- **Portfolio Risk X-Ray**: `static/risk-dashboard.html` at `/risk` with real-time portfolio Greeks, Black-Scholes engine, and ApexCharts visualizations (delta exposure, theta projection, treemap, scenario analysis)
-- **Settings**: `static/settings.html` at `/settings` for OAuth credential management, connection status, and app configuration
-- **Login**: `static/login.html` at `/login` — standalone Supabase auth page (only shown when auth is enabled)
-- **Alpine.js** for reactivity (loaded from CDN)
-- **Supabase JS SDK** for auth (loaded from CDN on all pages)
-- **ApexCharts** for advanced visualizations on Risk page (loaded from CDN)
-- **Chart.js** for visualizations (loaded from CDN)
-- **Tailwind CSS** for styling (loaded from CDN)
-- **WebSocket integration** for real-time price streaming
+The frontend is a **Vue 3 Single-Page App** using Vue Router for client-side routing. A single HTML shell (`static/index.html`) serves all routes; Vite builds one entry point (`frontend/src/main.js`) that code-splits per page via lazy `() => import()` routes.
+
+**Key files:**
+- `frontend/src/main.js` — SPA entry point (creates Vue app, Pinia, Router)
+- `frontend/src/App.vue` — root component (`<router-view />`)
+- `frontend/src/router/index.js` — routes + auth navigation guards
+- `frontend/src/layouts/DefaultLayout.vue` — shared NavBar + `<router-view />`
+- `frontend/src/components/NavBar.vue` — shared nav bar with `<router-link>` navigation
+- `frontend/src/stores/auth.js` — Pinia store for auth state
+- `frontend/src/stores/accounts.js` — Pinia store for account selection (persists across pages)
+- `frontend/vite.config.js` — single `app` entry, outputs to `static/dist/`
+
+**Page components** (each in `frontend/src/pages/<name>/App.vue`):
+- **Positions** (`/positions`) — live quotes, position management, WebSocket streaming
+- **Ledger** (`/ledger`) — position-group model, lot lifecycle, action/order toggle, group management
+- **Reports** (`/reports`) — strategy breakdown and historical performance
+- **Risk** (`/risk`) — real-time portfolio Greeks, Black-Scholes engine, ApexCharts visualizations (eagerly imported due to Firefox chunk loading issue)
+- **Settings** (`/settings`) — OAuth credential management, connection status, app configuration
+- **Privacy** (`/privacy`) — privacy policy (no auth required)
+- **Components** (`/components`) — design system showcase (no auth required)
+
+**Standalone pages** (outside the SPA):
+- **Login** (`static/login.html` at `/login`) — Supabase auth page (Alpine.js, only when auth enabled)
+
+**Libraries & tooling:**
+- **Vue 3** with `<script setup>` composition API
+- **Vue Router 4** for SPA routing with `beforeEach` auth guards
+- **Pinia** for shared state management
+- **Tailwind CSS** compiled by Vite/PostCSS (not CDN)
+- **Supabase JS SDK** for auth (loaded from CDN in HTML shell)
+- **ApexCharts** for Risk page charts (dynamically loaded from CDN at runtime)
+- **Font Awesome** for icons (loaded from CDN)
+- **WebSocket** integration for real-time price streaming
 - **LocalStorage** for persistent user comments and settings
 
 ### Data Flow
@@ -228,12 +248,12 @@ python test_expiration.py
 
 1. **Real-time Quotes**: WebSocket connection (`/ws/quotes`) streams live market data
 2. **Position Tracking**: Current positions fetched from Tastytrade API with live P&L
-3. **Cross-page State**: Account selection synced between Order Chains and Positions pages
+3. **Cross-page State**: Account selection persists across SPA page navigations via Pinia store + localStorage
 4. **Persistent Comments**: User notes stored in localStorage, scoped by underlying + account
 
 ### Sync Behavior by Page
 
-Both the Positions and Chains pages call the same `/api/sync` endpoint:
+The Positions page calls the `/api/sync` endpoint:
 
 **Sync** (`/api/sync`):
 - Fetches transactions from Tastytrade → saves to database
@@ -350,7 +370,7 @@ SUPABASE_JWT_SECRET=your-secret                         # From Supabase Dashboar
 2. **Public endpoints** (health checks, `/api/auth/config`) must NOT use the dependency
 3. **Frontend `fetch()` calls** must use `Auth.authFetch()` instead — it attaches the JWT header automatically
 4. **WebSocket connections** pass the token as `?token=JWT` query parameter
-5. **New pages** must include `<script src="/static/js/auth.js"></script>` and call `Auth.requireAuth()` in their Alpine `init()`
+5. **New pages** are Vue components registered in `frontend/src/router/index.js`. Auth is enforced via route `meta: { requiresAuth: true }` — the router navigation guard handles the rest. No per-page auth boilerplate needed.
 
 ### Data Claim Flow
 
@@ -397,7 +417,7 @@ When auth is disabled (single-user/self-hosted), the Settings page shows the exi
 ### How It Works
 
 1. User visits a data page (Positions, Ledger, etc.) without Tastytrade credentials
-2. `Auth.requireTastytrade()` detects missing credentials and redirects to `/settings?tab=connection&onboarding=1`
+2. The Vue Router `beforeEach` guard checks `meta.requiresTastytrade`, detects missing credentials, and redirects to `/settings?tab=connection&onboarding=1`
 3. User clicks "Connect to Tastytrade" button
 4. Frontend calls `POST /api/auth/tastytrade/authorize` which returns an authorization URL
 5. Browser redirects to Tastytrade (`https://my.tastytrade.com/auth.html`)
@@ -426,7 +446,7 @@ TASTYTRADE_REDIRECT_URI=http://localhost:8000/auth/tastytrade/callback   # Must 
 
 ### Key Rules for Developers
 
-1. **`requireTastytrade()`** must be called after `requireAuth()` on all data pages (Positions, Ledger, Reports, Risk) — NOT on Settings
+1. **`requiresTastytrade` route meta** is set on data pages (Positions, Ledger, Reports, Risk) — NOT on Settings. The router `beforeEach` guard handles the redirect automatically.
 2. **The callback endpoint is PUBLIC** (no JWT) because it receives a redirect from Tastytrade; the state parameter carries the encrypted user_id
 3. **State parameter** is Fernet-encrypted `{user_id, timestamp}`, validated for max 10 minutes
 4. **Auth-code-flow users** have `encrypted_provider_secret = NULL` in `user_credentials` — the app-level client_secret from env is used
