@@ -1212,6 +1212,9 @@ onUnmounted(() => {
     </select>
   </Teleport>
 
+  <!-- Sticky header block (action bar + column headers) -->
+  <div class="sticky top-14 z-30">
+
   <!-- Action Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-4">
@@ -1296,64 +1299,67 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- Main Content -->
-  <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0" class="p-4">
-   <div class="bg-tv-panel border border-tv-border rounded">
-    <!-- Column Headers -->
-    <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-14 z-10">
-      <span class="w-8"></span>
-      <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
-      <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
-        Symbol
-        <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-8 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
-        IVR
-        <span v-show="sortColumn === 'ivr'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('price')">
-        Price
-        <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-12"></span>
-      <span class="w-36 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
-        Strategy
-        <span v-show="sortColumn === 'strategy'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
-        DTE
-        <span v-show="sortColumn === 'dte'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
-        Days
-        <span v-show="sortColumn === 'days'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
-        Cost Basis
-        <span v-show="sortColumn === 'cost_basis'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('net_liq')">
-        Net Liq
-        <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('realized_pnl')">
-        Realized
-        <span v-show="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
-        Open
-        <span v-show="sortColumn === 'open_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('total_pnl')">
-        Total
-        <span v-show="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-      <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
-        % Rtn
-        <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-      </span>
-    </div>
+  <!-- Column Headers -->
+  <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
+       class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
+    <span class="w-8"></span>
+    <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
+    <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
+      Symbol
+      <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-8 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
+      IVR
+      <span v-show="sortColumn === 'ivr'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('price')">
+      Price
+      <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-12"></span>
+    <span class="w-36 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
+      Strategy
+      <span v-show="sortColumn === 'strategy'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
+      DTE
+      <span v-show="sortColumn === 'dte'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-12 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
+      Days
+      <span v-show="sortColumn === 'days'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
+      Cost Basis
+      <span v-show="sortColumn === 'cost_basis'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('net_liq')">
+      Net Liq
+      <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('realized_pnl')">
+      Realized
+      <span v-show="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
+      Open
+      <span v-show="sortColumn === 'open_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('total_pnl')">
+      Total
+      <span v-show="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+    <span class="w-14 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
+      % Rtn
+      <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </span>
+  </div>
 
+  </div><!-- /sticky header block -->
+
+  <!-- Main Content -->
+  <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0">
+   <div class="bg-tv-panel border-x border-b border-tv-border">
     <!-- Position Groups -->
     <div class="divide-y divide-tv-border">
       <div v-for="(group, index) in groupedPositions" :key="group.groupKey">
