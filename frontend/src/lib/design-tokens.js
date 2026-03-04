@@ -19,7 +19,7 @@ export const colors = {
   border:   '#1e2536',
   hover:    '#283148',
   text:     '#e6e9f0',
-  muted:    '#7f8a9a',
+  muted:    '#bfc5cd',
 
   // Accents — bold and unmistakable
   green:    '#00dc82',   // profit, positive values, long positions
