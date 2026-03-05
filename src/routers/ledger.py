@@ -203,6 +203,7 @@ async def update_ledger_group(group_id: str, body: LedgerGroupUpdate, db: Databa
 
         if body.strategy_label is not None:
             row.strategy_label = body.strategy_label
+            row.strategy_label_user_override = True
             row.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     return {"message": "Group updated"}

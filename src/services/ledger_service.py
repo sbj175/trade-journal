@@ -459,8 +459,39 @@ def _reconcile_stale_groups(*, db: DatabaseManager = None):
     return reconciled
 
 
+def _refresh_group_strategy(group, session):
+    """Re-run strategy engine on a group's lots and update strategy_label.
+
+    Uses open lots for open groups, all lots (latest cohort) for closed groups.
+    """
+    from src.models.lot_manager import LotManager
+    from src.pipeline.strategy_engine import recognize, lots_to_legs
+    from src.pipeline.group_manager import _recognize_from_lots
+
+    lot_rows = session.query(PositionLotModel).join(
+        PositionGroupLot,
+        PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+    ).filter(PositionGroupLot.group_id == group.group_id).all()
+
+    if not lot_rows:
+        return
+
+    lots = [LotManager._orm_to_lot(row) for row in lot_rows]
+
+    # For open groups, use open lots via lots_to_legs (filters to remaining_qty > 0)
+    legs = lots_to_legs(lots)
+    if legs:
+        sr = recognize(legs)
+        group.strategy_label = sr.name
+    else:
+        # All lots closed — use the full-lot recognizer (latest opening cohort)
+        label = _recognize_from_lots(lots)
+        if label:
+            group.strategy_label = label
+
+
 def _refresh_group_status(group_id: str, session=None, *, db: DatabaseManager = None):
-    """Recalculate status, opening_date, closing_date for a single group.
+    """Recalculate status, opening_date, closing_date, and strategy_label for a single group.
 
     If session is provided, uses it (caller manages commit).
     Otherwise opens its own session.
@@ -523,6 +554,10 @@ def _refresh_group_status(group_id: str, session=None, *, db: DatabaseManager = 
         group.opening_date = opening_date
         group.closing_date = closing_date
         group.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Re-run strategy detection unless user manually overrode the label
+        if not getattr(group, 'strategy_label_user_override', False):
+            _refresh_group_strategy(group, session)
 
 
 def _refresh_all_group_statuses(session=None, *, db: DatabaseManager = None):

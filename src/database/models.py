@@ -477,6 +477,7 @@ class PositionGroup(Base):
     account_number = Column(String, nullable=False)
     underlying = Column(String, nullable=False)
     strategy_label = Column(String)
+    strategy_label_user_override = Column(Boolean, default=False)
     status = Column(String, default="OPEN")
     source_chain_id = Column(String)
     opening_date = Column(String)
