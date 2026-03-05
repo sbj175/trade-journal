@@ -1,6 +1,6 @@
 """Report routes — dashboard, performance, monthly stats."""
 
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -163,12 +163,19 @@ async def get_available_strategies(db: DatabaseManager = Depends(get_db), user_i
 @router.get("/api/reports/performance")
 async def get_performance_report(
     account_number: Optional[str] = None,
-    days: str = "90",
+    entry_from: Optional[str] = None,
+    entry_to: Optional[str] = None,
+    exit_from: Optional[str] = None,
+    exit_to: Optional[str] = None,
     strategies: str = "",
     db: DatabaseManager = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Get performance report data for closed trades"""
+    """Get performance report data for closed trades.
+
+    Date params are ISO date strings (YYYY-MM-DD).
+    entry_from/entry_to filter on opening_date, exit_from/exit_to filter on closing_date.
+    """
     try:
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
@@ -178,13 +185,14 @@ async def get_performance_report(
             if account_number:
                 q = q.filter(OrderChain.account_number == account_number)
 
-            if days != 'all':
-                try:
-                    days_int = int(days)
-                    cutoff_date = (datetime.now() - timedelta(days=days_int)).strftime('%Y-%m-%d')
-                    q = q.filter(OrderChain.closing_date >= cutoff_date)
-                except ValueError:
-                    pass
+            if entry_from:
+                q = q.filter(OrderChain.opening_date >= entry_from)
+            if entry_to:
+                q = q.filter(OrderChain.opening_date <= entry_to)
+            if exit_from:
+                q = q.filter(OrderChain.closing_date >= exit_from)
+            if exit_to:
+                q = q.filter(OrderChain.closing_date <= exit_to)
 
             chains = [row.to_dict() for row in q.all()]
 
