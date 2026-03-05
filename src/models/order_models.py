@@ -521,70 +521,31 @@ class OrderManager:
 
             return total_pnl
     
-    def calculate_chain_realized_pnl(self, chain_id: str, chain_status: str) -> float:
-        """Calculate truly realized P&L based on completed round trips
+    def _calculate_chain_realized_pnl_from_lots(self, chain_id: str) -> float:
+        """Calculate realized P&L by summing lot_closings for all lots in this chain.
 
-        Logic:
-        - Closed chains: All P&L is realized
-        - Open chains: Sum net P&L from completed round trips (STO + matching BTC)
+        This is the authoritative source of realized P&L — it uses FIFO lot matching
+        and correctly handles rolls without double-counting.
         """
         from sqlalchemy import func as sa_func
-        from src.database.models import OrderPosition as OP, OrderChainMember as OCM
+        from src.database.models import PositionLot, LotClosing
 
         with self.db.get_session() as session:
-            if chain_status == 'CLOSED':
-                total = (
-                    session.query(sa_func.coalesce(sa_func.sum(OP.pnl), 0))
-                    .join(OCM, OP.order_id == OCM.order_id)
-                    .filter(OCM.chain_id == chain_id)
-                    .scalar()
-                )
-                return total or 0.0
-
-            # Batch-load all positions for this chain (symbol, action, status, pnl, strike, expiration, quantity)
-            rows = (
-                session.query(
-                    OP.symbol, OP.opening_action, OP.status, OP.pnl,
-                    OP.strike, OP.expiration, OP.quantity,
-                )
-                .join(OCM, OP.order_id == OCM.order_id)
-                .filter(OCM.chain_id == chain_id)
-                .order_by(OP.strike, OP.expiration)
-                .all()
+            total = (
+                session.query(sa_func.coalesce(sa_func.sum(LotClosing.realized_pnl), 0))
+                .join(PositionLot, LotClosing.lot_id == PositionLot.id)
+                .filter(PositionLot.chain_id == chain_id)
+                .scalar()
             )
+            return total or 0.0
 
-            from collections import defaultdict
-            position_groups = defaultdict(list)
-            for symbol, action, status, pnl, strike, expiration, quantity in rows:
-                key = (symbol, strike, expiration)
-                position_groups[key].append({
-                    'action': action, 'status': status, 'pnl': pnl, 'quantity': quantity,
-                })
+    def calculate_chain_realized_pnl(self, chain_id: str, chain_status: str) -> float:
+        """Calculate realized P&L from lot_closings (authoritative source).
 
-            realized_pnl = 0.0
-            for key, group_positions in position_groups.items():
-                opening_quantity = 0
-                closing_quantity = 0
-                opening_pnl = 0.0
-                closing_pnl = 0.0
-
-                for pos in group_positions:
-                    action = pos['action'] or ''
-                    qty = abs(pos['quantity'] or 0)
-                    if 'TO_OPEN' in action:
-                        opening_quantity += qty
-                        opening_pnl += pos['pnl'] or 0.0
-                    elif 'TO_CLOSE' in action:
-                        closing_quantity += qty
-                        closing_pnl += pos['pnl'] or 0.0
-
-                if opening_quantity > 0 and closing_quantity > 0:
-                    completed_quantity = min(opening_quantity, closing_quantity)
-                    opening_ratio = completed_quantity / opening_quantity
-                    closing_ratio = completed_quantity / closing_quantity
-                    realized_pnl += opening_pnl * opening_ratio + closing_pnl * closing_ratio
-
-            return realized_pnl
+        Works for both open and closed chains — lot_closings only exist for
+        positions that have actually been closed, so partial closes are handled.
+        """
+        return self._calculate_chain_realized_pnl_from_lots(chain_id)
 
     def calculate_chain_unrealized_pnl(self, chain_id: str, chain_status: str) -> float:
         """Calculate unrealized P&L from truly open positions (not part of completed round trips)
@@ -642,29 +603,26 @@ class OrderManager:
             return unrealized_pnl
 
     def update_chain_pnl(self, chain_id: str) -> float:
-        """Recalculate and update total, realized, and unrealized P&L for an order chain"""
-        from sqlalchemy import func as sa_func
-        from src.database.models import OrderChain as OC, Order as OrderModel, OrderChainMember as OCM
+        """Recalculate and update total, realized, and unrealized P&L for an order chain.
+
+        total_pnl = realized_pnl + unrealized_pnl (derived from lot_closings,
+        which correctly handles rolls without double-counting).
+        """
+        from src.database.models import OrderChain as OC
 
         with self.db.get_session() as session:
-            chain_row = session.get(OC, chain_id)
+            chain_row = session.query(OC).filter(OC.chain_id == chain_id).first()
             if not chain_row:
                 return 0.0
             chain_status = chain_row.chain_status
 
-            total_pnl = (
-                session.query(sa_func.coalesce(sa_func.sum(OrderModel.total_pnl), 0))
-                .join(OCM, OrderModel.order_id == OCM.order_id)
-                .filter(OCM.chain_id == chain_id)
-                .scalar()
-            ) or 0.0
-
         # These methods open their own sessions
         realized_pnl = self.calculate_chain_realized_pnl(chain_id, chain_status)
         unrealized_pnl = self.calculate_chain_unrealized_pnl(chain_id, chain_status)
+        total_pnl = realized_pnl + unrealized_pnl
 
         with self.db.get_session() as session:
-            chain_row = session.get(OC, chain_id)
+            chain_row = session.query(OC).filter(OC.chain_id == chain_id).first()
             if chain_row:
                 chain_row.total_pnl = total_pnl
                 chain_row.realized_pnl = realized_pnl
