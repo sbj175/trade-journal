@@ -30,6 +30,9 @@ const orderComments = ref({})
 const availableTags = ref([])
 const tagPopoverGroup = ref(null)
 const tagSearch = ref('')
+const suggestions = ref([])
+const dismissedSuggestions = ref(new Set(JSON.parse(localStorage.getItem('ledger_dismissed_suggestions') || '[]')))
+const showSuggestions = ref(true)
 
 // Internal (non-reactive)
 const noteSaveTimers = {}
@@ -43,6 +46,10 @@ const filteredTagSuggestions = computed(() => {
     .filter(t => !appliedIds.includes(t.id))
     .filter(t => !search || t.name.toLowerCase().includes(search))
 })
+
+const visibleSuggestions = computed(() =>
+  suggestions.value.filter(s => !dismissedSuggestions.value.has(s.id))
+)
 
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
@@ -81,6 +88,7 @@ onMounted(async () => {
   }
 
   await fetchLedger()
+  fetchSuggestions()
   await loadNotes()
   await loadAvailableTags()
 
@@ -133,6 +141,54 @@ async function fetchLedger() {
   } finally {
     loading.value = false
   }
+}
+
+async function fetchSuggestions() {
+  try {
+    const params = new URLSearchParams()
+    if (selectedAccount.value) params.set('account_number', selectedAccount.value)
+    const url = '/api/ledger/suggestions' + (params.toString() ? '?' + params.toString() : '')
+    const response = await Auth.authFetch(url)
+    const data = await response.json()
+    suggestions.value = data.suggestions || []
+  } catch (error) {
+    console.error('Error fetching suggestions:', error)
+  }
+}
+
+async function acceptSuggestion(suggestion) {
+  const targetGroup = suggestion.groups[0]
+  const sourceGroups = suggestion.groups.slice(1)
+  const allTxnIds = []
+
+  for (const sg of sourceGroups) {
+    const group = groups.value.find(g => g.group_id === sg.group_id)
+    if (group) {
+      for (const lot of (group.lots || [])) {
+        allTxnIds.push(lot.transaction_id)
+      }
+    }
+  }
+
+  if (allTxnIds.length === 0) return
+
+  try {
+    await Auth.authFetch('/api/ledger/move-lots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction_ids: allTxnIds, target_group_id: targetGroup.group_id }),
+    })
+    await fetchLedger()
+    await fetchSuggestions()
+  } catch (error) {
+    console.error('Error accepting suggestion:', error)
+  }
+}
+
+function dismissSuggestion(suggestion) {
+  dismissedSuggestions.value.add(suggestion.id)
+  localStorage.setItem('ledger_dismissed_suggestions',
+    JSON.stringify([...dismissedSuggestions.value]))
 }
 
 // ==================== FILTERING & SORTING ====================
@@ -289,6 +345,7 @@ function cleanUrlParams() {
 function onAccountChange() {
   localStorage.setItem('trade_journal_selected_account', selectedAccount.value)
   fetchLedger()
+  fetchSuggestions()
 }
 
 function onSymbolFilterApply() {
@@ -960,6 +1017,42 @@ function sortPositions(positions) {
   </div>
 
   </div><!-- /sticky header block -->
+
+  <!-- Merge Suggestions -->
+  <div v-if="visibleSuggestions.length > 0" class="bg-tv-panel border-x border-b border-tv-border">
+    <div @click="showSuggestions = !showSuggestions"
+         class="flex items-center px-4 py-2 cursor-pointer hover:bg-tv-border/20 transition-colors">
+      <i class="fas fa-lightbulb text-tv-amber mr-2"></i>
+      <span class="text-tv-text text-sm font-medium">
+        {{ visibleSuggestions.length }} merge suggestion{{ visibleSuggestions.length > 1 ? 's' : '' }}
+      </span>
+      <i class="fas fa-chevron-right ml-2 text-tv-muted text-xs transition-transform duration-200"
+         :class="showSuggestions ? 'rotate-90' : ''"></i>
+    </div>
+    <div v-show="showSuggestions" class="divide-y divide-tv-border/30">
+      <div v-for="suggestion in visibleSuggestions" :key="suggestion.id"
+           class="flex items-center px-4 py-2.5 gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
+            <span class="text-tv-muted">
+              {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
+            </span>
+            <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
+            <span class="text-tv-amber font-medium">{{ suggestion.resulting_strategy }}</span>
+          </div>
+        </div>
+        <button @click="acceptSuggestion(suggestion)"
+                class="px-3 py-1 text-sm bg-tv-blue/20 text-tv-blue border border-tv-blue/30 rounded hover:bg-tv-blue/30 transition-colors whitespace-nowrap">
+          Merge
+        </button>
+        <button @click="dismissSuggestion(suggestion)"
+                class="px-3 py-1 text-sm text-tv-muted border border-tv-border rounded hover:text-tv-text hover:border-tv-muted transition-colors whitespace-nowrap">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Loading State -->
   <div v-if="loading" class="text-center py-16">

@@ -2,8 +2,10 @@
 
 import json as _json
 import uuid as _uuid
+from collections import defaultdict
 from datetime import datetime
-from typing import Dict
+from itertools import combinations
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
@@ -182,6 +184,112 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
         })
 
     return result
+
+
+@router.get("/api/ledger/suggestions")
+async def get_ledger_suggestions(
+    account_number: str = '',
+    db: DatabaseManager = Depends(get_db),
+    lot_manager: LotManager = Depends(get_lot_manager),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Detect potential multi-group strategies and return merge suggestions."""
+    from src.pipeline.strategy_engine import recognize, lots_to_legs
+    from src.pipeline.strategy_engine.constants import STRATEGIES
+
+    # Load OPEN groups
+    with db.get_session() as session:
+        q = session.query(PositionGroup).filter(PositionGroup.status == 'OPEN')
+        if account_number:
+            q = q.filter(PositionGroup.account_number == account_number)
+        open_groups = [row.to_dict() for row in q.all()]
+
+    if not open_groups:
+        return {"suggestions": []}
+
+    group_ids = [g['group_id'] for g in open_groups]
+
+    # Batch-load lots for all open groups
+    lots_by_group = lot_manager.get_lots_for_groups_batch(group_ids)
+
+    # Group by (account, underlying)
+    by_au: Dict[tuple, List[dict]] = defaultdict(list)
+    for g in open_groups:
+        by_au[(g['account_number'], g['underlying'])].append(g)
+
+    # Strategy specificity: recognized strategies beat Custom/generic
+    generic_prefixes = ("Custom", "Shares")
+
+    def _is_more_specific(combined_name: str, individual_names: List[str]) -> bool:
+        """True if the combined strategy is more specific than the individuals."""
+        if combined_name.startswith("Custom"):
+            return False
+        # If all individuals are the same as the combined, no improvement
+        if all(n == combined_name for n in individual_names):
+            return False
+        # The combined name must be a recognized strategy
+        return combined_name in STRATEGIES
+
+    suggestions = []
+
+    for (acct, underlying), au_groups in by_au.items():
+        if len(au_groups) < 2:
+            continue
+
+        # Try pairwise first, then 3-wise, up to 4-wise
+        max_combo_size = min(len(au_groups), 4)
+        already_suggested_sets = set()
+
+        for combo_size in range(2, max_combo_size + 1):
+            for combo in combinations(au_groups, combo_size):
+                combo_gids = frozenset(g['group_id'] for g in combo)
+
+                # Skip if a subset was already a valid suggestion
+                if any(s.issubset(combo_gids) for s in already_suggested_sets):
+                    continue
+
+                # Combine all lots from the groups in the combo
+                combined_lots = []
+                for g in combo:
+                    combined_lots.extend(lots_by_group.get(g['group_id'], []))
+
+                if not combined_lots:
+                    continue
+
+                # Run strategy engine on combined lots
+                legs = lots_to_legs(combined_lots)
+                if not legs:
+                    continue
+
+                sr = recognize(legs)
+                individual_names = [g['strategy_label'] or 'Unknown' for g in combo]
+
+                if _is_more_specific(sr.name, individual_names):
+                    suggestion_id = _uuid.uuid5(
+                        _uuid.NAMESPACE_DNS,
+                        ','.join(sorted(combo_gids)),
+                    ).hex[:12]
+
+                    labels_str = ' + '.join(individual_names)
+                    suggestions.append({
+                        'id': suggestion_id,
+                        'type': 'merge',
+                        'resulting_strategy': sr.name,
+                        'underlying': underlying,
+                        'account_number': acct,
+                        'groups': [
+                            {
+                                'group_id': g['group_id'],
+                                'strategy_label': g['strategy_label'],
+                                'status': g['status'],
+                            }
+                            for g in combo
+                        ],
+                        'description': f"{underlying}: {labels_str} \u2192 {sr.name}",
+                    })
+                    already_suggested_sets.add(combo_gids)
+
+    return {"suggestions": suggestions}
 
 
 @router.post("/api/ledger/seed")
