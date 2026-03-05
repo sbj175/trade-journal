@@ -160,24 +160,34 @@ async function acceptSuggestion(suggestion) {
   const targetGroup = suggestion.groups[0]
   const sourceGroups = suggestion.groups.slice(1)
   const allTxnIds = []
+  const emptySourceIds = []
 
   for (const sg of sourceGroups) {
     const group = groups.value.find(g => g.group_id === sg.group_id)
     if (group) {
-      for (const lot of (group.lots || [])) {
-        allTxnIds.push(lot.transaction_id)
+      const lots = group.lots || []
+      if (lots.length === 0) {
+        emptySourceIds.push(sg.group_id)
+      } else {
+        for (const lot of lots) {
+          allTxnIds.push(lot.transaction_id)
+        }
       }
     }
   }
 
-  if (allTxnIds.length === 0) return
-
   try {
-    await Auth.authFetch('/api/ledger/move-lots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transaction_ids: allTxnIds, target_group_id: targetGroup.group_id }),
-    })
+    if (allTxnIds.length > 0) {
+      await Auth.authFetch('/api/ledger/move-lots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_ids: allTxnIds, target_group_id: targetGroup.group_id }),
+      })
+    }
+    // Clean up source groups that were already empty
+    for (const gid of emptySourceIds) {
+      await Auth.authFetch(`/api/ledger/groups/${gid}`, { method: 'DELETE' })
+    }
     await fetchLedger()
     await fetchSuggestions()
   } catch (error) {
