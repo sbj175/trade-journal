@@ -68,12 +68,18 @@ class Transaction:
     @property
     def is_assignment(self) -> bool:
         sub_type = (self.transaction_sub_type or '').upper()
-        return 'ASSIGNMENT' in sub_type
+        return 'ASSIGNMENT' in sub_type and 'CASH SETTLED' not in sub_type
 
     @property
     def is_exercise(self) -> bool:
         sub_type = (self.transaction_sub_type or '').upper()
-        return 'EXERCISE' in sub_type
+        return 'EXERCISE' in sub_type and 'CASH SETTLED' not in sub_type
+
+    @property
+    def is_cash_settlement(self) -> bool:
+        """Cash settlement record for index options (SPX, etc.) — not a position closing."""
+        sub_type = (self.transaction_sub_type or '').upper()
+        return 'CASH SETTLED' in sub_type
 
     @property
     def is_buy(self) -> bool:
@@ -83,10 +89,6 @@ class Transaction:
     def is_sell(self) -> bool:
         return 'SELL' in (self.action or '')
 
-    @property
-    def is_cash_settlement(self) -> bool:
-        desc = (self.description or '').lower()
-        return 'cash settlement' in desc
 
 
 @dataclass

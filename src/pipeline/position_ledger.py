@@ -87,6 +87,18 @@ def process_lots(
     # creates the shares.  We defer and retry after the main pass.
     deferred_closings: List[Dict] = []
 
+    # Build lookup of cash settlement values for index options (SPX, etc.).
+    # Keyed by option symbol → settlement value per share (value / qty / 100).
+    # Used to derive the correct closing_price when the removal transaction
+    # has price=None.
+    cash_settlement_prices: Dict[str, float] = {}
+    for order in orders:
+        for tx in order.transactions:
+            if tx.is_cash_settlement and tx.option_type:
+                qty = abs(tx.quantity) or 1
+                multiplier = 100
+                cash_settlement_prices[tx.symbol] = abs(tx.value) / qty / multiplier
+
     order_to_temp_chain: Dict[str, str] = {}
     closing_order_to_chains: Dict[str, Set[str]] = {}
 
@@ -172,11 +184,22 @@ def process_lots(
                 else:
                     closing_type = "MANUAL"
 
+                # For cash-settled exercise/assignment (SPX, etc.), the removal
+                # transaction has price=None.  Use the settlement value from
+                # the matching "Cash Settled" transaction instead.
+                closing_price = tx.price
+                if (
+                    not closing_price
+                    and closing_type in ("EXERCISE", "ASSIGNMENT")
+                    and tx.symbol in cash_settlement_prices
+                ):
+                    closing_price = cash_settlement_prices[tx.symbol]
+
                 lot_manager.close_lot_fifo(
                     account_number=tx.account_number,
                     symbol=tx.symbol,
                     quantity_to_close=abs(tx.quantity),
-                    closing_price=tx.price,
+                    closing_price=closing_price,
                     closing_order_id=order.order_id,
                     closing_transaction_id=tx.id,
                     closing_date=tx.executed_at,
