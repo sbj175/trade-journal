@@ -1037,7 +1037,8 @@ function sortPositions(positions) {
             <!-- Consolidation suggestion -->
             <template v-if="suggestion.type === 'consolidate'">
               <div class="flex items-center gap-2 text-sm">
-                <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
+                <a class="font-semibold text-tv-text hover:text-tv-blue cursor-pointer"
+                   @click.stop="filterUnderlying = suggestion.underlying; onSymbolFilterApply()">{{ suggestion.underlying }}</a>
                 <span class="text-tv-muted">
                   {{ suggestion.groups.length }} {{ suggestion.resulting_strategy }} groups
                 </span>
@@ -1054,7 +1055,8 @@ function sortPositions(positions) {
             <!-- Strategy merge suggestion -->
             <template v-else>
               <div class="flex items-center gap-2 text-sm">
-                <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
+                <a class="font-semibold text-tv-text hover:text-tv-blue cursor-pointer"
+                   @click.stop="filterUnderlying = suggestion.underlying; onSymbolFilterApply()">{{ suggestion.underlying }}</a>
                 <span class="text-tv-muted">
                   {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
                 </span>
