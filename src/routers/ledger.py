@@ -233,12 +233,59 @@ async def get_ledger_suggestions(
             return False
         return True
 
-    suggestions = []
+    consolidation_suggestions = []
+    strategy_suggestions = []
 
     for (acct, underlying), au_groups in by_au.items():
         if len(au_groups) < 2:
             continue
 
+        # --- Phase 1: Consolidation suggestions ---
+        # Groups with the same strategy label should be merged into one.
+        by_label: Dict[str, List[dict]] = defaultdict(list)
+        for g in au_groups:
+            by_label[g['strategy_label'] or 'Unknown'].append(g)
+
+        for label, same_label_groups in by_label.items():
+            if len(same_label_groups) < 2:
+                continue
+
+            # Sort by opening date so the earliest group is the target
+            same_label_groups.sort(key=lambda g: g['opening_date'] or '')
+
+            total_lots = sum(
+                len(lots_by_group.get(g['group_id'], []))
+                for g in same_label_groups
+            )
+            gids = [g['group_id'] for g in same_label_groups]
+            suggestion_id = _uuid.uuid5(
+                _uuid.NAMESPACE_DNS,
+                'consolidate:' + ','.join(sorted(gids)),
+            ).hex[:12]
+
+            consolidation_suggestions.append({
+                'id': suggestion_id,
+                'type': 'consolidate',
+                'resulting_strategy': label,
+                'underlying': underlying,
+                'account_number': acct,
+                'groups': [
+                    {
+                        'group_id': g['group_id'],
+                        'strategy_label': g['strategy_label'],
+                        'status': g['status'],
+                        'opening_date': g['opening_date'],
+                        'lot_count': len(lots_by_group.get(g['group_id'], [])),
+                    }
+                    for g in same_label_groups
+                ],
+                'description': (
+                    f"{underlying}: Consolidate {len(same_label_groups)} "
+                    f"{label} groups ({total_lots} lots)"
+                ),
+            })
+
+        # --- Phase 2: Strategy merge suggestions ---
         # Try pairwise first, then 3-wise, up to 4-wise
         max_combo_size = min(len(au_groups), 4)
         already_suggested_sets = set()
@@ -327,9 +374,10 @@ async def get_ledger_suggestions(
 
         for entry in best_by_strategy.values():
             entry.pop('_date_spread', None)
-            suggestions.append(entry)
+            strategy_suggestions.append(entry)
 
-    return {"suggestions": suggestions}
+    # Consolidation first, then strategy merges
+    return {"suggestions": consolidation_suggestions + strategy_suggestions}
 
 
 @router.post("/api/ledger/seed")

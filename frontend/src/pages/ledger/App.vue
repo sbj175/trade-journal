@@ -1034,27 +1034,50 @@ function sortPositions(positions) {
            class="px-4 py-2.5">
         <div class="flex items-center gap-4">
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 text-sm">
-              <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
-              <span class="text-tv-muted">
-                {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
-              </span>
-              <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
-              <span class="text-tv-amber font-medium">{{ suggestion.resulting_strategy }}</span>
-            </div>
-            <div class="flex items-center gap-3 mt-1 text-xs text-tv-muted">
-              <span v-for="(g, i) in suggestion.groups" :key="g.group_id" class="flex items-center gap-1">
-                <span v-if="i > 0" class="text-tv-muted mx-0.5">+</span>
-                <span class="text-tv-text">{{ g.strategy_label }}</span>
-                <span>({{ formatDate(g.opening_date) }}<template v-if="g.lot_count">, {{ g.lot_count }} lot{{ g.lot_count > 1 ? 's' : '' }}</template>)</span>
-              </span>
-              <i class="fas fa-arrow-right text-tv-muted"></i>
-              <span>merge into first group</span>
-            </div>
+            <!-- Consolidation suggestion -->
+            <template v-if="suggestion.type === 'consolidate'">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
+                <span class="text-tv-muted">
+                  {{ suggestion.groups.length }} {{ suggestion.resulting_strategy }} groups
+                </span>
+                <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
+                <span class="text-tv-cyan font-medium">1 {{ suggestion.resulting_strategy }} group</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-tv-muted">
+                <span v-for="(g, i) in suggestion.groups" :key="g.group_id" class="flex items-center gap-1">
+                  <span v-if="i > 0" class="text-tv-muted mx-0.5">+</span>
+                  <span>{{ formatDate(g.opening_date) }}<template v-if="g.lot_count"> ({{ g.lot_count }} lot{{ g.lot_count > 1 ? 's' : '' }})</template></span>
+                </span>
+              </div>
+            </template>
+            <!-- Strategy merge suggestion -->
+            <template v-else>
+              <div class="flex items-center gap-2 text-sm">
+                <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
+                <span class="text-tv-muted">
+                  {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
+                </span>
+                <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
+                <span class="text-tv-amber font-medium">{{ suggestion.resulting_strategy }}</span>
+              </div>
+              <div class="flex items-center gap-3 mt-1 text-xs text-tv-muted">
+                <span v-for="(g, i) in suggestion.groups" :key="g.group_id" class="flex items-center gap-1">
+                  <span v-if="i > 0" class="text-tv-muted mx-0.5">+</span>
+                  <span class="text-tv-text">{{ g.strategy_label }}</span>
+                  <span>({{ formatDate(g.opening_date) }}<template v-if="g.lot_count">, {{ g.lot_count }} lot{{ g.lot_count > 1 ? 's' : '' }}</template>)</span>
+                </span>
+                <i class="fas fa-arrow-right text-tv-muted"></i>
+                <span>merge into first group</span>
+              </div>
+            </template>
           </div>
           <button @click="acceptSuggestion(suggestion)"
-                  class="px-3 py-1 text-sm bg-tv-blue/20 text-tv-blue border border-tv-blue/30 rounded hover:bg-tv-blue/30 transition-colors whitespace-nowrap">
-            Merge
+                  class="px-3 py-1 text-sm border rounded hover:brightness-110 transition-colors whitespace-nowrap"
+                  :class="suggestion.type === 'consolidate'
+                    ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/30'
+                    : 'bg-tv-blue/20 text-tv-blue border-tv-blue/30'">
+            {{ suggestion.type === 'consolidate' ? 'Consolidate' : 'Merge' }}
           </button>
           <button @click="dismissSuggestion(suggestion)"
                   class="px-3 py-1 text-sm text-tv-muted border border-tv-border rounded hover:text-tv-text hover:border-tv-muted transition-colors whitespace-nowrap">
