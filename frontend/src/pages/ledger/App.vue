@@ -1031,25 +1031,36 @@ function sortPositions(positions) {
     </div>
     <div v-show="showSuggestions" class="divide-y divide-tv-border/30">
       <div v-for="suggestion in visibleSuggestions" :key="suggestion.id"
-           class="flex items-center px-4 py-2.5 gap-4">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 text-sm">
-            <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
-            <span class="text-tv-muted">
-              {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
-            </span>
-            <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
-            <span class="text-tv-amber font-medium">{{ suggestion.resulting_strategy }}</span>
+           class="px-4 py-2.5">
+        <div class="flex items-center gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 text-sm">
+              <span class="font-semibold text-tv-text">{{ suggestion.underlying }}</span>
+              <span class="text-tv-muted">
+                {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
+              </span>
+              <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
+              <span class="text-tv-amber font-medium">{{ suggestion.resulting_strategy }}</span>
+            </div>
+            <div class="flex items-center gap-3 mt-1 text-xs text-tv-muted">
+              <span v-for="(g, i) in suggestion.groups" :key="g.group_id" class="flex items-center gap-1">
+                <span v-if="i > 0" class="text-tv-muted mx-0.5">+</span>
+                <span class="text-tv-text">{{ g.strategy_label }}</span>
+                <span>({{ formatDate(g.opening_date) }}<template v-if="g.lot_count">, {{ g.lot_count }} lot{{ g.lot_count > 1 ? 's' : '' }}</template>)</span>
+              </span>
+              <i class="fas fa-arrow-right text-tv-muted"></i>
+              <span>merge into first group</span>
+            </div>
           </div>
+          <button @click="acceptSuggestion(suggestion)"
+                  class="px-3 py-1 text-sm bg-tv-blue/20 text-tv-blue border border-tv-blue/30 rounded hover:bg-tv-blue/30 transition-colors whitespace-nowrap">
+            Merge
+          </button>
+          <button @click="dismissSuggestion(suggestion)"
+                  class="px-3 py-1 text-sm text-tv-muted border border-tv-border rounded hover:text-tv-text hover:border-tv-muted transition-colors whitespace-nowrap">
+            Dismiss
+          </button>
         </div>
-        <button @click="acceptSuggestion(suggestion)"
-                class="px-3 py-1 text-sm bg-tv-blue/20 text-tv-blue border border-tv-blue/30 rounded hover:bg-tv-blue/30 transition-colors whitespace-nowrap">
-          Merge
-        </button>
-        <button @click="dismissSuggestion(suggestion)"
-                class="px-3 py-1 text-sm text-tv-muted border border-tv-border rounded hover:text-tv-text hover:border-tv-muted transition-colors whitespace-nowrap">
-          Dismiss
-        </button>
       </div>
     </div>
   </div>

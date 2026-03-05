@@ -217,18 +217,21 @@ async def get_ledger_suggestions(
     for g in open_groups:
         by_au[(g['account_number'], g['underlying'])].append(g)
 
-    # Strategy specificity: recognized strategies beat Custom/generic
-    generic_prefixes = ("Custom", "Shares")
-
     def _is_more_specific(combined_name: str, individual_names: List[str]) -> bool:
-        """True if the combined strategy is more specific than the individuals."""
+        """True if the combined strategy is genuinely more specific.
+
+        Rejects cases where the combined result merely matches one of the
+        inputs (e.g., Shares + Bull Put Spread → Bull Put Spread is not
+        a meaningful merge).
+        """
         if combined_name.startswith("Custom"):
             return False
-        # If all individuals are the same as the combined, no improvement
-        if all(n == combined_name for n in individual_names):
+        if combined_name not in STRATEGIES:
             return False
-        # The combined name must be a recognized strategy
-        return combined_name in STRATEGIES
+        # The combined name must differ from ALL individual names
+        if any(n == combined_name for n in individual_names):
+            return False
+        return True
 
     suggestions = []
 
@@ -239,6 +242,9 @@ async def get_ledger_suggestions(
         # Try pairwise first, then 3-wise, up to 4-wise
         max_combo_size = min(len(au_groups), 4)
         already_suggested_sets = set()
+        # Deduplicate: for each resulting strategy, keep only the best combo
+        # (smallest date spread between groups = most likely intentional pairing)
+        best_by_strategy: Dict[str, dict] = {}
 
         for combo_size in range(2, max_combo_size + 1):
             for combo in combinations(au_groups, combo_size):
@@ -265,13 +271,20 @@ async def get_ledger_suggestions(
                 individual_names = [g['strategy_label'] or 'Unknown' for g in combo]
 
                 if _is_more_specific(sr.name, individual_names):
+                    # Score by date proximity (smaller = better)
+                    dates = [g['opening_date'] or '' for g in combo]
+                    date_spread = max(dates) if dates else ''
+                    if date_spread and min(dates):
+                        date_spread = date_spread  # just use max date as tiebreak
+
+                    combo_gids_sorted = sorted(combo_gids)
                     suggestion_id = _uuid.uuid5(
                         _uuid.NAMESPACE_DNS,
-                        ','.join(sorted(combo_gids)),
+                        ','.join(combo_gids_sorted),
                     ).hex[:12]
 
                     labels_str = ' + '.join(individual_names)
-                    suggestions.append({
+                    entry = {
                         'id': suggestion_id,
                         'type': 'merge',
                         'resulting_strategy': sr.name,
@@ -282,12 +295,39 @@ async def get_ledger_suggestions(
                                 'group_id': g['group_id'],
                                 'strategy_label': g['strategy_label'],
                                 'status': g['status'],
+                                'opening_date': g['opening_date'],
+                                'lot_count': len(lots_by_group.get(g['group_id'], [])),
                             }
                             for g in combo
                         ],
                         'description': f"{underlying}: {labels_str} \u2192 {sr.name}",
-                    })
-                    already_suggested_sets.add(combo_gids)
+                        '_date_spread': dates,
+                    }
+
+                    # Keep only the best combo per strategy name
+                    # (closest opening dates = most likely to be intentional)
+                    prev = best_by_strategy.get(sr.name)
+                    if prev is None:
+                        best_by_strategy[sr.name] = entry
+                        already_suggested_sets.add(combo_gids)
+                    else:
+                        # Prefer combo whose groups have dates closest together
+                        prev_dates = prev['_date_spread']
+                        prev_range = (max(prev_dates) or '') if prev_dates else ''
+                        new_range = (max(dates) or '') if dates else ''
+                        # More recent pairing wins (latest opening date)
+                        if new_range > prev_range:
+                            # Remove old combo from already_suggested
+                            old_gids = frozenset(
+                                g['group_id'] for g in prev['groups']
+                            )
+                            already_suggested_sets.discard(old_gids)
+                            best_by_strategy[sr.name] = entry
+                            already_suggested_sets.add(combo_gids)
+
+        for entry in best_by_strategy.values():
+            entry.pop('_date_spread', None)
+            suggestions.append(entry)
 
     return {"suggestions": suggestions}
 
