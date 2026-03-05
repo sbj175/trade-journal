@@ -49,15 +49,19 @@ async def get_dashboard_data(
             q = session.query(PositionGroup)
             if account_number:
                 q = q.filter(PositionGroup.account_number == account_number)
-            groups = q.all()
+            groups = [
+                {'group_id': g.group_id, 'status': g.status,
+                 'strategy_label': g.strategy_label}
+                for g in q.all()
+            ]
 
-            group_ids = [g.group_id for g in groups]
+            group_ids = [g['group_id'] for g in groups]
             pnl_map = _group_realized_pnl(session, group_ids)
 
-        open_groups = [g for g in groups if g.status == 'OPEN']
-        closed_groups = [g for g in groups if g.status == 'CLOSED']
+        open_groups = [g for g in groups if g['status'] == 'OPEN']
+        closed_groups = [g for g in groups if g['status'] == 'CLOSED']
 
-        realized_pnl = sum(pnl_map.get(g.group_id, 0) for g in groups)
+        realized_pnl = sum(pnl_map.get(g['group_id'], 0) for g in groups)
 
         unrealized_pnl = 0
         position_data_source = "none"
@@ -74,21 +78,21 @@ async def get_dashboard_data(
         total_pnl = realized_pnl + unrealized_pnl
 
         profitable_closed = [
-            g for g in closed_groups if pnl_map.get(g.group_id, 0) > 0
+            g for g in closed_groups if pnl_map.get(g['group_id'], 0) > 0
         ]
         win_rate = len(profitable_closed) / len(closed_groups) * 100 if closed_groups else 0
 
         strategy_breakdown = {}
         for g in groups:
-            strategy = g.strategy_label or 'Unknown'
+            strategy = g['strategy_label'] or 'Unknown'
             if strategy not in strategy_breakdown:
                 strategy_breakdown[strategy] = {
                     'count': 0, 'total_pnl': 0, 'closed_count': 0, 'wins': 0,
                 }
-            pnl = pnl_map.get(g.group_id, 0)
+            pnl = pnl_map.get(g['group_id'], 0)
             strategy_breakdown[strategy]['count'] += 1
             strategy_breakdown[strategy]['total_pnl'] += pnl
-            if g.status == 'CLOSED':
+            if g['status'] == 'CLOSED':
                 strategy_breakdown[strategy]['closed_count'] += 1
                 if pnl > 0:
                     strategy_breakdown[strategy]['wins'] += 1
@@ -196,20 +200,24 @@ async def get_performance_report(
             if exit_to:
                 q = q.filter(PositionGroup.closing_date <= exit_to)
 
-            groups = q.all()
-            group_ids = [g.group_id for g in groups]
+            # Convert to dicts inside session to avoid detached instance errors
+            groups = [
+                {'group_id': g.group_id, 'strategy_label': g.strategy_label}
+                for g in q.all()
+            ]
+            group_ids = [g['group_id'] for g in groups]
             pnl_map = _group_realized_pnl(session, group_ids)
 
             # Calculate risk/reward per group
             group_risk_reward = {}
             for g in groups:
                 max_risk, max_reward = calculate_max_risk_reward(
-                    session, g.group_id, g.strategy_label,
+                    session, g['group_id'], g['strategy_label'],
                 )
-                group_risk_reward[g.group_id] = (max_risk, max_reward)
+                group_risk_reward[g['group_id']] = (max_risk, max_reward)
 
         if strategy_list:
-            groups = [g for g in groups if g.strategy_label in strategy_list]
+            groups = [g for g in groups if g['strategy_label'] in strategy_list]
 
         total_pnl = 0.0
         wins = 0
@@ -221,9 +229,9 @@ async def get_performance_report(
         strategy_stats = {}
 
         for g in groups:
-            pnl = pnl_map.get(g.group_id, 0)
-            strategy = g.strategy_label or 'Unknown'
-            max_risk, max_reward = group_risk_reward.get(g.group_id, (None, None))
+            pnl = pnl_map.get(g['group_id'], 0)
+            strategy = g['strategy_label'] or 'Unknown'
+            max_risk, max_reward = group_risk_reward.get(g['group_id'], (None, None))
 
             total_pnl += pnl
 
