@@ -5,46 +5,59 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
+from sqlalchemy import func
 
-from src.database.models import OrderChain
+from src.database.models import (
+    PositionGroup, PositionGroupLot,
+    PositionLot as PositionLotModel, LotClosing as LotClosingModel,
+)
 from src.database.db_manager import DatabaseManager
-from src.models.order_models import OrderManager
-from src.dependencies import get_db, get_order_manager, get_current_user_id
+from src.dependencies import get_db, get_current_user_id
 from src.services.report_service import calculate_max_risk_reward
 
 router = APIRouter()
 
 
+def _group_realized_pnl(session, group_ids: list) -> dict:
+    """Compute realized P&L per group via lot_closings. Returns {group_id: pnl}."""
+    if not group_ids:
+        return {}
+    rows = (
+        session.query(
+            PositionGroupLot.group_id,
+            func.coalesce(func.sum(LotClosingModel.realized_pnl), 0.0),
+        )
+        .join(PositionLotModel,
+              PositionGroupLot.transaction_id == PositionLotModel.transaction_id)
+        .join(LotClosingModel, LotClosingModel.lot_id == PositionLotModel.id, isouter=True)
+        .filter(PositionGroupLot.group_id.in_(group_ids))
+        .group_by(PositionGroupLot.group_id)
+        .all()
+    )
+    return {gid: float(pnl) for gid, pnl in rows}
+
+
 @router.get("/api/dashboard")
-async def get_dashboard_data(account_number: Optional[str] = None, db: DatabaseManager = Depends(get_db), order_manager: OrderManager = Depends(get_order_manager), user_id: str = Depends(get_current_user_id)):
-    """Get dashboard summary data using the new order-based system"""
+async def get_dashboard_data(
+    account_number: Optional[str] = None,
+    db: DatabaseManager = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get dashboard summary data from position groups."""
     try:
-        chains = order_manager.get_order_chains(account_number=account_number)
+        with db.get_session() as session:
+            q = session.query(PositionGroup)
+            if account_number:
+                q = q.filter(PositionGroup.account_number == account_number)
+            groups = q.all()
 
-        processed_chains = []
-        for chain in chains:
-            try:
-                chain_orders = chain.get('orders', [])
+            group_ids = [g.group_id for g in groups]
+            pnl_map = _group_realized_pnl(session, group_ids)
 
-                has_options = False
-                for order in chain_orders:
-                    positions = order.get('positions', [])
-                    if any(pos['instrument_type'] == 'InstrumentType.EQUITY_OPTION' for pos in positions):
-                        has_options = True
-                        break
+        open_groups = [g for g in groups if g.status == 'OPEN']
+        closed_groups = [g for g in groups if g.status == 'CLOSED']
 
-                if has_options:
-                    processed_chains.append(chain)
-
-            except Exception as e:
-                logger.warning(f"Error processing chain {chain.get('chain_id', 'unknown')}: {e}")
-                continue
-
-        open_chains = [c for c in processed_chains if c['chain_status'] == 'OPEN']
-        closed_chains = [c for c in processed_chains if c['chain_status'] == 'CLOSED']
-
-        chains_total_pnl = sum(c['total_pnl'] for c in processed_chains)
-        chains_realized_pnl = sum(c['realized_pnl'] for c in processed_chains)
+        realized_pnl = sum(pnl_map.get(g.group_id, 0) for g in groups)
 
         unrealized_pnl = 0
         position_data_source = "none"
@@ -53,44 +66,31 @@ async def get_dashboard_data(account_number: Optional[str] = None, db: DatabaseM
             if positions:
                 if account_number:
                     positions = [p for p in positions if p.get('account_number') == account_number]
-
                 unrealized_pnl = sum(float(p.get('unrealized_pnl', 0)) for p in positions)
                 position_data_source = "database"
-                logger.info(f"Dashboard: Using database positions data, unrealized P&L: ${unrealized_pnl:.2f}")
-            else:
-                logger.warning("Dashboard: No position data available")
         except Exception as e:
             logger.warning(f"Dashboard: Could not get position data for unrealized P&L: {e}")
 
-        total_pnl = chains_realized_pnl + unrealized_pnl
-        realized_pnl = chains_realized_pnl
+        total_pnl = realized_pnl + unrealized_pnl
 
-        profitable_closed = [c for c in closed_chains if c['total_pnl'] > 0]
-        win_rate = len(profitable_closed) / len(closed_chains) * 100 if closed_chains else 0
-
-        try:
-            order_stats = order_manager.get_order_statistics(account_number=account_number)
-        except Exception as e:
-            logger.warning(f"Could not get order statistics: {e}")
-            order_stats = {}
+        profitable_closed = [
+            g for g in closed_groups if pnl_map.get(g.group_id, 0) > 0
+        ]
+        win_rate = len(profitable_closed) / len(closed_groups) * 100 if closed_groups else 0
 
         strategy_breakdown = {}
-        for chain in processed_chains:
-            strategy = chain.get('strategy_type', 'Unknown')
+        for g in groups:
+            strategy = g.strategy_label or 'Unknown'
             if strategy not in strategy_breakdown:
                 strategy_breakdown[strategy] = {
-                    'count': 0,
-                    'total_pnl': 0,
-                    'closed_count': 0,
-                    'wins': 0
+                    'count': 0, 'total_pnl': 0, 'closed_count': 0, 'wins': 0,
                 }
-
+            pnl = pnl_map.get(g.group_id, 0)
             strategy_breakdown[strategy]['count'] += 1
-            strategy_breakdown[strategy]['total_pnl'] += chain['total_pnl']
-
-            if chain['chain_status'] == 'CLOSED':
+            strategy_breakdown[strategy]['total_pnl'] += pnl
+            if g.status == 'CLOSED':
                 strategy_breakdown[strategy]['closed_count'] += 1
-                if chain['total_pnl'] > 0:
+                if pnl > 0:
                     strategy_breakdown[strategy]['wins'] += 1
 
         strategy_stats = []
@@ -102,25 +102,22 @@ async def get_dashboard_data(account_number: Optional[str] = None, db: DatabaseM
                 'avg_pnl': stats['total_pnl'] / stats['count'] if stats['count'] > 0 else 0,
                 'wins': stats['wins'],
                 'closed_count': stats['closed_count'],
-                'win_rate': stats['wins'] / stats['closed_count'] * 100 if stats['closed_count'] > 0 else 0
+                'win_rate': stats['wins'] / stats['closed_count'] * 100 if stats['closed_count'] > 0 else 0,
             })
 
         return {
             "summary": {
-                "total_trades": len(processed_chains),
-                "open_trades": len(open_chains),
-                "closed_trades": len(closed_chains),
+                "total_trades": len(groups),
+                "open_trades": len(open_groups),
+                "closed_trades": len(closed_groups),
                 "total_pnl": total_pnl,
                 "realized_pnl": realized_pnl,
                 "unrealized_pnl": unrealized_pnl,
-                "chains_only_pnl": chains_total_pnl,
-                "position_based_total": unrealized_pnl != 0,
                 "data_source": position_data_source,
-                "win_rate": win_rate
+                "win_rate": win_rate,
             },
-            "order_summary": order_stats,
             "strategy_breakdown": strategy_stats,
-            "recent_trades": []
+            "recent_trades": [],
         }
     except Exception as e:
         logger.error(f"Error fetching dashboard data: {str(e)}")
@@ -128,12 +125,15 @@ async def get_dashboard_data(account_number: Optional[str] = None, db: DatabaseM
 
 
 @router.get("/api/performance/monthly")
-async def get_monthly_performance(year: int = None, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
+async def get_monthly_performance(
+    year: int = None,
+    db: DatabaseManager = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
     """Get monthly performance data"""
     try:
         if year is None:
             year = date.today().year
-
         monthly_data = db.get_monthly_performance(year)
         return {"year": year, "months": monthly_data}
     except Exception as e:
@@ -142,14 +142,17 @@ async def get_monthly_performance(year: int = None, db: DatabaseManager = Depend
 
 
 @router.get("/api/reports/strategies")
-async def get_available_strategies(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
-    """Get list of strategies that have been used in closed trades"""
+async def get_available_strategies(
+    db: DatabaseManager = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get list of strategies that have been used in closed groups"""
     try:
         with db.get_session() as session:
-            rows = session.query(OrderChain.strategy_type).filter(
-                OrderChain.chain_status == "CLOSED",
-                OrderChain.strategy_type.isnot(None),
-            ).distinct().order_by(OrderChain.strategy_type).all()
+            rows = session.query(PositionGroup.strategy_label).filter(
+                PositionGroup.status == "CLOSED",
+                PositionGroup.strategy_label.isnot(None),
+            ).distinct().order_by(PositionGroup.strategy_label).all()
             strategies = [row[0] for row in rows]
 
         return {"strategies": strategies}
@@ -171,7 +174,7 @@ async def get_performance_report(
     db: DatabaseManager = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Get performance report data for closed trades.
+    """Get performance report data for closed groups.
 
     Date params are ISO date strings (YYYY-MM-DD).
     entry_from/entry_to filter on opening_date, exit_from/exit_to filter on closing_date.
@@ -180,31 +183,33 @@ async def get_performance_report(
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
         with db.get_session() as session:
-            q = session.query(OrderChain).filter(OrderChain.chain_status == 'CLOSED')
+            q = session.query(PositionGroup).filter(PositionGroup.status == 'CLOSED')
 
             if account_number:
-                q = q.filter(OrderChain.account_number == account_number)
-
+                q = q.filter(PositionGroup.account_number == account_number)
             if entry_from:
-                q = q.filter(OrderChain.opening_date >= entry_from)
+                q = q.filter(PositionGroup.opening_date >= entry_from)
             if entry_to:
-                q = q.filter(OrderChain.opening_date <= entry_to)
+                q = q.filter(PositionGroup.opening_date <= entry_to)
             if exit_from:
-                q = q.filter(OrderChain.closing_date >= exit_from)
+                q = q.filter(PositionGroup.closing_date >= exit_from)
             if exit_to:
-                q = q.filter(OrderChain.closing_date <= exit_to)
+                q = q.filter(PositionGroup.closing_date <= exit_to)
 
-            chains = [row.to_dict() for row in q.all()]
+            groups = q.all()
+            group_ids = [g.group_id for g in groups]
+            pnl_map = _group_realized_pnl(session, group_ids)
 
-            chain_risk_reward = {}
-            for chain in chains:
+            # Calculate risk/reward per group
+            group_risk_reward = {}
+            for g in groups:
                 max_risk, max_reward = calculate_max_risk_reward(
-                    session, chain['chain_id'], chain['strategy_type']
+                    session, g.group_id, g.strategy_label,
                 )
-                chain_risk_reward[chain['chain_id']] = (max_risk, max_reward)
+                group_risk_reward[g.group_id] = (max_risk, max_reward)
 
         if strategy_list:
-            chains = [c for c in chains if c['strategy_type'] in strategy_list]
+            groups = [g for g in groups if g.strategy_label in strategy_list]
 
         total_pnl = 0.0
         wins = 0
@@ -213,15 +218,12 @@ async def get_performance_report(
         loss_pnls = []
         max_risks = []
         max_rewards = []
-
         strategy_stats = {}
 
-        for chain in chains:
-            pnl = chain['total_pnl'] or 0.0
-            strategy = chain['strategy_type'] or 'Unknown'
-            chain_id = chain['chain_id']
-
-            max_risk, max_reward = chain_risk_reward.get(chain_id, (None, None))
+        for g in groups:
+            pnl = pnl_map.get(g.group_id, 0)
+            strategy = g.strategy_label or 'Unknown'
+            max_risk, max_reward = group_risk_reward.get(g.group_id, (None, None))
 
             total_pnl += pnl
 
@@ -241,12 +243,9 @@ async def get_performance_report(
                 strategy_stats[strategy] = {
                     'strategy': strategy,
                     'totalPnl': 0.0,
-                    'wins': 0,
-                    'losses': 0,
-                    'winPnls': [],
-                    'lossPnls': [],
-                    'maxRisks': [],
-                    'maxRewards': []
+                    'wins': 0, 'losses': 0,
+                    'winPnls': [], 'lossPnls': [],
+                    'maxRisks': [], 'maxRewards': [],
                 }
 
             strategy_stats[strategy]['totalPnl'] += pnl
@@ -262,7 +261,7 @@ async def get_performance_report(
                 strategy_stats[strategy]['losses'] += 1
                 strategy_stats[strategy]['lossPnls'].append(pnl)
 
-        total_trades = len(chains)
+        total_trades = len(groups)
 
         summary = {
             'totalPnl': total_pnl,
@@ -276,7 +275,7 @@ async def get_performance_report(
             'largestWin': max(win_pnls) if win_pnls else 0,
             'largestLoss': min(loss_pnls) if loss_pnls else 0,
             'avgMaxRisk': (sum(max_risks) / len(max_risks)) if max_risks else 0,
-            'avgMaxReward': (sum(max_rewards) / len(max_rewards)) if max_rewards else 0
+            'avgMaxReward': (sum(max_rewards) / len(max_rewards)) if max_rewards else 0,
         }
 
         breakdown = []
@@ -295,12 +294,12 @@ async def get_performance_report(
                 'largestWin': max(stats['winPnls']) if stats['winPnls'] else 0,
                 'largestLoss': min(stats['lossPnls']) if stats['lossPnls'] else 0,
                 'avgMaxRisk': (sum(stats['maxRisks']) / len(stats['maxRisks'])) if stats['maxRisks'] else 0,
-                'avgMaxReward': (sum(stats['maxRewards']) / len(stats['maxRewards'])) if stats['maxRewards'] else 0
+                'avgMaxReward': (sum(stats['maxRewards']) / len(stats['maxRewards'])) if stats['maxRewards'] else 0,
             })
 
         return {
             'summary': summary,
-            'breakdown': breakdown
+            'breakdown': breakdown,
         }
 
     except HTTPException:
