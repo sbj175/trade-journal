@@ -111,9 +111,12 @@ def assign_lots_to_groups(
         groups[gk].append(lot)
         if chain_id:
             group_chains[gk].add(chain_id)
-            # Only option lots update chain→group routing.  Equity lots must
-            # not redirect option lots away from their chain group.
-            if lot.expiration:
+            # Option lots and non-derived equity update chain→group routing
+            # so that related lots in the same chain can find each other
+            # (e.g., shares + short call = Covered Call).
+            # Derived equity (assignment/exercise) must NOT register here —
+            # it would redirect unrelated option lots to the Shares group.
+            if lot.expiration or not lot.derivation_type:
                 chain_to_group[chain_id] = gk
         # Only option lots update the expiration index
         if lot.expiration:
@@ -131,9 +134,11 @@ def assign_lots_to_groups(
 
         assigned = False
 
-        # Equity-first: shares always group with shares, not with the
-        # option chain they were derived from (e.g. via exercise).
-        if not assigned and not lot.expiration:
+        # Derived-equity-first: assignment/exercise-derived shares group
+        # with other shares, not with the option chain they came from.
+        # Normal (directly bought) equity falls through to Rule 1 so it
+        # can join its chain's group and be recognized as a Covered Call.
+        if not assigned and not lot.expiration and lot.derivation_type:
             au_key = (lot.account_number, lot.underlying)
             if au_key in au_to_group:
                 gk = au_to_group[au_key]
@@ -161,15 +166,6 @@ def assign_lots_to_groups(
             gk = _new_group_key()
             groups[gk] = []
             _add_lot_to_group(lot, gk, chain_id)
-
-    # --- Step 3b: Merge equity + short-call groups (Covered Call detection) --
-    #
-    # The equity-first routing above keeps shares separate from options.
-    # This post-pass merges an equity-only group with a short-call group
-    # for the same (account, underlying) so the strategy engine can
-    # recognize Covered Calls.
-    #
-    _merge_covered_call_groups(groups, group_chains, au_to_group, chain_to_group, aue_to_group)
 
     # --- Step 4 & 5: Build GroupSpec results with strategy labels ----------
     result: List[GroupSpec] = []
@@ -202,89 +198,6 @@ def assign_lots_to_groups(
         ))
 
     return result
-
-
-def _merge_covered_call_groups(
-    groups: Dict[str, List[Lot]],
-    group_chains: Dict[str, Set[str]],
-    au_to_group: Dict[Tuple[str, str], str],
-    chain_to_group: Dict[str, str],
-    aue_to_group: Dict[Tuple[str, str, date], str],
-) -> None:
-    """Merge equity-only groups with short-call groups for the same underlying.
-
-    This enables Covered Call detection by the strategy engine.  Only merges
-    when the equity group has long shares and the option group has short calls
-    (the classic Covered Call pattern).  Modifies *groups* and index dicts
-    in-place.
-    """
-    # Build (account, underlying) -> list of equity group keys
-    # Multiple equity groups can exist (open + closed), collect all.
-    equity_groups: Dict[Tuple[str, str], List[str]] = defaultdict(list)
-    for gk, lot_list in groups.items():
-        if not lot_list:
-            continue
-        all_equity = all(not lot.expiration for lot in lot_list)
-        has_long_shares = any(not lot.is_short for lot in lot_list)
-        if all_equity and has_long_shares:
-            au = (lot_list[0].account_number, lot_list[0].underlying)
-            equity_groups[au].append(gk)
-
-    if not equity_groups:
-        return
-
-    # Find option groups with short calls for the same (account, underlying)
-    # and merge with the best-matching equity group (by time overlap).
-    for gk, lot_list in list(groups.items()):
-        if gk not in groups:
-            continue  # already merged away
-        if not lot_list:
-            continue
-        au = (lot_list[0].account_number, lot_list[0].underlying)
-        if au not in equity_groups:
-            continue
-
-        has_short_call = any(
-            lot.expiration
-            and lot.is_short
-            and lot.option_type
-            and lot.option_type.upper().startswith('C')
-            for lot in lot_list
-        )
-        if not has_short_call:
-            continue
-
-        # Find the equity group to merge with (prefer the one sharing a chain)
-        option_chains = group_chains.get(gk, set())
-        best_equity_gk = None
-        for eq_gk in equity_groups[au]:
-            if eq_gk == gk or eq_gk not in groups:
-                continue
-            # Prefer chain overlap, otherwise take the first
-            eq_chains = group_chains.get(eq_gk, set())
-            if option_chains & eq_chains:
-                best_equity_gk = eq_gk
-                break
-            if best_equity_gk is None:
-                best_equity_gk = eq_gk
-
-        if best_equity_gk is None:
-            continue
-
-        # Merge: move all equity lots into the option group
-        equity_lots = groups[best_equity_gk]
-        groups[gk].extend(equity_lots)
-        group_chains[gk] |= group_chains.get(best_equity_gk, set())
-
-        # Update indexes to point to the merged group
-        for k, v in list(au_to_group.items()):
-            if v == best_equity_gk:
-                au_to_group[k] = gk
-
-        # Remove the now-empty equity group and clean up
-        del groups[best_equity_gk]
-        group_chains.pop(best_equity_gk, None)
-        equity_groups[au] = [e for e in equity_groups[au] if e != best_equity_gk]
 
 
 def _label_from_all_lots(lot_list: List[Lot]) -> Optional[str]:
