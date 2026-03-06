@@ -164,6 +164,45 @@ async def migrate_realized_pnl(db: DatabaseManager = Depends(get_db), order_mana
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/reprocess")
+async def reprocess_pipeline(
+    db: DatabaseManager = Depends(get_db),
+    lot_manager: LotManager = Depends(get_lot_manager),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Re-run the full processing pipeline on existing raw transactions.
+
+    Does NOT fetch from Tastytrade — just reprocesses what's already in the DB.
+    Useful for applying code changes to existing data.
+    """
+    try:
+        raw_transactions = db.get_raw_transactions()
+        if not raw_transactions:
+            return {"message": "No raw transactions to process", "groups_processed": 0}
+
+        logger.info(f"Reprocessing {len(raw_transactions)} raw transactions (full pipeline)")
+        result = reprocess(db, lot_manager, raw_transactions)
+
+        if result.chains:
+            await update_chain_cache(result.chains, db=db)
+
+        logger.info(
+            f"Reprocess completed: {result.orders_assembled} orders, "
+            f"{result.chains_derived} chains, {result.groups_processed} groups"
+        )
+
+        return {
+            "message": "Reprocess completed",
+            "orders_assembled": result.orders_assembled,
+            "chains_derived": result.chains_derived,
+            "groups_processed": result.groups_processed,
+            "equity_lots_netted": result.equity_lots_netted,
+        }
+    except Exception as e:
+        logger.error(f"Error during reprocess: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/api/sync/initial")
 async def initial_sync(
     tastytrade: TastytradeClient = Depends(get_tastytrade_client),
