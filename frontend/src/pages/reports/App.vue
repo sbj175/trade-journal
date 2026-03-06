@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatPercent } from '@/lib/formatters'
+import DateFilter from '@/components/DateFilter.vue'
 
 const Auth = useAuth()
 
@@ -14,9 +15,6 @@ const loading = ref(true)
 // Date range filters
 const exitFrom = ref('')
 const exitTo = ref('')
-const entryFrom = ref('')
-const entryTo = ref('')
-const showEntryFilter = ref(false)
 
 // Category-based filtering
 const filterDirection = ref([])   // 'bullish', 'bearish', 'neutral'
@@ -40,73 +38,10 @@ const strategyBreakdown = ref([])
 const activeStrategyCount = computed(() => getActiveStrategies().length)
 const totalStrategyCount = computed(() => Object.keys(STRATEGY_CATEGORIES).length)
 
-// --- Date helpers ---
-function toISO(d) { return d.toISOString().slice(0, 10) }
-
-function applyPreset(preset) {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-
-  switch (preset) {
-    case 'thisMonth':
-      exitFrom.value = toISO(new Date(y, m, 1))
-      exitTo.value = toISO(now)
-      break
-    case 'lastMonth':
-      exitFrom.value = toISO(new Date(y, m - 1, 1))
-      exitTo.value = toISO(new Date(y, m, 0))
-      break
-    case 'last90':
-      exitFrom.value = toISO(new Date(now.getTime() - 90 * 86400000))
-      exitTo.value = toISO(now)
-      break
-    case 'ytd':
-      exitFrom.value = toISO(new Date(y, 0, 1))
-      exitTo.value = toISO(now)
-      break
-    case 'lastYear':
-      exitFrom.value = toISO(new Date(y - 1, 0, 1))
-      exitTo.value = toISO(new Date(y - 1, 11, 31))
-      break
-    case 'all':
-      exitFrom.value = ''
-      exitTo.value = ''
-      break
-  }
-  entryFrom.value = ''
-  entryTo.value = ''
-  showEntryFilter.value = false
-  saveDateFilters()
-  fetchReport()
-}
-
-const activePreset = computed(() => {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const todayStr = toISO(now)
-
-  if (!exitFrom.value && !exitTo.value && !entryFrom.value && !entryTo.value) return 'all'
-  if (entryFrom.value || entryTo.value) return null
-  if (exitFrom.value === toISO(new Date(y, m, 1)) && exitTo.value === todayStr) return 'thisMonth'
-  if (exitFrom.value === toISO(new Date(y, m - 1, 1)) && exitTo.value === toISO(new Date(y, m, 0))) return 'lastMonth'
-  if (exitFrom.value === toISO(new Date(now.getTime() - 90 * 86400000)) && exitTo.value === todayStr) return 'last90'
-  if (exitFrom.value === toISO(new Date(y, 0, 1)) && exitTo.value === todayStr) return 'ytd'
-  if (exitFrom.value === toISO(new Date(y - 1, 0, 1)) && exitTo.value === toISO(new Date(y - 1, 11, 31))) return 'lastYear'
-  return null
-})
-
-function saveDateFilters() {
-  localStorage.setItem('reports_date_filters', JSON.stringify({
-    exitFrom: exitFrom.value, exitTo: exitTo.value,
-    entryFrom: entryFrom.value, entryTo: entryTo.value,
-    showEntryFilter: showEntryFilter.value,
-  }))
-}
-
-function onDateChange() {
-  saveDateFilters()
+// --- Date filter handler ---
+function onDateFilterUpdate({ from, to }) {
+  exitFrom.value = from || ''
+  exitTo.value = to || ''
   fetchReport()
 }
 
@@ -125,20 +60,8 @@ function loadSavedFilters() {
   const savedAccount = localStorage.getItem('trade_journal_selected_account')
   if (savedAccount !== null) selectedAccount.value = savedAccount
 
-  const savedDates = localStorage.getItem('reports_date_filters')
-  if (savedDates) {
-    try {
-      const parsed = JSON.parse(savedDates)
-      exitFrom.value = parsed.exitFrom || ''
-      exitTo.value = parsed.exitTo || ''
-      entryFrom.value = parsed.entryFrom || ''
-      entryTo.value = parsed.entryTo || ''
-      showEntryFilter.value = parsed.showEntryFilter || false
-    } catch (e) { /* use defaults */ }
-  } else {
-    // First load: default to current month
-    applyPreset('thisMonth')
-  }
+  // Date filter state is managed by the DateFilter component via localStorage.
+  // exitFrom/exitTo are set on the initial @update emit from DateFilter.
 
   const savedFilters = localStorage.getItem('reports_category_filters')
   if (savedFilters) {
@@ -236,8 +159,6 @@ async function fetchReport() {
     if (selectedAccount.value) params.append('account_number', selectedAccount.value)
     if (exitFrom.value) params.append('exit_from', exitFrom.value)
     if (exitTo.value) params.append('exit_to', exitTo.value)
-    if (entryFrom.value) params.append('entry_from', entryFrom.value)
-    if (entryTo.value) params.append('entry_to', entryTo.value)
     params.append('strategies', getActiveStrategies().join(','))
 
     const response = await Auth.authFetch(`/api/reports/performance?${params}`)
@@ -320,92 +241,59 @@ const columns = [
   </Teleport>
 
   <!-- Filters Bar -->
-  <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center flex-wrap gap-x-6 gap-y-2">
-    <!-- Quick Presets -->
-    <div class="flex items-center gap-1.5 text-base">
-      <button v-for="p in [
-        { key: 'thisMonth', label: 'This Month' },
-        { key: 'lastMonth', label: 'Last Month' },
-        { key: 'last90', label: '90 Days' },
-        { key: 'ytd', label: 'YTD' },
-        { key: 'lastYear', label: 'Last Year' },
-        { key: 'all', label: 'All' },
-      ]" :key="p.key"
-        @click="applyPreset(p.key)"
-        class="px-2.5 py-1.5 text-sm border rounded transition-colors"
-        :class="activePreset === p.key ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        {{ p.label }}
-      </button>
+  <div class="bg-tv-panel border-b border-tv-border">
+    <!-- Row 1: Date Controls -->
+    <div class="px-4 py-2.5 flex items-center gap-5 border-b border-tv-border/50">
+      <DateFilter storage-key="reports_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
     </div>
 
-    <!-- Exit Date Range -->
-    <div class="flex items-center gap-2 text-base">
-      <span class="text-tv-muted text-sm">Exit:</span>
-      <input type="date" v-model="exitFrom" @change="onDateChange()"
-             class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-      <span class="text-tv-muted text-sm">to</span>
-      <input type="date" v-model="exitTo" @change="onDateChange()"
-             class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-    </div>
+    <!-- Row 2: Strategy Filters -->
+    <div class="px-4 py-2.5 flex items-center gap-6">
+      <!-- Direction Filter -->
+      <div class="flex items-center gap-2">
+        <span class="text-tv-muted text-sm">Direction:</span>
+        <button v-for="dir in [
+          { value: 'bullish', active: 'bg-tv-green/20 text-tv-green border-tv-green/50' },
+          { value: 'bearish', active: 'bg-tv-red/20 text-tv-red border-tv-red/50' },
+          { value: 'neutral', active: 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' },
+        ]" :key="dir.value"
+          @click="toggleFilter('direction', dir.value)"
+          class="px-3 py-1.5 text-sm border rounded transition-colors capitalize"
+          :class="filterDirection.includes(dir.value) ? dir.active : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+          {{ dir.value }}
+        </button>
+      </div>
 
-    <!-- Entry Date Toggle + Range -->
-    <div class="flex items-center gap-2 text-base">
-      <button @click="showEntryFilter = !showEntryFilter; saveDateFilters()"
-              class="px-2.5 py-1.5 text-sm border rounded transition-colors"
-              :class="showEntryFilter ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        Entry
-      </button>
-      <template v-if="showEntryFilter">
-        <input type="date" v-model="entryFrom" @change="onDateChange()"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-        <span class="text-tv-muted text-sm">to</span>
-        <input type="date" v-model="entryTo" @change="onDateChange()"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-      </template>
-    </div>
+      <div class="w-px h-6 bg-tv-border"></div>
 
-    <!-- Direction Filter -->
-    <div class="flex items-center gap-2 text-base">
-      <span class="text-tv-muted">Direction:</span>
-      <button v-for="dir in [
-        { value: 'bullish', active: 'bg-tv-green/20 text-tv-green border-tv-green/50' },
-        { value: 'bearish', active: 'bg-tv-red/20 text-tv-red border-tv-red/50' },
-        { value: 'neutral', active: 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' },
-      ]" :key="dir.value"
-        @click="toggleFilter('direction', dir.value)"
-        class="px-3 py-1.5 text-sm border rounded transition-colors capitalize"
-        :class="filterDirection.includes(dir.value) ? dir.active : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        {{ dir.value }}
-      </button>
-    </div>
+      <!-- Type Filter -->
+      <div class="flex items-center gap-2">
+        <span class="text-tv-muted text-sm">Type:</span>
+        <button @click="toggleFilter('type', 'credit')"
+                class="px-3 py-1.5 text-sm border rounded transition-colors"
+                :class="filterType.includes('credit') ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+          Credit
+        </button>
+        <button @click="toggleFilter('type', 'debit')"
+                class="px-3 py-1.5 text-sm border rounded transition-colors"
+                :class="filterType.includes('debit') ? 'bg-tv-amber/20 text-tv-amber border-tv-amber/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+          Debit
+        </button>
+      </div>
 
-    <!-- Type Filter -->
-    <div class="flex items-center gap-2 text-base">
-      <span class="text-tv-muted">Type:</span>
-      <button @click="toggleFilter('type', 'credit')"
-              class="px-3 py-1.5 text-sm border rounded transition-colors"
-              :class="filterType.includes('credit') ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        Credit
-      </button>
-      <button @click="toggleFilter('type', 'debit')"
-              class="px-3 py-1.5 text-sm border rounded transition-colors"
-              :class="filterType.includes('debit') ? 'bg-tv-amber/20 text-tv-amber border-tv-amber/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        Debit
-      </button>
-    </div>
+      <div class="w-px h-6 bg-tv-border"></div>
 
-    <!-- Shares Filter -->
-    <div class="flex items-center gap-2 text-base">
+      <!-- Shares Filter -->
       <button @click="toggleShares()"
               class="px-3 py-1.5 text-sm border rounded transition-colors"
               :class="filterShares ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
         Shares
       </button>
-    </div>
 
-    <!-- Active filter summary -->
-    <div v-if="activeStrategyCount < totalStrategyCount" class="flex-1 text-right text-sm text-tv-muted">
-      {{ activeStrategyCount }} strategies selected
+      <!-- Active filter summary (pushed right) -->
+      <div v-if="activeStrategyCount < totalStrategyCount" class="flex-1 text-right text-sm text-tv-muted">
+        {{ activeStrategyCount }} of {{ totalStrategyCount }} strategies
+      </div>
     </div>
   </div>
 

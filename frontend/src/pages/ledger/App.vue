@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatDate, formatOrderDate, formatExpirationShort, calculateDTE } from '@/lib/formatters'
+import DateFilter from '@/components/DateFilter.vue'
 
 const Auth = useAuth()
 const route = useRoute()
@@ -14,7 +15,8 @@ const accounts = ref([])
 const filteredGroups = ref([])
 const selectedAccount = ref('')
 const filterUnderlying = ref('')
-const timePeriod = ref('all')
+const dateFrom = ref(null)  // ISO date string or null
+const dateTo = ref(null)    // ISO date string or null
 const showOpen = ref(true)
 const showClosed = ref(true)
 const viewMode = ref('positions')
@@ -60,7 +62,6 @@ onMounted(async () => {
   if (saved) {
     try {
       const state = JSON.parse(saved)
-      timePeriod.value = state.timePeriod || 'all'
       showOpen.value = state.showOpen !== undefined ? state.showOpen : true
       showClosed.value = state.showClosed !== undefined ? state.showClosed : true
       sortColumn.value = state.sortColumn || 'opening_date'
@@ -79,7 +80,6 @@ onMounted(async () => {
   const groupParam = route.query.group
   if (underlyingParam) {
     filterUnderlying.value = underlyingParam.toUpperCase()
-    timePeriod.value = 'all'
     showOpen.value = true
     showClosed.value = groupParam ? false : true
   } else {
@@ -230,32 +230,20 @@ function applyFilters() {
   if (!showOpen.value) filtered = filtered.filter(g => g.status !== 'OPEN')
   if (!showClosed.value) filtered = filtered.filter(g => g.status !== 'CLOSED')
 
-  if (timePeriod.value !== 'all') {
-    let cutoffStart
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    if (timePeriod.value === 'today') {
-      cutoffStart = today
-    } else if (timePeriod.value === 'yesterday') {
-      cutoffStart = new Date(today)
-      cutoffStart.setDate(cutoffStart.getDate() - 1)
-    } else {
-      const days = parseInt(timePeriod.value)
-      if (!isNaN(days)) {
-        cutoffStart = new Date(today)
-        cutoffStart.setDate(cutoffStart.getDate() - days)
+  if (dateFrom.value || dateTo.value) {
+    const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
+    const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
+    filtered = filtered.filter(g => {
+      const opened = g.opening_date ? new Date(g.opening_date) : null
+      const closed = g.closing_date ? new Date(g.closing_date) : null
+      const inRange = (d) => {
+        if (!d) return false
+        if (from && d < from) return false
+        if (to && d > to) return false
+        return true
       }
-    }
-
-    if (cutoffStart) {
-      filtered = filtered.filter(g => {
-        const opened = g.opening_date ? new Date(g.opening_date) : null
-        const closed = g.closing_date ? new Date(g.closing_date) : null
-        const inRange = (d) => d && d >= cutoffStart
-        return inRange(opened) || inRange(closed)
-      })
-    }
+      return inRange(opened) || inRange(closed)
+    })
   }
 
   // Sort
@@ -371,9 +359,14 @@ function clearSymbolFilter() {
   cleanUrlParams()
 }
 
+function onDateFilterUpdate({ from, to }) {
+  dateFrom.value = from
+  dateTo.value = to
+  applyFilters()
+}
+
 function saveState() {
   localStorage.setItem('ledger_state', JSON.stringify({
-    timePeriod: timePeriod.value,
     showOpen: showOpen.value,
     showClosed: showClosed.value,
     sortColumn: sortColumn.value,
@@ -909,19 +902,7 @@ function sortPositions(positions) {
       </div>
 
       <!-- Time Filter -->
-      <div class="flex items-center gap-2">
-        <span class="text-tv-muted">Time:</span>
-        <select v-model="timePeriod" @change="applyFilters(); saveState()"
-                class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2">
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="7">7D</option>
-          <option value="30">30D</option>
-          <option value="60">60D</option>
-          <option value="90">90D</option>
-          <option value="all">All</option>
-        </select>
-      </div>
+      <DateFilter storage-key="ledger_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
 
       <!-- Direction Filter -->
       <div class="flex items-center gap-2">
