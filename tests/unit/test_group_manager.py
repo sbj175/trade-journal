@@ -652,3 +652,190 @@ class TestGroupPersister:
             # Real group should exist
             groups = session.query(PositionGroup).all()
             assert len(groups) == 1
+
+    def test_user_merged_groups_survive_reprocess(self, db, lot_manager):
+        """User-merged groups should survive when lots are cleared and recreated.
+
+        Simulates: user merges 3 IBIT share groups into 1, then syncs.
+        The merged group should survive because PositionGroupLot links
+        reference stable transaction_ids.
+        """
+        from src.database.models import PositionGroup, PositionGroupLot
+
+        merged_group_id = "merged-group-1"
+        txn_ids = ["tx-share-1", "tx-share-2", "tx-share-3"]
+
+        # Step 1: Create lots and a merged group (simulating user merge)
+        with db.get_session() as session:
+            for txn_id in txn_ids:
+                self._insert_lot(session,
+                    transaction_id=txn_id,
+                    chain_id=f"chain-{txn_id}",
+                    symbol="IBIT",
+                    underlying="IBIT",
+                    instrument_type="EQUITY",
+                    option_type=None,
+                    strike=None,
+                    expiration=None,
+                    quantity=100,
+                    remaining_quantity=100,
+                    entry_date="2026-01-10T10:00:00",
+                )
+
+            session.add(PositionGroup(
+                group_id=merged_group_id,
+                account_number="ACCT1",
+                underlying="IBIT",
+                strategy_label="Shares",
+                status="OPEN",
+            ))
+            for txn_id in txn_ids:
+                session.add(PositionGroupLot(
+                    group_id=merged_group_id,
+                    transaction_id=txn_id,
+                ))
+
+        # Verify: all 3 lots in 1 group
+        with db.get_session() as session:
+            links = session.query(PositionGroupLot).all()
+            assert len(links) == 3
+            assert all(l.group_id == merged_group_id for l in links)
+
+        # Step 2: Clear lots (simulating sync reprocess) — links survive
+        lot_manager.clear_all_lots()
+
+        # Verify: links still exist even though lots are gone
+        with db.get_session() as session:
+            links = session.query(PositionGroupLot).all()
+            assert len(links) == 3, f"Expected 3 surviving links, got {len(links)}"
+
+        # Step 3: Recreate lots with same transaction_ids
+        with db.get_session() as session:
+            for txn_id in txn_ids:
+                self._insert_lot(session,
+                    transaction_id=txn_id,
+                    chain_id=f"chain-{txn_id}",
+                    symbol="IBIT",
+                    underlying="IBIT",
+                    instrument_type="EQUITY",
+                    option_type=None,
+                    strike=None,
+                    expiration=None,
+                    quantity=100,
+                    remaining_quantity=100,
+                    entry_date="2026-01-10T10:00:00",
+                )
+
+        # Step 4: Run process_groups (each lot has a different chain)
+        chains = [
+            _chain("chain-tx-share-1", order_ids=["O1"]),
+            _chain("chain-tx-share-2", order_ids=["O2"]),
+            _chain("chain-tx-share-3", order_ids=["O3"]),
+        ]
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(chains)
+
+        # Verify: all 3 lots should STILL be in the merged group
+        with db.get_session() as session:
+            groups = session.query(PositionGroup).filter(
+                PositionGroup.underlying == "IBIT",
+            ).all()
+            links = session.query(PositionGroupLot).filter(
+                PositionGroupLot.group_id == merged_group_id,
+            ).all()
+            link_txns = {l.transaction_id for l in links}
+
+            assert len(groups) == 1, (
+                f"Expected 1 merged IBIT group, got {len(groups)}: "
+                f"{[(g.group_id, g.strategy_label) for g in groups]}"
+            )
+            assert groups[0].group_id == merged_group_id
+            assert link_txns == set(txn_ids), (
+                f"Expected all 3 txns in merged group, got {link_txns}"
+            )
+
+    def test_user_merged_groups_survive_with_new_lots(self, db, lot_manager):
+        """User-merged group survives reprocess AND new lots route to it.
+
+        Simulates: user merges 2 IBIT share groups into 1, then syncs
+        and a NEW IBIT transaction arrives. The new lot should join
+        the existing merged group via au_to_group routing.
+        """
+        from src.database.models import PositionGroup, PositionGroupLot
+
+        merged_group_id = "merged-group-2"
+        existing_txns = ["tx-old-1", "tx-old-2"]
+        new_txn = "tx-new-1"
+
+        # Step 1: Create existing lots + merged group
+        with db.get_session() as session:
+            for txn_id in existing_txns:
+                self._insert_lot(session,
+                    transaction_id=txn_id,
+                    chain_id=f"chain-{txn_id}",
+                    symbol="IBIT",
+                    underlying="IBIT",
+                    instrument_type="EQUITY",
+                    option_type=None,
+                    strike=None,
+                    expiration=None,
+                    quantity=100,
+                    remaining_quantity=100,
+                )
+
+            session.add(PositionGroup(
+                group_id=merged_group_id,
+                account_number="ACCT1",
+                underlying="IBIT",
+                strategy_label="Shares",
+                status="OPEN",
+            ))
+            for txn_id in existing_txns:
+                session.add(PositionGroupLot(
+                    group_id=merged_group_id,
+                    transaction_id=txn_id,
+                ))
+
+        # Step 2: Clear lots, recreate existing + add new lot
+        lot_manager.clear_all_lots()
+
+        with db.get_session() as session:
+            for txn_id in existing_txns + [new_txn]:
+                self._insert_lot(session,
+                    transaction_id=txn_id,
+                    chain_id=f"chain-{txn_id}",
+                    symbol="IBIT",
+                    underlying="IBIT",
+                    instrument_type="EQUITY",
+                    option_type=None,
+                    strike=None,
+                    expiration=None,
+                    quantity=100,
+                    remaining_quantity=100,
+                )
+
+        # Step 3: Run process_groups
+        chains = [
+            _chain("chain-tx-old-1", order_ids=["O1"]),
+            _chain("chain-tx-old-2", order_ids=["O2"]),
+            _chain("chain-tx-new-1", order_ids=["O3"]),
+        ]
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(chains)
+
+        # Verify: all 3 lots in 1 group (the merged one)
+        with db.get_session() as session:
+            groups = session.query(PositionGroup).filter(
+                PositionGroup.underlying == "IBIT",
+            ).all()
+            all_links = session.query(PositionGroupLot).all()
+            merged_links = [l for l in all_links if l.group_id == merged_group_id]
+
+            assert len(groups) == 1, (
+                f"Expected 1 IBIT group, got {len(groups)}: "
+                f"{[(g.group_id, g.strategy_label, g.status) for g in groups]}"
+            )
+            assert groups[0].group_id == merged_group_id
+            assert len(merged_links) == 3, (
+                f"Expected 3 links in merged group, got {len(merged_links)}"
+            )

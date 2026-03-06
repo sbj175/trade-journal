@@ -440,11 +440,24 @@ class GroupPersister:
                     _add_new_lot(lot, gk, chain_id)
                     assigned = True
 
-                # Rule 2: same (account, underlying, expiration) OPEN group
+                # Rule 2a: same (account, underlying, expiration) OPEN group (options)
                 if not assigned and lot.expiration:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
                         gk = aue_to_group[aue_key]
+                        if _is_group_open(gk):
+                            _add_new_lot(lot, gk, chain_id)
+                            assigned = True
+
+                # Rule 2b: same (account, underlying) OPEN group (equity)
+                # In the pure function, non-derived equity from different chains
+                # creates separate groups (for Covered Call detection). But in
+                # incremental mode, existing groups (including user-merged ones)
+                # should attract new equity lots for the same underlying.
+                if not assigned and not lot.expiration:
+                    au_key = (lot.account_number, lot.underlying)
+                    if au_key in au_to_group:
+                        gk = au_to_group[au_key]
                         if _is_group_open(gk):
                             _add_new_lot(lot, gk, chain_id)
                             assigned = True
