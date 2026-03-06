@@ -252,8 +252,9 @@ function applyFilters() {
       filtered = filtered.filter(g => {
         const opened = g.opening_date ? new Date(g.opening_date) : null
         const closed = g.closing_date ? new Date(g.closing_date) : null
+        const lastActivity = g.last_activity_date ? new Date(g.last_activity_date) : null
         const inRange = (d) => d && d >= cutoffStart
-        return inRange(opened) || inRange(closed)
+        return inRange(opened) || inRange(closed) || inRange(lastActivity)
       })
     }
   }

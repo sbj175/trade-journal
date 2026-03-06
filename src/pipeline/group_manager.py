@@ -414,21 +414,39 @@ class GroupPersister:
                 else:
                     group_id = target_group_id
 
-                # Compute closing_date for CLOSED groups
+                # Compute closing_date and last_activity_date
                 closing_date = None
+                max_closing_date = None
+                lot_ids = [
+                    r[0] for r in session.query(PositionLotModel.id).filter(
+                        PositionLotModel.transaction_id.in_(spec.lot_transaction_ids),
+                    ).all()
+                ]
+                if lot_ids:
+                    max_closing_date = session.query(
+                        func.max(LotClosingModel.closing_date),
+                    ).filter(
+                        LotClosingModel.lot_id.in_(lot_ids),
+                    ).scalar()
+
                 if spec.status == "CLOSED":
-                    # Get lot IDs for this group's transaction_ids
-                    lot_ids = [
-                        r[0] for r in session.query(PositionLotModel.id).filter(
-                            PositionLotModel.transaction_id.in_(spec.lot_transaction_ids),
-                        ).all()
-                    ]
-                    if lot_ids:
-                        closing_date = session.query(
-                            func.max(LotClosingModel.closing_date),
-                        ).filter(
-                            LotClosingModel.lot_id.in_(lot_ids),
-                        ).scalar()
+                    closing_date = max_closing_date
+
+                # last_activity_date = MAX(closing dates, entry dates)
+                max_entry = (
+                    spec.opening_date.isoformat() if spec.opening_date else None
+                )
+                # Use the latest entry_date across all lots (not just opening_date)
+                if spec.lot_transaction_ids:
+                    latest_entry = session.query(
+                        func.max(PositionLotModel.entry_date),
+                    ).filter(
+                        PositionLotModel.transaction_id.in_(spec.lot_transaction_ids),
+                    ).scalar()
+                    if latest_entry:
+                        max_entry = latest_entry
+                candidates = [d for d in [max_closing_date, max_entry] if d]
+                last_activity_date = max(candidates) if candidates else None
 
                 # Upsert PositionGroup
                 existing_group = session.query(PositionGroup).filter(
@@ -447,6 +465,7 @@ class GroupPersister:
                         spec.opening_date.isoformat() if spec.opening_date else None
                     )
                     existing_group.closing_date = closing_date
+                    existing_group.last_activity_date = last_activity_date
                     existing_group.updated_at = now_str
                 else:
                     session.add(PositionGroup(
@@ -460,6 +479,7 @@ class GroupPersister:
                             spec.opening_date.isoformat() if spec.opening_date else None
                         ),
                         closing_date=closing_date,
+                        last_activity_date=last_activity_date,
                         updated_at=now_str,
                     ))
 

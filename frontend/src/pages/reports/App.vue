@@ -14,9 +14,6 @@ const loading = ref(true)
 // Date range filters
 const exitFrom = ref('')
 const exitTo = ref('')
-const entryFrom = ref('')
-const entryTo = ref('')
-const showEntryFilter = ref(false)
 
 // Category-based filtering
 const filterDirection = ref([])   // 'bullish', 'bearish', 'neutral'
@@ -74,9 +71,6 @@ function applyPreset(preset) {
       exitTo.value = ''
       break
   }
-  entryFrom.value = ''
-  entryTo.value = ''
-  showEntryFilter.value = false
   saveDateFilters()
   fetchReport()
 }
@@ -87,8 +81,7 @@ const activePreset = computed(() => {
   const m = now.getMonth()
   const todayStr = toISO(now)
 
-  if (!exitFrom.value && !exitTo.value && !entryFrom.value && !entryTo.value) return 'all'
-  if (entryFrom.value || entryTo.value) return null
+  if (!exitFrom.value && !exitTo.value) return 'all'
   if (exitFrom.value === toISO(new Date(y, m, 1)) && exitTo.value === todayStr) return 'thisMonth'
   if (exitFrom.value === toISO(new Date(y, m - 1, 1)) && exitTo.value === toISO(new Date(y, m, 0))) return 'lastMonth'
   if (exitFrom.value === toISO(new Date(now.getTime() - 90 * 86400000)) && exitTo.value === todayStr) return 'last90'
@@ -100,8 +93,6 @@ const activePreset = computed(() => {
 function saveDateFilters() {
   localStorage.setItem('reports_date_filters', JSON.stringify({
     exitFrom: exitFrom.value, exitTo: exitTo.value,
-    entryFrom: entryFrom.value, entryTo: entryTo.value,
-    showEntryFilter: showEntryFilter.value,
   }))
 }
 
@@ -131,9 +122,6 @@ function loadSavedFilters() {
       const parsed = JSON.parse(savedDates)
       exitFrom.value = parsed.exitFrom || ''
       exitTo.value = parsed.exitTo || ''
-      entryFrom.value = parsed.entryFrom || ''
-      entryTo.value = parsed.entryTo || ''
-      showEntryFilter.value = parsed.showEntryFilter || false
     } catch (e) { /* use defaults */ }
   } else {
     // First load: default to current month
@@ -236,8 +224,6 @@ async function fetchReport() {
     if (selectedAccount.value) params.append('account_number', selectedAccount.value)
     if (exitFrom.value) params.append('exit_from', exitFrom.value)
     if (exitTo.value) params.append('exit_to', exitTo.value)
-    if (entryFrom.value) params.append('entry_from', entryFrom.value)
-    if (entryTo.value) params.append('entry_to', entryTo.value)
     params.append('strategies', getActiveStrategies().join(','))
 
     const response = await Auth.authFetch(`/api/reports/performance?${params}`)
@@ -346,22 +332,6 @@ const columns = [
       <span class="text-tv-muted text-sm">to</span>
       <input type="date" v-model="exitTo" @change="onDateChange()"
              class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-    </div>
-
-    <!-- Entry Date Toggle + Range -->
-    <div class="flex items-center gap-2 text-base">
-      <button @click="showEntryFilter = !showEntryFilter; saveDateFilters()"
-              class="px-2.5 py-1.5 text-sm border rounded transition-colors"
-              :class="showEntryFilter ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        Entry
-      </button>
-      <template v-if="showEntryFilter">
-        <input type="date" v-model="entryFrom" @change="onDateChange()"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-        <span class="text-tv-muted text-sm">to</span>
-        <input type="date" v-model="entryTo" @change="onDateChange()"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-      </template>
     </div>
 
     <!-- Direction Filter -->

@@ -482,6 +482,7 @@ class PositionGroup(Base):
     source_chain_id = Column(String)
     opening_date = Column(String)
     closing_date = Column(String)
+    last_activity_date = Column(String)
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
@@ -602,4 +603,41 @@ class UserCredential(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "provider", name="uq_user_credentials_user_provider"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# P&L Events (denormalized fact table for time-based reporting)
+# ---------------------------------------------------------------------------
+
+class PnlEvent(Base):
+    __tablename__ = "pnl_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    closing_id = Column(Integer, nullable=False)
+    lot_id = Column(Integer, nullable=False)
+    group_id = Column(String)
+    account_number = Column(String, nullable=False)
+    underlying = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    instrument_type = Column(String)
+    option_type = Column(String)
+    strike = Column(Float)
+    expiration = Column(String)
+    entry_date = Column(String, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    closing_date = Column(String, nullable=False)
+    closing_price = Column(Float, nullable=False)
+    closing_type = Column(String, nullable=False)
+    quantity_closed = Column(Integer, nullable=False)
+    realized_pnl = Column(Float, nullable=False)
+    is_roll = Column(Boolean, default=False)
+
+    __table_args__ = (
+        UniqueConstraint("closing_id", "user_id", name="uq_pnl_events_closing_user"),
+        Index("idx_pnl_events_closing_date", "closing_date", "user_id"),
+        Index("idx_pnl_events_account_date", "account_number", "closing_date"),
+        Index("idx_pnl_events_group", "group_id"),
+        Index("idx_pnl_events_underlying", "underlying"),
     )
