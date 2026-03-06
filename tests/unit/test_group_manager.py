@@ -839,3 +839,125 @@ class TestGroupPersister:
             assert len(merged_links) == 3, (
                 f"Expected 3 links in merged group, got {len(merged_links)}"
             )
+
+    def test_full_reprocess_preserves_merged_shares(self, db, lot_manager):
+        """Full reprocess (clear_all_lots + recreate + process_groups) preserves merged group.
+
+        Simulates the exact sync flow:
+        1. User has 3 IBIT share lots merged into 1 group
+        2. Sync triggers clear_all_lots() (full reprocess)
+        3. Lots recreated with same transaction_ids + new option lots
+        4. process_groups() should keep shares in merged group
+        """
+        from src.database.models import PositionGroup, PositionGroupLot
+
+        merged_group_id = "merged-shares-group"
+        share_txns = ["tx-ibit-buy-1", "tx-ibit-buy-2", "tx-ibit-buy-3"]
+
+        # Step 1: Initial state — 3 share lots in a merged group
+        with db.get_session() as session:
+            for i, txn_id in enumerate(share_txns):
+                self._insert_lot(session,
+                    transaction_id=txn_id,
+                    chain_id=f"IBIT_OPENING_2026010{i+1}_ORDER{i+1}",
+                    symbol="IBIT",
+                    underlying="IBIT",
+                    instrument_type="EQUITY",
+                    option_type=None,
+                    strike=None,
+                    expiration=None,
+                    quantity=100,
+                    remaining_quantity=100,
+                    entry_date=f"2026-01-0{i+1}T10:00:00",
+                )
+
+            session.add(PositionGroup(
+                group_id=merged_group_id,
+                account_number="ACCT1",
+                underlying="IBIT",
+                strategy_label="Shares",
+                status="OPEN",
+            ))
+            for txn_id in share_txns:
+                session.add(PositionGroupLot(
+                    group_id=merged_group_id,
+                    transaction_id=txn_id,
+                ))
+
+        # Step 2: Full reprocess — clear ALL lots
+        lot_manager.clear_all_lots()
+
+        # Step 3: Recreate same share lots + new option lots (call roll)
+        with db.get_session() as session:
+            for i, txn_id in enumerate(share_txns):
+                self._insert_lot(session,
+                    transaction_id=txn_id,
+                    chain_id=f"IBIT_OPENING_2026010{i+1}_ORDER{i+1}",
+                    symbol="IBIT",
+                    underlying="IBIT",
+                    instrument_type="EQUITY",
+                    option_type=None,
+                    strike=None,
+                    expiration=None,
+                    quantity=100,
+                    remaining_quantity=100,
+                    entry_date=f"2026-01-0{i+1}T10:00:00",
+                )
+            # New option lots from call roll
+            self._insert_lot(session,
+                transaction_id="tx-ibit-call-old",
+                chain_id="IBIT_OPENING_20260115_OPTORD1",
+                symbol="IBIT  260307C00060000",
+                underlying="IBIT",
+                instrument_type="EQUITY_OPTION",
+                option_type="Call",
+                strike=60.0,
+                expiration="2026-03-07",
+                quantity=-1,
+                remaining_quantity=0,
+                status="CLOSED",
+                entry_date="2026-01-15T10:00:00",
+            )
+            self._insert_lot(session,
+                transaction_id="tx-ibit-call-new",
+                chain_id="IBIT_OPENING_20260115_OPTORD1",
+                symbol="IBIT  260314C00060000",
+                underlying="IBIT",
+                instrument_type="EQUITY_OPTION",
+                option_type="Call",
+                strike=60.0,
+                expiration="2026-03-14",
+                quantity=-1,
+                remaining_quantity=-1,
+                entry_date="2026-03-07T10:00:00",
+            )
+
+        # Step 4: Run process_groups with all chains
+        chains = [
+            _chain("IBIT_OPENING_20260101_ORDER1", order_ids=["ORDER1"]),
+            _chain("IBIT_OPENING_20260102_ORDER2", order_ids=["ORDER2"]),
+            _chain("IBIT_OPENING_20260103_ORDER3", order_ids=["ORDER3"]),
+            _chain("IBIT_OPENING_20260115_OPTORD1", order_ids=["OPTORD1"]),
+        ]
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups(chains)
+
+        # Verify: shares still in merged group, options in separate group
+        with db.get_session() as session:
+            all_groups = session.query(PositionGroup).filter(
+                PositionGroup.underlying == "IBIT",
+            ).all()
+            share_links = session.query(PositionGroupLot).filter(
+                PositionGroupLot.group_id == merged_group_id,
+            ).all()
+            share_txn_set = {l.transaction_id for l in share_links}
+
+            # All 3 share lots should remain in the merged group
+            assert share_txn_set == set(share_txns), (
+                f"Expected shares in merged group, got {share_txn_set}"
+            )
+            # Should have 2 groups: merged shares + options
+            assert len(all_groups) == 2, (
+                f"Expected 2 IBIT groups (shares + options), got {len(all_groups)}: "
+                f"{[(g.group_id, g.strategy_label, g.status) for g in all_groups]}"
+            )

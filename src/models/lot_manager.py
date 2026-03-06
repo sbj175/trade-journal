@@ -534,7 +534,13 @@ class LotManager:
                     PositionLotModel.underlying.in_(underlying_list),
                     PositionLotModel.user_id == user_id,
                 ).delete(synchronize_session='fetch')
-                logger.info(f"Cleared lots, closings, and groups for {len(underlyings)} underlyings")
+                surviving_links = session.query(PositionGroupLot).filter(
+                    PositionGroupLot.user_id == user_id,
+                ).count()
+                logger.info(
+                    f"Cleared lots and closings for {len(underlyings)} underlyings; "
+                    f"{surviving_links} group-lot links preserved"
+                )
             else:
                 # Note: PositionGroupLot links are intentionally preserved here.
                 # They reference transaction_id (stable across lot recreation),

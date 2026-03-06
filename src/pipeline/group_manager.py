@@ -353,6 +353,11 @@ class GroupPersister:
             # Identify new lots (transaction_id has no group link)
             new_lots = [lot for lot in all_lots if lot.transaction_id not in txn_to_group]
 
+            logger.info(
+                "Phase 1: %d lots, %d existing group links, %d new lots",
+                len(all_lots), len(existing_links), len(new_lots),
+            )
+
             # Build order_id -> chain_id lookup from chains
             order_to_chain: Dict[str, str] = {}
             for chain in chains:
