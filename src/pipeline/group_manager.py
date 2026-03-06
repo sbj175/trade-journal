@@ -292,7 +292,7 @@ def _recognize_from_lots(lot_list: List[Lot]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 class GroupPersister:
-    """Loads lots from DB, calls pure function, persists PositionGroup + PositionGroupLot."""
+    """Incremental group manager: preserves existing group assignments, only routes new lots."""
 
     def __init__(self, db_manager: "DatabaseManager", lot_manager: "LotManager"):
         self.db = db_manager
@@ -303,14 +303,17 @@ class GroupPersister:
         chains: List[Chain],
         account_number: Optional[str] = None,
     ) -> int:
-        """Full (re)processing: load lots -> group -> persist -> refresh statuses.
+        """Incremental group processing that preserves user merges.
 
-        Preserves existing group_ids where lots overlap (UUID stability).
-        Computes closing_date from lot_closings for CLOSED groups.
-        Returns number of groups created/updated.
+        Phase 1: Load state (lots, existing group links)
+        Phase 2: Seed routing indexes from existing groups
+        Phase 3: Route new lots (no existing group link) using same rules as assign_lots_to_groups
+        Phase 4: Refresh metadata for ALL groups (status, strategy, dates)
+        Phase 5: Cleanup stale links and empty groups
+
+        Returns number of groups created or updated.
         """
         from sqlalchemy import func
-        from src.database.engine import dialect_insert
         from src.database.models import (
             PositionGroup,
             PositionGroupLot,
@@ -321,179 +324,273 @@ class GroupPersister:
         )
         from src.database.tenant import DEFAULT_USER_ID
 
-        # --- Load all lots from DB -----------------------------------------
         with self.db.get_session() as session:
             user_id = session.info.get("user_id", DEFAULT_USER_ID)
+
+            # =================================================================
+            # Phase 1: Load state
+            # =================================================================
             q = session.query(PositionLotModel)
             if account_number:
                 q = q.filter(PositionLotModel.account_number == account_number)
             q = q.order_by(PositionLotModel.entry_date.asc())
-            all_lots = [self.lot_mgr._orm_to_lot(row) for row in q.all()]
+            all_lot_rows = q.all()
+            all_lots = [self.lot_mgr._orm_to_lot(row) for row in all_lot_rows]
 
-        if not all_lots:
-            return 0
+            if not all_lots:
+                return 0
 
-        # --- Run pure grouping function ------------------------------------
-        specs = assign_lots_to_groups(all_lots, chains)
-        if not specs:
-            return 0
+            # Build transaction_id -> Lot lookup
+            txn_to_lot: Dict[str, Lot] = {lot.transaction_id: lot for lot in all_lots}
 
-        # --- Match new specs to existing DB groups by source_chain_id ------
-        with self.db.get_session() as session:
-            user_id = session.info.get("user_id", DEFAULT_USER_ID)
+            # Load existing group-lot links: transaction_id -> group_id
+            existing_links = session.query(
+                PositionGroupLot.transaction_id,
+                PositionGroupLot.group_id,
+            ).filter(PositionGroupLot.user_id == user_id).all()
+            txn_to_group: Dict[str, str] = {row[0]: row[1] for row in existing_links}
 
-            # Build source_chain_id -> existing group_id mapping
-            existing_groups = session.query(
-                PositionGroup.source_chain_id,
-                PositionGroup.group_id,
-            ).filter(PositionGroup.source_chain_id.isnot(None)).all()
-            chain_to_existing_group: Dict[str, str] = {
-                row[0]: row[1] for row in existing_groups
-            }
-            existing_group_ids = set(row[1] for row in existing_groups)
+            # Identify new lots (transaction_id has no group link)
+            new_lots = [lot for lot in all_lots if lot.transaction_id not in txn_to_group]
 
-            # Also include groups without source_chain_id (multi-chain)
-            all_db_group_ids = {
+            # Build order_id -> chain_id lookup from chains
+            order_to_chain: Dict[str, str] = {}
+            for chain in chains:
+                for order in chain.orders:
+                    order_to_chain[order.order_id] = chain.chain_id
+
+            # =================================================================
+            # Phase 2: Seed routing indexes from existing groups
+            # =================================================================
+            # chain_id -> group_id
+            chain_to_group: Dict[str, str] = {}
+            # (account, underlying, expiration) -> group_id
+            aue_to_group: Dict[Tuple[str, str, date], str] = {}
+            # (account, underlying) -> group_id
+            au_to_group: Dict[Tuple[str, str], str] = {}
+            # group_id -> set of Lot objects (for open-check)
+            group_lots: Dict[str, List[Lot]] = defaultdict(list)
+
+            # Collect all existing group_ids from DB (for Phase 4)
+            all_group_ids: Set[str] = {
                 row[0] for row in session.query(PositionGroup.group_id).all()
             }
-            existing_group_ids = all_db_group_ids
 
-            # Track which existing groups are covered by new specs
-            covered_existing: Set[str] = set()
+            # Seed indexes from existing group-lot links
+            for txn_id, group_id in txn_to_group.items():
+                lot = txn_to_lot.get(txn_id)
+                if not lot:
+                    continue  # stale link, cleaned up in Phase 5
+                group_lots[group_id].append(lot)
+
+                # Resolve chain_id for this lot
+                chain_id = lot.chain_id
+                if not chain_id and lot.opening_order_id:
+                    chain_id = order_to_chain.get(lot.opening_order_id)
+
+                # Register in routing indexes (same rules as assign_lots_to_groups)
+                if chain_id:
+                    if lot.expiration or not lot.derivation_type:
+                        chain_to_group[chain_id] = group_id
+                if lot.expiration:
+                    aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
+                if not lot.expiration:
+                    au_to_group[(lot.account_number, lot.underlying)] = group_id
+
+            # =================================================================
+            # Phase 3: Route new lots
+            # =================================================================
+            new_groups_created = 0
+
+            def _is_group_open(gid: str) -> bool:
+                return any(l.remaining_quantity != 0 for l in group_lots[gid])
+
+            def _add_new_lot(lot: Lot, group_id: str, chain_id: Optional[str]) -> None:
+                group_lots[group_id].append(lot)
+                txn_to_group[lot.transaction_id] = group_id
+                # Update routing indexes
+                if chain_id:
+                    if lot.expiration or not lot.derivation_type:
+                        chain_to_group[chain_id] = group_id
+                if lot.expiration:
+                    aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
+                if not lot.expiration:
+                    au_to_group[(lot.account_number, lot.underlying)] = group_id
+
+            sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
+            for lot in sorted_new:
+                chain_id = lot.chain_id
+                if not chain_id and lot.opening_order_id:
+                    chain_id = order_to_chain.get(lot.opening_order_id)
+
+                assigned = False
+
+                # Derived-equity-first: assignment/exercise shares → equity group
+                if not assigned and not lot.expiration and lot.derivation_type:
+                    au_key = (lot.account_number, lot.underlying)
+                    if au_key in au_to_group:
+                        gk = au_to_group[au_key]
+                        if _is_group_open(gk):
+                            _add_new_lot(lot, gk, chain_id)
+                            assigned = True
+
+                # Rule 1: chain already has a group
+                if not assigned and chain_id and chain_id in chain_to_group:
+                    gk = chain_to_group[chain_id]
+                    _add_new_lot(lot, gk, chain_id)
+                    assigned = True
+
+                # Rule 2: same (account, underlying, expiration) OPEN group
+                if not assigned and lot.expiration:
+                    aue_key = (lot.account_number, lot.underlying, lot.expiration)
+                    if aue_key in aue_to_group:
+                        gk = aue_to_group[aue_key]
+                        if _is_group_open(gk):
+                            _add_new_lot(lot, gk, chain_id)
+                            assigned = True
+
+                # Rule 3: create new group
+                if not assigned:
+                    new_gid = str(_uuid.uuid4())
+                    group_lots[new_gid] = []
+                    _add_new_lot(lot, new_gid, chain_id)
+                    new_groups_created += 1
+
+            # Persist new group-lot links
+            for lot in sorted_new:
+                group_id = txn_to_group[lot.transaction_id]
+                session.add(PositionGroupLot(
+                    group_id=group_id,
+                    transaction_id=lot.transaction_id,
+                    user_id=user_id,
+                ))
+
+            # Create PositionGroup rows for newly created groups
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            for gid, lots_in_group in group_lots.items():
+                if gid not in all_group_ids and lots_in_group:
+                    first_lot = lots_in_group[0]
+                    session.add(PositionGroup(
+                        group_id=gid,
+                        account_number=first_lot.account_number,
+                        underlying=first_lot.underlying,
+                        strategy_label=None,  # set in Phase 4
+                        status="OPEN",
+                        source_chain_id=None,
+                        opening_date=None,
+                        updated_at=now_str,
+                    ))
+                    all_group_ids.add(gid)
+
+            # Flush so Phase 4 can see all new rows
+            session.flush()
+
+            # =================================================================
+            # Phase 4: Refresh metadata for ALL groups
+            # =================================================================
             count = 0
+            for gid in list(all_group_ids):
+                lots_in_group = group_lots.get(gid, [])
+                if not lots_in_group:
+                    continue  # empty group, cleaned up in Phase 5
 
-            for spec in specs:
-                # Determine source_chain_id for this spec
-                source_chain_id = None
-                if len(spec.source_chain_ids) == 1:
-                    source_chain_id = next(iter(spec.source_chain_ids))
+                group = session.query(PositionGroup).filter(
+                    PositionGroup.group_id == gid,
+                ).first()
+                if not group:
+                    continue
 
-                # Find existing group by source_chain_id
-                overlapping_group_id = None
-                if source_chain_id:
-                    overlapping_group_id = chain_to_existing_group.get(source_chain_id)
+                # Status
+                has_open = any(l.remaining_quantity != 0 for l in lots_in_group)
+                group.status = "OPEN" if has_open else "CLOSED"
 
-                # Determine the target group_id (deterministic = source_chain_id)
-                if source_chain_id:
-                    target_group_id = source_chain_id  # deterministic
-                else:
-                    target_group_id = str(_uuid.uuid4())  # multi-chain or no-chain
+                # Opening date
+                group.opening_date = min(
+                    l.entry_date for l in lots_in_group
+                ).isoformat() if lots_in_group else None
 
-                if overlapping_group_id:
-                    old_group_id = overlapping_group_id
-                    covered_existing.add(old_group_id)
-
-                    # Auto-migrate: rename old UUID group_id to deterministic chain_id
-                    if old_group_id != target_group_id:
-                        logger.info(f"Migrating group_id {old_group_id} -> {target_group_id}")
-                        # Update PositionGroupTag
-                        session.query(PositionGroupTag).filter(
-                            PositionGroupTag.group_id == old_group_id,
-                            PositionGroupTag.user_id == user_id,
-                        ).update({"group_id": target_group_id}, synchronize_session=False)
-                        # Update PositionNote (note_key = "group_<group_id>")
-                        old_note_key = f"group_{old_group_id}"
-                        new_note_key = f"group_{target_group_id}"
-                        session.query(PositionNote).filter(
-                            PositionNote.note_key == old_note_key,
-                            PositionNote.user_id == user_id,
-                        ).update({"note_key": new_note_key}, synchronize_session=False)
-                        # Update PositionGroupLot
-                        session.query(PositionGroupLot).filter(
-                            PositionGroupLot.group_id == old_group_id,
-                            PositionGroupLot.user_id == user_id,
-                        ).update({"group_id": target_group_id}, synchronize_session=False)
-                        # Update PositionGroup itself
-                        session.query(PositionGroup).filter(
-                            PositionGroup.group_id == old_group_id,
-                        ).update({"group_id": target_group_id}, synchronize_session=False)
-                        # Track the new id as covered
-                        covered_existing.add(target_group_id)
-
-                    group_id = target_group_id
-                else:
-                    group_id = target_group_id
-
-                # Compute closing_date for CLOSED groups
-                closing_date = None
-                if spec.status == "CLOSED":
-                    # Get lot IDs for this group's transaction_ids
+                # Closing date (for CLOSED groups)
+                if group.status == "CLOSED":
                     lot_ids = [
                         r[0] for r in session.query(PositionLotModel.id).filter(
-                            PositionLotModel.transaction_id.in_(spec.lot_transaction_ids),
+                            PositionLotModel.transaction_id.in_(
+                                [l.transaction_id for l in lots_in_group]
+                            ),
                         ).all()
                     ]
                     if lot_ids:
-                        closing_date = session.query(
+                        group.closing_date = session.query(
                             func.max(LotClosingModel.closing_date),
                         ).filter(
                             LotClosingModel.lot_id.in_(lot_ids),
                         ).scalar()
-
-                # Upsert PositionGroup
-                existing_group = session.query(PositionGroup).filter(
-                    PositionGroup.group_id == group_id,
-                ).first()
-                now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-                if existing_group:
-                    existing_group.account_number = spec.account_number
-                    existing_group.underlying = spec.underlying
-                    if not existing_group.strategy_label_user_override:
-                        existing_group.strategy_label = spec.strategy_label
-                    existing_group.status = spec.status
-                    existing_group.source_chain_id = source_chain_id
-                    existing_group.opening_date = (
-                        spec.opening_date.isoformat() if spec.opening_date else None
-                    )
-                    existing_group.closing_date = closing_date
-                    existing_group.updated_at = now_str
                 else:
-                    session.add(PositionGroup(
-                        group_id=group_id,
-                        account_number=spec.account_number,
-                        underlying=spec.underlying,
-                        strategy_label=spec.strategy_label,
-                        status=spec.status,
-                        source_chain_id=source_chain_id,
-                        opening_date=(
-                            spec.opening_date.isoformat() if spec.opening_date else None
-                        ),
-                        closing_date=closing_date,
-                        updated_at=now_str,
-                    ))
+                    group.closing_date = None
 
-                # Delete stale group-lot links for this group, then re-insert
-                session.query(PositionGroupLot).filter(
-                    PositionGroupLot.group_id == group_id,
-                    PositionGroupLot.user_id == user_id,
-                ).delete()
+                # Strategy label (unless user overrode)
+                if not group.strategy_label_user_override:
+                    legs = lots_to_legs(lots_in_group)
+                    if legs:
+                        sr = recognize(legs)
+                        group.strategy_label = sr.name
+                    else:
+                        label = _label_from_all_lots(lots_in_group)
+                        if label:
+                            group.strategy_label = label
 
-                for txn_id in spec.lot_transaction_ids:
-                    session.add(PositionGroupLot(
-                        group_id=group_id,
-                        transaction_id=txn_id,
-                        user_id=user_id,
-                    ))
+                # source_chain_id: set from lots' chain_ids if single-chain
+                lot_chain_ids = {l.chain_id for l in lots_in_group if l.chain_id}
+                if len(lot_chain_ids) == 1:
+                    group.source_chain_id = next(iter(lot_chain_ids))
+                elif not lot_chain_ids:
+                    group.source_chain_id = None
+                # Multi-chain: leave source_chain_id as-is (could be user-merged)
 
+                group.updated_at = now_str
                 count += 1
 
-            # Delete orphan groups (existing groups no longer covered)
-            orphans = existing_group_ids - covered_existing
-            if orphans:
-                session.query(PositionGroupTag).filter(
-                    PositionGroupTag.group_id.in_(orphans),
-                    PositionGroupTag.user_id == user_id,
-                ).delete(synchronize_session=False)
-                session.query(PositionGroupLot).filter(
-                    PositionGroupLot.group_id.in_(orphans),
+            # =================================================================
+            # Phase 5: Cleanup
+            # =================================================================
+            # Delete stale PositionGroupLot links (transaction_id no longer in position_lots)
+            valid_txn_ids = set(txn_to_lot.keys())
+            if valid_txn_ids:
+                stale_links = session.query(PositionGroupLot).filter(
                     PositionGroupLot.user_id == user_id,
-                ).delete(synchronize_session=False)
-                session.query(PositionGroup).filter(
-                    PositionGroup.group_id.in_(orphans),
-                    PositionGroup.user_id == user_id,
-                ).delete(synchronize_session=False)
-                logger.info(f"Deleted {len(orphans)} orphan groups")
+                    ~PositionGroupLot.transaction_id.in_(valid_txn_ids),
+                ).all()
+                if stale_links:
+                    stale_count = len(stale_links)
+                    for link in stale_links:
+                        session.delete(link)
+                    logger.info(f"Cleaned up {stale_count} stale group-lot links")
 
-        logger.info(f"GroupPersister: processed {count} groups from {len(all_lots)} lots")
+            # Delete empty groups (no lot links, no tags/notes)
+            for gid in list(all_group_ids):
+                link_count = session.query(func.count()).select_from(
+                    PositionGroupLot
+                ).filter(
+                    PositionGroupLot.group_id == gid,
+                    PositionGroupLot.user_id == user_id,
+                ).scalar()
+
+                if link_count == 0:
+                    # Check for tags or notes
+                    has_tags = session.query(PositionGroupTag).filter(
+                        PositionGroupTag.group_id == gid,
+                        PositionGroupTag.user_id == user_id,
+                    ).first() is not None
+                    has_notes = session.query(PositionNote).filter(
+                        PositionNote.note_key == f"group_{gid}",
+                        PositionNote.user_id == user_id,
+                    ).first() is not None
+
+                    if not has_tags and not has_notes:
+                        session.query(PositionGroup).filter(
+                            PositionGroup.group_id == gid,
+                            PositionGroup.user_id == user_id,
+                        ).delete(synchronize_session=False)
+                        logger.debug(f"Deleted empty group {gid}")
+
+        logger.info(f"GroupPersister: processed {count} groups ({new_groups_created} new, {len(new_lots)} new lots) from {len(all_lots)} total lots")
         return count
