@@ -878,12 +878,10 @@ function sortPositions(positions) {
   <!-- Sticky header block (filters + stats + column headers) -->
   <div class="sticky top-14 z-30">
 
-  <!-- Action Bar -->
-  <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-4"></div>
-
-    <!-- Filters -->
-    <div class="flex items-center gap-6 text-base">
+  <!-- Filter Bar -->
+  <div class="bg-tv-panel border-b border-tv-border">
+    <!-- Row 1: Symbol + Date -->
+    <div class="px-4 py-2.5 flex items-center gap-5 border-b border-tv-border/50">
       <!-- Symbol Filter -->
       <div class="relative">
         <input type="text"
@@ -893,7 +891,7 @@ function sortPositions(positions) {
                @blur="onSymbolFilterApply()"
                @input="filterUnderlying = filterUnderlying.toUpperCase()"
                placeholder="Symbol"
-               class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
                :class="filterUnderlying ? 'pr-8' : ''">
         <button v-show="filterUnderlying"
                 @click="clearSymbolFilter()"
@@ -902,12 +900,15 @@ function sortPositions(positions) {
         </button>
       </div>
 
-      <!-- Time Filter -->
+      <!-- Date Filter -->
       <DateFilter storage-key="ledger_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
+    </div>
 
+    <!-- Row 2: Direction, Type, Status, Sort -->
+    <div class="px-4 py-2.5 flex items-center gap-6">
       <!-- Direction Filter -->
       <div class="flex items-center gap-2">
-        <span class="text-tv-muted">Direction:</span>
+        <span class="text-tv-muted text-sm">Direction:</span>
         <button @click="toggleFilter('direction', 'bullish')"
                 :class="filterDirection.includes('bullish') ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                 class="px-3 py-1.5 text-sm border rounded transition-colors">
@@ -925,9 +926,11 @@ function sortPositions(positions) {
         </button>
       </div>
 
+      <div class="w-px h-6 bg-tv-border"></div>
+
       <!-- Type Filter -->
       <div class="flex items-center gap-2">
-        <span class="text-tv-muted">Type:</span>
+        <span class="text-tv-muted text-sm">Type:</span>
         <button @click="toggleFilter('type', 'credit')"
                 :class="filterType.includes('credit') ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                 class="px-3 py-1.5 text-sm border rounded transition-colors">
@@ -940,9 +943,11 @@ function sortPositions(positions) {
         </button>
       </div>
 
+      <div class="w-px h-6 bg-tv-border"></div>
+
       <!-- Status Filter -->
       <div class="flex items-center gap-2">
-        <span class="text-tv-muted">Status:</span>
+        <span class="text-tv-muted text-sm">Status:</span>
         <button @click="showOpen = !showOpen; applyFilters(); saveState()"
                 :class="showOpen ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                 class="px-3 py-1.5 text-sm border rounded transition-colors">
@@ -955,12 +960,6 @@ function sortPositions(positions) {
         </button>
       </div>
 
-      <!-- Sort direction indicator -->
-      <div class="flex items-center gap-1 text-tv-muted text-sm">
-        <i class="fas fa-sort"></i>
-        <span>{{ getSortLabel() }}</span>
-        <span class="text-tv-blue">{{ sortDirection === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-      </div>
     </div>
   </div>
 
