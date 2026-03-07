@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatPercent } from '@/lib/formatters'
+import DateFilter from '@/components/DateFilter.vue'
 
 const Auth = useAuth()
 
@@ -37,67 +38,10 @@ const strategyBreakdown = ref([])
 const activeStrategyCount = computed(() => getActiveStrategies().length)
 const totalStrategyCount = computed(() => Object.keys(STRATEGY_CATEGORIES).length)
 
-// --- Date helpers ---
-function toISO(d) { return d.toISOString().slice(0, 10) }
-
-function applyPreset(preset) {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-
-  switch (preset) {
-    case 'thisMonth':
-      exitFrom.value = toISO(new Date(y, m, 1))
-      exitTo.value = toISO(now)
-      break
-    case 'lastMonth':
-      exitFrom.value = toISO(new Date(y, m - 1, 1))
-      exitTo.value = toISO(new Date(y, m, 0))
-      break
-    case 'last90':
-      exitFrom.value = toISO(new Date(now.getTime() - 90 * 86400000))
-      exitTo.value = toISO(now)
-      break
-    case 'ytd':
-      exitFrom.value = toISO(new Date(y, 0, 1))
-      exitTo.value = toISO(now)
-      break
-    case 'lastYear':
-      exitFrom.value = toISO(new Date(y - 1, 0, 1))
-      exitTo.value = toISO(new Date(y - 1, 11, 31))
-      break
-    case 'all':
-      exitFrom.value = ''
-      exitTo.value = ''
-      break
-  }
-  saveDateFilters()
-  fetchReport()
-}
-
-const activePreset = computed(() => {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const todayStr = toISO(now)
-
-  if (!exitFrom.value && !exitTo.value) return 'all'
-  if (exitFrom.value === toISO(new Date(y, m, 1)) && exitTo.value === todayStr) return 'thisMonth'
-  if (exitFrom.value === toISO(new Date(y, m - 1, 1)) && exitTo.value === toISO(new Date(y, m, 0))) return 'lastMonth'
-  if (exitFrom.value === toISO(new Date(now.getTime() - 90 * 86400000)) && exitTo.value === todayStr) return 'last90'
-  if (exitFrom.value === toISO(new Date(y, 0, 1)) && exitTo.value === todayStr) return 'ytd'
-  if (exitFrom.value === toISO(new Date(y - 1, 0, 1)) && exitTo.value === toISO(new Date(y - 1, 11, 31))) return 'lastYear'
-  return null
-})
-
-function saveDateFilters() {
-  localStorage.setItem('reports_date_filters', JSON.stringify({
-    exitFrom: exitFrom.value, exitTo: exitTo.value,
-  }))
-}
-
-function onDateChange() {
-  saveDateFilters()
+// --- Date filter handler ---
+function onDateFilterUpdate({ from, to }) {
+  exitFrom.value = from || ''
+  exitTo.value = to || ''
   fetchReport()
 }
 
@@ -116,17 +60,8 @@ function loadSavedFilters() {
   const savedAccount = localStorage.getItem('trade_journal_selected_account')
   if (savedAccount !== null) selectedAccount.value = savedAccount
 
-  const savedDates = localStorage.getItem('reports_date_filters')
-  if (savedDates) {
-    try {
-      const parsed = JSON.parse(savedDates)
-      exitFrom.value = parsed.exitFrom || ''
-      exitTo.value = parsed.exitTo || ''
-    } catch (e) { /* use defaults */ }
-  } else {
-    // First load: default to current month
-    applyPreset('thisMonth')
-  }
+  // Date filter state is managed by the DateFilter component via localStorage.
+  // exitFrom/exitTo are set on the initial @update emit from DateFilter.
 
   const savedFilters = localStorage.getItem('reports_category_filters')
   if (savedFilters) {
@@ -306,34 +241,14 @@ const columns = [
   </Teleport>
 
   <!-- Filters Bar -->
-  <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center flex-wrap gap-x-6 gap-y-2">
-    <!-- Quick Presets -->
-    <div class="flex items-center gap-1.5 text-base">
-      <button v-for="p in [
-        { key: 'thisMonth', label: 'This Month' },
-        { key: 'lastMonth', label: 'Last Month' },
-        { key: 'last90', label: '90 Days' },
-        { key: 'ytd', label: 'YTD' },
-        { key: 'lastYear', label: 'Last Year' },
-        { key: 'all', label: 'All' },
-      ]" :key="p.key"
-        @click="applyPreset(p.key)"
-        class="px-2.5 py-1.5 text-sm border rounded transition-colors"
-        :class="activePreset === p.key ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
-        {{ p.label }}
-      </button>
+  <div class="bg-tv-panel border-b border-tv-border">
+    <!-- Row 1: Date Controls -->
+    <div class="px-4 py-2.5 flex items-center gap-5 border-b border-tv-border/50">
+      <DateFilter storage-key="reports_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
     </div>
 
-    <!-- Exit Date Range -->
-    <div class="flex items-center gap-2 text-base">
-      <span class="text-tv-muted text-sm">Exit:</span>
-      <input type="date" v-model="exitFrom" @change="onDateChange()"
-             class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-      <span class="text-tv-muted text-sm">to</span>
-      <input type="date" v-model="exitTo" @change="onDateChange()"
-             class="bg-tv-bg border border-tv-border text-tv-text text-sm px-2 py-1.5 rounded" />
-    </div>
-
+    <!-- Row 2: Strategy Filters -->
+    <div class="px-4 py-2.5 flex items-center flex-wrap gap-x-6 gap-y-2">
     <!-- Direction Filter -->
     <div class="flex items-center gap-2 text-base">
       <span class="text-tv-muted">Direction:</span>
@@ -376,6 +291,7 @@ const columns = [
     <!-- Active filter summary -->
     <div v-if="activeStrategyCount < totalStrategyCount" class="flex-1 text-right text-sm text-tv-muted">
       {{ activeStrategyCount }} strategies selected
+    </div>
     </div>
   </div>
 
