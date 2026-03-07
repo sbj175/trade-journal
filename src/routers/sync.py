@@ -1,4 +1,4 @@
-"""Sync routes — unified sync, initial sync, migrate P&L."""
+"""Sync routes — unified sync, initial sync, migrate P&L, reconciliation."""
 
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -328,4 +328,9 @@ async def initial_sync(
         logger.error(f"Initial sync error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/api/reconcile")
+async def get_reconciliation(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
+    """Run position reconciliation and return results."""
+    return await reconcile_positions_vs_chains(db=db)
 

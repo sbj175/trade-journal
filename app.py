@@ -27,7 +27,6 @@ from src.routers import (
     positions,
     sync,
     reports,
-    debug,
     tags,
     tastytrade_oauth,
 )
@@ -84,7 +83,6 @@ app.include_router(ledger.router)
 app.include_router(positions.router)
 app.include_router(sync.router)
 app.include_router(reports.router)
-app.include_router(debug.router)
 app.include_router(tags.router)
 app.include_router(tastytrade_oauth.router)
 app.include_router(pages.router)

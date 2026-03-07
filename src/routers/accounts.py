@@ -7,9 +7,8 @@ from loguru import logger
 from sqlalchemy import func
 
 from src.database.models import AccountBalance
-from src.api.tastytrade_client import TastytradeClient
 from src.database.db_manager import DatabaseManager
-from src.dependencies import get_db, get_current_user_id, get_tastytrade_client
+from src.dependencies import get_db, get_current_user_id
 
 router = APIRouter()
 
@@ -56,35 +55,4 @@ async def get_account_balances(account_number: Optional[str] = None, db: Databas
             return {"balances": balances}
     except Exception as e:
         logger.error(f"Error getting account balances: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/api/debug/balances")
-async def debug_balances(tastytrade: TastytradeClient = Depends(get_tastytrade_client), user_id: str = Depends(get_current_user_id)):
-    """Debug endpoint to see all balance fields from Tastytrade API"""
-    try:
-
-        all_balances = []
-        for account in tastytrade.accounts:
-            balance = await account.get_balances(tastytrade.session)
-
-            balance_data = {
-                'account_number': account.account_number,
-            }
-            for field in dir(balance):
-                if not field.startswith('_'):
-                    try:
-                        value = getattr(balance, field)
-                        if not callable(value) and value is not None:
-                            if hasattr(value, '__float__'):
-                                balance_data[field] = float(value)
-                            else:
-                                balance_data[field] = str(value)
-                    except:
-                        pass
-            all_balances.append(balance_data)
-
-        return {"balances": all_balances}
-    except Exception as e:
-        logger.error(f"Debug balance error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
