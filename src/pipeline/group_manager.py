@@ -599,7 +599,7 @@ class GroupPersister:
                         session.delete(link)
                     logger.info(f"Cleaned up {stale_count} stale group-lot links")
 
-            # Delete empty groups (no lot links, no tags/notes)
+            # Delete empty groups (no lot links) and their orphaned tags/notes
             for gid in list(all_group_ids):
                 link_count = session.query(func.count()).select_from(
                     PositionGroupLot
@@ -609,22 +609,19 @@ class GroupPersister:
                 ).scalar()
 
                 if link_count == 0:
-                    # Check for tags or notes
-                    has_tags = session.query(PositionGroupTag).filter(
+                    session.query(PositionGroupTag).filter(
                         PositionGroupTag.group_id == gid,
                         PositionGroupTag.user_id == user_id,
-                    ).first() is not None
-                    has_notes = session.query(PositionNote).filter(
+                    ).delete(synchronize_session=False)
+                    session.query(PositionNote).filter(
                         PositionNote.note_key == f"group_{gid}",
                         PositionNote.user_id == user_id,
-                    ).first() is not None
-
-                    if not has_tags and not has_notes:
-                        session.query(PositionGroup).filter(
-                            PositionGroup.group_id == gid,
-                            PositionGroup.user_id == user_id,
-                        ).delete(synchronize_session=False)
-                        logger.debug(f"Deleted empty group {gid}")
+                    ).delete(synchronize_session=False)
+                    session.query(PositionGroup).filter(
+                        PositionGroup.group_id == gid,
+                        PositionGroup.user_id == user_id,
+                    ).delete(synchronize_session=False)
+                    logger.debug(f"Deleted empty group {gid} (with orphaned tags/notes)")
 
         logger.info(f"GroupPersister: processed {count} groups ({new_groups_created} new, {len(new_lots)} new lots) from {len(all_lots)} total lots")
         return count
