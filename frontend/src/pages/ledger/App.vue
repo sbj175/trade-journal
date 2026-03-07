@@ -250,7 +250,12 @@ function applyFilters() {
         return true
       }
       const lastActivity = g.last_activity_date ? new Date(g.last_activity_date) : null
-      return inRange(opened) || inRange(closed) || inRange(lastActivity)
+      if (inRange(opened) || inRange(closed) || inRange(lastActivity)) return true
+      // Check if any lot has activity (entry or closing) within the range
+      return (g.lots || []).some(lot => {
+        if (inRange(lot.entry_date ? new Date(lot.entry_date) : null)) return true
+        return (lot.closings || []).some(c => inRange(c.closing_date ? new Date(c.closing_date) : null))
+      })
     })
   }
 
