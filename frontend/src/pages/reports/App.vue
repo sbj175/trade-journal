@@ -244,7 +244,7 @@ const columns = [
   <div class="bg-tv-panel border-b border-tv-border">
     <!-- Row 1: Date Controls -->
     <div class="px-4 py-2.5 flex items-center gap-5 border-b border-tv-border/50">
-      <DateFilter storage-key="reports_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
+      <DateFilter storage-key="reports_dateFilter" default-preset="This Month" @update="onDateFilterUpdate" />
     </div>
 
     <!-- Row 2: Strategy Filters -->

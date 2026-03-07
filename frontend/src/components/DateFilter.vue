@@ -10,8 +10,9 @@ const emit = defineEmits(['update'])
 
 // --- Presets ---
 const PRESETS = [
-  'Today', 'Yesterday', '7 days', '14 days', '30 days',
-  '60 days', '120 days', 'Year to Date', 'Custom',
+  'This Week', 'This Month', 'Last Month',
+  'This Quarter', 'Last Quarter', 'YTD',
+  'Last 30 Days', 'Last 90 Days', 'Custom',
 ]
 
 // --- State ---
@@ -56,23 +57,47 @@ function fmt(d) {
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
 }
 
+function startOfWeek(d) {
+  const day = d.getDay() // 0=Sun
+  const diff = day === 0 ? 6 : day - 1 // Monday-based
+  return addDays(d, -diff)
+}
+
+function quarterStart(d) {
+  const q = Math.floor(d.getMonth() / 3)
+  return new Date(d.getFullYear(), q * 3, 1)
+}
+
 function computeFromDate(preset) {
   const t = today()
   switch (preset) {
-    case 'Today':        return t
-    case 'Yesterday':    return addDays(t, -1)
-    case '7 days':       return addDays(t, -7)
-    case '14 days':      return addDays(t, -14)
-    case '30 days':      return addDays(t, -30)
-    case '60 days':      return addDays(t, -60)
-    case '120 days':     return addDays(t, -120)
-    case 'Year to Date': return new Date(t.getFullYear(), 0, 1)
-    default:             return null
+    case 'This Week':     return startOfWeek(t)
+    case 'This Month':    return new Date(t.getFullYear(), t.getMonth(), 1)
+    case 'Last Month':    return new Date(t.getFullYear(), t.getMonth() - 1, 1)
+    case 'This Quarter':  return quarterStart(t)
+    case 'Last Quarter': {
+      const qs = quarterStart(t)
+      return new Date(qs.getFullYear(), qs.getMonth() - 3, 1)
+    }
+    case 'YTD':           return new Date(t.getFullYear(), 0, 1)
+    case 'Last 30 Days':  return addDays(t, -30)
+    case 'Last 90 Days':  return addDays(t, -90)
+    default:              return null
   }
 }
 
-function computeToDate(/* preset */) {
-  return today()
+function computeToDate(preset) {
+  const t = today()
+  switch (preset) {
+    case 'Last Month':
+      return new Date(t.getFullYear(), t.getMonth(), 0) // last day of prev month
+    case 'Last Quarter': {
+      const qs = quarterStart(t)
+      return new Date(qs.getFullYear(), qs.getMonth(), 0) // last day before quarter start
+    }
+    default:
+      return t
+  }
 }
 
 // --- Calendar ---

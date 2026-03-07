@@ -913,7 +913,7 @@ function sortPositions(positions) {
       </div>
 
       <!-- Date Filter -->
-      <DateFilter ref="dateFilterRef" storage-key="ledger_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
+      <DateFilter ref="dateFilterRef" storage-key="ledger_dateFilter" default-preset="Last 30 Days" @update="onDateFilterUpdate" />
     </div>
 
     <!-- Row 2: Direction, Type, Status, Sort -->
