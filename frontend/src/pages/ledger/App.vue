@@ -34,6 +34,7 @@ const tagPopoverGroup = ref(null)
 const tagSearch = ref('')
 const suggestions = ref([])
 const dismissedSuggestions = ref(new Set(JSON.parse(localStorage.getItem('ledger_dismissed_suggestions') || '[]')))
+const dateFilterRef = ref(null)
 const showSuggestions = ref(true)
 
 // Internal (non-reactive)
@@ -94,7 +95,13 @@ onMounted(async () => {
 
   // Auto-expand and scroll to a specific group if linked from Positions page
   if (groupParam) {
-    const target = filteredGroups.value.find(g => g.group_id === groupParam)
+    let target = filteredGroups.value.find(g => g.group_id === groupParam)
+    // If target not visible, the date filter may be hiding it — clear and retry
+    if (!target && (dateFrom.value || dateTo.value)) {
+      if (dateFilterRef.value) dateFilterRef.value.clear()
+      applyFilters()
+      target = filteredGroups.value.find(g => g.group_id === groupParam)
+    }
     if (target) {
       target.expanded = true
       await nextTick()
@@ -901,7 +908,7 @@ function sortPositions(positions) {
       </div>
 
       <!-- Date Filter -->
-      <DateFilter storage-key="ledger_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
+      <DateFilter ref="dateFilterRef" storage-key="ledger_dateFilter" default-preset="30 days" @update="onDateFilterUpdate" />
     </div>
 
     <!-- Row 2: Direction, Type, Status, Sort -->

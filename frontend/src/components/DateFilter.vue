@@ -261,6 +261,18 @@ function loadState() {
   toDate.value = computeToDate(props.defaultPreset)
 }
 
+function clear() {
+  activePreset.value = ''
+  customMode.value = false
+  selectingField.value = null
+  fromDate.value = null
+  toDate.value = null
+  localStorage.removeItem(props.storageKey)
+  emitUpdate()
+}
+
+defineExpose({ clear })
+
 function emitUpdate() {
   emit('update', {
     from: fromDate.value ? fromDate.value.toISOString().slice(0, 10) : null,
