@@ -1,7 +1,7 @@
 """Page-serving routes — SPA catch-all + standalone pages."""
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from src.dependencies import templates
 
@@ -23,4 +23,8 @@ async def beta_full_page(request: Request):
 @router.get("/{full_path:path}", response_class=HTMLResponse)
 async def spa_catch_all(request: Request, full_path: str):
     """Serve the SPA shell for all client-side routes."""
+    # Block dotfiles and sensitive paths
+    segments = full_path.strip("/").split("/")
+    if any(seg.startswith(".") for seg in segments if seg):
+        return PlainTextResponse("Not Found", status_code=404)
     return templates.TemplateResponse("index.html", {"request": request})
