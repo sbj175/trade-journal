@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
-from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
+from src.database.models import OrderChainCache, PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
@@ -454,9 +454,35 @@ async def move_lots(body: LedgerMoveLots, db: DatabaseManager = Depends(get_db),
             )
             session.execute(stmt.on_conflict_do_nothing(index_elements=['group_id', 'transaction_id', 'user_id']))
 
-        all_affected = set(source_groups + [body.target_group_id])
-        for gid in all_affected:
-            _refresh_group_status(gid, session=session, db=db)
+        # Update pnl_events.group_id for moved lots
+        moved_lot_ids = [
+            r[0] for r in session.query(PositionLotModel.id).filter(
+                PositionLotModel.transaction_id.in_(body.transaction_ids),
+            ).all()
+        ]
+        if moved_lot_ids:
+            session.query(PnlEvent).filter(
+                PnlEvent.lot_id.in_(moved_lot_ids),
+                PnlEvent.user_id == user_id,
+            ).update({"group_id": body.target_group_id}, synchronize_session=False)
+
+        # Refresh target group status
+        _refresh_group_status(body.target_group_id, session=session, db=db)
+
+        # Clean up source groups: delete if empty, refresh otherwise
+        for gid in source_groups:
+            if gid == body.target_group_id:
+                continue
+            remaining = session.query(func.count()).select_from(
+                PositionGroupLot,
+            ).filter(PositionGroupLot.group_id == gid).scalar()
+            if remaining == 0:
+                session.query(PositionGroup).filter(
+                    PositionGroup.group_id == gid,
+                ).delete(synchronize_session=False)
+                logger.info(f"Deleted empty source group {gid}")
+            else:
+                _refresh_group_status(gid, session=session, db=db)
 
     return {"message": f"Moved {len(body.transaction_ids)} lots"}
 

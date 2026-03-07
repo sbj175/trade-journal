@@ -415,10 +415,17 @@ class LotManager:
         result = {gid: [] for gid in group_ids}
 
         with self.db.get_session() as session:
+            user_id = session.info.get("user_id")
+            join_cond = (
+                PositionGroupLot.transaction_id == PositionLotModel.transaction_id
+            )
+            if user_id:
+                join_cond = join_cond & (
+                    PositionLotModel.user_id == user_id
+                )
             rows = (
                 session.query(PositionGroupLot.group_id, PositionLotModel)
-                .join(PositionLotModel,
-                      PositionGroupLot.transaction_id == PositionLotModel.transaction_id)
+                .join(PositionLotModel, join_cond)
                 .filter(PositionGroupLot.group_id.in_(group_ids))
                 .order_by(PositionLotModel.entry_date.asc(),
                           PositionLotModel.leg_index.asc())
