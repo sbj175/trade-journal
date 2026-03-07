@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatPercent } from '@/lib/formatters'
@@ -20,6 +20,8 @@ const exitTo = ref('')
 const filterDirection = ref([])   // 'bullish', 'bearish', 'neutral'
 const filterType = ref([])        // 'credit', 'debit'
 const filterShares = ref(false)
+const filterStrategies = ref([])   // explicit strategy picks (overrides direction/type)
+const strategyDropdownOpen = ref(false)
 
 // Sorting
 const sortColumn = ref('totalPnl')
@@ -35,6 +37,7 @@ const strategyBreakdown = ref([])
 
 
 // --- Computed ---
+const allStrategyNames = computed(() => Object.keys(STRATEGY_CATEGORIES).sort())
 const activeStrategyCount = computed(() => getActiveStrategies().length)
 const totalStrategyCount = computed(() => Object.keys(STRATEGY_CATEGORIES).length)
 
@@ -70,6 +73,7 @@ function loadSavedFilters() {
       filterDirection.value = parsed.direction || []
       filterType.value = parsed.type || []
       filterShares.value = parsed.shares || false
+      filterStrategies.value = parsed.strategies || []
     } catch (e) { /* default: no filters */ }
   }
 
@@ -88,6 +92,7 @@ function saveFilters() {
     direction: filterDirection.value,
     type: filterType.value,
     shares: filterShares.value,
+    strategies: filterStrategies.value,
   }))
 }
 
@@ -97,6 +102,7 @@ function onAccountChange() {
 }
 
 function toggleFilter(category, value) {
+  filterStrategies.value = []  // clear explicit picks when using category filters
   if (category === 'direction') {
     const idx = filterDirection.value.indexOf(value)
     if (idx >= 0) filterDirection.value.splice(idx, 1)
@@ -111,12 +117,16 @@ function toggleFilter(category, value) {
 }
 
 function toggleShares() {
+  filterStrategies.value = []  // clear explicit picks when using category filters
   filterShares.value = !filterShares.value
   saveFilters()
   fetchReport()
 }
 
 function getActiveStrategies() {
+  // If explicit strategy picks are set, use those directly
+  if (filterStrategies.value.length > 0) return [...filterStrategies.value]
+
   const strategies = []
   const noDir = filterDirection.value.length === 0
   const noType = filterType.value.length === 0
@@ -131,6 +141,20 @@ function getActiveStrategies() {
     if (dirMatch && typeMatch) strategies.push(strategy)
   }
   return strategies
+}
+
+function toggleStrategyPick(strategy) {
+  const idx = filterStrategies.value.indexOf(strategy)
+  if (idx >= 0) filterStrategies.value.splice(idx, 1)
+  else filterStrategies.value.push(strategy)
+  // Clear direction/type/shares when using explicit picks
+  if (filterStrategies.value.length > 0) {
+    filterDirection.value = []
+    filterType.value = []
+    filterShares.value = false
+  }
+  saveFilters()
+  fetchReport()
 }
 
 async function loadAccounts() {
@@ -207,12 +231,21 @@ function applySortToBreakdown() {
   })
 }
 
+// Close dropdown on outside click
+function onDocumentClick(e) {
+  if (strategyDropdownOpen.value && !e.target.closest('.strategy-dropdown-wrapper')) {
+    strategyDropdownOpen.value = false
+  }
+}
+
 // --- Lifecycle ---
 onMounted(async () => {
+  document.addEventListener('click', onDocumentClick)
   await loadAccounts()
   loadSavedFilters()
   await fetchReport()
 })
+onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
 // Sortable columns config
 const columns = [
@@ -289,6 +322,33 @@ const columns = [
               :class="filterShares ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
         Shares
       </button>
+
+      <div class="w-px h-6 bg-tv-border"></div>
+
+      <!-- Strategy Picker Dropdown -->
+      <div class="relative strategy-dropdown-wrapper">
+        <button @click="strategyDropdownOpen = !strategyDropdownOpen"
+                class="px-3 py-1.5 text-sm border rounded transition-colors flex items-center gap-1.5"
+                :class="filterStrategies.length ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+          Strategy
+          <span v-if="filterStrategies.length" class="bg-tv-blue text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ filterStrategies.length }}</span>
+          <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+        </button>
+        <div v-if="strategyDropdownOpen"
+             class="absolute top-full left-0 mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-50 py-1 min-w-[200px] max-h-64 overflow-y-auto">
+          <button v-if="filterStrategies.length"
+                  @click="filterStrategies = []; saveFilters(); fetchReport()"
+                  class="w-full text-left px-3 py-1.5 text-sm text-tv-muted hover:bg-tv-bg border-b border-tv-border/50 mb-1">
+            Clear all
+          </button>
+          <button v-for="s in allStrategyNames" :key="s"
+                  @click="toggleStrategyPick(s)"
+                  class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
+            <i class="fas text-[10px]" :class="filterStrategies.includes(s) ? 'fa-check-square text-tv-blue' : 'fa-square text-tv-muted'"></i>
+            <span :class="filterStrategies.includes(s) ? 'text-tv-text' : 'text-tv-muted'">{{ s }}</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Active filter summary (pushed right) -->
       <div v-if="activeStrategyCount < totalStrategyCount" class="flex-1 text-right text-sm text-tv-muted">

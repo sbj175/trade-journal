@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
@@ -36,9 +36,25 @@ const suggestions = ref([])
 const dismissedSuggestions = ref(new Set(JSON.parse(localStorage.getItem('ledger_dismissed_suggestions') || '[]')))
 const dateFilterRef = ref(null)
 const showSuggestions = ref(true)
+const filterStrategy = ref([])
+const filterTagIds = ref([])
+const strategyDropdownOpen = ref(false)
+const tagDropdownOpen = ref(false)
 
 // Internal (non-reactive)
 const noteSaveTimers = {}
+
+// Close filter dropdowns on outside click
+function onDocumentClick(e) {
+  if (strategyDropdownOpen.value && !e.target.closest('.strategy-dropdown-wrapper')) {
+    strategyDropdownOpen.value = false
+  }
+  if (tagDropdownOpen.value && !e.target.closest('.tag-dropdown-wrapper')) {
+    tagDropdownOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onDocumentClick))
+onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
 // ==================== COMPUTED ====================
 const filteredTagSuggestions = computed(() => {
@@ -53,6 +69,14 @@ const filteredTagSuggestions = computed(() => {
 const visibleSuggestions = computed(() =>
   suggestions.value.filter(s => !dismissedSuggestions.value.has(s.id))
 )
+
+const uniqueStrategies = computed(() => {
+  const set = new Set()
+  for (const g of groups.value) {
+    if (g.strategy_label) set.add(g.strategy_label)
+  }
+  return [...set].sort()
+})
 
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
@@ -70,6 +94,8 @@ onMounted(async () => {
       viewMode.value = state.viewMode || 'positions'
       filterDirection.value = state.filterDirection || []
       filterType.value = state.filterType || []
+      filterStrategy.value = state.filterStrategy || []
+      filterTagIds.value = state.filterTagIds || []
     } catch (e) {}
   }
 
@@ -234,6 +260,16 @@ function applyFilters() {
 
   filtered = filtered.filter(g => groupMatchesCategoryFilters(g))
 
+  if (filterStrategy.value.length > 0) {
+    filtered = filtered.filter(g => filterStrategy.value.includes(g.strategy_label))
+  }
+
+  if (filterTagIds.value.length > 0) {
+    filtered = filtered.filter(g =>
+      (g.tags || []).some(t => filterTagIds.value.includes(t.id))
+    )
+  }
+
   if (!showOpen.value) filtered = filtered.filter(g => g.status !== 'OPEN')
   if (!showClosed.value) filtered = filtered.filter(g => g.status !== 'CLOSED')
 
@@ -332,6 +368,22 @@ function toggleFilter(category, value) {
   applyFilters()
 }
 
+function toggleStrategyFilter(strategy) {
+  const idx = filterStrategy.value.indexOf(strategy)
+  if (idx >= 0) filterStrategy.value.splice(idx, 1)
+  else filterStrategy.value.push(strategy)
+  saveState()
+  applyFilters()
+}
+
+function toggleTagFilter(tagId) {
+  const idx = filterTagIds.value.indexOf(tagId)
+  if (idx >= 0) filterTagIds.value.splice(idx, 1)
+  else filterTagIds.value.push(tagId)
+  saveState()
+  applyFilters()
+}
+
 function groupMatchesCategoryFilters(group) {
   const strategy = group.strategy_label || ''
   const noDirectionFilter = filterDirection.value.length === 0
@@ -387,6 +439,8 @@ function saveState() {
     viewMode: viewMode.value,
     filterDirection: filterDirection.value,
     filterType: filterType.value,
+    filterStrategy: filterStrategy.value,
+    filterTagIds: filterTagIds.value,
   }))
 }
 
@@ -970,6 +1024,60 @@ function sortPositions(positions) {
                 class="px-3 py-1.5 text-sm border rounded transition-colors">
           Closed
         </button>
+      </div>
+
+      <div class="w-px h-6 bg-tv-border"></div>
+
+      <!-- Strategy Filter Dropdown -->
+      <div class="relative strategy-dropdown-wrapper">
+        <button @click="strategyDropdownOpen = !strategyDropdownOpen; tagDropdownOpen = false"
+                class="px-3 py-1.5 text-sm border rounded transition-colors flex items-center gap-1.5"
+                :class="filterStrategy.length ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+          Strategy
+          <span v-if="filterStrategy.length" class="bg-tv-blue text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ filterStrategy.length }}</span>
+          <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+        </button>
+        <div v-if="strategyDropdownOpen"
+             class="absolute top-full left-0 mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-50 py-1 min-w-[200px] max-h-64 overflow-y-auto">
+          <button v-if="filterStrategy.length"
+                  @click="filterStrategy = []; saveState(); applyFilters()"
+                  class="w-full text-left px-3 py-1.5 text-sm text-tv-muted hover:bg-tv-bg border-b border-tv-border/50 mb-1">
+            Clear all
+          </button>
+          <button v-for="s in uniqueStrategies" :key="s"
+                  @click="toggleStrategyFilter(s)"
+                  class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
+            <i class="fas text-[10px]" :class="filterStrategy.includes(s) ? 'fa-check-square text-tv-blue' : 'fa-square text-tv-muted'"></i>
+            <span :class="filterStrategy.includes(s) ? 'text-tv-text' : 'text-tv-muted'">{{ s }}</span>
+          </button>
+          <div v-if="uniqueStrategies.length === 0" class="px-3 py-2 text-sm text-tv-muted">No strategies</div>
+        </div>
+      </div>
+
+      <!-- Tag Filter Dropdown -->
+      <div v-if="availableTags.length" class="relative tag-dropdown-wrapper">
+        <button @click="tagDropdownOpen = !tagDropdownOpen; strategyDropdownOpen = false"
+                class="px-3 py-1.5 text-sm border rounded transition-colors flex items-center gap-1.5"
+                :class="filterTagIds.length ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
+          Tags
+          <span v-if="filterTagIds.length" class="bg-tv-purple text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ filterTagIds.length }}</span>
+          <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+        </button>
+        <div v-if="tagDropdownOpen"
+             class="absolute top-full left-0 mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-50 py-1 min-w-[180px] max-h-64 overflow-y-auto">
+          <button v-if="filterTagIds.length"
+                  @click="filterTagIds = []; saveState(); applyFilters()"
+                  class="w-full text-left px-3 py-1.5 text-sm text-tv-muted hover:bg-tv-bg border-b border-tv-border/50 mb-1">
+            Clear all
+          </button>
+          <button v-for="tag in availableTags" :key="tag.id"
+                  @click="toggleTagFilter(tag.id)"
+                  class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
+            <i class="fas text-[10px]" :class="filterTagIds.includes(tag.id) ? 'fa-check-square text-tv-purple' : 'fa-square text-tv-muted'"></i>
+            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || '#6b7280' }"></span>
+            <span :class="filterTagIds.includes(tag.id) ? 'text-tv-text' : 'text-tv-muted'">{{ tag.name }}</span>
+          </button>
+        </div>
       </div>
 
     </div>
