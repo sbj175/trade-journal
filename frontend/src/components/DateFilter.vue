@@ -61,18 +61,17 @@ function computeFromDate(preset) {
   switch (preset) {
     case 'Today':        return t
     case 'Yesterday':    return addDays(t, -1)
-    case '7 days':       return addDays(t, -6)
-    case '14 days':      return addDays(t, -13)
-    case '30 days':      return addDays(t, -29)
-    case '60 days':      return addDays(t, -59)
-    case '120 days':     return addDays(t, -119)
+    case '7 days':       return addDays(t, -7)
+    case '14 days':      return addDays(t, -14)
+    case '30 days':      return addDays(t, -30)
+    case '60 days':      return addDays(t, -60)
+    case '120 days':     return addDays(t, -120)
     case 'Year to Date': return new Date(t.getFullYear(), 0, 1)
     default:             return null
   }
 }
 
-function computeToDate(preset) {
-  if (preset === 'Yesterday') return addDays(today(), -1)
+function computeToDate(/* preset */) {
   return today()
 }
 
@@ -127,7 +126,7 @@ function selectPreset(preset) {
   if (preset === 'Custom') {
     customMode.value = true
     activePreset.value = 'Custom'
-    selectingField.value = null
+    selectingField.value = 'from'
     saveState()
     return
   }
@@ -161,25 +160,34 @@ function clickToDate() {
 
 function clickCalendarDay(cell) {
   if (!customMode.value) return
-  if (!selectingField.value) return
+  if (isFuture(cell.date)) return
+
+  if (!selectingField.value) {
+    // Click anywhere on calendar starts a new from selection
+    selectingField.value = 'from'
+  }
 
   if (selectingField.value === 'from') {
     fromDate.value = cell.date
-    // If from > to, adjust to
-    if (toDate.value && cell.date.getTime() > toDate.value.getTime()) {
-      toDate.value = cell.date
+    // Default to=today, user can refine with next click
+    if (!toDate.value || cell.date.getTime() > toDate.value.getTime()) {
+      toDate.value = today()
     }
-    selectingField.value = null
+    selectingField.value = 'to'  // auto-advance to To
+    saveState()
+    emitUpdate()
   } else if (selectingField.value === 'to') {
     toDate.value = cell.date
-    // If to < from, adjust from
+    // If to < from, swap them
     if (fromDate.value && cell.date.getTime() < fromDate.value.getTime()) {
+      const tmp = fromDate.value
       fromDate.value = cell.date
+      toDate.value = tmp
     }
-    selectingField.value = null
+    selectingField.value = null  // done
+    saveState()
+    emitUpdate()
   }
-  saveState()
-  emitUpdate()
 }
 
 function prevMonth() {
@@ -271,18 +279,27 @@ function onClickOutside(e) {
   }
 }
 
+function onKeydown(e) {
+  if (e.key === 'Escape' && open.value) {
+    close()
+  }
+}
+
 onMounted(() => {
   loadState()
   emitUpdate()
   document.addEventListener('mousedown', onClickOutside)
+  document.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', onClickOutside)
+  document.removeEventListener('keydown', onKeydown)
 })
 
 // --- Cell styling helpers ---
 function isToday(d) { return sameDay(d, today()) }
+function isFuture(d) { return d.getTime() > today().getTime() }
 
 function isRangeStart(d) { return sameDay(d, fromDate.value) }
 function isRangeEnd(d) { return sameDay(d, toDate.value) }
@@ -360,9 +377,10 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
                   class="h-9 flex items-center justify-center text-sm transition-colors relative"
                   :class="[
                     // Base text color
-                    cell.currentMonth ? 'text-tv-text' : 'text-tv-muted/40',
+                    isFuture(cell.date) ? 'text-tv-muted/20 cursor-default'
+                      : cell.currentMonth ? 'text-tv-text' : 'text-tv-muted/40',
                     // Custom mode cursor
-                    customMode && selectingField ? 'cursor-pointer' : customMode ? 'cursor-default' : 'cursor-default',
+                    !isFuture(cell.date) && customMode && selectingField ? 'cursor-pointer' : !isFuture(cell.date) && customMode ? 'cursor-default' : 'cursor-default',
                     // Range background (middle days)
                     isInRange(cell.date) && !isRangeStart(cell.date) && !isRangeEnd(cell.date) && !isRangeSingle()
                       ? 'bg-tv-blue/15'
