@@ -13,9 +13,23 @@ from src.database.models import (
 )
 from src.database.db_manager import DatabaseManager
 from src.dependencies import get_db, get_current_user_id
+from src.pipeline.pnl_events import populate_pnl_events
 from src.services.report_service import calculate_max_risk_reward
 
 router = APIRouter()
+
+
+def _ensure_pnl_events(db: DatabaseManager) -> None:
+    """Auto-populate pnl_events if the table is empty but lot_closings exist."""
+    with db.get_session() as session:
+        event_count = session.query(func.count()).select_from(PnlEvent).scalar()
+        if event_count > 0:
+            return
+        closing_count = session.query(func.count()).select_from(LotClosingModel).scalar()
+        if closing_count == 0:
+            return
+    logger.info("pnl_events empty with %d closings — auto-populating", closing_count)
+    populate_pnl_events(db)
 
 
 @router.get("/api/dashboard")
@@ -26,6 +40,7 @@ async def get_dashboard_data(
 ):
     """Get dashboard summary data using pnl_events."""
     try:
+        _ensure_pnl_events(db)
         with db.get_session() as session:
             # Count groups by status
             q = session.query(PositionGroup)
@@ -126,6 +141,7 @@ async def get_monthly_performance(
 ):
     """Get monthly performance data from pnl_events."""
     try:
+        _ensure_pnl_events(db)
         if year is None:
             year = date.today().year
 
@@ -205,6 +221,7 @@ async def get_performance_report(
     exit_from/exit_to filter on pnl_events.closing_date (the event date).
     """
     try:
+        _ensure_pnl_events(db)
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
         with db.get_session() as session:
