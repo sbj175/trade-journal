@@ -12,7 +12,7 @@ def fix_ibit_chain():
     print('🔧 Fixing IBIT Chain Status')
     print('=' * 50)
     
-    db_path = '/home/sbj/python-projects/trade-journal/trade_journal.db'
+    db_path = '/home/sbj/python-projects/optionledger/trade_journal.db'
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     

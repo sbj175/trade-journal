@@ -8,33 +8,28 @@ from loguru import logger
 from sqlalchemy import func
 
 from src.database.models import (
-    PositionGroup, PositionGroupLot,
+    PnlEvent, PositionGroup, PositionGroupLot,
     PositionLot as PositionLotModel, LotClosing as LotClosingModel,
 )
 from src.database.db_manager import DatabaseManager
 from src.dependencies import get_db, get_current_user_id
+from src.pipeline.pnl_events import populate_pnl_events
 from src.services.report_service import calculate_max_risk_reward
 
 router = APIRouter()
 
 
-def _group_realized_pnl(session, group_ids: list) -> dict:
-    """Compute realized P&L per group via lot_closings. Returns {group_id: pnl}."""
-    if not group_ids:
-        return {}
-    rows = (
-        session.query(
-            PositionGroupLot.group_id,
-            func.coalesce(func.sum(LotClosingModel.realized_pnl), 0.0),
-        )
-        .join(PositionLotModel,
-              PositionGroupLot.transaction_id == PositionLotModel.transaction_id)
-        .join(LotClosingModel, LotClosingModel.lot_id == PositionLotModel.id, isouter=True)
-        .filter(PositionGroupLot.group_id.in_(group_ids))
-        .group_by(PositionGroupLot.group_id)
-        .all()
-    )
-    return {gid: float(pnl) for gid, pnl in rows}
+def _ensure_pnl_events(db: DatabaseManager) -> None:
+    """Auto-populate pnl_events if the table is empty but lot_closings exist."""
+    with db.get_session() as session:
+        event_count = session.query(func.count()).select_from(PnlEvent).scalar()
+        if event_count > 0:
+            return
+        closing_count = session.query(func.count()).select_from(LotClosingModel).scalar()
+        if closing_count == 0:
+            return
+    logger.info("pnl_events empty with %d closings — auto-populating", closing_count)
+    populate_pnl_events(db)
 
 
 @router.get("/api/dashboard")
@@ -43,9 +38,11 @@ async def get_dashboard_data(
     db: DatabaseManager = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Get dashboard summary data from position groups."""
+    """Get dashboard summary data using pnl_events."""
     try:
+        _ensure_pnl_events(db)
         with db.get_session() as session:
+            # Count groups by status
             q = session.query(PositionGroup)
             if account_number:
                 q = q.filter(PositionGroup.account_number == account_number)
@@ -55,8 +52,15 @@ async def get_dashboard_data(
                 for g in q.all()
             ]
 
-            group_ids = [g['group_id'] for g in groups]
-            pnl_map = _group_realized_pnl(session, group_ids)
+            # Realized P&L from pnl_events
+            pnl_q = session.query(
+                PnlEvent.group_id,
+                func.sum(PnlEvent.realized_pnl).label('pnl'),
+            )
+            if account_number:
+                pnl_q = pnl_q.filter(PnlEvent.account_number == account_number)
+            pnl_q = pnl_q.group_by(PnlEvent.group_id)
+            pnl_map = {gid: float(pnl) for gid, pnl in pnl_q.all()}
 
         open_groups = [g for g in groups if g['status'] == 'OPEN']
         closed_groups = [g for g in groups if g['status'] == 'CLOSED']
@@ -130,16 +134,51 @@ async def get_dashboard_data(
 
 @router.get("/api/performance/monthly")
 async def get_monthly_performance(
+    account_number: Optional[str] = None,
     year: int = None,
     db: DatabaseManager = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Get monthly performance data"""
+    """Get monthly performance data from pnl_events."""
     try:
+        _ensure_pnl_events(db)
         if year is None:
             year = date.today().year
-        monthly_data = db.get_monthly_performance(year)
-        return {"year": year, "months": monthly_data}
+
+        year_prefix = str(year)
+
+        with db.get_session() as session:
+            q = session.query(
+                func.substr(PnlEvent.closing_date, 1, 7).label('month'),
+                func.sum(PnlEvent.realized_pnl).label('pnl'),
+                func.count(PnlEvent.id).label('trade_count'),
+            ).filter(
+                PnlEvent.closing_date.like(f"{year_prefix}%"),
+            )
+            if account_number:
+                q = q.filter(PnlEvent.account_number == account_number)
+            q = q.group_by(func.substr(PnlEvent.closing_date, 1, 7))
+            rows = q.all()
+
+        # Build full 12-month structure
+        months = []
+        for m in range(1, 13):
+            month_key = f"{year}-{m:02d}"
+            months.append({
+                'month': month_key,
+                'pnl': 0.0,
+                'trade_count': 0,
+            })
+
+        for row in rows:
+            month_key = row.month
+            for entry in months:
+                if entry['month'] == month_key:
+                    entry['pnl'] = float(row.pnl)
+                    entry['trade_count'] = int(row.trade_count)
+                    break
+
+        return {"year": year, "months": months}
     except Exception as e:
         logger.error(f"Error fetching monthly performance: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -170,54 +209,71 @@ async def get_available_strategies(
 @router.get("/api/reports/performance")
 async def get_performance_report(
     account_number: Optional[str] = None,
-    entry_from: Optional[str] = None,
-    entry_to: Optional[str] = None,
     exit_from: Optional[str] = None,
     exit_to: Optional[str] = None,
     strategies: str = "",
     db: DatabaseManager = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Get performance report data for closed groups.
+    """Get performance report data from pnl_events.
 
     Date params are ISO date strings (YYYY-MM-DD).
-    entry_from/entry_to filter on opening_date, exit_from/exit_to filter on closing_date.
+    exit_from/exit_to filter on pnl_events.closing_date (the event date).
     """
     try:
+        _ensure_pnl_events(db)
         strategy_list = [s.strip() for s in strategies.split(',') if s.strip()] if strategies else []
 
         with db.get_session() as session:
-            q = session.query(PositionGroup).filter(PositionGroup.status == 'CLOSED')
+            # Query pnl_events aggregated by group_id
+            q = session.query(
+                PnlEvent.group_id,
+                func.sum(PnlEvent.realized_pnl).label('pnl'),
+            )
 
             if account_number:
-                q = q.filter(PositionGroup.account_number == account_number)
-            if entry_from:
-                q = q.filter(PositionGroup.opening_date >= entry_from)
-            if entry_to:
-                q = q.filter(PositionGroup.opening_date <= entry_to)
+                q = q.filter(PnlEvent.account_number == account_number)
             if exit_from:
-                q = q.filter(PositionGroup.closing_date >= exit_from)
+                q = q.filter(PnlEvent.closing_date >= exit_from)
             if exit_to:
-                q = q.filter(PositionGroup.closing_date <= exit_to)
+                q = q.filter(PnlEvent.closing_date <= exit_to + "T23:59:59")
 
-            # Convert to dicts inside session to avoid detached instance errors
-            groups = [
-                {'group_id': g.group_id, 'strategy_label': g.strategy_label}
-                for g in q.all()
-            ]
-            group_ids = [g['group_id'] for g in groups]
-            pnl_map = _group_realized_pnl(session, group_ids)
+            q = q.group_by(PnlEvent.group_id)
+            pnl_rows = q.all()
+
+            # Build group_id -> pnl map
+            pnl_map = {}
+            group_ids_with_events = set()
+            for group_id, pnl in pnl_rows:
+                if group_id is not None:
+                    pnl_map[group_id] = float(pnl)
+                    group_ids_with_events.add(group_id)
+
+            # Fetch strategy labels for these groups
+            group_labels = {}
+            if group_ids_with_events:
+                label_rows = session.query(
+                    PositionGroup.group_id,
+                    PositionGroup.strategy_label,
+                ).filter(
+                    PositionGroup.group_id.in_(list(group_ids_with_events)),
+                ).all()
+                group_labels = {gid: label for gid, label in label_rows}
 
             # Calculate risk/reward per group
             group_risk_reward = {}
-            for g in groups:
-                max_risk, max_reward = calculate_max_risk_reward(
-                    session, g['group_id'], g['strategy_label'],
-                )
-                group_risk_reward[g['group_id']] = (max_risk, max_reward)
+            for gid in group_ids_with_events:
+                label = group_labels.get(gid)
+                max_risk, max_reward = calculate_max_risk_reward(session, gid, label)
+                group_risk_reward[gid] = (max_risk, max_reward)
 
-        if strategy_list:
-            groups = [g for g in groups if g['strategy_label'] in strategy_list]
+        # Apply strategy filter
+        groups = []
+        for gid in group_ids_with_events:
+            label = group_labels.get(gid) or 'Unknown'
+            if strategy_list and label not in strategy_list:
+                continue
+            groups.append({'group_id': gid, 'strategy_label': label})
 
         total_pnl = 0.0
         wins = 0

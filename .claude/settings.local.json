@@ -2,14 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(*)",
-      "mcp__linear-server__*",
+      "mcp__linear__*",
       "WebSearch",
       "WebFetch(*)"
     ],
     "deny": [
-      "mcp__linear-server__delete*"
+      "mcp__linear__delete*"
     ],
     "ask": []
   },
-  "outputStyle": "default"
+  "outputStyle": "default",
+
+    "mcpServers": {
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.linear.app/sse"]
+    }
+  }
 }

@@ -12,7 +12,7 @@ def fix_all_expired_chains():
     print('🔧 Fixing All Expired Chains')
     print('=' * 50)
     
-    db_path = '/home/sbj/python-projects/trade-journal/trade_journal.db'
+    db_path = '/home/sbj/python-projects/optionledger/trade_journal.db'
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     

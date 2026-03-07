@@ -432,16 +432,26 @@ def _refresh_group_status(group_id: str, session=None, *, db: DatabaseManager = 
         PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
     ).filter(PositionGroupLot.group_id == group_id).scalar()
 
-    closing_date = None
-    if status == 'CLOSED':
-        closing_date = session.query(
-            func.max(LotClosingModel.closing_date),
-        ).join(
-            PositionLotModel, LotClosingModel.lot_id == PositionLotModel.id,
-        ).join(
-            PositionGroupLot,
-            PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
-        ).filter(PositionGroupLot.group_id == group_id).scalar()
+    max_closing_date = session.query(
+        func.max(LotClosingModel.closing_date),
+    ).join(
+        PositionLotModel, LotClosingModel.lot_id == PositionLotModel.id,
+    ).join(
+        PositionGroupLot,
+        PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+    ).filter(PositionGroupLot.group_id == group_id).scalar()
+
+    closing_date = max_closing_date if status == 'CLOSED' else None
+
+    # last_activity_date = MAX(closing dates, entry dates)
+    max_entry = session.query(
+        func.max(PositionLotModel.entry_date),
+    ).join(
+        PositionGroupLot,
+        PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+    ).filter(PositionGroupLot.group_id == group_id).scalar()
+    candidates = [d for d in [max_closing_date, max_entry] if d]
+    last_activity_date = max(candidates) if candidates else None
 
     group = session.query(PositionGroup).filter(
         PositionGroup.group_id == group_id,
@@ -450,6 +460,7 @@ def _refresh_group_status(group_id: str, session=None, *, db: DatabaseManager = 
         group.status = status
         group.opening_date = opening_date
         group.closing_date = closing_date
+        group.last_activity_date = last_activity_date
         group.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Re-run strategy detection unless user manually overrode the label

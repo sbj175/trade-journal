@@ -11,7 +11,7 @@ def verify_zebra_implementation():
     print("🦓 ZEBRA Strategy Implementation Verification")
     print("=" * 50)
     
-    db_path = "/home/sbj/python-projects/trade-journal/trade_journal.db"
+    db_path = "/home/sbj/python-projects/optionledger/trade_journal.db"
     
     try:
         conn = sqlite3.connect(db_path)

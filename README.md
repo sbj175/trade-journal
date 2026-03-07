@@ -23,7 +23,7 @@ A beautiful, local web application for tracking and analyzing options trades fro
 1. Clone the repository:
 ```bash
 git clone https://github.com/sbj175/trade-journal.git
-cd trade-journal
+cd optionledger
 ```
 
 2. Create a virtual environment:

@@ -12,7 +12,7 @@ def check_expired_chains():
     print("Checking for Expired IBIT Chains Showing as OPEN")
     print("=" * 55)
     
-    db_path = "/home/sbj/python-projects/trade-journal/trade_journal.db"
+    db_path = "/home/sbj/python-projects/optionledger/trade_journal.db"
     
     try:
         conn = sqlite3.connect(db_path)

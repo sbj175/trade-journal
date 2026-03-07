@@ -18,6 +18,7 @@ from src.pipeline.order_assembler import assemble_orders
 from src.pipeline.position_ledger import process_lots
 from src.pipeline.chain_graph import derive_chains
 from src.pipeline.group_manager import GroupPersister
+from src.pipeline.pnl_events import populate_pnl_events
 from src.services.ledger_service import net_opposing_equity_lots
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ class PipelineResult:
     chains_derived: int
     groups_processed: int
     equity_lots_netted: int
+    pnl_events_populated: int = 0
     chains: List[Chain] = field(default_factory=list)
 
 
@@ -132,10 +134,15 @@ def reprocess(
     groups_processed = persister.process_groups(new_chains)
     logger.info("Stage 6: processed %d groups", groups_processed)
 
+    # ── Step 7: P&L Events (denormalized fact table) ──────────────
+    pnl_events_count = populate_pnl_events(db_manager)
+    logger.info("Stage 7: populated %d pnl_events", pnl_events_count)
+
     return PipelineResult(
         orders_assembled=orders_assembled,
         chains_derived=chains_derived,
         groups_processed=groups_processed,
         equity_lots_netted=equity_lots_netted,
+        pnl_events_populated=pnl_events_count,
         chains=new_chains,
     )

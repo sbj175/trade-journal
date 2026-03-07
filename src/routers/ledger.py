@@ -172,6 +172,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'account_number': g['account_number'],
             'opening_date': g['opening_date'],
             'closing_date': g['closing_date'],
+            'last_activity_date': g.get('last_activity_date'),
             'source_chain_id': g['source_chain_id'],
             'total_pnl': total_realized,
             'realized_pnl': total_realized,

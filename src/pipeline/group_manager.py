@@ -527,23 +527,39 @@ class GroupPersister:
                     l.entry_date for l in lots_in_group
                 ).isoformat() if lots_in_group else None
 
-                # Closing date (for CLOSED groups)
+                # Closing date and last_activity_date
+                lot_ids = [
+                    r[0] for r in session.query(PositionLotModel.id).filter(
+                        PositionLotModel.transaction_id.in_(
+                            [l.transaction_id for l in lots_in_group]
+                        ),
+                    ).all()
+                ]
+                max_closing_date = None
+                if lot_ids:
+                    max_closing_date = session.query(
+                        func.max(LotClosingModel.closing_date),
+                    ).filter(
+                        LotClosingModel.lot_id.in_(lot_ids),
+                    ).scalar()
+
                 if group.status == "CLOSED":
-                    lot_ids = [
-                        r[0] for r in session.query(PositionLotModel.id).filter(
-                            PositionLotModel.transaction_id.in_(
-                                [l.transaction_id for l in lots_in_group]
-                            ),
-                        ).all()
-                    ]
-                    if lot_ids:
-                        group.closing_date = session.query(
-                            func.max(LotClosingModel.closing_date),
-                        ).filter(
-                            LotClosingModel.lot_id.in_(lot_ids),
-                        ).scalar()
+                    group.closing_date = max_closing_date
                 else:
                     group.closing_date = None
+
+                # last_activity_date = MAX(closing dates, entry dates)
+                max_entry = None
+                if lots_in_group:
+                    max_entry = session.query(
+                        func.max(PositionLotModel.entry_date),
+                    ).filter(
+                        PositionLotModel.transaction_id.in_(
+                            [l.transaction_id for l in lots_in_group]
+                        ),
+                    ).scalar()
+                candidates = [d for d in [max_closing_date, max_entry] if d]
+                group.last_activity_date = max(candidates) if candidates else None
 
                 # Strategy label (unless user overrode)
                 if not group.strategy_label_user_override:

@@ -242,7 +242,8 @@ function applyFilters() {
         if (to && d > to) return false
         return true
       }
-      return inRange(opened) || inRange(closed)
+      const lastActivity = g.last_activity_date ? new Date(g.last_activity_date) : null
+      return inRange(opened) || inRange(closed) || inRange(lastActivity)
     })
   }
 

@@ -12,7 +12,7 @@ def show_trade_transactions():
     print('🔍 Sample Trade Transaction Data from Tastytrade')
     print('=' * 60)
     
-    db_path = '/home/sbj/python-projects/trade-journal/trade_journal.db'
+    db_path = '/home/sbj/python-projects/optionledger/trade_journal.db'
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     

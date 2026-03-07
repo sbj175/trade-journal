@@ -11,7 +11,7 @@ def apply_fix():
     print("Applying partial close fix to IBIT chain...")
     print("=" * 50)
     
-    db_path = "/home/sbj/python-projects/trade-journal/trade_journal.db"
+    db_path = "/home/sbj/python-projects/optionledger/trade_journal.db"
     
     try:
         conn = sqlite3.connect(db_path)
