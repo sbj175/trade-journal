@@ -266,8 +266,15 @@ function loadState() {
   if (raw) {
     try {
       const state = JSON.parse(raw)
-      activePreset.value = state.preset || props.defaultPreset
+      activePreset.value = state.preset != null ? state.preset : props.defaultPreset
       customMode.value = state.customMode || false
+
+      // Cleared state: preset is '' and no dates
+      if (activePreset.value === '' && !state.from && !state.to) {
+        fromDate.value = null
+        toDate.value = null
+        return
+      }
 
       if (customMode.value && state.from && state.to) {
         fromDate.value = new Date(state.from)
@@ -292,8 +299,9 @@ function clear() {
   selectingField.value = null
   fromDate.value = null
   toDate.value = null
-  localStorage.removeItem(props.storageKey)
+  saveState()
   emitUpdate()
+  open.value = false
 }
 
 defineExpose({ clear })

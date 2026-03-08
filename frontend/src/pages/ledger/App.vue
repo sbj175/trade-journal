@@ -1106,20 +1106,20 @@ function sortPositions(positions) {
   <div v-if="!loading && filteredGroups.length > 0"
        class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
     <span class="w-6"></span>
-    <span class="w-8 mr-3"></span>
-    <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('underlying')">
+    <span class="w-8 mr-4"></span>
+    <span class="w-24 mr-4 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('underlying')">
       Symbol <span v-if="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
-    <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('strategy_label')">
+    <span class="w-48 mr-4 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('strategy_label')">
       Strategy <span v-if="sortColumn === 'strategy_label'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
     <span class="w-20 mr-6 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('status')">
       Status <span v-if="sortColumn === 'status'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
-    <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('opening_date')">
+    <span class="w-32 mr-2 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('opening_date')">
       Opened <span v-if="sortColumn === 'opening_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
-    <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
+    <span class="w-32 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
       Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
     <span class="ml-auto cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('realized_pnl')">
@@ -1232,27 +1232,29 @@ function sortPositions(positions) {
              :class="group.expanded ? 'rotate-90' : ''"></i>
 
           <!-- Account badge -->
-          <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3"
+          <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-4"
                 :class="getAccountBadgeClass(group.account_number)">
             {{ getAccountSymbol(group.account_number) }}
           </span>
 
           <!-- Underlying -->
-          <span class="w-20 text-lg font-semibold text-tv-text">{{ group.underlying }}</span>
+          <span class="w-24 mr-4 text-lg font-semibold text-tv-text">{{ group.underlying }}</span>
 
           <!-- Strategy Label (inline edit) -->
-          <span class="w-40 relative" @click.stop>
+          <span class="w-48 mr-4 relative" @click.stop>
             <template v-if="!group._editingStrategy">
-              <span class="flex items-center gap-1.5 group/strat">
-                <span class="text-tv-muted text-base truncate">{{ group.strategy_label || '\u2014' }}</span>
-                <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
-                   @click="group._editingStrategy = true"
-                   title="Edit strategy label"></i>
-                <i v-show="groupViewMode(group) === 'positions'"
-                   class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
-                   :class="group._movingLots ? '!text-tv-blue' : ''"
-                   @click="toggleGroupMoveMode(group)"
-                   title="Move lots between groups"></i>
+              <span class="flex items-center group/strat">
+                <span class="text-tv-muted text-base truncate flex-1 min-w-0">{{ group.strategy_label || '\u2014' }}</span>
+                <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
+                  <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+                     @click="group._editingStrategy = true"
+                     title="Edit strategy label"></i>
+                  <i v-show="groupViewMode(group) === 'positions'"
+                     class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+                     :class="group._movingLots ? '!text-tv-blue' : ''"
+                     @click="toggleGroupMoveMode(group)"
+                     title="Move lots between groups"></i>
+                </span>
               </span>
             </template>
             <template v-else>
@@ -1312,10 +1314,10 @@ function sortPositions(positions) {
           </span>
 
           <!-- Opening date -->
-          <span class="w-28 text-tv-muted text-base">{{ formatDate(group.opening_date) }}</span>
+          <span class="w-32 mr-2 text-tv-muted text-base">{{ formatDate(group.opening_date) }}</span>
 
           <!-- Closing date -->
-          <span class="w-28 text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '\u2014' }}</span>
+          <span class="w-32 text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '\u2014' }}</span>
 
           <!-- Note indicator -->
           <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>

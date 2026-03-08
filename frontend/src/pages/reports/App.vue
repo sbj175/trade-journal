@@ -127,10 +127,13 @@ function getActiveStrategies() {
   // If explicit strategy picks are set, use those directly
   if (filterStrategies.value.length > 0) return [...filterStrategies.value]
 
-  const strategies = []
   const noDir = filterDirection.value.length === 0
   const noType = filterType.value.length === 0
 
+  // No filters active — return empty to include all groups (including Custom, Shares, etc.)
+  if (noDir && noType && !filterShares.value) return []
+
+  const strategies = []
   for (const [strategy, cat] of Object.entries(STRATEGY_CATEGORIES)) {
     if (cat.isShares) {
       if (filterShares.value) strategies.push(strategy)
