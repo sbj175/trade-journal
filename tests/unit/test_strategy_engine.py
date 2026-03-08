@@ -236,7 +236,7 @@ class TestCalendar:
             _opt("C", 105, "short", exp=date(2026, 3, 21)),  # near, higher strike
         ]
         r = recognize(legs)
-        assert r.name == "PMCC"
+        assert r.name == "Diagonal Call Spread"
         assert r.direction == "bullish"
         assert r.credit_debit == "debit"
 

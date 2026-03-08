@@ -18,8 +18,8 @@ $ARGUMENTS
 
 1. Ask clarifying questions if needed (account number, dates, quantities, prices)
 2. Generate transaction dicts following the exact schema below
-3. Write a Python script that inserts them via `DatabaseManager.save_raw_transactions()`
-4. Run the script, then run a reprocess to update the pipeline
+3. Write a Python script that **first deletes all existing raw_transactions** for the user, then inserts the new ones via `DatabaseManager.save_raw_transactions()`
+4. Run the script — it should delete, insert, and reprocess all in one go
 
 ## Raw Transaction Schema
 
@@ -125,6 +125,14 @@ set_current_user_id(DEFAULT_USER_ID)
 db = DatabaseManager()
 db.initialize_database()
 
+# Step 1: Delete all existing raw_transactions for this user
+from src.database.models import RawTransaction
+with db.get_session() as session:
+    deleted = session.query(RawTransaction).delete()
+    session.commit()
+    print(f"Deleted {deleted} existing raw_transactions")
+
+# Step 2: Insert new synthetic transactions
 transactions = [
     # ... generated transactions ...
 ]
@@ -148,10 +156,66 @@ with db.get_session() as session:
     print("Ensured user_credentials row exists (TT onboarding bypass)")
 ```
 
-After insertion, remind the user to run reprocess via the admin app or:
+After insertion, run the reprocess pipeline + cache update directly in the same script:
+
+```python
+import asyncio
+from src.pipeline.orchestrator import reprocess
+from src.models.lot_manager import LotManager
+from src.services.chain_service import update_chain_cache
+
+lot_manager = LotManager(db)
+raw_transactions = db.get_raw_transactions()
+print(f"Reprocessing {len(raw_transactions)} raw transactions...")
+
+result = reprocess(db, lot_manager, raw_transactions)
+print(f"Orders assembled: {result.orders_assembled}")
+print(f"Chains derived: {result.chains_derived}")
+print(f"Groups processed: {result.groups_processed}")
+print(f"Equity lots netted: {result.equity_lots_netted}")
+
+# Update order_chain_cache — required for the Ledger Orders view
+if result.chains:
+    asyncio.run(update_chain_cache(result.chains, db=db, lot_manager=lot_manager))
+    print(f"Updated chain cache for {len(result.chains)} chains")
 ```
-POST /api/reprocess
-```
+
+## Randomization Requirements
+
+Each invocation MUST produce a fresh, distinct set of transactions. Do NOT reuse the same tickers, strategies, dates, prices, or quantities from previous runs. To ensure variety:
+
+1. **Tickers**: Pick from a broad universe. Rotate through different sectors each time:
+   - Tech: AAPL, MSFT, NVDA, AMD, GOOGL, META, AMZN, NFLX, CRM, ADBE, ORCL, INTC, AVGO, SHOP, SNOW
+   - Finance: JPM, GS, BAC, MS, V, MA, AXP, SCHW, BLK, C
+   - Healthcare: UNH, JNJ, LLY, PFE, ABBV, MRK, TMO, ABT, AMGN, GILD
+   - Consumer: COST, WMT, TGT, NKE, SBUX, MCD, HD, LOW, TJX, PG
+   - Energy/Industrial: XOM, CVX, COP, CAT, DE, BA, GE, LMT, RTX, HON
+   - ETFs: SPY, QQQ, IWM, DIA, XLF, XLE, XLK, GLD, SLV, TLT, IBIT, EEM, EWZ
+   - Meme/volatile: TSLA, COIN, PLTR, SOFI, RIVN, GME, MARA, RBLX, DKNG, ROKU
+   - Don't use more than 2-3 from any single group. Aim for 8-12 distinct underlyings total.
+
+2. **Strategies**: Mix it up. Don't repeat the same pattern each time. Choose from:
+   - Naked/cash-secured puts, covered calls, naked calls
+   - Bull put spreads, bear call spreads, bull call spreads, bear put spreads
+   - Iron condors, iron butterflies, strangles, straddles
+   - Calendar spreads, diagonal spreads
+   - Long puts, long calls (directional)
+   - Equity buy/sell
+   - Jade lizards, ratio spreads
+   - Rolls (close one expiration, open the next in the same order)
+
+3. **Dates**: Spread trades across a ~4 month window ending near today's date. Vary:
+   - Open dates (don't cluster everything in the same week)
+   - Hold durations (some held days, some weeks, some months)
+   - Expiration cycles (use monthlies AND weeklies, different months)
+
+4. **Quantities**: Vary contract counts (1-10) and share quantities (25, 50, 100, 200, etc.)
+
+5. **Prices**: Use realistic prices for the underlying. A $500 stock should have higher option premiums than a $50 stock. Strike selection should be realistic (OTM puts ~5-15% below spot, OTM calls ~5-15% above spot).
+
+6. **Outcomes**: Unless the user specifies, aim for roughly:
+   - 50-60% winners, 30-40% losers, 10-20% still open
+   - Mix of closing methods: bought/sold to close, expired worthless, assigned
 
 ## Notes
 

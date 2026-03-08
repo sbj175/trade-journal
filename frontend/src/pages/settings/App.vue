@@ -71,7 +71,7 @@ const CREDIT_NAMES = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iro
   'Short Strangle', 'Short Straddle', 'Jade Lizard']
 
 const DEBIT_NAMES = ['Bull Call Spread', 'Bear Put Spread', 'Long Call', 'Long Put',
-  'Long Strangle', 'Long Straddle', 'Calendar Spread', 'Diagonal Spread', 'PMCC']
+  'Long Strangle', 'Long Straddle', 'Calendar Spread', 'Diagonal Spread', 'Diagonal Call Spread']
 
 const MIXED_NAMES = ['Collar']
 const EQUITY_NAMES = ['Shares']

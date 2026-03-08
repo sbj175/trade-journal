@@ -271,9 +271,9 @@ class LotManager:
                 multiplier = 100 if lot.option_type else 1
 
                 if lot.quantity > 0:
-                    pnl = (closing_price - lot.entry_price) * close_amount * multiplier
+                    pnl = round((closing_price - lot.entry_price) * close_amount * multiplier, 2)
                 else:
-                    pnl = (lot.entry_price - closing_price) * close_amount * multiplier
+                    pnl = round((lot.entry_price - closing_price) * close_amount * multiplier, 2)
 
                 total_pnl += pnl
 

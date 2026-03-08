@@ -21,7 +21,7 @@ export const STRATEGY_CATEGORIES = {
   'Long Straddle': { direction: 'neutral', type: 'debit' },
   'Calendar Spread': { direction: 'neutral', type: 'debit' },
   'Diagonal Spread': { direction: 'neutral', type: 'debit' },
-  'PMCC': { direction: 'bullish', type: 'debit' },
+  'Diagonal Call Spread': { direction: 'bullish', type: 'debit' },
   'Jade Lizard': { direction: 'bullish', type: 'credit' },
   'Collar': { direction: 'neutral', type: 'mixed' },
   'Shares': { direction: null, type: null, isShares: true },

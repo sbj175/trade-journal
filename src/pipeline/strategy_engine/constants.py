@@ -24,7 +24,7 @@ STRATEGIES: dict[str, StrategyDef] = {
     "Long Straddle":     StrategyDef("Long Straddle",       "neutral",  "debit",  2, "multi"),
     "Calendar Spread":   StrategyDef("Calendar Spread",     "neutral",  "debit",  2, "calendar"),
     "Diagonal Spread":   StrategyDef("Diagonal Spread",     "neutral",  "debit",  2, "calendar"),
-    "PMCC":              StrategyDef("PMCC",                "bullish",  "debit",  2, "calendar"),
+    "Diagonal Call Spread": StrategyDef("Diagonal Call Spread", "bullish", "debit", 2, "calendar"),
     # -- Mixed / Neutral --
     "Collar":            StrategyDef("Collar",              "neutral",  "mixed",  3, "combo"),
     # -- Equity --

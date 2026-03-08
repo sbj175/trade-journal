@@ -36,10 +36,10 @@ def match_calendar(legs: List[Leg]) -> Optional[str]:
         return "Calendar Spread"
 
     # Different strikes + different expirations = diagonal
-    # PMCC: long far-dated call (lower strike) + short near-term call (higher strike)
+    # Diagonal Call Spread: long far-dated call (lower strike) + short near-term call (higher strike)
     if (a.option_type == "C"
             and far.direction == "long" and near.direction == "short"
             and far.strike < near.strike):
-        return "PMCC"
+        return "Diagonal Call Spread"
 
     return "Diagonal Spread"

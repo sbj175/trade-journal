@@ -1757,6 +1757,9 @@ function sortPositions(positions) {
     </div>
   </div>
 
+  <!-- Bottom spacer — lets the last row scroll comfortably above the fold -->
+  <div class="h-96"></div>
+
   <!-- Floating Action Bar (Move Mode) -->
   <div v-show="selectedLots.length > 0"
        class="fixed bottom-0 left-0 right-0 bg-tv-panel border-t border-tv-border px-6 py-4 flex items-center justify-between z-50 shadow-lg">
