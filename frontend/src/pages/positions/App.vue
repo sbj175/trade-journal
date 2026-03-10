@@ -981,6 +981,12 @@ function getRollAnalysis(group) {
   const qtyGcd = gcd(longQty, shortQty)
   const deltaPerQty = qtyGcd > 0 ? netDelta / qtyGcd : netDelta
 
+  // EV: probability-weighted expected outcome at expiration
+  // Use abs(short delta) as P(ITM) — accounts for IV skew via broker Greeks
+  const pItm = Math.min(Math.abs(shortGreeks.delta), 1)
+  const pOtm = 1 - pItm
+  const ev = (pOtm * maxProfit) + (pItm * maxLoss)
+
   let suggestion = null
   let urgency = 'low'
   if (parseFloat(pctMaxProfit) >= profitTarget) {
@@ -1002,7 +1008,7 @@ function getRollAnalysis(group) {
     deltaSaturation, proximityToShort, convexity, isCredit,
     maxProfit: formatNumber(maxProfit, 0),
     maxLoss: formatNumber(maxLoss, 0),
-    netDelta, deltaPerQty, netGamma, netTheta, netVega,
+    netDelta, deltaPerQty, netGamma, netTheta, netVega, ev,
     badges, borderColor, suggestion, urgency
   }
 }
@@ -1795,6 +1801,13 @@ onUnmounted(() => {
                         <span class="text-tv-muted">Delta Sat.</span>
                         <span class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-tv-orange') : 'text-tv-text'">
                           {{ group.rollAnalysis.deltaSaturation }}%
+                        </span>
+                      </div>
+                      <div class="flex justify-between gap-3">
+                        <span class="text-tv-muted">EV</span>
+                        <span class="font-medium"
+                              :class="group.rollAnalysis.ev > 0.01 ? 'text-tv-green' : group.rollAnalysis.ev < -0.01 ? 'text-tv-red' : 'text-tv-text'">
+                          ${{ group.rollAnalysis.ev.toFixed(0) }}
                         </span>
                       </div>
                     </div>
