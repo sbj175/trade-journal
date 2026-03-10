@@ -977,6 +977,10 @@ function getRollAnalysis(group) {
   const netTheta = ((longGreeks.theta * longQty) + (shortGreeks.theta * -shortQty)) * 100
   const netVega = ((longGreeks.vega * longQty) + (shortGreeks.vega * -shortQty)) * 100
 
+  const gcd = (a, b) => b === 0 ? a : gcd(b, a % b)
+  const qtyGcd = gcd(longQty, shortQty)
+  const deltaPerQty = qtyGcd > 0 ? netDelta / qtyGcd : netDelta
+
   let suggestion = null
   let urgency = 'low'
   if (parseFloat(pctMaxProfit) >= profitTarget) {
@@ -998,7 +1002,7 @@ function getRollAnalysis(group) {
     deltaSaturation, proximityToShort, convexity, isCredit,
     maxProfit: formatNumber(maxProfit, 0),
     maxLoss: formatNumber(maxLoss, 0),
-    netDelta, netGamma, netTheta, netVega,
+    netDelta, deltaPerQty, netGamma, netTheta, netVega,
     badges, borderColor, suggestion, urgency
   }
 }
@@ -1753,6 +1757,13 @@ onUnmounted(() => {
                         <span class="font-medium"
                               :class="group.rollAnalysis.netDelta > 0.01 ? 'text-tv-green' : group.rollAnalysis.netDelta < -0.01 ? 'text-tv-red' : 'text-tv-text'">
                           {{ group.rollAnalysis.netDelta.toFixed(2) }}
+                        </span>
+                      </div>
+                      <div class="flex justify-between gap-3">
+                        <span class="text-tv-muted">Delta/Qty</span>
+                        <span class="font-medium"
+                              :class="group.rollAnalysis.deltaPerQty > 0.01 ? 'text-tv-green' : group.rollAnalysis.deltaPerQty < -0.01 ? 'text-tv-red' : 'text-tv-text'">
+                          {{ group.rollAnalysis.deltaPerQty.toFixed(2) }}
                         </span>
                       </div>
                       <div class="flex justify-between gap-3">
