@@ -918,11 +918,13 @@ function getRollAnalysis(group) {
 
   // Delta saturation
   let deltaSaturation = '0.0'
+  let deltaSatTooltip = 'Delta Saturation: abs(short delta) as a percentage\nMeasures how close the short strike is to being ATM'
   const iv = getEffectiveIV(underlying)
   if (iv > 0 && dte > 0) {
     const T = dte / 365
     const shortDelta = Math.abs(bsDelta(underlyingPrice, shortStrike, T, 0.04, iv, getOptType(shortLeg) === 'C'))
     deltaSaturation = (shortDelta * 100).toFixed(1)
+    deltaSatTooltip = `Delta Saturation = abs(short Δ) × 100\n= abs(${bsDelta(underlyingPrice, shortStrike, T, 0.04, iv, getOptType(shortLeg) === 'C').toFixed(4)}) × 100\n= ${deltaSaturation}%\n\nUnderlying: $${underlyingPrice.toFixed(2)} | Short strike: $${shortStrike}\nIV: ${(iv * 100).toFixed(1)}% | DTE: ${dte}`
   }
 
   const proximityToShort = ((Math.abs(underlyingPrice - shortStrike) / underlyingPrice) * 100).toFixed(1)
@@ -1006,7 +1008,7 @@ function getRollAnalysis(group) {
     pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
     rewardRemaining: formatNumber(rewardRemaining, 0),
     riskRemaining: formatNumber(riskRemaining, 0),
-    deltaSaturation, proximityToShort, convexity, isCredit,
+    deltaSaturation, deltaSatTooltip, proximityToShort, convexity, isCredit,
     maxProfit: formatNumber(maxProfit, 0),
     maxLoss: formatNumber(maxLoss, 0),
     netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev, evTooltip,
@@ -1798,7 +1800,7 @@ onUnmounted(() => {
                           {{ group.rollAnalysis.proximityToShort }}%
                         </span>
                       </div>
-                      <div class="flex justify-between gap-3">
+                      <div class="flex justify-between gap-3 cursor-help" :title="group.rollAnalysis.deltaSatTooltip">
                         <span class="text-tv-muted">Delta Sat.</span>
                         <span class="font-medium" :class="parseFloat(group.rollAnalysis.deltaSaturation) >= 65 ? (group.rollAnalysis.isCredit ? 'text-tv-red' : 'text-tv-orange') : 'text-tv-text'">
                           {{ group.rollAnalysis.deltaSaturation }}%
