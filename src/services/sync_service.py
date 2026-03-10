@@ -12,13 +12,11 @@ from src.database.models import (
 )
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
-from src.models.order_models import OrderManager
 from src.utils.auth_manager import ConnectionManager
 from src.dependencies import (
     db as _default_db,
     connection_manager as _default_connection_manager,
     lot_manager as _default_lot_manager,
-    order_manager as _default_order_manager,
     AUTH_ENABLED,
 )
 from src.services import chain_service, ledger_service

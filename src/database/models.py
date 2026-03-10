@@ -144,70 +144,9 @@ class Position(Base):
     )
 
 
-# ---------------------------------------------------------------------------
-# Order system
-# ---------------------------------------------------------------------------
 
-class Order(Base):
-    __tablename__ = "orders"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    order_id = Column(String, nullable=False)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    account_number = Column(String)
-    underlying = Column(String)
-    order_type = Column(String)
-    strategy_type = Column(String)
-    order_date = Column(String)
-    status = Column(String)
-    total_quantity = Column(Integer)
-    total_pnl = Column(Float)
-    has_assignment = Column(Boolean, default=False)
-    has_expiration = Column(Boolean, default=False)
-    has_exercise = Column(Boolean, default=False)
-    linked_order_id = Column(String)
-    created_at = Column(String, server_default=func.now())
-    updated_at = Column(String, server_default=func.now())
-
-    __table_args__ = (
-        UniqueConstraint("order_id", "user_id", name="uq_orders_order_user"),
-        Index("idx_orders_account", "account_number"),
-        Index("idx_orders_underlying", "underlying"),
-        Index("idx_orders_date", "order_date"),
-        Index("idx_orders_status", "status"),
-        Index("idx_orders_account_underlying", "account_number", "underlying"),
-    )
-
-
-class OrderPosition(Base):
-    __tablename__ = "order_positions"
-
-    position_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    order_id = Column(String)
-    account_number = Column(String)
-    symbol = Column(String)
-    underlying = Column(String)
-    instrument_type = Column(String)
-    option_type = Column(String)
-    strike = Column(Float)
-    expiration = Column(String)
-    quantity = Column(Integer)
-    opening_price = Column(Float)
-    closing_price = Column(Float)
-    opening_transaction_id = Column(String)
-    closing_transaction_id = Column(String)
-    opening_action = Column(String)
-    closing_action = Column(String)
-    status = Column(String)
-    pnl = Column(Float)
-    # migration-added columns
-    opening_order_id = Column(String)
-    closing_order_id = Column(String)
-    opening_amount = Column(Float)
-    closing_amount = Column(Float)
-    created_at = Column(String, server_default=func.now())
-    updated_at = Column(String, server_default=func.now())
+# NOTE: Order, OrderPosition, OrderChainMember tables removed (OPT-187).
+# Tables still exist in database but are unused. Drop via Alembic migration.
 
 
 # ---------------------------------------------------------------------------
@@ -249,22 +188,6 @@ class OrderChain(Base):
         Index("idx_order_chains_account_underlying", "account_number", "underlying"),
     )
 
-
-class OrderChainMember(Base):
-    __tablename__ = "order_chain_members"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    chain_id = Column(String)
-    order_id = Column(String)
-    sequence_number = Column(Integer)
-
-    __table_args__ = (
-        UniqueConstraint("chain_id", "order_id"),
-        Index("idx_chain_members_chain", "chain_id"),
-        Index("idx_chain_members_order", "order_id"),
-        Index("idx_chain_members_sequence", "chain_id", "sequence_number"),
-    )
 
 
 class OrderChainCache(Base):

@@ -10,8 +10,8 @@ from src.database.engine import dialect_insert
 from src.database.tenant import DEFAULT_USER_ID
 
 from src.database.models import (
-    OrderChain as OrderChainModel, OrderChainMember, OrderChainCache,
-    Order as OrderModel, RawTransaction, PositionLot as PositionLotModel,
+    OrderChain as OrderChainModel, OrderChainCache,
+    RawTransaction, PositionLot as PositionLotModel,
 )
 from src.database.db_manager import DatabaseManager
 from src.models.strategy_detector import StrategyDetector
@@ -318,10 +318,6 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         OrderChainCache.chain_id.in_(affected_chain_ids),
                         OrderChainCache.user_id == user_id,
                     ).delete(synchronize_session='fetch')
-                    session.query(OrderChainMember).filter(
-                        OrderChainMember.chain_id.in_(affected_chain_ids),
-                        OrderChainMember.user_id == user_id,
-                    ).delete(synchronize_session='fetch')
                 session.query(OrderChainModel).filter(
                     OrderChainModel.underlying.in_(underlying_list),
                     OrderChainModel.user_id == user_id,
@@ -339,10 +335,6 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         OrderChainCache.chain_id.in_(affected_chain_ids),
                         OrderChainCache.user_id == user_id,
                     ).delete(synchronize_session='fetch')
-                    session.query(OrderChainMember).filter(
-                        OrderChainMember.chain_id.in_(affected_chain_ids),
-                        OrderChainMember.user_id == user_id,
-                    ).delete(synchronize_session='fetch')
                 session.query(OrderChainModel).filter(
                     OrderChainModel.account_number == affected_account,
                     OrderChainModel.user_id == user_id,
@@ -350,7 +342,6 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                 logger.info(f"[CACHE UPDATE] Cleared cache for account: {affected_account}")
             else:
                 session.query(OrderChainCache).filter(OrderChainCache.user_id == user_id).delete()
-                session.query(OrderChainMember).filter(OrderChainMember.user_id == user_id).delete()
                 session.query(OrderChainModel).filter(OrderChainModel.user_id == user_id).delete()
 
             current_time = datetime.now()
@@ -500,25 +491,8 @@ async def update_chain_cache(chains, affected_underlyings: set = None, affected_
                         for dr in derived_rows:
                             derived_by_lot.setdefault(dr.derived_from_lot_id, []).append(dr)
 
-                # Insert chain membership links and cache complete order data
-                # Pre-check which order IDs exist (PG enforces FK, SQLite didn't)
-                order_ids_in_chain = [o.order_id for o in chain.orders]
-                existing_order_ids = set(
-                    row[0] for row in session.query(OrderModel.order_id).filter(
-                        OrderModel.order_id.in_(order_ids_in_chain),
-                    ).all()
-                )
-
+                # Cache complete order data
                 for order in chain.orders:
-                    if order.order_id in existing_order_ids:
-                        member_values = dict(
-                            chain_id=chain.chain_id, order_id=order.order_id,
-                            user_id=user_id,
-                        )
-                        stmt = dialect_insert(OrderChainMember).values(**member_values)
-                        stmt = stmt.on_conflict_do_nothing()
-                        session.execute(stmt)
-
                     # Calculate total P&L for this order
                     order_pnl = 0.0
                     for tx in order.transactions:
