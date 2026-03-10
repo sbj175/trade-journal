@@ -33,6 +33,25 @@ def match_vertical(legs: List[Leg]) -> Optional[str]:
         a, b = b, a
     low, high = a, b
 
+    # Check for ZEBRA ratios (2:1) before regular spreads
+    low_qty = low.quantity
+    high_qty = high.quantity
+
+    if a.option_type == "C":
+        # Bull ZEBRA: long 2x at lower strike, short 1x at higher strike
+        if low.direction == "long" and high.direction == "short" and low_qty == 2 * high_qty:
+            return "Bull ZEBRA"
+        # Bear ZEBRA: short 2x at lower strike, long 1x at higher strike
+        if low.direction == "short" and high.direction == "long" and low_qty == 2 * high_qty:
+            return "Bear ZEBRA"
+    elif a.option_type == "P":
+        # Bull ZEBRA with puts: long 2x at higher strike, short 1x at lower strike
+        if high.direction == "long" and low.direction == "short" and high_qty == 2 * low_qty:
+            return "Bull ZEBRA"
+        # Bear ZEBRA with puts: short 2x at higher strike, long 1x at lower strike
+        if high.direction == "short" and low.direction == "long" and high_qty == 2 * low_qty:
+            return "Bear ZEBRA"
+
     if a.option_type == "P":
         # Put verticals
         if low.direction == "long" and high.direction == "short":

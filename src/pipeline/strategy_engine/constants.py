@@ -16,6 +16,8 @@ STRATEGIES: dict[str, StrategyDef] = {
     "Covered Call":      StrategyDef("Covered Call",        "bullish",  "credit", 2, "combo"),
     "Jade Lizard":       StrategyDef("Jade Lizard",         "bullish",  "credit", 3, "combo"),
     # -- Debit strategies --
+    "Bull ZEBRA":        StrategyDef("Bull ZEBRA",          "bullish",  "debit",  2, "vertical"),
+    "Bear ZEBRA":        StrategyDef("Bear ZEBRA",          "bearish",  "debit",  2, "vertical"),
     "Bull Call Spread":  StrategyDef("Bull Call Spread",    "bullish",  "debit",  2, "vertical"),
     "Bear Put Spread":   StrategyDef("Bear Put Spread",     "bearish",  "debit",  2, "vertical"),
     "Long Call":         StrategyDef("Long Call",           "bullish",  "debit",  1, "single"),
