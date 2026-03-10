@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate } from '@/lib/formatters'
+import { evaluateRules } from '@/lib/rules'
 
 const Auth = useAuth()
 
@@ -23,6 +24,11 @@ const lastQuoteUpdate = ref(null)
 const syncSummary = ref(null)
 const strategyTargets = ref({})
 const rollAlertSettings = ref({ enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true })
+const rollAnalysisMode = ref(localStorage.getItem('rollAnalysisMode') || 'chain')  // 'spread' or 'chain'
+function toggleRollAnalysisMode() {
+  rollAnalysisMode.value = rollAnalysisMode.value === 'spread' ? 'chain' : 'spread'
+  localStorage.setItem('rollAnalysisMode', rollAnalysisMode.value)
+}
 const privacyMode = ref('off')
 
 // Tag state
@@ -893,24 +899,40 @@ function getRollAnalysis(group) {
 
   if (maxProfit <= 0 || maxLoss <= 0) return null
 
-  const currentPnL = getGroupOpenPnL(group)
-  const pctMaxProfit = ((currentPnL / maxProfit) * 100).toFixed(1)
-  const pctMaxLoss = currentPnL < 0 ? ((Math.abs(currentPnL) / maxLoss) * 100).toFixed(1) : '0.0'
+  const openPnL = getGroupOpenPnL(group)
+  const realizedPnL = group.realized_pnl || 0
+  const useChainMode = rollAnalysisMode.value === 'chain' && realizedPnL !== 0
 
-  let pnlLabel, pnlValue, pnlPositive
+  // Spread mode: metrics based on current spread only (ignores roll history)
+  // Chain mode:  metrics adjusted for full trade history including roll costs
+  const currentPnL = useChainMode ? openPnL + realizedPnL : openPnL
+
+  let effectiveMaxProfit = maxProfit
+  let effectiveMaxLoss = maxLoss
+  if (useChainMode) {
+    effectiveMaxProfit = Math.max(maxProfit + Math.min(realizedPnL, 0), 1)
+    effectiveMaxLoss = Math.max(maxLoss - Math.min(realizedPnL, 0), 1)
+  }
+
+  const pctMaxProfit = ((currentPnL / effectiveMaxProfit) * 100).toFixed(1)
+  const pctMaxLoss = currentPnL < 0 ? ((Math.abs(currentPnL) / effectiveMaxLoss) * 100).toFixed(1) : '0.0'
+
+  let pnlLabel, pnlValue, pnlPositive, pnlTooltip
   if (currentPnL >= 0) {
-    pnlLabel = 'Profit Captured'
+    pnlLabel = '%Max'
     pnlValue = pctMaxProfit + '%'
     pnlPositive = true
+    pnlTooltip = `${pctMaxProfit}% of the $${effectiveMaxProfit.toFixed(0)} maximum profit has been captured.\nMax profit = ${isCredit ? 'credit received' : 'spread width − debit paid'}.`
   } else {
-    pnlLabel = 'Loss Incurred'
+    pnlLabel = '%Max Loss'
     const lossMetric = isCredit ? Math.abs(parseFloat(pctMaxProfit)) : parseFloat(pctMaxLoss)
     pnlValue = lossMetric.toFixed(1) + '%'
     pnlPositive = false
+    pnlTooltip = `${lossMetric.toFixed(1)}% of the $${effectiveMaxLoss.toFixed(0)} maximum loss has been incurred.\nMax loss = ${isCredit ? 'spread width − credit received' : 'debit paid'}.`
   }
 
-  const rewardRemaining = maxProfit - currentPnL
-  const riskRemaining = maxLoss + currentPnL
+  const rewardRemaining = effectiveMaxProfit - currentPnL
+  const riskRemaining = effectiveMaxLoss + currentPnL
   const rewardToRiskRaw = riskRemaining > 0 ? rewardRemaining / riskRemaining : 99
   const rewardToRisk = rewardToRiskRaw >= 10 ? '10:1+' : rewardToRiskRaw.toFixed(1) + ':1'
 
@@ -929,27 +951,10 @@ function getRollAnalysis(group) {
 
   const proximityToShort = ((Math.abs(underlyingPrice - shortStrike) / underlyingPrice) * 100).toFixed(1)
 
-  // Badges
-  const badges = []
+  // Strategy targets (per-strategy configurable thresholds)
   const targets = strategyTargets.value[strategy] || {}
   const profitTarget = targets.profit_target_pct || 50
   const lossLimit = targets.loss_target_pct || 100
-
-  if (rollAlertSettings.value.profitTarget && parseFloat(pctMaxProfit) >= profitTarget) {
-    badges.push({ label: 'Profit Target', color: 'green' })
-  }
-  if (rollAlertSettings.value.lossLimit) {
-    const lossMetric = isCredit ? Math.abs(parseFloat(pctMaxProfit)) : parseFloat(pctMaxLoss)
-    if (currentPnL < 0 && lossMetric >= lossLimit) {
-      badges.push({ label: 'Loss Limit', color: 'red' })
-    }
-  }
-  if (rollAlertSettings.value.lateStage && dte <= 21 && dte > 0) {
-    badges.push({ label: `${dte}d Left`, color: 'yellow' })
-  }
-  if (rollAlertSettings.value.lowRewardToRisk && rewardToRiskRaw < (isCredit ? 0.3 : 0.6)) {
-    badges.push({ label: rewardToRisk, color: 'orange' })
-  }
 
   let convexity
   if (isCredit) {
@@ -962,11 +967,6 @@ function getRollAnalysis(group) {
     else if (rewardToRiskRaw > 0.8) convexity = 'Diminishing'
     else convexity = 'Low'
   }
-
-  let borderColor = 'blue'
-  if (badges.some(b => b.color === 'red')) borderColor = 'red'
-  else if (badges.some(b => b.color === 'yellow' || b.color === 'orange')) borderColor = 'yellow'
-  else if (badges.some(b => b.color === 'green')) borderColor = 'green'
 
   // Net position Greeks
   const longGreeks = getLegGreeks(longLeg, underlyingPrice, getStrike, getOptType)
@@ -987,32 +987,55 @@ function getRollAnalysis(group) {
   // Use abs(short delta) as P(ITM) — accounts for IV skew via broker Greeks
   const pItm = Math.min(Math.abs(shortGreeks.delta), 1)
   const pOtm = 1 - pItm
-  const ev = (pOtm * maxProfit) - (pItm * maxLoss)
-  const evTooltip = `EV = P(OTM) × Max Profit − P(ITM) × Max Loss\n= ${(pOtm * 100).toFixed(1)}% × $${maxProfit.toFixed(0)} − ${(pItm * 100).toFixed(1)}% × $${maxLoss.toFixed(0)}\n= $${ev.toFixed(0)}`
+  const ev = (pOtm * effectiveMaxProfit) - (pItm * effectiveMaxLoss)
+  const evTooltip = `EV = P(OTM) × Max Profit − P(ITM) × Max Loss\n= ${(pOtm * 100).toFixed(1)}% × $${effectiveMaxProfit.toFixed(0)} − ${(pItm * 100).toFixed(1)}% × $${effectiveMaxLoss.toFixed(0)}\n= $${ev.toFixed(0)}${useChainMode ? `\n(adjusted for $${formatNumber(realizedPnL, 0)} realized from rolls)` : ''}`
 
-  let suggestion = null
-  let urgency = 'low'
-  if (parseFloat(pctMaxProfit) >= profitTarget) {
-    suggestion = `Consider closing: ${pctMaxProfit}% of max profit captured.`
-    urgency = 'medium'
+  // Rules engine — always evaluates on the OPEN position (forward-looking).
+  // Prior roll costs are sunk — they don't change the current spread's risk/reward.
+  const openPctMaxProfit = ((openPnL / maxProfit) * 100)
+  const openPctMaxLoss = openPnL < 0 ? ((Math.abs(openPnL) / maxLoss) * 100) : 0
+  const openRewardRemaining = maxProfit - openPnL
+  const openRiskRemaining = maxLoss + openPnL
+  const openRR = openRiskRemaining > 0 ? openRewardRemaining / openRiskRemaining : 99
+  const ruleMetrics = {
+    pctMaxProfit: openPctMaxProfit,
+    pctMaxLoss: openPctMaxLoss,
+    currentPnL: openPnL,
+    rewardToRiskRaw: openRR,
+    proximityToShort: parseFloat(proximityToShort),
+    deltaSaturation: parseFloat(deltaSaturation),
+    netTheta,
+    dte,
+    isCredit,
+    maxProfit,
+    maxLoss,
+    profitTarget,
+    lossLimit,
   }
-  const suggestionLossMetric = isCredit ? Math.abs(parseFloat(pctMaxProfit)) : parseFloat(pctMaxLoss)
-  if (currentPnL < 0 && suggestionLossMetric >= lossLimit) {
-    const lossDesc = isCredit ? 'of credit received' : 'of debit paid'
-    suggestion = `Loss limit hit: ${suggestionLossMetric.toFixed(1)}% ${lossDesc}. Consider closing or rolling.`
-    urgency = 'high'
+  const signals = evaluateRules(ruleMetrics)
+
+  // Derive badges from signals (for header display)
+  const badges = signals.map(s => ({ label: s.label, color: s.color }))
+
+  // Border color from highest-priority signal
+  let borderColor = 'blue'
+  if (signals.length > 0) {
+    const topColor = signals[0].color
+    if (topColor === 'red') borderColor = 'red'
+    else if (topColor === 'orange' || topColor === 'yellow') borderColor = 'yellow'
+    else if (topColor === 'green') borderColor = 'green'
   }
 
   return {
-    pnlLabel, pnlValue, pnlPositive,
+    pnlLabel, pnlValue, pnlPositive, pnlTooltip,
     pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
     rewardRemaining: formatNumber(rewardRemaining, 0),
     riskRemaining: formatNumber(riskRemaining, 0),
     deltaSaturation, deltaSatTooltip, proximityToShort, convexity, isCredit,
-    maxProfit: formatNumber(maxProfit, 0),
-    maxLoss: formatNumber(maxLoss, 0),
+    maxProfit: formatNumber(effectiveMaxProfit, 0),
+    maxLoss: formatNumber(effectiveMaxLoss, 0),
     netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev, evTooltip,
-    badges, borderColor, suggestion, urgency
+    badges, borderColor, signals,
   }
 }
 
@@ -1366,7 +1389,8 @@ onUnmounted(() => {
       Total
       <span v-show="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-20 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')">
+    <span class="w-20 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')"
+          title="Return on capital: Total P&L ÷ Cost Basis. Measures how much you've made or lost relative to what you put in.">
       % Rtn
       <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -1722,11 +1746,24 @@ onUnmounted(() => {
                        'border-tv-blue border border-l-2 border-tv-blue/30': group.rollAnalysis.borderColor === 'blue'
                      }">
                   <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-semibold text-tv-text">Roll Analysis</span>
-                    <span class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-semibold text-tv-text">Roll Analysis</span>
+                      <button v-if="group.realized_pnl !== 0"
+                              @click.stop="toggleRollAnalysisMode()"
+                              class="text-[10px] px-1.5 py-0 rounded-sm border leading-4 transition-colors cursor-pointer"
+                              :class="rollAnalysisMode === 'chain'
+                                ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50'
+                                : 'bg-tv-panel text-tv-muted border-tv-border/50 hover:text-tv-text'"
+                              :title="rollAnalysisMode === 'chain'
+                                ? 'Chain: P&L and targets include roll costs — shows true trade performance. Signals and alerts always evaluate the open position only, since prior costs don\'t change the current spread\'s risk/reward.'
+                                : 'Open: P&L and targets based on current position only, ignoring prior rolls.'">
+                        {{ rollAnalysisMode === 'chain' ? 'Chain' : 'Open' }}
+                      </button>
+                    </div>
+                    <span v-if="group.rollAnalysis.convexity !== 'Diminishing' && group.rollAnalysis.convexity !== 'Elevated Risk'"
+                          class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
                           :class="{
                             'bg-tv-green/20 text-tv-green border-tv-green/50': group.rollAnalysis.convexity === 'High' || group.rollAnalysis.convexity === 'Low Risk',
-                            'bg-tv-amber/20 text-tv-amber border-tv-amber/50': group.rollAnalysis.convexity === 'Diminishing' || group.rollAnalysis.convexity === 'Elevated Risk',
                             'bg-tv-red/20 text-tv-red border-tv-red/50': group.rollAnalysis.convexity === 'Low' || group.rollAnalysis.convexity === 'High Risk'
                           }">
                       {{ group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity') }}
@@ -1737,8 +1774,8 @@ onUnmounted(() => {
                     <!-- P&L Status -->
                     <div class="space-y-1">
                       <div class="text-[10px] text-tv-muted uppercase tracking-wider font-semibold mb-1.5">P&L Status</div>
-                      <div class="flex justify-between gap-3">
-                        <span class="text-tv-muted">{{ group.rollAnalysis.pnlLabel }}</span>
+                      <div class="flex justify-between gap-3" :title="group.rollAnalysis.pnlTooltip">
+                        <span class="text-tv-muted cursor-help border-b border-dotted border-tv-muted/40">{{ group.rollAnalysis.pnlLabel }}</span>
                         <span class="font-medium" :class="group.rollAnalysis.pnlPositive ? 'text-tv-green' : 'text-tv-red'">
                           {{ group.rollAnalysis.pnlValue }}
                         </span>
@@ -1815,23 +1852,26 @@ onUnmounted(() => {
                       </div>
                     </div>
                   </div>
-                  <!-- Footer: Suggestion + AI Insight placeholder -->
-                  <div class="flex items-start justify-between gap-2">
-                    <template v-if="group.rollAnalysis.suggestion">
-                      <div class="flex-1 pl-3 py-2 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r"
-                           :class="{
-                             'border-tv-red': group.rollAnalysis.urgency === 'high',
-                             'border-tv-amber': group.rollAnalysis.urgency === 'medium',
-                             'border-tv-blue': group.rollAnalysis.urgency === 'low'
-                           }">
-                        {{ group.rollAnalysis.suggestion }}
-                      </div>
-                    </template>
-                    <button disabled
-                            class="ml-auto text-xs px-2 py-1 rounded border border-tv-border/50 text-tv-muted cursor-not-allowed shrink-0"
-                            title="Coming soon">
-                      <i class="fas fa-wand-magic-sparkles mr-1"></i>AI Insight
-                    </button>
+                  <!-- Footer: Signals from rules engine -->
+                  <div class="space-y-1">
+                    <div v-for="signal in group.rollAnalysis.signals" :key="signal.id"
+                         class="pl-3 py-1.5 border-l-2 text-xs text-tv-text bg-tv-bg/50 rounded-r flex items-center gap-2"
+                         :class="{
+                           'border-tv-red': signal.color === 'red',
+                           'border-tv-amber': signal.color === 'orange' || signal.color === 'yellow',
+                           'border-tv-green': signal.color === 'green',
+                           'border-tv-blue': signal.color === 'blue',
+                         }">
+                      <i class="fas text-[10px]"
+                         :class="{
+                           'fa-circle-exclamation text-tv-red': signal.type === 'action' && signal.color === 'red',
+                           'fa-triangle-exclamation text-tv-amber': signal.type === 'action' && signal.color !== 'red',
+                           'fa-eye text-tv-amber': signal.type === 'warning',
+                           'fa-circle-check text-tv-blue': signal.type === 'hold',
+                           'fa-circle-check text-tv-green': signal.color === 'green',
+                         }"></i>
+                      <span>{{ signal.message }}</span>
+                    </div>
                   </div>
                 </div>
               </template>
