@@ -45,12 +45,14 @@ def match_vertical(legs: List[Leg]) -> Optional[str]:
         if low.direction == "short" and high.direction == "long" and low_qty == 2 * high_qty:
             return "Bear ZEBRA"
     elif a.option_type == "P":
-        # Bull ZEBRA with puts: long 2x at higher strike, short 1x at lower strike
+        # Bear ZEBRA with puts: long 2x at higher strike, short 1x at lower strike
+        # Net long puts = bearish (profits when underlying falls)
         if high.direction == "long" and low.direction == "short" and high_qty == 2 * low_qty:
-            return "Bull ZEBRA"
-        # Bear ZEBRA with puts: short 2x at higher strike, long 1x at lower strike
-        if high.direction == "short" and low.direction == "long" and high_qty == 2 * low_qty:
             return "Bear ZEBRA"
+        # Bull ZEBRA with puts: short 2x at higher strike, long 1x at lower strike
+        # Net short puts = bullish (profits when underlying rises)
+        if high.direction == "short" and low.direction == "long" and high_qty == 2 * low_qty:
+            return "Bull ZEBRA"
 
     if a.option_type == "P":
         # Put verticals

@@ -171,14 +171,16 @@ class StrategyDetector:
                     elif low_pos['is_sell'] and high_pos['is_buy']:
                         return "Bear Call Spread"
             elif option_type == 'Put':
-                # Check for Bull ZEBRA with puts (long 2x at higher strike, short 1x at lower strike)
-                if (high_pos['is_buy'] and low_pos['is_sell'] and 
+                # Bear ZEBRA with puts (long 2x at higher strike, short 1x at lower strike)
+                # Net long puts = bearish (profits when underlying falls)
+                if (high_pos['is_buy'] and low_pos['is_sell'] and
                     high_qty == 2 * low_qty):
-                    return "Bull ZEBRA"
-                # Check for Bear ZEBRA with puts (short 2x at higher strike, long 1x at lower strike)
+                    return "Bear ZEBRA"
+                # Bull ZEBRA with puts (short 2x at higher strike, long 1x at lower strike)
+                # Net short puts = bullish (profits when underlying rises)
                 elif (high_pos['is_sell'] and low_pos['is_buy'] and
                       high_qty == 2 * low_qty):
-                    return "Bear ZEBRA"
+                    return "Bull ZEBRA"
                 # Regular vertical spreads (1:1 ratio)
                 elif low_qty == high_qty:
                     if high_pos['is_sell'] and low_pos['is_buy']:
