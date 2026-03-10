@@ -1008,7 +1008,7 @@ function getRollAnalysis(group) {
     deltaSaturation, proximityToShort, convexity, isCredit,
     maxProfit: formatNumber(maxProfit, 0),
     maxLoss: formatNumber(maxLoss, 0),
-    netDelta, deltaPerQty, netGamma, netTheta, netVega, ev,
+    netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev,
     badges, borderColor, suggestion, urgency
   }
 }
@@ -1765,7 +1765,7 @@ onUnmounted(() => {
                           {{ group.rollAnalysis.netDelta.toFixed(2) }}
                         </span>
                       </div>
-                      <div class="flex justify-between gap-3">
+                      <div v-if="group.rollAnalysis.qtyGcd > 1" class="flex justify-between gap-3">
                         <span class="text-tv-muted">Delta/Qty</span>
                         <span class="font-medium"
                               :class="group.rollAnalysis.deltaPerQty > 0.01 ? 'text-tv-green' : group.rollAnalysis.deltaPerQty < -0.01 ? 'text-tv-red' : 'text-tv-text'">
