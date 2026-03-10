@@ -986,6 +986,7 @@ function getRollAnalysis(group) {
   const pItm = Math.min(Math.abs(shortGreeks.delta), 1)
   const pOtm = 1 - pItm
   const ev = (pOtm * maxProfit) + (pItm * maxLoss)
+  const evTooltip = `EV = P(OTM) × Max Profit + P(ITM) × Max Loss\n= ${(pOtm * 100).toFixed(1)}% × $${maxProfit.toFixed(0)} + ${(pItm * 100).toFixed(1)}% × $${maxLoss.toFixed(0)}\n= $${ev.toFixed(0)}`
 
   let suggestion = null
   let urgency = 'low'
@@ -1008,7 +1009,7 @@ function getRollAnalysis(group) {
     deltaSaturation, proximityToShort, convexity, isCredit,
     maxProfit: formatNumber(maxProfit, 0),
     maxLoss: formatNumber(maxLoss, 0),
-    netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev,
+    netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev, evTooltip,
     badges, borderColor, suggestion, urgency
   }
 }
@@ -1803,7 +1804,7 @@ onUnmounted(() => {
                           {{ group.rollAnalysis.deltaSaturation }}%
                         </span>
                       </div>
-                      <div class="flex justify-between gap-3">
+                      <div class="flex justify-between gap-3 cursor-help" :title="group.rollAnalysis.evTooltip">
                         <span class="text-tv-muted">EV</span>
                         <span class="font-medium"
                               :class="group.rollAnalysis.ev > 0.01 ? 'text-tv-green' : group.rollAnalysis.ev < -0.01 ? 'text-tv-red' : 'text-tv-text'">
