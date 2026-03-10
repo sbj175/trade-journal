@@ -6,12 +6,10 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from loguru import logger
 
-from src.database.models import OrderChain
 from src.api.tastytrade_client import TastytradeClient
 from src.database.db_manager import DatabaseManager
-from src.models.order_models import OrderManager
 from src.models.lot_manager import LotManager
-from src.dependencies import get_db, get_order_manager, get_lot_manager, get_current_user_id, get_tastytrade_client
+from src.dependencies import get_db, get_lot_manager, get_current_user_id, get_tastytrade_client
 from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
@@ -23,7 +21,7 @@ router = APIRouter()
 
 
 @router.post("/api/sync")
-async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_client), db: DatabaseManager = Depends(get_db), order_manager: OrderManager = Depends(get_order_manager), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
+async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_client), db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Unified sync endpoint with smart date range calculation"""
     try:
 
@@ -135,35 +133,6 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/migrate-realized-pnl")
-async def migrate_realized_pnl(db: DatabaseManager = Depends(get_db), order_manager: OrderManager = Depends(get_order_manager), user_id: str = Depends(get_current_user_id)):
-    """One-time migration to populate realized_pnl for existing chains"""
-    try:
-        logger.info("Starting realized P&L migration...")
-
-        with db.get_session() as session:
-            chain_ids = [row[0] for row in session.query(OrderChain.chain_id).all()]
-
-        updated_count = 0
-        for chain_id in chain_ids:
-            try:
-                order_manager.update_chain_pnl(chain_id)
-                updated_count += 1
-            except Exception as e:
-                logger.error(f"Error updating chain {chain_id}: {e}")
-
-        logger.info(f"Realized P&L migration completed: {updated_count} chains updated")
-
-        return {
-            "message": f"Migration completed successfully",
-            "chains_updated": updated_count,
-            "total_chains": len(chain_ids)
-        }
-    except Exception as e:
-        logger.error(f"Error during realized P&L migration: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.post("/api/reprocess")
 async def reprocess_pipeline(
     db: DatabaseManager = Depends(get_db),
@@ -244,14 +213,13 @@ async def initial_sync(
 
         logger.info("Clearing existing database and recreating tables...")
         from src.database.models import (
-            Base, OrderChainMember, OrderChainCache,
-            OrderPosition, OrderChain as OrderChainModel, Position as PositionModel,
+            Base, OrderChainCache,
+            OrderChain as OrderChainModel, Position as PositionModel,
             AccountBalance, RawTransaction,
         )
-        from src.database.models import Order as OrderModel
         with db.get_session() as session:
             # Clear data scoped to current user (FK order: dependents first)
-            for model in [OrderChainMember, OrderChainCache, OrderChainModel, OrderPosition, OrderModel]:
+            for model in [OrderChainCache, OrderChainModel]:
                 session.query(model).filter(model.user_id == user_id).delete()
             session.query(PositionModel).filter(PositionModel.user_id == user_id).delete()
             session.query(AccountBalance).filter(AccountBalance.user_id == user_id).delete()

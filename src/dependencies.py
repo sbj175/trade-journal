@@ -10,7 +10,6 @@ from src.api.tastytrade_client import TastytradeClient
 
 from src.database.db_manager import DatabaseManager
 from src.database.tenant import DEFAULT_USER_ID, set_current_user_id
-from src.models.order_models import OrderManager
 from src.models.order_processor import OrderProcessor
 from src.models.strategy_detector import StrategyDetector
 from src.models.pnl_calculator import PnLCalculator
@@ -18,7 +17,6 @@ from src.models.lot_manager import LotManager
 from src.utils.auth_manager import ConnectionManager
 
 db = DatabaseManager(db_url=os.getenv("DATABASE_URL"))
-order_manager = OrderManager(db)
 lot_manager = LotManager(db)
 order_processor = OrderProcessor(db, lot_manager)
 strategy_detector = StrategyDetector(db)
@@ -34,10 +32,6 @@ templates = Jinja2Templates(directory="static")
 
 def get_db() -> DatabaseManager:
     return db
-
-
-def get_order_manager() -> OrderManager:
-    return order_manager
 
 
 def get_lot_manager() -> LotManager:

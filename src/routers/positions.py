@@ -12,8 +12,7 @@ from sqlalchemy import func
 from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
-from src.models.order_models import OrderManager
-from src.dependencies import get_db, get_lot_manager, get_order_manager, get_current_user_id
+from src.dependencies import get_db, get_lot_manager, get_current_user_id
 from src.services.ledger_service import seed_position_groups
 
 router = APIRouter()
@@ -318,14 +317,3 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/orders/{order_id}")
-async def get_order(order_id: str, order_manager: OrderManager = Depends(get_order_manager), user_id: str = Depends(get_current_user_id)):
-    """Get a specific order with all positions"""
-    try:
-        order = order_manager.get_order_by_id(order_id)
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        return order
-    except Exception as e:
-        logger.error(f"Error fetching order {order_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
