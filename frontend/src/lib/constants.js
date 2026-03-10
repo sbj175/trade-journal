@@ -13,6 +13,8 @@ export const STRATEGY_CATEGORIES = {
   'Short Call': { direction: 'bearish', type: 'credit' },
   'Short Strangle': { direction: 'neutral', type: 'credit' },
   'Short Straddle': { direction: 'neutral', type: 'credit' },
+  'Bull ZEBRA': { direction: 'bullish', type: 'debit' },
+  'Bear ZEBRA': { direction: 'bearish', type: 'debit' },
   'Bull Call Spread': { direction: 'bullish', type: 'debit' },
   'Bear Put Spread': { direction: 'bearish', type: 'debit' },
   'Long Call': { direction: 'bullish', type: 'debit' },
