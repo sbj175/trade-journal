@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
 // Eagerly import Risk and Components — their chunks consistently trigger
@@ -46,6 +47,12 @@ router.beforeEach(async (to, from) => {
   if (!token) {
     window.location.href = '/login'
     return false
+  }
+
+  if (to.name === 'risk') {
+    const authStore = useAuthStore()
+    await authStore.init()
+    if (!authStore.riskPageEnabled) return { name: 'positions' }
   }
 
   if (to.meta.requiresTastytrade && tastytradeConfigured !== true) {

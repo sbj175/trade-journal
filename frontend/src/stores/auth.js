@@ -4,6 +4,7 @@ import { ref } from 'vue'
 export const useAuthStore = defineStore('auth', () => {
   const authEnabled = ref(false)
   const userEmail = ref('')
+  const riskPageEnabled = ref(true)
   const initialized = ref(false)
 
   async function init() {
@@ -17,6 +18,17 @@ export const useAuthStore = defineStore('auth', () => {
       const user = await Auth.getUser()
       if (user) userEmail.value = user.email || ''
     }
+
+    try {
+      const resp = await fetch('/api/auth/config')
+      if (resp.ok) {
+        const config = await resp.json()
+        if (config.risk_page_enabled !== undefined) {
+          riskPageEnabled.value = config.risk_page_enabled
+        }
+      }
+    } catch (_) { /* use default */ }
+
     initialized.value = true
   }
 
@@ -24,5 +36,5 @@ export const useAuthStore = defineStore('auth', () => {
     window.Auth?.signOut()
   }
 
-  return { authEnabled, userEmail, initialized, init, signOut }
+  return { authEnabled, userEmail, riskPageEnabled, initialized, init, signOut }
 })

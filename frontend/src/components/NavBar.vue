@@ -1,16 +1,19 @@
 <script setup>
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const authStore = useAuthStore()
 
-const navLinks = [
+const allNavLinks = [
   { to: '/positions', label: 'Positions' },
   { to: '/ledger', label: 'Ledger' },
   { to: '/reports', label: 'Reports' },
-  { to: '/risk', label: 'Risk' },
+  { to: '/risk', label: 'Risk', enabled: () => authStore.riskPageEnabled },
 ]
+
+const navLinks = computed(() => allNavLinks.filter(l => !l.enabled || l.enabled()))
 </script>
 
 <template>

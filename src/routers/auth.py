@@ -11,6 +11,8 @@ from src.database.engine import get_session
 from src.database.models import User, WaitlistEntry
 from src.dependencies import BETA_MAX_USERS
 
+RISK_PAGE_ENABLED = os.getenv("ENABLE_RISK_PAGE", "true").lower() in ("true", "1", "yes")
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -50,6 +52,7 @@ async def get_auth_config():
         "beta_max_users": BETA_MAX_USERS,
         "beta_open": beta_open,
         "beta_spots_remaining": beta_spots_remaining,
+        "risk_page_enabled": RISK_PAGE_ENABLED,
     }
 
 
