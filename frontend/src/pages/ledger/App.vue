@@ -24,7 +24,7 @@ const sortColumn = ref('opening_date')
 const sortDirection = ref('desc')
 const loading = ref(true)
 const selectedLots = ref([])
-const stats = ref({ totalPnl: 0, openCount: 0, closedCount: 0 })
+const stats = ref({ openCount: 0, closedCount: 0 })
 const filterDirection = ref([])
 const filterType = ref([])
 const groupNotes = ref({})
@@ -339,13 +339,12 @@ function applyFilters() {
 }
 
 function computeStats() {
-  let totalPnl = 0, openCount = 0, closedCount = 0
+  let openCount = 0, closedCount = 0
   for (const g of filteredGroups.value) {
-    totalPnl += g.realized_pnl || 0
     if (g.status === 'OPEN') openCount++
     else closedCount++
   }
-  stats.value = { totalPnl, openCount, closedCount }
+  stats.value = { openCount, closedCount }
 }
 
 function toggleFilter(category, value) {
@@ -1093,12 +1092,6 @@ function sortPositions(positions) {
     </span>
     <span class="text-tv-muted">
       Closed: <span class="text-tv-text">{{ stats.closedCount }}</span>
-    </span>
-    <span class="text-tv-muted">
-      Realized P&amp;L:
-      <span :class="stats.totalPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
-        ${{ formatNumber(stats.totalPnl) }}
-      </span>
     </span>
   </div>
 

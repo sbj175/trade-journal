@@ -29,9 +29,16 @@ from src.utils.credential_encryption import encrypt_credential, decrypt_credenti
 
 router = APIRouter()
 
-# Tastytrade OAuth endpoints
-TASTYTRADE_AUTH_URL = "https://my.tastytrade.com/auth.html"
-TASTYTRADE_TOKEN_URL = "https://api.tastyworks.com/oauth/token"
+# Tastytrade OAuth endpoints — sandbox uses cert environment
+_IS_SANDBOX = os.getenv("TASTYTRADE_SANDBOX", "").lower() in ("1", "true", "yes")
+TASTYTRADE_AUTH_URL = (
+    "https://my.cert.tastytrade.com/auth.html" if _IS_SANDBOX
+    else "https://my.tastytrade.com/auth.html"
+)
+TASTYTRADE_TOKEN_URL = (
+    "https://api.cert.tastyworks.com/oauth/token" if _IS_SANDBOX
+    else "https://api.tastyworks.com/oauth/token"
+)
 
 # State token max age (seconds)
 STATE_MAX_AGE = 600  # 10 minutes

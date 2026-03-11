@@ -27,6 +27,7 @@ class TastytradeClient:
         """
         self.provider_secret = (provider_secret or os.getenv('TASTYTRADE_PROVIDER_SECRET') or '').strip()
         self.refresh_token = (refresh_token or os.getenv('TASTYTRADE_REFRESH_TOKEN') or '').strip()
+        self.is_sandbox = os.getenv('TASTYTRADE_SANDBOX', '').lower() in ('1', 'true', 'yes')
 
         self.session = None
         self.accounts = []
@@ -50,9 +51,10 @@ class TastytradeClient:
                 logger.error("Missing OAuth credentials (TASTYTRADE_PROVIDER_SECRET / TASTYTRADE_REFRESH_TOKEN)")
                 return False
 
-            logger.info("Attempting to authenticate with Tastytrade OAuth2...")
-            self.session = Session(self.provider_secret, self.refresh_token)
-            logger.info("Successfully authenticated with Tastytrade")
+            env_label = "SANDBOX" if self.is_sandbox else "production"
+            logger.info("Attempting to authenticate with Tastytrade OAuth2 ({})...", env_label)
+            self.session = Session(self.provider_secret, self.refresh_token, is_test=self.is_sandbox)
+            logger.info("Successfully authenticated with Tastytrade ({})", env_label)
 
             # Get all accounts
             self.accounts = await Account.get(self.session)

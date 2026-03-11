@@ -61,6 +61,7 @@ def ensure_user_exists(user_id: str, email: str | None = None) -> None:
                 auth_provider="supabase",
             )
             session.add(user)
+            session.flush()  # ensure User row exists before FK-dependent inserts
             _seed_default_strategy_targets(session)
             logger.info("Provisioned new user: %s (%s)", user_id, email)
         else:

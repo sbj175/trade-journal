@@ -1,4 +1,14 @@
-# Stage 1: Build dependencies
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /build/frontend
+COPY frontend/package.json ./
+RUN npm install
+COPY frontend/ .
+RUN npm run build
+# Vite outputs to resolve(__dirname, '../static/dist') → /build/static/dist
+
+# Stage 2: Build Python dependencies
 FROM python:3.12-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -12,7 +22,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Runtime
+# Stage 3: Runtime
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,10 +38,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 COPY . .
 
+# Copy built frontend assets from Stage 1
+COPY --from=frontend-builder /build/static/dist static/dist
+
 RUN chmod +x docker-entrypoint.sh
 
-# Default: enable hot-reload for dev (override for prod)
-ENV UVICORN_ARGS="--reload"
+# No hot-reload by default (production). Set UVICORN_ARGS="--reload" for dev.
+ENV UVICORN_ARGS=""
 
 RUN chown -R appuser:appuser /app
 USER appuser
