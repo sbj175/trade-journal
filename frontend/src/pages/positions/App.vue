@@ -956,17 +956,6 @@ function getRollAnalysis(group) {
   const profitTarget = targets.profit_target_pct || 50
   const lossLimit = targets.loss_target_pct || 100
 
-  let convexity
-  if (isCredit) {
-    const creditLoss = currentPnL < 0 ? Math.abs(parseFloat(pctMaxProfit)) : 0
-    if (creditLoss < 50) convexity = 'Low Risk'
-    else if (creditLoss < 100) convexity = 'Elevated Risk'
-    else convexity = 'High Risk'
-  } else {
-    if (rewardToRiskRaw > 2) convexity = 'High'
-    else if (rewardToRiskRaw > 0.8) convexity = 'Diminishing'
-    else convexity = 'Low'
-  }
 
   // Net position Greeks
   const longGreeks = getLegGreeks(longLeg, underlyingPrice, getStrike, getOptType)
@@ -1031,7 +1020,7 @@ function getRollAnalysis(group) {
     pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
     rewardRemaining: formatNumber(rewardRemaining, 0),
     riskRemaining: formatNumber(riskRemaining, 0),
-    deltaSaturation, deltaSatTooltip, proximityToShort, convexity, isCredit,
+    deltaSaturation, deltaSatTooltip, proximityToShort, isCredit,
     maxProfit: formatNumber(effectiveMaxProfit, 0),
     maxLoss: formatNumber(effectiveMaxLoss, 0),
     netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev, evTooltip,
@@ -1760,14 +1749,6 @@ onUnmounted(() => {
                         {{ rollAnalysisMode === 'chain' ? 'Chain' : 'Open' }}
                       </button>
                     </div>
-                    <span v-if="group.rollAnalysis.convexity !== 'Diminishing' && group.rollAnalysis.convexity !== 'Elevated Risk'"
-                          class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
-                          :class="{
-                            'bg-tv-green/20 text-tv-green border-tv-green/50': group.rollAnalysis.convexity === 'High' || group.rollAnalysis.convexity === 'Low Risk',
-                            'bg-tv-red/20 text-tv-red border-tv-red/50': group.rollAnalysis.convexity === 'Low' || group.rollAnalysis.convexity === 'High Risk'
-                          }">
-                      {{ group.rollAnalysis.isCredit ? group.rollAnalysis.convexity : (group.rollAnalysis.convexity + ' Convexity') }}
-                    </span>
                   </div>
                   <!-- Compact 3-column layout -->
                   <div class="flex gap-6 text-xs mb-2">
