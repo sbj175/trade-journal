@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
-import { formatNumber, formatDate, formatOrderDate, formatExpirationShort, calculateDTE } from '@/lib/formatters'
+import { formatNumber, formatDate, formatExpirationShort, calculateDTE } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
 
 const Auth = useAuth()
@@ -25,7 +25,6 @@ const rollChainVisible = ref({})  // { group_id: true/false }
 const sortColumn = ref('opening_date')
 const sortDirection = ref('desc')
 const loading = ref(true)
-const selectedLots = ref([])
 const stats = ref({ openCount: 0, closedCount: 0 })
 const filterDirection = ref([])
 const filterType = ref([])
@@ -167,7 +166,7 @@ async function fetchLedger() {
     const url = '/api/ledger' + (params.toString() ? '?' + params.toString() : '')
     const response = await Auth.authFetch(url)
     const data = await response.json()
-    groups.value = data.map(g => ({ ...g, expanded: false, _movingLots: false, _editingStrategy: false }))
+    groups.value = data.map(g => ({ ...g, expanded: false, _editingStrategy: false }))
     applyFilters()
   } catch (error) {
     console.error('Error fetching ledger:', error)
@@ -447,26 +446,6 @@ function saveState() {
 }
 
 // ==================== GROUP MANAGEMENT ====================
-function toggleGroupMoveMode(group) {
-  const wasMoving = group._movingLots
-  clearAllMoveMode()
-  if (!wasMoving) {
-    group._movingLots = true
-    group.expanded = true
-  }
-}
-
-function clearAllMoveMode() {
-  for (const g of groups.value) {
-    g._movingLots = false
-  }
-  selectedLots.value = []
-}
-
-function cancelMoveMode() {
-  clearAllMoveMode()
-}
-
 function sortedLots(group) {
   return (group.lots || []).slice().sort((a, b) => {
     const aOpen = a.status !== 'CLOSED' ? 0 : 1
@@ -495,6 +474,81 @@ function sortedOptionLots(group) {
   return sortedLots(group).filter(l => l.instrument_type !== 'EQUITY' || l.status === 'CLOSED')
 }
 
+function groupedOptionLegs(group) {
+  const lots = sortedOptionLots(group)
+  const map = new Map()
+  for (const lot of lots) {
+    const key = `${lot.expiration || '_'}|${lot.strike || '_'}|${lot.option_type || '_'}|${lot.instrument_type || '_'}`
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        expiration: lot.expiration,
+        strike: lot.strike,
+        option_type: lot.option_type,
+        instrument_type: lot.instrument_type,
+        status: 'CLOSED',
+        totalQuantity: 0,
+        totalCostBasis: 0,
+        totalProceeds: 0,
+        totalRealized: 0,
+        entryDate: null,
+        closeDate: null,
+        lotCount: 0,
+        lots: [],
+      })
+    }
+    const agg = map.get(key)
+    const qty = lot.status !== 'CLOSED' ? (lot.remaining_quantity ?? lot.quantity) : lot.quantity
+    agg.totalQuantity += qty
+    agg.totalCostBasis += lot.cost_basis || 0
+    const closeSummary = lotCloseSummary(lot)
+    if (closeSummary) agg.totalProceeds += closeSummary.proceeds
+    agg.totalRealized += lot.realized_pnl || 0
+    if (!agg.entryDate || (lot.entry_date && lot.entry_date < agg.entryDate)) {
+      agg.entryDate = lot.entry_date
+    }
+    const cd = lotCloseDate(lot)
+    if (cd && (!agg.closeDate || cd > agg.closeDate)) {
+      agg.closeDate = cd
+    }
+    if (lot.status !== 'CLOSED') agg.status = 'OPEN'
+    agg.lotCount++
+    agg.lots.push(lot)
+  }
+
+  const result = [...map.values()]
+  // Compute derived fields
+  for (const leg of result) {
+    const multiplier = leg.option_type ? 100 : 1
+    const totalQty = Math.abs(leg.lots.reduce((s, l) => s + (l.remaining_quantity ?? l.quantity), 0))
+    leg.avgEntryPrice = totalQty > 0 ? Math.abs(leg.totalCostBasis) / totalQty / multiplier : 0
+    // Weighted avg close price
+    if (leg.totalProceeds && leg.status === 'CLOSED') {
+      const closedQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
+      leg.avgClosePrice = closedQty > 0 ? Math.abs(leg.totalProceeds) / closedQty / multiplier : 0
+    } else {
+      leg.avgClosePrice = null
+    }
+  }
+
+  // Sort: open before closed, then highest strike first within same expiration
+  result.sort((a, b) => {
+    const aOpen = a.status !== 'CLOSED' ? 0 : 1
+    const bOpen = b.status !== 'CLOSED' ? 0 : 1
+    if (aOpen !== bOpen) return aOpen - bOpen
+    const aExp = a.expiration || ''
+    const bExp = b.expiration || ''
+    if (aOpen === 0) {
+      if (aExp !== bExp) return aExp.localeCompare(bExp)
+      return (b.strike || 0) - (a.strike || 0)
+    }
+    if (aExp !== bExp) return bExp.localeCompare(aExp)
+    return (b.strike || 0) - (a.strike || 0)
+  })
+
+  return result
+}
+
 function openEquityLots(group) {
   return (group.lots || []).filter(l => l.instrument_type === 'EQUITY' && l.status !== 'CLOSED')
     .sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''))
@@ -520,14 +574,6 @@ function lotCloseDate(lot) {
     !latest || (c.closing_date > latest) ? c.closing_date : latest, null)
 }
 
-function lotHoldingDays(lot) {
-  const closeDate = lotCloseDate(lot)
-  if (!closeDate || !lot.entry_date) return null
-  const entry = new Date(lot.entry_date)
-  const close = new Date(closeDate)
-  return Math.round((close - entry) / (1000 * 60 * 60 * 24))
-}
-
 function lotCloseSummary(lot) {
   const closings = lot.closings || []
   if (closings.length === 0) return null
@@ -540,113 +586,6 @@ function lotCloseSummary(lot) {
   return {
     avgPrice: totalQty > 0 ? totalValue / totalQty / multiplier : 0,
     proceeds: totalValue,
-  }
-}
-
-function toggleAllEquityLots(group) {
-  const ids = openEquityLots(group).map(l => l.transaction_id)
-  const allSelected = ids.every(id => selectedLots.value.includes(id))
-  if (allSelected) {
-    selectedLots.value = selectedLots.value.filter(id => !ids.includes(id))
-  } else {
-    for (const id of ids) {
-      if (!selectedLots.value.includes(id)) selectedLots.value.push(id)
-    }
-  }
-}
-
-function toggleLotSelection(transactionId) {
-  const idx = selectedLots.value.indexOf(transactionId)
-  if (idx >= 0) {
-    selectedLots.value.splice(idx, 1)
-  } else {
-    selectedLots.value.push(transactionId)
-  }
-}
-
-function toggleLotExpand(lot) {
-  lot._expanded = !lot._expanded
-}
-
-function _getSourceInfo() {
-  let underlying = null, account = null
-  const sourceIds = new Set()
-  for (const g of groups.value) {
-    for (const lot of (g.lots || [])) {
-      if (selectedLots.value.includes(lot.transaction_id)) {
-        underlying = g.underlying
-        account = g.account_number
-        sourceIds.add(g.group_id)
-        break
-      }
-    }
-  }
-  return { underlying, account, sourceIds }
-}
-
-function _inferStrategyLabel() {
-  const lots = []
-  for (const g of groups.value) {
-    for (const lot of (g.lots || [])) {
-      if (selectedLots.value.includes(lot.transaction_id)) lots.push(lot)
-    }
-  }
-  const optionLots = lots.filter(l => l.option_type)
-  if (optionLots.length === 0) return null
-  const firstType = optionLots[0].option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put'
-  const firstDir = optionLots[0].quantity < 0 ? 'Short' : 'Long'
-  const allSame = optionLots.every(l => {
-    const t = l.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put'
-    const d = l.quantity < 0 ? 'Short' : 'Long'
-    return t === firstType && d === firstDir
-  })
-  return allSame ? `${firstDir} ${firstType}` : null
-}
-
-function isEligibleTarget(group) {
-  if (selectedLots.value.length === 0) return false
-  const { underlying, account, sourceIds } = _getSourceInfo()
-  return group.underlying === underlying &&
-         group.account_number === account &&
-         !sourceIds.has(group.group_id)
-}
-
-function isSourceGroup(group) {
-  if (selectedLots.value.length === 0) return false
-  const { sourceIds } = _getSourceInfo()
-  return sourceIds.has(group.group_id)
-}
-
-async function moveLots(targetGroupId) {
-  if (!targetGroupId || selectedLots.value.length === 0) return
-
-  if (targetGroupId === '__new__') {
-    const { underlying, account } = _getSourceInfo()
-    const strategyLabel = _inferStrategyLabel()
-    try {
-      const resp = await Auth.authFetch('/api/ledger/groups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account_number: account, underlying, strategy_label: strategyLabel }),
-      })
-      const result = await resp.json()
-      targetGroupId = result.group_id
-    } catch (error) {
-      console.error('Error creating group:', error)
-      return
-    }
-  }
-
-  try {
-    await Auth.authFetch('/api/ledger/move-lots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transaction_ids: selectedLots.value, target_group_id: targetGroupId }),
-    })
-    clearAllMoveMode()
-    await fetchLedger()
-  } catch (error) {
-    console.error('Error moving lots:', error)
   }
 }
 
@@ -821,11 +760,7 @@ function handleTagInput(event, group) {
 }
 
 function onGroupHeaderClick(group) {
-  if (selectedLots.value.length > 0 && isEligibleTarget(group)) {
-    moveLots(group.group_id)
-  } else {
-    group.expanded = !group.expanded
-  }
+  group.expanded = !group.expanded
 }
 
 function getSortLabel() {
@@ -834,24 +769,6 @@ function getSortLabel() {
     status: 'Status', closing_date: 'Closed', total_pnl: 'P&L',
   }
   return map[sortColumn.value] || sortColumn.value
-}
-
-function getClosingTypeBadgeClass(closingType, lotQuantity) {
-  if ((closingType === 'MANUAL' || closingType === 'EXPIRATION') && lotQuantity < 0) {
-    return 'bg-tv-green/20 text-tv-green border-tv-green/50'
-  }
-  if ((closingType === 'MANUAL' || closingType === 'EXPIRATION') && lotQuantity >= 0) {
-    return 'bg-tv-red/20 text-tv-red border-tv-red/50'
-  }
-  if (closingType === 'ASSIGNMENT') return 'bg-tv-orange/20 text-tv-orange border-tv-orange/50'
-  if (closingType === 'EXERCISE') return 'bg-tv-purple/20 text-tv-purple border-tv-purple/50'
-  return 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
-}
-
-function getClosingTypeLabel(closingType, lotQuantity) {
-  if (closingType === 'MANUAL') return lotQuantity < 0 ? 'BTC' : 'STC'
-  if (closingType === 'EXPIRATION') return 'EXPIRED'
-  return closingType
 }
 
 
@@ -1150,13 +1067,7 @@ function getClosingTypeLabel(closingType, lotQuantity) {
       <div v-for="group in filteredGroups" :key="group.group_id" :id="'group-' + group.group_id">
         <!-- Group Header Row -->
         <div @click="onGroupHeaderClick(group)"
-             class="flex items-center px-4 h-12 cursor-pointer transition-colors"
-             :class="{
-               'hover:bg-tv-border/20': selectedLots.length === 0,
-               'border-l-4 !border-l-tv-blue bg-tv-blue/10 hover:bg-tv-blue/20': selectedLots.length > 0 && isEligibleTarget(group),
-               'opacity-40': selectedLots.length > 0 && isSourceGroup(group),
-               'opacity-60': selectedLots.length > 0 && !isEligibleTarget(group) && !isSourceGroup(group)
-             }">
+             class="flex items-center px-4 h-12 cursor-pointer transition-colors hover:bg-tv-border/20">
           <!-- Expand icon -->
           <i class="fas fa-chevron-right w-6 text-tv-muted transition-transform duration-200"
              :class="group.expanded ? 'rotate-90' : ''"></i>
@@ -1179,10 +1090,6 @@ function getClosingTypeLabel(closingType, lotQuantity) {
                   <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                      @click="group._editingStrategy = true"
                      title="Edit strategy label"></i>
-                  <i class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
-                     :class="group._movingLots ? '!text-tv-blue' : ''"
-                     @click="toggleGroupMoveMode(group)"
-                     title="Move lots between groups"></i>
                 </span>
               </span>
             </template>
@@ -1285,18 +1192,13 @@ function getClosingTypeLabel(closingType, lotQuantity) {
             <div>
               <!-- Lots Table Header -->
               <div class="flex items-center text-sm text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
-                <span class="w-5"></span>
-                <span v-show="group._movingLots" class="w-8"></span>
-                <span class="w-32">Entry Date</span>
-                <span class="w-24">Close Date</span>
-                <span class="w-10">Days</span>
                 <span class="w-10 text-right">Qty</span>
                 <span class="w-16 text-center mx-2">Exp</span>
                 <span class="w-10">DTE</span>
                 <span class="w-16 text-center mx-2">Strike</span>
                 <span class="w-10">Type</span>
                 <span class="w-20 text-center ml-3">Status</span>
-                <span class="w-20 text-right">Entry $</span>
+                <span class="w-20 text-right">Avg Entry</span>
                 <span class="w-24 text-right ml-2">Cost Basis</span>
                 <span class="w-20 text-right ml-2">Close $</span>
                 <span class="w-24 text-right ml-2">Proceeds</span>
@@ -1307,20 +1209,7 @@ function getClosingTypeLabel(closingType, lotQuantity) {
               <template v-if="openEquityLots(group).length > 0">
                 <div>
                   <!-- Aggregate summary row -->
-                  <div @click="group._eqExpanded = !group._eqExpanded"
-                       class="flex items-center text-sm px-4 py-1.5 hover:bg-tv-panel/50 font-mono cursor-pointer"
-                       :class="group._eqExpanded ? 'bg-tv-panel/30' : ''">
-                    <i class="fas fa-chevron-right w-5 text-tv-muted text-xs transition-transform duration-200"
-                       :class="group._eqExpanded ? 'rotate-90' : ''"></i>
-                    <span v-if="group._movingLots" class="w-8">
-                      <input type="checkbox"
-                             :checked="openEquityLots(group).every(l => selectedLots.includes(l.transaction_id))"
-                             @click.stop="toggleAllEquityLots(group); if (!group._eqExpanded) group._eqExpanded = true"
-                             class="w-4 h-4">
-                    </span>
-                    <span class="w-32 text-tv-muted">{{ equityAggregate(group).lotCount }} lots</span>
-                    <span class="w-24"></span>
-                    <span class="w-10"></span>
+                  <div class="flex items-center text-sm px-4 py-1.5 hover:bg-tv-panel/50 font-mono">
                     <span class="w-10 text-right font-medium"
                           :class="equityAggregate(group).quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
                       {{ equityAggregate(group).quantity }}
@@ -1336,225 +1225,50 @@ function getClosingTypeLabel(closingType, lotQuantity) {
                     <span class="w-24 text-right ml-2"></span>
                     <span class="w-24 text-right ml-2"></span>
                   </div>
-
-                  <!-- Expanded individual equity lots -->
-                  <div v-show="group._eqExpanded">
-                    <div v-for="lot in openEquityLots(group)" :key="lot.lot_id">
-                      <div @click="toggleLotExpand(lot)"
-                           class="flex items-center text-sm px-4 py-1.5 hover:bg-tv-panel/50 font-mono cursor-pointer border-l-2 border-tv-blue/30"
-                           :class="lot._expanded ? 'bg-tv-panel/30' : ''">
-                        <i class="fas fa-chevron-right w-5 text-tv-muted text-xs transition-transform duration-200"
-                           :class="lot._expanded ? 'rotate-90' : ''"></i>
-                        <span v-if="group._movingLots" class="w-8">
-                          <input type="checkbox"
-                                 :checked="selectedLots.includes(lot.transaction_id)"
-                                 @click.stop="toggleLotSelection(lot.transaction_id)"
-                                 class="w-4 h-4">
-                        </span>
-                        <span class="w-32 text-tv-muted">
-                          <span v-if="lot.derivation_type" class="text-tv-muted mr-1">&#8627;</span>
-                          {{ formatOrderDate(lot.entry_date) }}
-                        </span>
-                        <span class="w-24 text-tv-muted">{{ lotCloseDate(lot) ? formatOrderDate(lotCloseDate(lot)) : '' }}</span>
-                        <span class="w-10 text-tv-muted">{{ lotHoldingDays(lot) != null ? lotHoldingDays(lot) + 'd' : '' }}</span>
-                        <span class="w-10 text-right font-medium"
-                              :class="(lot.remaining_quantity ?? lot.quantity) > 0 ? 'text-tv-green' : 'text-tv-red'">
-                          {{ lot.remaining_quantity ?? lot.quantity }}
-                        </span>
-                        <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text">Shares</span>
-                        <span class="w-10 text-tv-muted">&mdash;</span>
-                        <span class="w-16 text-center mx-2 py-0.5 rounded text-tv-muted">&mdash;</span>
-                        <span class="w-10 text-tv-muted">Stk</span>
-                        <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">{{ lot.status }}</span>
-                        <span class="w-20 text-right text-tv-muted">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
-                        <span class="w-24 text-right text-tv-muted ml-2">{{ lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '' }}</span>
-                        <span class="w-20 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).avgPrice) : '' }}</span>
-                        <span class="w-24 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).proceeds) : '' }}</span>
-                        <span class="w-24 text-right ml-2"
-                              :class="lot.realized_pnl > 0 ? 'text-tv-green' : lot.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
-                          {{ lot.realized_pnl ? '$' + formatNumber(lot.realized_pnl) : '' }}
-                        </span>
-                      </div>
-
-                      <!-- Expanded Events (opening + closings) -->
-                      <div v-show="lot._expanded" class="border-l-2 border-tv-blue/30">
-                        <div class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
-                          <span class="w-5"></span>
-                          <span v-show="group._movingLots" class="w-8"></span>
-                          <span class="w-8"></span>
-                          <span class="w-24">{{ formatOrderDate(lot.entry_date) }}</span>
-                          <span class="w-24"></span>
-                          <span class="w-10"></span>
-                          <span class="w-10 text-right" :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
-                            {{ (lot.quantity > 0 ? '+' : '') + lot.quantity }}
-                          </span>
-                          <span class="w-16 text-center mx-2"></span>
-                          <span class="w-10"></span>
-                          <span class="w-16 text-center mx-2"></span>
-                          <span class="w-10"></span>
-                          <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
-                                :class="lot.quantity > 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-red/20 text-tv-red border-tv-red/50'">
-                            {{ lot.quantity > 0 ? 'BTO' : 'STO' }}
-                          </span>
-                          <span class="w-20 text-right">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
-                          <span class="w-24 text-right ml-2 whitespace-nowrap"
-                                :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
-                            {{ lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : '' }}
-                          </span>
-                          <span class="w-20 text-right ml-2"></span>
-                          <span class="w-24 text-right ml-2"></span>
-                          <span class="w-24 ml-2"></span>
-                        </div>
-                        <div v-for="closing in (lot.closings || [])" :key="closing.closing_id"
-                             class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
-                          <span class="w-5"></span>
-                          <span v-show="group._movingLots" class="w-8"></span>
-                          <span class="w-8"></span>
-                          <span class="w-24">{{ formatOrderDate(closing.closing_date) }}</span>
-                          <span class="w-24"></span>
-                          <span class="w-10"></span>
-                          <span class="w-10 text-right" :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
-                            {{ (lot.quantity < 0 ? '+' : '-') + closing.quantity_closed }}
-                          </span>
-                          <span class="w-16 text-center mx-2"></span>
-                          <span class="w-10"></span>
-                          <span class="w-16 text-center mx-2"></span>
-                          <span class="w-10"></span>
-                          <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
-                                :class="getClosingTypeBadgeClass(closing.closing_type, lot.quantity)">
-                            {{ getClosingTypeLabel(closing.closing_type, lot.quantity) }}
-                          </span>
-                          <span class="w-20 text-right ml-2"></span>
-                          <span class="w-24 text-right ml-2"></span>
-                          <span class="w-20 text-right ml-2">{{ closing.closing_price ? '$' + formatNumber(closing.closing_price) : '' }}</span>
-                          <span class="w-24 text-right ml-2 whitespace-nowrap"
-                                :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'">
-                            {{ closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : '' }}
-                          </span>
-                          <span class="w-24 ml-2"></span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </template>
 
               <!-- Separator between equity aggregate and option/closed lots -->
-              <div v-if="openEquityLots(group).length > 0 && sortedOptionLots(group).length > 0"
+              <div v-if="openEquityLots(group).length > 0 && groupedOptionLegs(group).length > 0"
                    class="border-t border-tv-muted/20 my-2 mx-4"></div>
 
-              <!-- Section B: Option lots + closed equity lots -->
-              <template v-for="(lot, lotIdx) in sortedOptionLots(group)" :key="lot.lot_id">
+              <!-- Section B: Option legs (consolidated by strike) + closed equity lots -->
+              <template v-for="(leg, legIdx) in groupedOptionLegs(group)" :key="leg.key">
                 <div>
                   <!-- Separator between open and closed -->
-                  <div v-if="lotIdx > 0 && lot.status === 'CLOSED' && sortedOptionLots(group)[lotIdx - 1].status !== 'CLOSED'"
+                  <div v-if="legIdx > 0 && leg.status === 'CLOSED' && groupedOptionLegs(group)[legIdx - 1].status !== 'CLOSED'"
                        class="border-t border-tv-muted/40 my-3 mx-4"></div>
-                  <div @click="toggleLotExpand(lot)"
-                       class="flex items-center text-sm px-4 py-1.5 hover:bg-tv-panel/50 font-mono cursor-pointer"
-                       :class="lot._expanded ? 'bg-tv-panel/30' : ''">
-                    <i class="fas fa-chevron-right w-5 text-tv-muted text-xs transition-transform duration-200"
-                       :class="lot._expanded ? 'rotate-90' : ''"></i>
-                    <span v-if="group._movingLots" class="w-8">
-                      <input type="checkbox"
-                             :checked="selectedLots.includes(lot.transaction_id)"
-                             @click.stop="toggleLotSelection(lot.transaction_id)"
-                             class="w-4 h-4">
-                    </span>
-                    <span class="w-32 text-tv-muted">
-                      <span v-if="lot.derivation_type" class="text-tv-muted mr-1">&#8627;</span>
-                      {{ formatOrderDate(lot.entry_date) }}
-                    </span>
-                    <span class="w-24 text-tv-muted">{{ lotCloseDate(lot) ? formatOrderDate(lotCloseDate(lot)) : '' }}</span>
-                    <span class="w-10 text-tv-muted">{{ lotHoldingDays(lot) != null ? lotHoldingDays(lot) + 'd' : '' }}</span>
+                  <div class="flex items-center text-sm px-4 py-1.5 hover:bg-tv-panel/50 font-mono">
                     <span class="w-10 text-right font-medium"
-                          :class="(lot.remaining_quantity ?? lot.quantity) > 0 ? 'text-tv-green' : (lot.remaining_quantity ?? lot.quantity) < 0 ? 'text-tv-red' : 'text-tv-muted'">
-                      {{ lot.remaining_quantity ?? lot.quantity }}
+                          :class="leg.totalQuantity > 0 ? 'text-tv-green' : leg.totalQuantity < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                      {{ leg.totalQuantity }}
                     </span>
                     <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text">
-                      {{ lot.expiration ? formatExpirationShort(lot.expiration) : (lot.instrument_type === 'EQUITY' ? 'Shares' : '\u2014') }}
+                      {{ leg.expiration ? formatExpirationShort(leg.expiration) : (leg.instrument_type === 'EQUITY' ? 'Shares' : '\u2014') }}
                     </span>
                     <span class="w-10 text-tv-muted"
-                          :class="lot.expiration && calculateDTE(lot.expiration) <= 21 ? 'text-tv-amber font-bold' : ''">
-                      {{ lot.expiration ? calculateDTE(lot.expiration) + 'd' : '\u2014' }}
+                          :class="leg.expiration && calculateDTE(leg.expiration) <= 21 ? 'text-tv-amber font-bold' : ''">
+                      {{ leg.expiration ? calculateDTE(leg.expiration) + 'd' : '\u2014' }}
                     </span>
                     <span class="w-16 text-center mx-2 py-0.5 rounded"
-                          :class="lot.strike ? 'bg-tv-panel text-tv-text' : 'text-tv-muted'">
-                      {{ lot.strike || '\u2014' }}
+                          :class="leg.strike ? 'bg-tv-panel text-tv-text' : 'text-tv-muted'">
+                      {{ leg.strike || '\u2014' }}
                     </span>
                     <span class="w-10 text-tv-muted">
-                      {{ lot.option_type ? (lot.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put') : (lot.instrument_type === 'EQUITY' ? 'Stk' : '\u2014') }}
+                      {{ leg.option_type ? (leg.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put') : (leg.instrument_type === 'EQUITY' ? 'Stk' : '\u2014') }}
                     </span>
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3"
-                          :class="lot.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : lot.status === 'PARTIAL' ? 'bg-tv-amber/20 text-tv-amber border-tv-amber/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
-                      {{ lot.status }}
+                          :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
+                      {{ leg.status }}
                     </span>
-                    <span class="w-20 text-right text-tv-muted">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">{{ lot.cost_basis ? '$' + formatNumber(lot.cost_basis) : '' }}</span>
-                    <span class="w-20 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).avgPrice) : '' }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">{{ lotCloseSummary(lot) ? '$' + formatNumber(lotCloseSummary(lot).proceeds) : '' }}</span>
+                    <span class="w-20 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
+                    <span class="w-24 text-right text-tv-muted ml-2">${{ formatNumber(leg.totalCostBasis) }}</span>
+                    <span class="w-20 text-right text-tv-muted ml-2">{{ leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '' }}</span>
+                    <span class="w-24 text-right text-tv-muted ml-2">{{ leg.totalProceeds ? '$' + formatNumber(leg.totalProceeds) : '' }}</span>
                     <span class="w-24 text-right ml-2"
-                          :class="lot.realized_pnl > 0 ? 'text-tv-green' : lot.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
-                      {{ lot.realized_pnl ? '$' + formatNumber(lot.realized_pnl) : '' }}
+                          :class="leg.totalRealized > 0 ? 'text-tv-green' : leg.totalRealized < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                      {{ leg.totalRealized ? '$' + formatNumber(leg.totalRealized) : '' }}
                     </span>
-                  </div>
-
-                  <!-- Expanded Events -->
-                  <div v-show="lot._expanded">
-                    <div class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
-                      <span class="w-5"></span>
-                      <span v-show="group._movingLots" class="w-8"></span>
-                      <span class="w-8"></span>
-                      <span class="w-24">{{ formatOrderDate(lot.entry_date) }}</span>
-                      <span class="w-24"></span>
-                      <span class="w-10"></span>
-                      <span class="w-10 text-right" :class="lot.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
-                        {{ (lot.quantity > 0 ? '+' : '') + lot.quantity }}
-                      </span>
-                      <span class="w-16 text-center mx-2"></span>
-                      <span class="w-10"></span>
-                      <span class="w-16 text-center mx-2"></span>
-                      <span class="w-10"></span>
-                      <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
-                            :class="lot.quantity > 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-red/20 text-tv-red border-tv-red/50'">
-                        {{ lot.quantity > 0 ? 'BTO' : 'STO' }}
-                      </span>
-                      <span class="w-20 text-right">{{ lot.entry_price ? '$' + formatNumber(lot.entry_price) : '' }}</span>
-                      <span class="w-24 text-right ml-2 whitespace-nowrap"
-                            :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
-                        {{ lot.cost_basis ? ('$' + formatNumber(lot.cost_basis) + (lot.quantity < 0 ? ' cr' : ' db')) : '' }}
-                      </span>
-                      <span class="w-20 text-right ml-2"></span>
-                      <span class="w-24 text-right ml-2"></span>
-                      <span class="w-24 ml-2"></span>
-                    </div>
-                    <div v-for="closing in (lot.closings || [])" :key="closing.closing_id"
-                         class="flex items-center text-sm px-4 py-1 text-tv-muted font-mono border-l-2 border-tv-border/30">
-                      <span class="w-5"></span>
-                      <span v-show="group._movingLots" class="w-8"></span>
-                      <span class="w-8"></span>
-                      <span class="w-24">{{ formatOrderDate(closing.closing_date) }}</span>
-                      <span class="w-24"></span>
-                      <span class="w-10"></span>
-                      <span class="w-10 text-right" :class="lot.quantity < 0 ? 'text-tv-green' : 'text-tv-red'">
-                        {{ (lot.quantity < 0 ? '+' : '-') + closing.quantity_closed }}
-                      </span>
-                      <span class="w-16 text-center mx-2"></span>
-                      <span class="w-10"></span>
-                      <span class="w-16 text-center mx-2"></span>
-                      <span class="w-10"></span>
-                      <span class="w-20 text-center text-xs px-1 py-0.5 rounded border ml-3"
-                            :class="getClosingTypeBadgeClass(closing.closing_type, lot.quantity)">
-                        {{ getClosingTypeLabel(closing.closing_type, lot.quantity) }}
-                      </span>
-                      <span class="w-20 text-right ml-2"></span>
-                      <span class="w-24 text-right ml-2"></span>
-                      <span class="w-20 text-right ml-2">{{ closing.closing_price ? '$' + formatNumber(closing.closing_price) : '' }}</span>
-                      <span class="w-24 text-right ml-2 whitespace-nowrap"
-                            :class="lot.quantity < 0 ? 'text-tv-red' : 'text-tv-green'">
-                        {{ closing.closing_price ? ('$' + formatNumber(closing.quantity_closed * closing.closing_price * (lot.option_type ? 100 : 1)) + (lot.quantity < 0 ? ' db' : ' cr')) : '' }}
-                      </span>
-                      <span class="w-24 ml-2"></span>
-                    </div>
                   </div>
                 </div>
               </template>
@@ -1611,22 +1325,4 @@ function getClosingTypeLabel(closingType, lotQuantity) {
   <!-- Bottom spacer — lets the last row scroll comfortably above the fold -->
   <div class="h-96"></div>
 
-  <!-- Floating Action Bar (Move Mode) -->
-  <div v-show="selectedLots.length > 0"
-       class="fixed bottom-0 left-0 right-0 bg-tv-panel border-t border-tv-border px-6 py-4 flex items-center justify-between z-50 shadow-lg">
-    <span class="text-tv-text text-base">
-      <span class="font-medium">{{ selectedLots.length }}</span> lot(s) selected
-      <span class="text-tv-muted ml-2">&mdash; click a target group below</span>
-    </span>
-    <div class="flex items-center gap-3">
-      <button @click="moveLots('__new__')"
-              class="bg-tv-blue text-white px-5 py-2 text-base hover:bg-tv-blue/80 transition-colors">
-        + New Group
-      </button>
-      <button @click="cancelMoveMode()"
-              class="text-tv-muted hover:text-tv-text px-4 py-2 text-base border border-tv-border">
-        Cancel
-      </button>
-    </div>
-  </div>
 </template>
