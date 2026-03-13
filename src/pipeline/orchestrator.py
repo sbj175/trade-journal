@@ -28,6 +28,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _clear_groups(db_manager: "DatabaseManager") -> None:
+    """Clear all position groups, group-lot links, tags, and notes for the current user."""
+    from src.database.models import (
+        PositionGroup, PositionGroupLot, PositionGroupTag, PositionNote,
+    )
+    from src.database.tenant import DEFAULT_USER_ID
+
+    with db_manager.get_session() as session:
+        user_id = session.info.get("user_id", DEFAULT_USER_ID)
+        session.query(PositionGroupLot).filter(PositionGroupLot.user_id == user_id).delete()
+        session.query(PositionGroupTag).filter(PositionGroupTag.user_id == user_id).delete()
+        session.query(PositionNote).filter(
+            PositionNote.note_key.like("group_%"),
+            PositionNote.user_id == user_id,
+        ).delete(synchronize_session=False)
+        session.query(PositionGroup).filter(PositionGroup.user_id == user_id).delete()
+        logger.info("Cleared all groups, group-lot links, tags, and group notes (user-scoped)")
+
+
 @dataclass
 class PipelineResult:
     """Result of a full pipeline run."""
@@ -82,7 +101,10 @@ def reprocess(
         )
     else:
         lot_manager.clear_all_lots()
-        logger.info("Cleared lots for full reprocessing")
+        # Full reprocess: also clear groups so they're rebuilt from scratch
+        # (prevents stale group-lot links from old grouping logic)
+        _clear_groups(db_manager)
+        logger.info("Cleared lots and groups for full reprocessing")
 
     # ── Step 2: Stage 2 — Order Assembly (stateless) ──────────────────
     assembly = assemble_orders(raw_transactions)
