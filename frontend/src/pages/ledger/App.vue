@@ -693,17 +693,6 @@ async function toggleRollChain(group) {
   }
 }
 
-function scrollToGroup(groupId) {
-  const target = filteredGroups.value.find(g => g.group_id === groupId)
-  if (target) {
-    target.expanded = true
-    nextTick(() => {
-      const el = document.getElementById('group-' + groupId)
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }
-}
-
 // ==================== TAGS ====================
 async function loadAvailableTags() {
   try {
@@ -980,6 +969,7 @@ function getSortLabel() {
     <span class="w-32 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
       Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
+    <span class="w-10 text-center">Rolls</span>
     <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-auto">
       Initial Premium
     </span>
@@ -1170,16 +1160,16 @@ function getSortLabel() {
           <span class="w-32 text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '\u2014' }}</span>
 
           <!-- Roll chain toggle -->
-          <label v-if="group.has_roll_chain" class="relative inline-flex items-center cursor-pointer mr-2" @click.stop="toggleRollChain(group)" title="Roll chain">
-            <span class="w-8 h-4 rounded-full transition-colors"
-                  :class="rollChainVisible[group.group_id] ? 'bg-tv-blue' : 'bg-tv-border'">
-              <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-                    :class="rollChainVisible[group.group_id] ? 'translate-x-4' : ''"></span>
-            </span>
-          </label>
-
-          <!-- Note indicator -->
-          <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
+          <span class="w-10 flex items-center justify-center">
+            <label v-if="group.has_roll_chain" class="relative inline-flex items-center cursor-pointer" @click.stop="toggleRollChain(group)" title="Roll chain">
+              <span class="w-8 h-4 rounded-full transition-colors"
+                    :class="rollChainVisible[group.group_id] ? 'bg-tv-blue' : 'bg-tv-border'">
+                <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+                      :class="rollChainVisible[group.group_id] ? 'translate-x-4' : ''"></span>
+              </span>
+            </label>
+            <i v-else-if="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
+          </span>
 
           <!-- Initial Premium -->
           <span class="w-28 text-right ml-auto text-base"
@@ -1297,9 +1287,8 @@ function getSortLabel() {
               </div>
               <div class="divide-y divide-tv-border/20">
                 <div v-for="(item, idx) in rollChainData[group.group_id].chain.chain.slice().reverse()" :key="item.group_id"
-                     class="flex items-center px-4 py-2 text-sm cursor-pointer transition-colors"
-                     :class="item.group_id === group.group_id ? 'bg-tv-blue/10' : 'hover:bg-tv-border/20'"
-                     @click="scrollToGroup(item.group_id)">
+                     class="flex items-center px-4 py-2 text-sm"
+                     :class="item.group_id === group.group_id ? 'bg-tv-blue/10' : ''">
                   <span class="w-6 text-tv-muted text-xs">{{ rollChainData[group.group_id].chain.chain.length - idx }}.</span>
                   <span class="w-24 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
                   <span class="text-tv-muted mx-2">&rarr;</span>
