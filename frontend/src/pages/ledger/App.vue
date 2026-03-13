@@ -482,14 +482,12 @@ function sortedLots(group) {
       return (b.entry_date || '').localeCompare(a.entry_date || '')
     }
 
-    // Closed: entry date desc, expiration desc, strike desc
-    const aDate = a.entry_date || ''
-    const bDate = b.entry_date || ''
-    if (aDate !== bDate) return bDate.localeCompare(aDate)
+    // Closed: expiration desc, strike desc, entry date desc
     const aExp = a.expiration || ''
     const bExp = b.expiration || ''
     if (aExp !== bExp) return bExp.localeCompare(aExp)
-    return (b.strike || 0) - (a.strike || 0)
+    if ((a.strike || 0) !== (b.strike || 0)) return (b.strike || 0) - (a.strike || 0)
+    return (b.entry_date || '').localeCompare(a.entry_date || '')
   })
 }
 
