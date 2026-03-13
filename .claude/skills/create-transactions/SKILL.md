@@ -159,10 +159,8 @@ with db.get_session() as session:
 After insertion, run the reprocess pipeline + cache update directly in the same script:
 
 ```python
-import asyncio
 from src.pipeline.orchestrator import reprocess
 from src.models.lot_manager import LotManager
-from src.services.chain_service import update_chain_cache
 
 lot_manager = LotManager(db)
 raw_transactions = db.get_raw_transactions()
@@ -170,14 +168,9 @@ print(f"Reprocessing {len(raw_transactions)} raw transactions...")
 
 result = reprocess(db, lot_manager, raw_transactions)
 print(f"Orders assembled: {result.orders_assembled}")
-print(f"Chains derived: {result.chains_derived}")
 print(f"Groups processed: {result.groups_processed}")
 print(f"Equity lots netted: {result.equity_lots_netted}")
-
-# Update order_chain_cache — required for the Ledger Orders view
-if result.chains:
-    asyncio.run(update_chain_cache(result.chains, db=db, lot_manager=lot_manager))
-    print(f"Updated chain cache for {len(result.chains)} chains")
+print(f"P&L events populated: {result.pnl_events_populated}")
 ```
 
 ## Randomization Requirements

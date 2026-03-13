@@ -402,7 +402,6 @@ class PositionGroup(Base):
     strategy_label = Column(String)
     strategy_label_user_override = Column(Boolean, default=False)
     status = Column(String, default="OPEN")
-    source_chain_id = Column(String)
     opening_date = Column(String)
     closing_date = Column(String)
     last_activity_date = Column(String)
@@ -415,7 +414,6 @@ class PositionGroup(Base):
         Index("idx_position_groups_account", "account_number"),
         Index("idx_position_groups_underlying", "underlying"),
         Index("idx_position_groups_status", "status"),
-        Index("idx_position_groups_source_chain", "source_chain_id"),
         Index("idx_position_groups_rolled_from", "rolled_from_group_id"),
     )
 
