@@ -21,7 +21,7 @@ const showOpen = ref(true)
 const showClosed = ref(true)
 const filterRollsOnly = ref(false)
 const rollChainData = ref({})     // { group_id: { loading, chain, error } }
-const rollChainVisible = ref({})  // { group_id: true/false }
+const rollChainModal = ref(null)  // group_id of active modal, or null
 const sortColumn = ref('opening_date')
 const sortDirection = ref('desc')
 const loading = ref(true)
@@ -667,13 +667,9 @@ function updateGroupNote(group, value) {
 }
 
 // ==================== ROLL CHAIN ====================
-async function toggleRollChain(group) {
+async function openRollChainModal(group) {
   const gid = group.group_id
-  if (rollChainVisible.value[gid]) {
-    rollChainVisible.value[gid] = false
-    return
-  }
-  rollChainVisible.value[gid] = true
+  rollChainModal.value = gid
   if (rollChainData.value[gid]?.chain) return  // already loaded
 
   rollChainData.value[gid] = { loading: true, chain: null, error: null }
@@ -691,6 +687,15 @@ async function toggleRollChain(group) {
     rollChainData.value[gid] = { loading: false, chain: null, error: 'Failed to load roll chain' }
     console.error('Error loading roll chain:', e)
   }
+}
+
+function closeRollChainModal() {
+  rollChainModal.value = null
+}
+
+function rollChainModalGroup() {
+  if (!rollChainModal.value) return null
+  return groups.value.find(g => g.group_id === rollChainModal.value) || null
 }
 
 // ==================== TAGS ====================
@@ -1161,11 +1166,11 @@ function getSortLabel() {
 
           <!-- Roll chain toggle -->
           <span class="w-10 flex items-center justify-center">
-            <label v-if="group.has_roll_chain" class="relative inline-flex items-center cursor-pointer" @click.stop="toggleRollChain(group)" title="Roll chain">
+            <label v-if="group.has_roll_chain" class="relative inline-flex items-center cursor-pointer" @click.stop="openRollChainModal(group)" title="Roll chain">
               <span class="w-8 h-4 rounded-full transition-colors"
-                    :class="rollChainVisible[group.group_id] ? 'bg-tv-blue' : 'bg-tv-border'">
+                    :class="rollChainModal === group.group_id ? 'bg-tv-blue' : 'bg-tv-border'">
                 <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-                      :class="rollChainVisible[group.group_id] ? 'translate-x-4' : ''"></span>
+                      :class="rollChainModal === group.group_id ? 'translate-x-4' : ''"></span>
               </span>
             </label>
             <i v-else-if="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
@@ -1265,48 +1270,6 @@ function getSortLabel() {
               </template>
             </div>
 
-          <!-- Roll Chain Panel -->
-          <div v-if="rollChainVisible[group.group_id]" class="mx-4 mt-3 mb-1 bg-tv-panel rounded border border-tv-blue/30">
-            <div v-if="rollChainData[group.group_id]?.loading" class="px-4 py-3 text-tv-muted text-sm">
-              Loading roll chain...
-            </div>
-            <div v-else-if="rollChainData[group.group_id]?.error" class="px-4 py-3 text-tv-red text-sm">
-              {{ rollChainData[group.group_id].error }}
-            </div>
-            <template v-else-if="rollChainData[group.group_id]?.chain">
-              <div class="px-4 py-2.5 flex items-center justify-between border-b border-tv-border/30">
-                <span class="text-sm text-tv-text flex items-center gap-2">
-                  <i class="fas fa-link text-tv-blue"></i>
-                  <span class="font-medium">Roll Chain</span>
-                  <span class="text-tv-muted">({{ rollChainData[group.group_id].chain.chain_length }} {{ rollChainData[group.group_id].chain.chain_length === 1 ? 'group' : 'groups' }})</span>
-                </span>
-                <span class="text-sm font-medium"
-                      :class="rollChainData[group.group_id].chain.chain[rollChainData[group.group_id].chain.chain.length - 1]?.cumulative_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                  Cumulative: ${{ formatNumber(rollChainData[group.group_id].chain.chain[rollChainData[group.group_id].chain.chain.length - 1]?.cumulative_pnl || 0) }}
-                </span>
-              </div>
-              <div class="divide-y divide-tv-border/20">
-                <div v-for="(item, idx) in rollChainData[group.group_id].chain.chain.slice().reverse()" :key="item.group_id"
-                     class="flex items-center px-4 py-2 text-sm"
-                     :class="item.group_id === group.group_id ? 'bg-tv-blue/10' : ''">
-                  <span class="w-6 text-tv-muted text-xs">{{ rollChainData[group.group_id].chain.chain.length - idx }}.</span>
-                  <span class="w-24 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
-                  <span class="text-tv-muted mx-2">&rarr;</span>
-                  <span class="w-24 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
-                  <span class="w-36 text-tv-text ml-4">{{ item.strategy_label || '\u2014' }}</span>
-                  <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center"
-                        :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
-                    {{ item.status }}
-                  </span>
-                  <span class="ml-auto text-sm font-medium"
-                        :class="item.realized_pnl > 0 ? 'text-tv-green' : item.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
-                    {{ item.realized_pnl ? '$' + formatNumber(item.realized_pnl) : '\u2014' }}
-                  </span>
-                  <span v-if="item.group_id === group.group_id" class="ml-2 text-tv-blue text-xs">&larr;</span>
-                </div>
-              </div>
-            </template>
-          </div>
         </div>
       </div>
     </div>
@@ -1314,5 +1277,80 @@ function getSortLabel() {
 
   <!-- Bottom spacer — lets the last row scroll comfortably above the fold -->
   <div class="h-96"></div>
+
+  <!-- Roll Chain Modal -->
+  <Teleport to="body">
+    <div v-if="rollChainModal" class="fixed inset-0 z-[100] flex items-center justify-center"
+         @keydown.escape="closeRollChainModal()">
+      <!-- Backdrop -->
+      <div class="absolute inset-0 bg-black/60" @click="closeRollChainModal()"></div>
+      <!-- Modal content -->
+      <div class="relative bg-tv-panel border border-tv-border rounded-lg shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+        <!-- Header -->
+        <div class="px-5 py-4 flex items-center justify-between border-b border-tv-border/50">
+          <span class="flex items-center gap-3">
+            <i class="fas fa-link text-tv-blue"></i>
+            <span class="text-tv-text font-semibold text-lg">Roll Chain</span>
+            <span v-if="rollChainModalGroup()" class="text-tv-muted text-base">&mdash; {{ rollChainModalGroup().underlying }}</span>
+            <span v-if="rollChainData[rollChainModal]?.chain" class="text-tv-muted text-sm">
+              ({{ rollChainData[rollChainModal].chain.chain_length }} {{ rollChainData[rollChainModal].chain.chain_length === 1 ? 'group' : 'groups' }})
+            </span>
+          </span>
+          <button @click="closeRollChainModal()" class="text-tv-muted hover:text-tv-text text-lg w-8 h-8 flex items-center justify-center rounded hover:bg-tv-border/30 transition-colors">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <!-- Body -->
+        <div class="overflow-y-auto flex-1">
+          <div v-if="rollChainData[rollChainModal]?.loading" class="px-5 py-8 text-tv-muted text-sm text-center">
+            <div class="spinner mx-auto mb-3" style="width: 24px; height: 24px; border-width: 2px;"></div>
+            Loading roll chain...
+          </div>
+          <div v-else-if="rollChainData[rollChainModal]?.error" class="px-5 py-8 text-tv-red text-sm text-center">
+            {{ rollChainData[rollChainModal].error }}
+          </div>
+          <template v-else-if="rollChainData[rollChainModal]?.chain">
+            <!-- Column headers -->
+            <div class="flex items-center px-5 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border/30">
+              <span class="w-6"></span>
+              <span class="w-28">Opened</span>
+              <span class="w-6"></span>
+              <span class="w-28">Closed</span>
+              <span class="w-36 ml-4">Strategy</span>
+              <span class="w-16 text-center">Status</span>
+              <span class="ml-auto text-right">Realized</span>
+            </div>
+            <div class="divide-y divide-tv-border/20">
+              <div v-for="(item, idx) in rollChainData[rollChainModal].chain.chain.slice().reverse()" :key="item.group_id"
+                   class="flex items-center px-5 py-2.5 text-sm"
+                   :class="item.group_id === rollChainModal ? 'bg-tv-blue/10' : ''">
+                <span class="w-6 text-tv-muted text-xs">{{ rollChainData[rollChainModal].chain.chain.length - idx }}.</span>
+                <span class="w-28 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
+                <span class="w-6 text-tv-muted text-center">&rarr;</span>
+                <span class="w-28 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
+                <span class="w-36 text-tv-text ml-4">{{ item.strategy_label || '\u2014' }}</span>
+                <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center"
+                      :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
+                  {{ item.status }}
+                </span>
+                <span class="ml-auto text-sm font-medium"
+                      :class="item.realized_pnl > 0 ? 'text-tv-green' : item.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                  {{ item.realized_pnl ? '$' + formatNumber(item.realized_pnl) : '\u2014' }}
+                </span>
+              </div>
+            </div>
+          </template>
+        </div>
+        <!-- Footer -->
+        <div v-if="rollChainData[rollChainModal]?.chain"
+             class="px-5 py-3 border-t border-tv-border/50 flex items-center justify-end">
+          <span class="text-sm font-medium"
+                :class="rollChainData[rollChainModal].chain.chain[rollChainData[rollChainModal].chain.chain.length - 1]?.cumulative_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+            Cumulative P&amp;L: ${{ formatNumber(rollChainData[rollChainModal].chain.chain[rollChainData[rollChainModal].chain.chain.length - 1]?.cumulative_pnl || 0) }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
 </template>
