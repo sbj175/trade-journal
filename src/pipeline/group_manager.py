@@ -19,7 +19,7 @@ from datetime import datetime, date
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from src.models.lot_manager import Lot
-from src.models.order_processor import Chain, OrderType
+from src.models.order_processor import Chain
 from src.pipeline.strategy_engine import recognize, lots_to_legs
 
 if TYPE_CHECKING:
@@ -75,13 +75,11 @@ def assign_lots_to_groups(
     if not lots:
         return []
 
-    # --- Step 1: Build order_id -> chain_id and order_type lookups ----------
+    # --- Step 1: Build order_id -> chain_id lookup -------------------------
     order_to_chain: Dict[str, str] = {}
-    order_to_type: Dict[str, OrderType] = {}
     for chain in chains:
         for order in chain.orders:
             order_to_chain[order.order_id] = chain.chain_id
-            order_to_type[order.order_id] = order.order_type
 
     # --- Step 2: Sort lots chronologically ---------------------------------
     sorted_lots = sorted(lots, key=lambda lot: lot.entry_date)
@@ -91,14 +89,12 @@ def assign_lots_to_groups(
     groups: Dict[str, List[Lot]] = {}
     # group_key -> set of chain_ids
     group_chains: Dict[str, Set[str]] = defaultdict(set)
-    # chain_id -> group_key  (Rule 1 lookup)
+    # chain_id -> group_key  (equity only — for Covered Call detection)
     chain_to_group: Dict[str, str] = {}
-    # (account, underlying, expiration) -> group_key  (Rule 2 lookup, options)
+    # (account, underlying, expiration) -> group_key  (options)
     aue_to_group: Dict[Tuple[str, str, date], str] = {}
-    # (account, underlying) -> group_key  (Rule 2b lookup, equity)
+    # (account, underlying) -> group_key  (equity)
     au_to_group: Dict[Tuple[str, str], str] = {}
-    # opening_order_id -> group_key  (sibling lot lookup for multi-fill orders)
-    order_to_group: Dict[str, str] = {}
     # group_key counter
     group_counter = 0
 
@@ -115,27 +111,19 @@ def assign_lots_to_groups(
         groups[gk].append(lot)
         if chain_id:
             group_chains[gk].add(chain_id)
-            # Option lots and non-derived equity update chain→group routing
-            # so that related lots in the same chain can find each other
-            # (e.g., shares + short call = Covered Call).
-            # Derived equity (assignment/exercise) must NOT register here —
-            # it would redirect unrelated option lots to the Shares group.
-            if lot.expiration or not lot.derivation_type:
+            # Only non-derived equity updates chain→group (for Covered Call).
+            # Option lots do NOT register in chain_to_group — they group
+            # by (account, underlying, expiration) instead.
+            if not lot.expiration and not lot.derivation_type:
                 chain_to_group[chain_id] = gk
-        # Only option lots update the expiration index
         if lot.expiration:
             aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
-        # Only equity lots update the underlying index
         if not lot.expiration:
             au_to_group[(lot.account_number, lot.underlying)] = gk
-        # Register opening_order_id so sibling fills join the same group
-        if lot.opening_order_id:
-            order_to_group[lot.opening_order_id] = gk
 
     # --- Step 3: Assign each lot to a group --------------------------------
     for lot in sorted_lots:
         chain_id = lot.chain_id
-        # If lot has no chain_id, try to resolve via opening_order_id
         if not chain_id and lot.opening_order_id:
             chain_id = order_to_chain.get(lot.opening_order_id)
 
@@ -143,8 +131,6 @@ def assign_lots_to_groups(
 
         # Derived-equity-first: assignment/exercise-derived shares group
         # with other shares, not with the option chain they came from.
-        # Normal (directly bought) equity falls through to Rule 1 so it
-        # can join its chain's group and be recognized as a Covered Call.
         if not assigned and not lot.expiration and lot.derivation_type:
             au_key = (lot.account_number, lot.underlying)
             if au_key in au_to_group:
@@ -153,35 +139,30 @@ def assign_lots_to_groups(
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True
 
-        # Rule 1: lot's chain already has a group — merge unless this lot
-        # was opened by a ROLLING order (rolls get their own group).
-        is_roll_opening = (
-            lot.opening_order_id
-            and order_to_type.get(lot.opening_order_id) == OrderType.ROLLING
-        )
-        if not assigned and chain_id and chain_id in chain_to_group and not is_roll_opening:
+        # Rule 1: equity lot's chain already has a group (Covered Call detection)
+        if not assigned and not lot.expiration and chain_id and chain_id in chain_to_group:
             gk = chain_to_group[chain_id]
             _add_lot_to_group(lot, gk, chain_id)
             assigned = True
 
-        # Rule 1b: sibling fill from the same opening order → always join
-        # (handles multi-fill ROLLING orders where lots are already closed)
-        if not assigned and lot.opening_order_id and lot.opening_order_id in order_to_group:
-            gk = order_to_group[lot.opening_order_id]
-            _add_lot_to_group(lot, gk, chain_id)
-            assigned = True
-
-        # Rule 2: (account, underlying, expiration) matches an existing group
-        # For ROLLING lots, also merge into CLOSED groups (same-exp fills belong together)
+        # Rule 2: option lots group by (account, underlying, expiration)
         if not assigned and lot.expiration:
             aue_key = (lot.account_number, lot.underlying, lot.expiration)
             if aue_key in aue_to_group:
                 gk = aue_to_group[aue_key]
-                if _is_group_open(gk) or is_roll_opening:
+                _add_lot_to_group(lot, gk, chain_id)
+                assigned = True
+
+        # Rule 3: equity lots group by (account, underlying)
+        if not assigned and not lot.expiration:
+            au_key = (lot.account_number, lot.underlying)
+            if au_key in au_to_group:
+                gk = au_to_group[au_key]
+                if _is_group_open(gk):
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True
 
-        # Rule 3: create new group
+        # Rule 4: create new group
         if not assigned:
             gk = _new_group_key()
             groups[gk] = []
@@ -461,25 +442,21 @@ class GroupPersister:
                 len(all_lots), len(existing_links), len(new_lots),
             )
 
-            # Build order_id -> chain_id and order_type lookups from chains
+            # Build order_id -> chain_id lookup from chains
             order_to_chain: Dict[str, str] = {}
-            order_to_type: Dict[str, OrderType] = {}
             for chain in chains:
                 for order in chain.orders:
                     order_to_chain[order.order_id] = chain.chain_id
-                    order_to_type[order.order_id] = order.order_type
 
             # =================================================================
             # Phase 2: Seed routing indexes from existing groups
             # =================================================================
-            # chain_id -> group_id
+            # chain_id -> group_id  (equity only — for Covered Call detection)
             chain_to_group: Dict[str, str] = {}
-            # (account, underlying, expiration) -> group_id
+            # (account, underlying, expiration) -> group_id  (options)
             aue_to_group: Dict[Tuple[str, str, date], str] = {}
-            # (account, underlying) -> group_id
+            # (account, underlying) -> group_id  (equity)
             au_to_group: Dict[Tuple[str, str], str] = {}
-            # opening_order_id -> group_id  (sibling fill lookup)
-            order_to_group: Dict[str, str] = {}
             # group_id -> set of Lot objects (for open-check)
             group_lots: Dict[str, List[Lot]] = defaultdict(list)
 
@@ -500,16 +477,13 @@ class GroupPersister:
                 if not chain_id and lot.opening_order_id:
                     chain_id = order_to_chain.get(lot.opening_order_id)
 
-                # Register in routing indexes (same rules as assign_lots_to_groups)
-                if chain_id:
-                    if lot.expiration or not lot.derivation_type:
-                        chain_to_group[chain_id] = group_id
+                # Register in routing indexes (same rules as pure function)
+                if chain_id and not lot.expiration and not lot.derivation_type:
+                    chain_to_group[chain_id] = group_id
                 if lot.expiration:
                     aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
                 if not lot.expiration:
                     au_to_group[(lot.account_number, lot.underlying)] = group_id
-                if lot.opening_order_id:
-                    order_to_group[lot.opening_order_id] = group_id
 
             # =================================================================
             # Phase 3: Route new lots
@@ -523,15 +497,12 @@ class GroupPersister:
                 group_lots[group_id].append(lot)
                 txn_to_group[lot.transaction_id] = group_id
                 # Update routing indexes
-                if chain_id:
-                    if lot.expiration or not lot.derivation_type:
-                        chain_to_group[chain_id] = group_id
+                if chain_id and not lot.expiration and not lot.derivation_type:
+                    chain_to_group[chain_id] = group_id
                 if lot.expiration:
                     aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
                 if not lot.expiration:
                     au_to_group[(lot.account_number, lot.underlying)] = group_id
-                if lot.opening_order_id:
-                    order_to_group[lot.opening_order_id] = group_id
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
@@ -550,37 +521,21 @@ class GroupPersister:
                             _add_new_lot(lot, gk, chain_id)
                             assigned = True
 
-                # Rule 1: chain already has a group — skip for ROLLING orders
-                is_roll_opening = (
-                    lot.opening_order_id
-                    and order_to_type.get(lot.opening_order_id) == OrderType.ROLLING
-                )
-                if not assigned and chain_id and chain_id in chain_to_group and not is_roll_opening:
+                # Rule 1: equity lot's chain already has a group (Covered Call)
+                if not assigned and not lot.expiration and chain_id and chain_id in chain_to_group:
                     gk = chain_to_group[chain_id]
                     _add_new_lot(lot, gk, chain_id)
                     assigned = True
 
-                # Rule 1b: sibling fill from the same opening order → always join
-                if not assigned and lot.opening_order_id and lot.opening_order_id in order_to_group:
-                    gk = order_to_group[lot.opening_order_id]
-                    _add_new_lot(lot, gk, chain_id)
-                    assigned = True
-
-                # Rule 2a: same (account, underlying, expiration) group (options)
-                # For ROLLING lots, also merge into CLOSED groups
+                # Rule 2: option lots group by (account, underlying, expiration)
                 if not assigned and lot.expiration:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
                         gk = aue_to_group[aue_key]
-                        if _is_group_open(gk) or is_roll_opening:
-                            _add_new_lot(lot, gk, chain_id)
-                            assigned = True
+                        _add_new_lot(lot, gk, chain_id)
+                        assigned = True
 
-                # Rule 2b: same (account, underlying) OPEN group (equity)
-                # In the pure function, non-derived equity from different chains
-                # creates separate groups (for Covered Call detection). But in
-                # incremental mode, existing groups (including user-merged ones)
-                # should attract new equity lots for the same underlying.
+                # Rule 3: equity lots group by (account, underlying)
                 if not assigned and not lot.expiration:
                     au_key = (lot.account_number, lot.underlying)
                     if au_key in au_to_group:
@@ -589,7 +544,7 @@ class GroupPersister:
                             _add_new_lot(lot, gk, chain_id)
                             assigned = True
 
-                # Rule 3: create new group
+                # Rule 4: create new group
                 if not assigned:
                     new_gid = str(_uuid.uuid4())
                     group_lots[new_gid] = []
