@@ -406,7 +406,7 @@ class PositionGroup(Base):
     opening_date = Column(String)
     closing_date = Column(String)
     last_activity_date = Column(String)
-    rolled_from_group_id = Column(String, ForeignKey("position_groups.group_id"), nullable=True)
+    rolled_from_group_id = Column(String, nullable=True)  # Soft reference to position_groups.group_id
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
