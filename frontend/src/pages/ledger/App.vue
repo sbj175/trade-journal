@@ -774,7 +774,7 @@ function getSortLabel() {
                @focus="$event.target.select()"
                @keyup.enter="onSymbolFilterApply()"
                @blur="onSymbolFilterApply()"
-               @input="filterUnderlying = filterUnderlying.toUpperCase()"
+               @input="filterUnderlying = filterUnderlying.toUpperCase(); onSymbolFilterApply()"
                placeholder="Symbol"
                class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
                :class="filterUnderlying ? 'pr-8' : ''">

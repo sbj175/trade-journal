@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import { evaluateRules } from '@/lib/rules'
+import StreamingPrice from '@/components/StreamingPrice.vue'
+import PositionsToolbar from '@/components/PositionsToolbar.vue'
 
 const Auth = useAuth()
 
@@ -11,7 +13,6 @@ const allChains = ref([])
 const allItems = ref([])
 const filteredItems = ref([])
 const accounts = ref([])
-const accountBalances = ref({})
 const underlyingQuotes = ref({})
 const quoteUpdateCounter = ref(0)
 const positionComments = ref({})
@@ -29,7 +30,6 @@ function toggleRollAnalysisMode() {
   rollAnalysisMode.value = rollAnalysisMode.value === 'spread' ? 'chain' : 'spread'
   localStorage.setItem('rollAnalysisMode', rollAnalysisMode.value)
 }
-const privacyMode = ref('off')
 
 // Tag state
 const availableTags = ref([])
@@ -81,19 +81,6 @@ function buildOptionStratUrl(strategyType, underlying, legs) {
 }
 
 // --- Computed ---
-const currentAccountBalance = computed(() => {
-  if (!selectedAccount.value || selectedAccount.value === '') {
-    const values = Object.values(accountBalances.value)
-    if (values.length === 0) return null
-    return values.reduce((acc, balance) => ({
-      cash_balance: (acc.cash_balance || 0) + (balance.cash_balance || 0),
-      derivative_buying_power: (acc.derivative_buying_power || 0) + (balance.derivative_buying_power || 0),
-      equity_buying_power: (acc.equity_buying_power || 0) + (balance.equity_buying_power || 0),
-      net_liquidating_value: (acc.net_liquidating_value || 0) + (balance.net_liquidating_value || 0)
-    }), { cash_balance: 0, derivative_buying_power: 0, equity_buying_power: 0, net_liquidating_value: 0 })
-  }
-  return accountBalances.value[selectedAccount.value] || null
-})
 
 const groupedPositions = computed(() => {
   try {
@@ -245,6 +232,8 @@ async function fetchPositions(includeSync = false) {
       Object.entries(data).forEach(([accountNumber, accountData]) => {
         const chains = accountData.chains || []
         chains.forEach(chain => {
+          // Skip equity-only groups — those belong on the Equities page
+          if ((chain.open_legs || []).length === 0 && (chain.equity_legs || []).length > 0) return
           chain.account_number = accountNumber
           allChains.value.push(chain)
           allItems.value.push({
@@ -343,18 +332,6 @@ function handleTagInput(event, group) {
 
 // --- Account Balances & Quotes ---
 
-async function loadAccountBalances() {
-  try {
-    const response = await Auth.authFetch('/api/account-balances')
-    const data = await response.json()
-    const balances = data.balances || data
-    const newBalances = {}
-    if (Array.isArray(balances)) {
-      balances.forEach(balance => { newBalances[balance.account_number] = balance })
-    }
-    accountBalances.value = newBalances
-  } catch (err) { console.error('Failed to load account balances:', err) }
-}
 
 async function loadCachedQuotes() {
   try {
@@ -442,14 +419,6 @@ function applyFilters() {
     if (selectedUnderlying.value && item.underlying !== selectedUnderlying.value) return false
     return true
   })
-
-  if (selectedAccount.value && filteredItems.value.length === 0 && allItems.value.length > 0) {
-    selectedAccount.value = ''
-    filteredItems.value = allItems.value.filter(item => {
-      if (selectedUnderlying.value && item.underlying !== selectedUnderlying.value) return false
-      return true
-    })
-  }
 }
 
 function filterPositions() { applyFilters() }
@@ -483,18 +452,7 @@ async function onAccountChange() {
   requestLiveQuotes()
 }
 
-function onSymbolInput(event) {
-  selectedUnderlying.value = event.target.value.toUpperCase()
-}
-
-function onSymbolEnterOrBlur() {
-  filterPositions()
-  requestLiveQuotes()
-  saveFilterPreferences()
-}
-
-function clearSymbolFilter() {
-  selectedUnderlying.value = ''
+function onSymbolFilterCommit() {
   filterPositions()
   requestLiveQuotes()
   saveFilterPreferences()
@@ -1182,11 +1140,9 @@ onMounted(async () => {
 
   await loadComments()
   loadRollAlertSettings()
-  privacyMode.value = localStorage.getItem('privacyMode') || 'off'
   await fetchAccounts()
   await loadStrategyTargets()
   loadFilterPreferences()
-  await loadAccountBalances()
   await fetchPositions()
   await loadCachedQuotes()
   await loadAvailableTags()
@@ -1224,67 +1180,17 @@ onUnmounted(() => {
   <div class="sticky top-14 z-30">
 
   <!-- Action Bar -->
-  <div class="bg-tv-panel border-b border-tv-border px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-4">
-      <button @click="fetchPositions(true)"
-              :disabled="isLoading"
-              class="bg-tv-green/20 hover:bg-tv-green/30 text-tv-green border border-tv-green/30 px-4 py-2 text-base disabled:opacity-50">
-        <i class="fas fa-sync-alt mr-2" :class="{'animate-spin': isLoading}"></i>
-        <span>{{ isLoading ? 'Syncing...' : 'Sync' }}</span>
-      </button>
-
-      <!-- Symbol Filter -->
-      <div class="relative">
-        <input type="text"
-               :value="selectedUnderlying"
-               @input="onSymbolInput($event)"
-               @focus="$event.target.select()"
-               @keyup.enter="onSymbolEnterOrBlur()"
-               @blur="onSymbolEnterOrBlur()"
-               placeholder="Symbol"
-               maxlength="5"
-               class="bg-tv-bg border border-tv-border text-tv-text text-base px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
-               :class="selectedUnderlying ? 'pr-8' : ''">
-        <button v-show="selectedUnderlying"
-                @click="clearSymbolFilter()"
-                class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text"
-                title="Clear symbol filter">
-          <i class="fas fa-times-circle"></i>
-        </button>
-      </div>
-
-      <!-- Account Balances -->
-      <template v-if="currentAccountBalance">
-        <div class="flex items-center gap-6 ml-6 text-base">
-          <div>
-            <span class="text-tv-muted text-sm">Net Liq:</span>
-            <span class="font-medium ml-1">{{ privacyMode !== 'off' ? '••••••' : '$' + formatNumber(currentAccountBalance.net_liquidating_value) }}</span>
-          </div>
-          <div class="flex-grow"></div>
-          <div>
-            <span class="text-tv-muted text-sm">Cash:</span>
-            <span class="font-medium ml-1">{{ privacyMode === 'high' ? '••••••' : '$' + formatNumber(currentAccountBalance.cash_balance) }}</span>
-          </div>
-          <div>
-            <span class="text-tv-muted text-sm">Option BP:</span>
-            <span class="font-medium ml-1">{{ privacyMode === 'high' ? '••••••' : '$' + formatNumber(currentAccountBalance.derivative_buying_power) }}</span>
-          </div>
-          <div>
-            <span class="text-tv-muted text-sm">Stock BP:</span>
-            <span class="font-medium ml-1">{{ privacyMode === 'high' ? '••••••' : '$' + formatNumber(currentAccountBalance.equity_buying_power) }}</span>
-          </div>
-        </div>
-      </template>
-
-      <span class="text-sm text-tv-muted ml-4" v-show="lastQuoteUpdate">
-        Quotes: {{ lastQuoteUpdate }}
-        <span v-show="liveQuotesActive" class="inline-flex items-center gap-1.5 ml-1">
-          <span class="pulse-dot bg-tv-green"></span>
-          <span class="text-tv-green">LIVE</span>
-        </span>
-      </span>
-    </div>
-  </div>
+  <PositionsToolbar
+    :is-loading="isLoading"
+    :live-quotes-active="liveQuotesActive"
+    :last-quote-update="lastQuoteUpdate"
+    :sync-summary="syncSummary"
+    :selected-account="selectedAccount"
+    v-model:symbol-filter="selectedUnderlying"
+    @sync="fetchPositions(true)"
+    @update:sync-summary="syncSummary = $event"
+    @symbol-commit="onSymbolFilterCommit"
+  />
 
   <!-- Loading State -->
   <div v-show="isLoading" class="text-center py-16">
@@ -1296,19 +1202,6 @@ onUnmounted(() => {
   <div v-show="!isLoading && !error && filteredItems.length === 0" class="text-center py-16">
     <i class="fas fa-layer-group text-3xl text-tv-muted mb-3"></i>
     <p class="text-tv-muted">No open positions found</p>
-  </div>
-
-  <!-- Sync Summary Banner -->
-  <div v-show="syncSummary && !isLoading" class="mx-2 mt-2">
-    <div class="px-4 py-2 rounded text-sm flex items-center justify-between bg-tv-blue/10 border border-tv-blue/30 text-tv-blue">
-      <span>
-        <i class="fas fa-sync-alt mr-1"></i>
-        {{ syncSummary }}
-      </span>
-      <button @click="syncSummary = null" class="text-tv-muted hover:text-tv-text text-xs ml-4">
-        <i class="fas fa-times"></i>
-      </button>
-    </div>
   </div>
 
   <!-- Column Headers -->
@@ -1457,23 +1350,7 @@ onUnmounted(() => {
 
               <!-- Price -->
               <div class="w-40 flex items-center gap-2">
-                <template v-if="getUnderlyingQuote(group.underlying)">
-                  <div class="flex items-center gap-2">
-                    <div class="w-20 px-2 py-1 rounded-sm text-base font-medium border text-right"
-                         style="font-variant-numeric: tabular-nums"
-                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-border text-tv-muted border-tv-border'">
-                      {{ formatNumber(getUnderlyingQuote(group.underlying).price || 0) }}
-                    </div>
-                    <div class="w-16 text-right text-sm"
-                         style="font-variant-numeric: tabular-nums"
-                         :class="(getUnderlyingQuote(group.underlying).change || 0) >= 0 ? 'text-tv-green' : 'text-tv-muted'">
-                      {{ ((getUnderlyingQuote(group.underlying).change || 0) >= 0 ? '+' : '') + (getUnderlyingQuote(group.underlying).changePercent || 0).toFixed(2) + '%' }}
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <span class="text-tv-muted text-sm"><i class="fas fa-spinner fa-spin"></i></span>
-                </template>
+                <StreamingPrice :quote="getUnderlyingQuote(group.underlying)" />
               </div>
 
               <!-- Ledger Link -->
