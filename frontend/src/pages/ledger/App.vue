@@ -53,8 +53,19 @@ function onDocumentClick(e) {
     tagDropdownOpen.value = false
   }
 }
-onMounted(() => document.addEventListener('click', onDocumentClick))
-onUnmounted(() => document.removeEventListener('click', onDocumentClick))
+function onDocumentKeydown(e) {
+  if (e.key === 'Escape' && rollChainModal.value) {
+    closeRollChainModal()
+  }
+}
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('keydown', onDocumentKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('keydown', onDocumentKeydown)
+})
 
 // ==================== COMPUTED ====================
 const filteredTagSuggestions = computed(() => {
@@ -1280,8 +1291,7 @@ function getSortLabel() {
 
   <!-- Roll Chain Modal -->
   <Teleport to="body">
-    <div v-if="rollChainModal" class="fixed inset-0 z-[100] flex items-center justify-center"
-         @keydown.escape="closeRollChainModal()">
+    <div v-if="rollChainModal" class="fixed inset-0 z-[100] flex items-center justify-center">
       <!-- Backdrop -->
       <div class="absolute inset-0 bg-black/60" @click="closeRollChainModal()"></div>
       <!-- Modal content -->
