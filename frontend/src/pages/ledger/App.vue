@@ -512,6 +512,12 @@ function groupedOptionLegs(group) {
       agg.closeDate = cd
     }
     if (lot.status !== 'CLOSED') agg.status = 'OPEN'
+    const closings = lot.closings || []
+    if (closings.length > 0 && closings.every(c => c.closing_type === 'EXPIRATION')) {
+      agg._hasExpiration = true
+    } else if (closings.length > 0) {
+      agg._hasNonExpiration = true
+    }
     agg.lotCount++
     agg.lots.push(lot)
   }
@@ -522,6 +528,7 @@ function groupedOptionLegs(group) {
     const multiplier = leg.option_type ? 100 : 1
     const originalQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
     leg.avgEntryPrice = originalQty > 0 ? Math.abs(leg.totalCostBasis) / originalQty / multiplier : 0
+    leg.expired = leg._hasExpiration && !leg._hasNonExpiration
     // Weighted avg close price
     if (leg.totalProceeds && leg.status === 'CLOSED') {
       const closedQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
@@ -1262,7 +1269,7 @@ function getSortLabel() {
                       {{ leg.status }}
                     </span>
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">{{ leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '' }}</span>
+                    <span class="w-24 text-right text-tv-muted ml-2">{{ leg.expired ? '\u2014' : (leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '') }}</span>
                   </div>
                 </div>
               </template>
