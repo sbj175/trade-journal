@@ -321,14 +321,10 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
     if not groups:
         return
 
-    # Build lookup by group_id
-    group_by_id: Dict[str, Any] = {g.group_id: g for g in groups}
-
     # Sort by opening_date ascending for serial roll detection
     sorted_groups = sorted(groups, key=lambda g: g.opening_date or '')
 
     # Index CLOSED groups by (account, underlying, effective_label, closing_day)
-    from collections import defaultdict
     closed_by_key: Dict[Tuple[str, str, str, str], List] = defaultdict(list)
 
     for g in sorted_groups:
