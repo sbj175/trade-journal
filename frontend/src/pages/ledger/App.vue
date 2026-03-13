@@ -32,10 +32,7 @@ const groupNotes = ref({})
 const availableTags = ref([])
 const tagPopoverGroup = ref(null)
 const tagSearch = ref('')
-const suggestions = ref([])
-const dismissedSuggestions = ref(new Set(JSON.parse(localStorage.getItem('ledger_dismissed_suggestions') || '[]')))
 const dateFilterRef = ref(null)
-const showSuggestions = ref(true)
 const filterStrategy = ref([])
 const filterTagIds = ref([])
 const strategyDropdownOpen = ref(false)
@@ -66,9 +63,6 @@ const filteredTagSuggestions = computed(() => {
     .filter(t => !search || t.name.toLowerCase().includes(search))
 })
 
-const visibleSuggestions = computed(() =>
-  suggestions.value.filter(s => !dismissedSuggestions.value.has(s.id))
-)
 
 const uniqueStrategies = computed(() => {
   const set = new Set()
@@ -114,7 +108,6 @@ onMounted(async () => {
   }
 
   await fetchLedger()
-  fetchSuggestions()
   await loadNotes()
   await loadAvailableTags()
 
@@ -175,63 +168,6 @@ async function fetchLedger() {
   }
 }
 
-async function fetchSuggestions() {
-  try {
-    const params = new URLSearchParams()
-    if (selectedAccount.value) params.set('account_number', selectedAccount.value)
-    const url = '/api/ledger/suggestions' + (params.toString() ? '?' + params.toString() : '')
-    const response = await Auth.authFetch(url)
-    const data = await response.json()
-    suggestions.value = data.suggestions || []
-  } catch (error) {
-    console.error('Error fetching suggestions:', error)
-  }
-}
-
-async function acceptSuggestion(suggestion) {
-  const targetGroup = suggestion.groups[0]
-  const sourceGroups = suggestion.groups.slice(1)
-  const allTxnIds = []
-  const emptySourceIds = []
-
-  for (const sg of sourceGroups) {
-    const group = groups.value.find(g => g.group_id === sg.group_id)
-    if (group) {
-      const lots = group.lots || []
-      if (lots.length === 0) {
-        emptySourceIds.push(sg.group_id)
-      } else {
-        for (const lot of lots) {
-          allTxnIds.push(lot.transaction_id)
-        }
-      }
-    }
-  }
-
-  try {
-    if (allTxnIds.length > 0) {
-      await Auth.authFetch('/api/ledger/move-lots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transaction_ids: allTxnIds, target_group_id: targetGroup.group_id }),
-      })
-    }
-    // Clean up source groups that were already empty
-    for (const gid of emptySourceIds) {
-      await Auth.authFetch(`/api/ledger/groups/${gid}`, { method: 'DELETE' })
-    }
-    await fetchLedger()
-    await fetchSuggestions()
-  } catch (error) {
-    console.error('Error accepting suggestion:', error)
-  }
-}
-
-function dismissSuggestion(suggestion) {
-  dismissedSuggestions.value.add(suggestion.id)
-  localStorage.setItem('ledger_dismissed_suggestions',
-    JSON.stringify([...dismissedSuggestions.value]))
-}
 
 // ==================== FILTERING & SORTING ====================
 function sortGroups(column) {
@@ -410,7 +346,6 @@ function cleanUrlParams() {
 function onAccountChange() {
   localStorage.setItem('trade_journal_selected_account', selectedAccount.value)
   fetchLedger()
-  fetchSuggestions()
 }
 
 function onSymbolFilterApply() {
@@ -953,78 +888,6 @@ function getSortLabel() {
   </div>
 
   </div><!-- /sticky header block -->
-
-  <!-- Merge Suggestions -->
-  <div v-if="visibleSuggestions.length > 0" class="bg-tv-panel border-x border-b border-tv-border">
-    <div @click="showSuggestions = !showSuggestions"
-         class="flex items-center px-4 py-2 cursor-pointer hover:bg-tv-border/20 transition-colors">
-      <i class="fas fa-lightbulb text-tv-amber mr-2"></i>
-      <span class="text-tv-text text-sm font-medium">
-        {{ visibleSuggestions.length }} merge suggestion{{ visibleSuggestions.length > 1 ? 's' : '' }}
-      </span>
-      <i class="fas fa-chevron-right ml-2 text-tv-muted text-xs transition-transform duration-200"
-         :class="showSuggestions ? 'rotate-90' : ''"></i>
-    </div>
-    <div v-show="showSuggestions" class="divide-y divide-tv-border/30">
-      <div v-for="suggestion in visibleSuggestions" :key="suggestion.id"
-           class="px-4 py-2.5">
-        <div class="flex items-center gap-4">
-          <div class="flex-1 min-w-0">
-            <!-- Consolidation suggestion -->
-            <template v-if="suggestion.type === 'consolidate'">
-              <div class="flex items-center gap-2 text-sm">
-                <a class="font-semibold text-tv-text hover:text-tv-blue cursor-pointer"
-                   @click.stop="filterUnderlying = suggestion.underlying; onSymbolFilterApply()">{{ suggestion.underlying }}</a>
-                <span class="text-tv-muted">
-                  {{ suggestion.groups.length }} {{ suggestion.resulting_strategy }} groups
-                </span>
-                <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
-                <span class="text-tv-cyan font-medium">1 {{ suggestion.resulting_strategy }} group</span>
-              </div>
-              <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-tv-muted">
-                <span v-for="(g, i) in suggestion.groups" :key="g.group_id" class="flex items-center gap-1">
-                  <span v-if="i > 0" class="text-tv-muted mx-0.5">+</span>
-                  <span>{{ formatDate(g.opening_date) }}<template v-if="g.lot_count"> ({{ g.lot_count }} lot{{ g.lot_count > 1 ? 's' : '' }})</template></span>
-                </span>
-              </div>
-            </template>
-            <!-- Strategy merge suggestion -->
-            <template v-else>
-              <div class="flex items-center gap-2 text-sm">
-                <a class="font-semibold text-tv-text hover:text-tv-blue cursor-pointer"
-                   @click.stop="filterUnderlying = suggestion.underlying; onSymbolFilterApply()">{{ suggestion.underlying }}</a>
-                <span class="text-tv-muted">
-                  {{ suggestion.groups.map(g => g.strategy_label || 'Unknown').join(' + ') }}
-                </span>
-                <i class="fas fa-arrow-right text-tv-muted text-xs"></i>
-                <span class="text-tv-amber font-medium">{{ suggestion.resulting_strategy }}</span>
-              </div>
-              <div class="flex items-center gap-3 mt-1 text-xs text-tv-muted">
-                <span v-for="(g, i) in suggestion.groups" :key="g.group_id" class="flex items-center gap-1">
-                  <span v-if="i > 0" class="text-tv-muted mx-0.5">+</span>
-                  <span class="text-tv-text">{{ g.strategy_label }}</span>
-                  <span>({{ formatDate(g.opening_date) }}<template v-if="g.lot_count">, {{ g.lot_count }} lot{{ g.lot_count > 1 ? 's' : '' }}</template>)</span>
-                </span>
-                <i class="fas fa-arrow-right text-tv-muted"></i>
-                <span>merge into first group</span>
-              </div>
-            </template>
-          </div>
-          <button @click="acceptSuggestion(suggestion)"
-                  class="px-3 py-1 text-sm border rounded hover:brightness-110 transition-colors whitespace-nowrap"
-                  :class="suggestion.type === 'consolidate'
-                    ? 'bg-tv-cyan/20 text-tv-cyan border-tv-cyan/30'
-                    : 'bg-tv-blue/20 text-tv-blue border-tv-blue/30'">
-            {{ suggestion.type === 'consolidate' ? 'Consolidate' : 'Merge' }}
-          </button>
-          <button @click="dismissSuggestion(suggestion)"
-                  class="px-3 py-1 text-sm text-tv-muted border border-tv-border rounded hover:text-tv-text hover:border-tv-muted transition-colors whitespace-nowrap">
-            Dismiss
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- Loading State -->
   <div v-if="loading" class="text-center py-16">
