@@ -973,7 +973,10 @@ function getSortLabel() {
     <span class="w-32 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortGroups('closing_date')">
       Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
-    <span class="ml-auto cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortGroups('realized_pnl')">
+    <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-auto">
+      Initial Premium
+    </span>
+    <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-2" @click="sortGroups('realized_pnl')">
       Realized P&amp;L <span v-if="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
   </div>
@@ -1172,20 +1175,15 @@ function getSortLabel() {
           <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
 
           <!-- Initial Premium -->
-          <span class="ml-auto text-base text-tv-muted mr-4"
-                v-show="groupInitialPremium(group)">
-            <span class="text-xs uppercase tracking-wider mr-1">Premium</span>
-            <span :class="groupInitialPremium(group) > 0 ? 'text-tv-red' : 'text-tv-green'">
-              ${{ formatNumber(groupInitialPremium(group)) }}
-            </span>
+          <span class="w-28 text-right ml-auto text-base"
+                :class="groupInitialPremium(group) > 0 ? 'text-tv-red' : groupInitialPremium(group) < 0 ? 'text-tv-green' : 'text-tv-muted'">
+            {{ groupInitialPremium(group) ? '$' + formatNumber(groupInitialPremium(group)) : '' }}
           </span>
 
           <!-- Realized P&L -->
-          <span class="text-base font-medium"
-                :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
-                v-show="group.realized_pnl">
-            <span class="text-xs uppercase tracking-wider text-tv-muted mr-1">Realized</span>
-            ${{ formatNumber(group.realized_pnl) }}
+          <span class="w-28 text-right ml-2 text-base font-medium"
+                :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+            {{ group.realized_pnl ? '$' + formatNumber(group.realized_pnl) : '' }}
           </span>
         </div>
 
