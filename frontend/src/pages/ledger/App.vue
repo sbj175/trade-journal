@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { STRATEGY_CATEGORIES } from '@/lib/constants'
-import { formatNumber, formatDate, formatExpirationShort, calculateDTE } from '@/lib/formatters'
+import { formatNumber, formatDate, formatExpirationShort } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
 
 const Auth = useAuth()
@@ -1206,14 +1206,11 @@ function getSortLabel() {
               <div class="flex items-center text-sm text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
                 <span class="w-10 text-right">Qty</span>
                 <span class="w-16 text-center mx-2">Exp</span>
-                <span class="w-10">DTE</span>
                 <span class="w-16 text-center mx-2">Strike</span>
                 <span class="w-10">Type</span>
                 <span class="w-20 text-center ml-3">Status</span>
-                <span class="w-20 text-right">Avg Entry</span>
-                <span class="w-20 text-right ml-2">Close $</span>
-                <span class="w-24 text-right ml-2">Proceeds</span>
-                <span class="w-24 text-right ml-2">Realized</span>
+                <span class="w-24 text-right">Entry Price</span>
+                <span class="w-24 text-right ml-2">Close Price</span>
               </div>
 
               <!-- Section A: Equity Aggregate -->
@@ -1226,13 +1223,10 @@ function getSortLabel() {
                       {{ equityAggregate(group).quantity }}
                     </span>
                     <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text">Shares</span>
-                    <span class="w-10 text-tv-muted">&mdash;</span>
                     <span class="w-16 text-center mx-2 py-0.5 rounded text-tv-muted">&mdash;</span>
                     <span class="w-10 text-tv-muted">Stk</span>
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">OPEN</span>
-                    <span class="w-20 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
-                    <span class="w-20 text-right ml-2"></span>
-                    <span class="w-24 text-right ml-2"></span>
+                    <span class="w-24 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
                     <span class="w-24 text-right ml-2"></span>
                   </div>
                 </div>
@@ -1256,10 +1250,6 @@ function getSortLabel() {
                     <span class="w-16 text-center bg-tv-panel mx-2 py-0.5 rounded text-tv-text">
                       {{ leg.expiration ? formatExpirationShort(leg.expiration) : (leg.instrument_type === 'EQUITY' ? 'Shares' : '\u2014') }}
                     </span>
-                    <span class="w-10 text-tv-muted"
-                          :class="leg.expiration && calculateDTE(leg.expiration) <= 21 ? 'text-tv-amber font-bold' : ''">
-                      {{ leg.expiration ? calculateDTE(leg.expiration) + 'd' : '\u2014' }}
-                    </span>
                     <span class="w-16 text-center mx-2 py-0.5 rounded"
                           :class="leg.strike ? 'bg-tv-panel text-tv-text' : 'text-tv-muted'">
                       {{ leg.strike || '\u2014' }}
@@ -1271,13 +1261,8 @@ function getSortLabel() {
                           :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
                       {{ leg.status }}
                     </span>
-                    <span class="w-20 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
-                    <span class="w-20 text-right text-tv-muted ml-2">{{ leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '' }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">{{ leg.totalProceeds ? '$' + formatNumber(leg.totalProceeds) : '' }}</span>
-                    <span class="w-24 text-right ml-2"
-                          :class="leg.totalRealized > 0 ? 'text-tv-green' : leg.totalRealized < 0 ? 'text-tv-red' : 'text-tv-muted'">
-                      {{ leg.totalRealized ? '$' + formatNumber(leg.totalRealized) : '' }}
-                    </span>
+                    <span class="w-24 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
+                    <span class="w-24 text-right text-tv-muted ml-2">{{ leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '' }}</span>
                   </div>
                 </div>
               </template>
