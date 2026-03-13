@@ -474,22 +474,22 @@ function sortedLots(group) {
     if (aOpen !== bOpen) return aOpen - bOpen
 
     if (aOpen === 0) {
-      // Open/partial: expiration asc, strike asc, entry date desc
+      // Open/partial: expiration asc, strike desc, entry date desc
       const aExp = a.expiration || ''
       const bExp = b.expiration || ''
       if (aExp !== bExp) return aExp.localeCompare(bExp)
-      if ((a.strike || 0) !== (b.strike || 0)) return (a.strike || 0) - (b.strike || 0)
+      if ((a.strike || 0) !== (b.strike || 0)) return (b.strike || 0) - (a.strike || 0)
       return (b.entry_date || '').localeCompare(a.entry_date || '')
     }
 
-    // Closed: entry date desc, expiration desc, strike asc
+    // Closed: entry date desc, expiration desc, strike desc
     const aDate = a.entry_date || ''
     const bDate = b.entry_date || ''
     if (aDate !== bDate) return bDate.localeCompare(aDate)
     const aExp = a.expiration || ''
     const bExp = b.expiration || ''
     if (aExp !== bExp) return bExp.localeCompare(aExp)
-    return (a.strike || 0) - (b.strike || 0)
+    return (b.strike || 0) - (a.strike || 0)
   })
 }
 
