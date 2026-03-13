@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate } from '@/lib/formatters'
+import StreamingPrice from '@/components/StreamingPrice.vue'
+import PositionsToolbar from '@/components/PositionsToolbar.vue'
 
 const Auth = useAuth()
 
@@ -11,10 +13,12 @@ const accounts = ref([])
 const underlyingQuotes = ref({})
 const quoteUpdateCounter = ref(0)
 const selectedAccount = ref('')
+const selectedUnderlying = ref('')
 const isLoading = ref(false)
 const error = ref(null)
 const liveQuotesActive = ref(false)
 const lastQuoteUpdate = ref(null)
+const syncSummary = ref(null)
 const sortColumn = ref('underlying')
 const sortDirection = ref('asc')
 
@@ -22,10 +26,14 @@ let ws = null
 
 // --- Computed ---
 
+
 const filteredItems = computed(() => {
   let items = allItems.value
   if (selectedAccount.value) {
     items = items.filter(i => i.accountNumber === selectedAccount.value)
+  }
+  if (selectedUnderlying.value) {
+    items = items.filter(i => i.underlying === selectedUnderlying.value)
   }
   return items
 })
@@ -111,6 +119,28 @@ async function fetchAccounts() {
   } catch (err) { console.error('Failed to load accounts:', err) }
 }
 
+async function syncAndLoad() {
+  isLoading.value = true
+  error.value = null
+  syncSummary.value = null
+  try {
+    const syncResp = await Auth.authFetch('/api/sync', { method: 'POST' })
+    if (syncResp.ok) {
+      const syncData = await syncResp.json()
+      const n = syncData.new_transactions || 0
+      const syms = syncData.symbols || []
+      if (n > 0) {
+        syncSummary.value = `Imported ${n} transaction${n === 1 ? '' : 's'} on ${syms.join(', ')}`
+      } else {
+        syncSummary.value = 'No new transactions'
+      }
+    }
+  } catch (err) {
+    console.error('Sync failed:', err)
+  }
+  await loadPositions()
+}
+
 async function loadPositions() {
   isLoading.value = true
   error.value = null
@@ -150,9 +180,12 @@ async function loadPositions() {
   }
 }
 
+function getQuote(underlying) {
+  return underlyingQuotes.value[underlying] || {}
+}
+
 function getQuotePrice(underlying) {
-  const q = underlyingQuotes.value[underlying]
-  return q?.price || null
+  return getQuote(underlying).price || null
 }
 
 function getMarketValue(item) {
@@ -207,6 +240,7 @@ function sortIcon(column) {
   if (sortColumn.value !== column) return ''
   return sortDirection.value === 'asc' ? '\u25B2' : '\u25BC'
 }
+
 
 // --- Quotes ---
 
@@ -272,7 +306,6 @@ function onAccountChange() {
 onMounted(async () => {
   const savedAccount = localStorage.getItem('trade_journal_selected_account')
   if (savedAccount) selectedAccount.value = savedAccount
-
   await fetchAccounts()
   await loadPositions()
   await loadCachedQuotes()
@@ -298,6 +331,17 @@ onUnmounted(() => {
 
   <!-- Sticky Header -->
   <div class="sticky top-14 z-30">
+    <PositionsToolbar
+      :is-loading="isLoading"
+      :live-quotes-active="liveQuotesActive"
+      :last-quote-update="lastQuoteUpdate"
+      :sync-summary="syncSummary"
+      :selected-account="selectedAccount"
+      v-model:symbol-filter="selectedUnderlying"
+      @sync="syncAndLoad()"
+      @update:sync-summary="syncSummary = $event"
+    />
+
     <!-- Stats Bar -->
     <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center gap-8 text-base">
       <span class="text-tv-muted">
@@ -313,17 +357,13 @@ onUnmounted(() => {
         Unrealized P&amp;L:
         <span :class="totalPnL >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(totalPnL) }}</span>
       </span>
-      <span v-if="liveQuotesActive" class="ml-auto flex items-center gap-1.5 text-sm text-tv-green">
-        <span class="w-2 h-2 rounded-full bg-tv-green animate-pulse"></span>
-        Live
-      </span>
     </div>
 
     <!-- Column Headers -->
     <div v-if="!isLoading && groupedPositions.length > 0"
          class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
       <span class="w-8 mr-3"></span>
-      <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sort('underlying')">
+      <span class="w-56 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sort('underlying')">
         Symbol <span v-if="sortIcon('underlying')" class="text-tv-blue">{{ sortIcon('underlying') }}</span>
       </span>
       <span class="w-20 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sort('quantity')">
@@ -334,9 +374,6 @@ onUnmounted(() => {
       </span>
       <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-2" @click="sort('cost_basis')">
         Cost Basis <span v-if="sortIcon('cost_basis')" class="text-tv-blue">{{ sortIcon('cost_basis') }}</span>
-      </span>
-      <span class="w-24 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-4" @click="sort('price')">
-        Price <span v-if="sortIcon('price')" class="text-tv-blue">{{ sortIcon('price') }}</span>
       </span>
       <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-2" @click="sort('market_value')">
         Mkt Value <span v-if="sortIcon('market_value')" class="text-tv-blue">{{ sortIcon('market_value') }}</span>
@@ -373,11 +410,14 @@ onUnmounted(() => {
           {{ getAccountSymbol(item.accountNumber) }}
         </span>
 
-        <!-- Symbol -->
-        <span class="w-28">
+        <!-- Symbol + Streaming Price -->
+        <span class="w-56 flex items-center gap-3">
           <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
-          <span v-if="item.hasOptions" class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/30">
+          <span v-if="item.hasOptions" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/30">
             {{ item.optionStrategy }}
+          </span>
+          <span class="ml-auto">
+            <StreamingPrice :quote="getQuote(item.underlying).price ? getQuote(item.underlying) : null" />
           </span>
         </span>
 
@@ -395,12 +435,6 @@ onUnmounted(() => {
         <!-- Cost Basis -->
         <span class="w-28 text-right text-tv-muted text-base ml-2">
           ${{ formatNumber(item.costBasis) }}
-        </span>
-
-        <!-- Current Price -->
-        <span class="w-24 text-right text-base ml-4"
-              :class="getQuotePrice(item.underlying) ? 'text-tv-text' : 'text-tv-muted'">
-          {{ getQuotePrice(item.underlying) ? '$' + formatNumber(getQuotePrice(item.underlying)) : '\u2014' }}
         </span>
 
         <!-- Market Value -->
