@@ -1,8 +1,8 @@
 """Data types for the strategy engine."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
+from typing import FrozenSet, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -34,3 +34,6 @@ class StrategyResult:
     credit_debit: Optional[str]  # "credit", "debit", "mixed", None
     leg_count: int
     confidence: float           # 0.0-1.0
+    # For multi-strategy partitions: list of (name, leg_indices)
+    # Enables group splitting when multiple strategies share a group.
+    sub_strategies: Optional[Tuple[Tuple[str, FrozenSet[int]], ...]] = None

@@ -125,15 +125,34 @@ def assign_lots_to_groups(
             _add_lot_to_group(lot, gk)
 
     # --- Step 3 & 4: Build GroupSpec results with strategy labels ----------
+    # May split groups when the recognizer finds multiple strategies.
     result: List[GroupSpec] = []
     for gk, lot_list in groups.items():
         # Strategy label from engine (uses only non-closed lots)
         legs = lots_to_legs(lot_list)
+        if not legs:
+            # All lots are closed — build legs from all lots for labeling
+            legs = _legs_from_all_lots(lot_list)
+
         if legs:
             sr = recognize(legs)
+            # Split group if recognizer found multiple distinct strategies
+            if sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
+                sub_groups = _split_lots_by_partition(lot_list, legs, sr.sub_strategies)
+                for sub_label, sub_lots in sub_groups:
+                    has_open = any(lot.remaining_quantity != 0 for lot in sub_lots)
+                    result.append(GroupSpec(
+                        group_key=_new_group_key(),
+                        account_number=sub_lots[0].account_number,
+                        underlying=sub_lots[0].underlying,
+                        strategy_label=sub_label,
+                        status="OPEN" if has_open else "CLOSED",
+                        opening_date=min(lot.entry_date for lot in sub_lots),
+                        lot_transaction_ids=[lot.transaction_id for lot in sub_lots],
+                    ))
+                continue
             strategy_label = sr.name
         else:
-            # All lots are closed — label from all lots for historical display
             strategy_label = _label_from_all_lots(lot_list)
 
         # Status: OPEN if any lot has remaining quantity
@@ -153,59 +172,97 @@ def assign_lots_to_groups(
             lot_transaction_ids=[lot.transaction_id for lot in lot_list],
         ))
 
+    # --- Step 5: Upgrade Short Call → Covered Call where shares exist -------
+    # Index: (account, underlying) -> list of Shares groups with date ranges
+    shares_index: Dict[Tuple[str, str], List[GroupSpec]] = defaultdict(list)
+    for gs in result:
+        if gs.strategy_label == "Shares":
+            shares_index[(gs.account_number, gs.underlying)].append(gs)
+
+    for gs in result:
+        if gs.strategy_label != "Short Call":
+            continue
+        key = (gs.account_number, gs.underlying)
+        if key not in shares_index:
+            continue
+        call_open = gs.opening_date or datetime.min
+        call_close = None  # We don't have closing_date on GroupSpec; assume overlap
+        # If shares exist for same account+underlying, upgrade
+        gs.strategy_label = "Covered Call"
+
+    return result
+
+
+def _split_lots_by_partition(
+    lot_list: List[Lot],
+    legs: list,
+    sub_strategies: tuple,
+) -> List[Tuple[str, List[Lot]]]:
+    """Split lots into sub-groups based on the recognizer's partition.
+
+    Each sub-strategy references leg indices. A leg is an aggregation of lots
+    sharing the same structural key (instrument_type, option_type, strike,
+    expiration, direction). We map leg indices back to lots via that key.
+    """
+    from src.pipeline.strategy_engine.types import Leg as LegType
+
+    # Build leg-index → structural key mapping
+    leg_keys: Dict[int, tuple] = {}
+    for i, leg in enumerate(legs):
+        leg_keys[i] = (leg.instrument_type, leg.option_type, leg.strike,
+                        leg.expiration, leg.direction)
+
+    # Build structural key → lots mapping
+    key_to_lots: Dict[tuple, List[Lot]] = defaultdict(list)
+    for lot in lot_list:
+        inst = "Equity" if lot.instrument_type in ("Equity", "EQUITY") else "Option"
+        opt = None
+        if lot.option_type:
+            opt = "C" if lot.option_type.upper().startswith("C") else "P"
+        direction = "short" if lot.is_short else "long"
+        key = (inst, opt, lot.strike, lot.expiration, direction)
+        key_to_lots[key].append(lot)
+
+    # Assign lots to sub-groups
+    result: List[Tuple[str, List[Lot]]] = []
+    assigned_lot_ids: Set[str] = set()
+    for name, leg_indices in sub_strategies:
+        sub_lots: List[Lot] = []
+        for idx in leg_indices:
+            key = leg_keys.get(idx)
+            if key and key in key_to_lots:
+                for lot in key_to_lots[key]:
+                    if lot.transaction_id not in assigned_lot_ids:
+                        sub_lots.append(lot)
+                        assigned_lot_ids.add(lot.transaction_id)
+        if sub_lots:
+            result.append((name, sub_lots))
+
+    # Any remaining lots (closed lots not in the partition) go to the first sub-group
+    remaining = [lot for lot in lot_list if lot.transaction_id not in assigned_lot_ids]
+    if remaining and result:
+        result[0] = (result[0][0], result[0][1] + remaining)
+    elif remaining:
+        result.append((None, remaining))
+
     return result
 
 
 def _label_from_all_lots(lot_list: List[Lot]) -> Optional[str]:
-    """Derive a strategy label from all lots (including closed) for CLOSED groups.
-
-    When a group has multiple opening orders, only the lots from the latest
-    opening order are used for labeling.  This prevents multi-leg strategies
-    from being mislabeled as "Custom (N-leg)".
-    """
-    # Check if all lots are equity
+    """Derive a strategy label from all lots (including closed) for CLOSED groups."""
     if all(lot.instrument_type in ("Equity", "EQUITY") for lot in lot_list):
         return "Shares"
 
-    # Separate equity and option lots
-    equity_lots = [l for l in lot_list if l.instrument_type in ("Equity", "EQUITY")]
-    option_lots = [l for l in lot_list if l.instrument_type not in ("Equity", "EQUITY")]
-
-    # For option lots, use only the latest opening cohort
-    lots_for_label = _latest_opening_cohort(option_lots) if option_lots else []
-
-    # Always include equity lots so Covered Calls are detected
-    if equity_lots:
-        lots_for_label = lots_for_label + equity_lots
-
-    return _recognize_from_lots(lots_for_label)
+    legs = _legs_from_all_lots(lot_list)
+    if legs:
+        sr = recognize(legs)
+        return sr.name
+    return None
 
 
-def _latest_opening_cohort(lot_list: List[Lot]) -> List[Lot]:
-    """Return the lots from the most recent opening order.
 
-    If all lots share the same opening_order_id (or have none), returns all.
-    """
-    # Collect distinct opening_order_ids (ignoring None)
-    order_ids = {lot.opening_order_id for lot in lot_list if lot.opening_order_id}
-
-    if len(order_ids) <= 1:
-        return lot_list
-
-    # Find the latest entry_date per opening_order_id
-    order_latest: Dict[str, datetime] = {}
-    for lot in lot_list:
-        oid = lot.opening_order_id
-        if oid:
-            if oid not in order_latest or lot.entry_date > order_latest[oid]:
-                order_latest[oid] = lot.entry_date
-
-    latest_oid = max(order_latest, key=order_latest.get)
-    return [lot for lot in lot_list if lot.opening_order_id == latest_oid]
-
-
-def _recognize_from_lots(lot_list: List[Lot]) -> Optional[str]:
-    """Run strategy recognition on a list of lots (treating all as open)."""
+def _legs_from_all_lots(lot_list: List[Lot]) -> list:
+    """Build aggregated Leg objects from all lots (including closed), treating all as open."""
     from src.pipeline.strategy_engine.types import Leg
 
     leg_groups: dict[tuple, int] = defaultdict(int)
@@ -234,15 +291,144 @@ def _recognize_from_lots(lot_list: List[Lot]) -> Optional[str]:
             quantity=qty,
         ))
 
-    if legs:
-        sr = recognize(legs)
-        return sr.name
-    return None
+    return legs
 
 
 # ---------------------------------------------------------------------------
 # Roll-link detection
 # ---------------------------------------------------------------------------
+
+def _upgrade_covered_calls(
+    session, all_group_ids: Set[str], group_lots: Dict[str, List[Lot]],
+) -> None:
+    """Upgrade 'Short Call' groups to 'Covered Call' when shares exist.
+
+    A Short Call group whose account+underlying has a Shares group that
+    overlaps in time is really a Covered Call.
+    """
+    from src.database.models import PositionGroup
+
+    groups = session.query(PositionGroup).filter(
+        PositionGroup.group_id.in_(all_group_ids),
+    ).all()
+
+    # Index: (account, underlying) -> list of Shares groups with date ranges
+    shares_index: Dict[Tuple[str, str], List] = defaultdict(list)
+    for g in groups:
+        if g.strategy_label == "Shares":
+            shares_index[(g.account_number, g.underlying)].append(g)
+
+    for g in groups:
+        if g.strategy_label != "Short Call" or g.strategy_label_user_override:
+            continue
+
+        key = (g.account_number, g.underlying)
+        if key not in shares_index:
+            continue
+
+        # Check if any Shares group overlaps with this Short Call's lifetime
+        for shares_group in shares_index[key]:
+            shares_open = shares_group.opening_date or ""
+            shares_close = shares_group.closing_date or "9999-12-31"
+            call_open = g.opening_date or ""
+            call_close = g.closing_date or "9999-12-31"
+
+            # Overlap: shares opened before call closed AND shares closed after call opened
+            if shares_open <= call_close and shares_close >= call_open:
+                g.strategy_label = "Covered Call"
+                break
+
+
+def _persist_group_split(
+    session, group, original_gid: str,
+    sub_groups: List[Tuple[str, List[Lot]]],
+    lots_in_group: List[Lot],
+    user_id: str, now_str: str,
+    all_group_ids: Set[str],
+    group_lots: Dict[str, List[Lot]],
+) -> None:
+    """Split an existing group into multiple sub-groups based on recognizer partition.
+
+    - Keeps the original group for the first sub-strategy (preserves group_id, tags, notes)
+    - Creates new groups for the remaining sub-strategies
+    - Reassigns PositionGroupLot links accordingly
+    - Computes closing_date and last_activity_date for each sub-group
+    """
+    from sqlalchemy import func
+    from src.database.models import (
+        PositionGroup, PositionGroupLot,
+        PositionLot as PositionLotModel, LotClosing as LotClosingModel,
+    )
+
+    first = True
+    for label, sub_lots in sub_groups:
+        txn_ids = {lot.transaction_id for lot in sub_lots}
+        has_open = any(lot.remaining_quantity != 0 for lot in sub_lots)
+        status = "OPEN" if has_open else "CLOSED"
+        opening = min(l.entry_date for l in sub_lots).isoformat() if sub_lots else None
+
+        # Compute closing_date and last_activity_date from lot_closings
+        lot_ids = [
+            r[0] for r in session.query(PositionLotModel.id).filter(
+                PositionLotModel.transaction_id.in_(txn_ids),
+            ).all()
+        ]
+        max_closing_date = None
+        if lot_ids:
+            max_closing_date = session.query(
+                func.max(LotClosingModel.closing_date),
+            ).filter(LotClosingModel.lot_id.in_(lot_ids)).scalar()
+
+        closing_date = max_closing_date if status == "CLOSED" else None
+        max_entry = session.query(
+            func.max(PositionLotModel.entry_date),
+        ).filter(PositionLotModel.transaction_id.in_(txn_ids)).scalar()
+        activity_candidates = [d for d in [max_closing_date, max_entry] if d]
+        last_activity = max(activity_candidates) if activity_candidates else None
+
+        if first:
+            # Reuse the original group — update its label and remove lots not in this sub
+            group.strategy_label = label
+            group.status = status
+            group.opening_date = opening
+            group.closing_date = closing_date
+            group.last_activity_date = last_activity
+            group.updated_at = now_str
+
+            # Delete lot links that don't belong to this sub-group
+            session.query(PositionGroupLot).filter(
+                PositionGroupLot.group_id == original_gid,
+                PositionGroupLot.user_id == user_id,
+                ~PositionGroupLot.transaction_id.in_(txn_ids),
+            ).delete(synchronize_session="fetch")
+
+            group_lots[original_gid] = sub_lots
+            first = False
+        else:
+            # Create a new group for this sub-strategy
+            new_gid = str(_uuid.uuid4())
+            session.add(PositionGroup(
+                group_id=new_gid,
+                account_number=sub_lots[0].account_number,
+                underlying=sub_lots[0].underlying,
+                strategy_label=label,
+                status=status,
+                opening_date=opening,
+                closing_date=closing_date,
+                last_activity_date=last_activity,
+                updated_at=now_str,
+            ))
+            for txn_id in txn_ids:
+                session.add(PositionGroupLot(
+                    group_id=new_gid,
+                    transaction_id=txn_id,
+                    user_id=user_id,
+                ))
+            all_group_ids.add(new_gid)
+            group_lots[new_gid] = sub_lots
+
+    session.flush()
+
 
 def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, List[Lot]]) -> None:
     """Phase 4b: auto-detect roll relationships between groups.
@@ -553,19 +739,40 @@ class GroupPersister:
                 # Strategy label (unless user overrode)
                 if not group.strategy_label_user_override:
                     legs = lots_to_legs(lots_in_group)
+                    if not legs:
+                        legs = _legs_from_all_lots(lots_in_group)
+
                     if legs:
                         sr = recognize(legs)
+
+                        # Split group if recognizer found multiple distinct strategies
+                        if sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
+                            sub_groups = _split_lots_by_partition(
+                                lots_in_group, legs, sr.sub_strategies,
+                            )
+                            if len(sub_groups) > 1:
+                                _persist_group_split(
+                                    session, group, gid, sub_groups,
+                                    lots_in_group, user_id, now_str,
+                                    all_group_ids, group_lots,
+                                )
+                                count += len(sub_groups)
+                                continue
+
                         group.strategy_label = sr.name
-                    else:
-                        label = _label_from_all_lots(lots_in_group)
-                        if label:
-                            group.strategy_label = label
 
                 group.updated_at = now_str
                 count += 1
 
             # =================================================================
-            # Phase 4b: Auto-detect roll links (rolled_from_group_id)
+            # Phase 4b: Covered Call upgrade
+            # =================================================================
+            # Short Call groups that overlap with a Shares group for the same
+            # account+underlying are really Covered Calls.
+            _upgrade_covered_calls(session, all_group_ids, group_lots)
+
+            # =================================================================
+            # Phase 4c: Auto-detect roll links (rolled_from_group_id)
             # =================================================================
             _detect_roll_links(session, all_group_ids, group_lots)
 

@@ -174,7 +174,7 @@ function adminApp() {
             if (!confirm(`Reprocess chains for ${user.email || user.id}? This will rebuild order chains from existing transactions.`)) return;
             try {
                 const result = await this.apiFetch(`/api/admin/users/${user.id}/reprocess-chains`, { method: 'POST' });
-                alert(`Reprocess complete: ${result.orders_processed} orders, ${result.chains_created} chains`);
+                alert(`Reprocess complete: ${result.orders_processed} orders, ${result.groups_processed} groups`);
                 await this.loadData();
             } catch (err) {
                 alert('Reprocess failed: ' + err.message);

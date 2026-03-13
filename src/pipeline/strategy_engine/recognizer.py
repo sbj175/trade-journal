@@ -64,13 +64,20 @@ def recognize(legs: List[Leg]) -> StrategyResult:
         _, name, _ = best_partition[0]
         return _result(name)
 
-    # Multiple strategies — combine names, largest first
+    # Multiple strategies — combine names, largest first, deduplicated
     sorted_parts = sorted(best_partition, key=lambda c: -_strategy_leg_count(c[1]))
     names = [name for _, name, _ in sorted_parts]
-    combined = " + ".join(names)
+    # Deduplicate: "Short Call + Short Call" -> "Short Call"
+    seen = []
+    for name in names:
+        if name not in seen:
+            seen.append(name)
+    combined = " + ".join(seen)
+    # Build sub_strategies for group splitting
+    subs = tuple((name, indices) for indices, name, _ in sorted_parts)
     return StrategyResult(
         name=combined, direction=None, credit_debit=None,
-        leg_count=n, confidence=0.9,
+        leg_count=n, confidence=0.9, sub_strategies=subs,
     )
 
 
