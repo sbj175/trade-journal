@@ -1265,8 +1265,8 @@ function getSortLabel() {
                       {{ leg.option_type ? (leg.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put') : (leg.instrument_type === 'EQUITY' ? 'Stk' : '\u2014') }}
                     </span>
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3"
-                          :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
-                      {{ leg.status }}
+                          :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : leg.expired ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
+                      {{ leg.expired ? 'EXPIRED' : leg.status }}
                     </span>
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
                     <span class="w-24 text-right text-tv-muted ml-2">{{ leg.expired ? '\u2014' : (leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '') }}</span>
