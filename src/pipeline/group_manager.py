@@ -484,7 +484,6 @@ class GroupPersister:
                         underlying=first_lot.underlying,
                         strategy_label=None,  # set in Phase 4
                         status="OPEN",
-                        source_chain_id=None,
                         opening_date=None,
                         updated_at=now_str,
                     ))

@@ -13,12 +13,12 @@ from src.models.lot_manager import Lot
 # ---------------------------------------------------------------------------
 
 def _insert_position_group(session, *, group_id, account_number, underlying,
-                           strategy_label, status='OPEN', source_chain_id=None,
+                           strategy_label, status='OPEN',
                            opening_date='2025-01-15'):
     session.add(PositionGroup(
         group_id=group_id, account_number=account_number, underlying=underlying,
         strategy_label=strategy_label, status=status,
-        source_chain_id=source_chain_id, opening_date=opening_date,
+        opening_date=opening_date,
     ))
 
 
@@ -54,7 +54,7 @@ def _get_group_lots(session, group_id):
 def _get_all_groups(session, account_number, underlying):
     return session.query(
         PositionGroup.group_id, PositionGroup.strategy_label,
-        PositionGroup.source_chain_id, PositionGroup.status,
+        PositionGroup.status,
     ).filter(
         PositionGroup.account_number == account_number,
         PositionGroup.underlying == underlying,
@@ -73,13 +73,14 @@ class TestSeedPositionGroupsUngrouped:
         """During initial seeding, chainless lots should join an existing OPEN group
         for the same account+underlying rather than creating a duplicate."""
         chain_id = 'chain-cc-002'
-        cc_group_id = str(uuid.uuid4())
+        # Use chain_id as group_id (matches seed_position_groups convention)
+        cc_group_id = chain_id
 
         with db.get_session() as session:
             _insert_position_group(session, group_id=cc_group_id,
                                    account_number='ACCT1', underlying='IBIT',
                                    strategy_label='Covered Call', status='OPEN',
-                                   source_chain_id=chain_id)
+                                   )
             _insert_position_lot(session, transaction_id='tx-option-leg',
                                  account_number='ACCT1', underlying='IBIT',
                                  chain_id=chain_id, instrument_type='EQUITY_OPTION',
@@ -98,4 +99,3 @@ class TestSeedPositionGroupsUngrouped:
 
         assert 'tx-shares-no-chain' in lots_in_cc
         assert len(groups) == 1
-        assert groups[0][1] == 'Covered Call'

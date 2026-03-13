@@ -288,7 +288,6 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                 group_obj = {
                     "chain_id": gid,
                     "group_id": gid,
-                    "source_chain_id": g.get('source_chain_id'),
                     "underlying": g['underlying'],
                     "account_number": acct,
                     "strategy_type": strategy_type,

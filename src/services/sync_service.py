@@ -19,7 +19,7 @@ from src.dependencies import (
     lot_manager as _default_lot_manager,
     AUTH_ENABLED,
 )
-from src.services import chain_service, ledger_service
+from src.services import ledger_service
 
 
 def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_number: str, *, db: DatabaseManager = None) -> List[Dict[str, Any]]:

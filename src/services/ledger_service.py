@@ -19,7 +19,11 @@ from src.dependencies import db as _default_db, lot_manager as _default_lot_mana
 
 
 def seed_position_groups(*, db: DatabaseManager = None, lot_manager: LotManager = None):
-    """Seed position_groups from existing chains. Idempotent — skips chains already seeded."""
+    """Seed position_groups from existing chains. Idempotent — skips chains already seeded.
+
+    Legacy fallback for databases with lots but no groups (pre-GroupPersister).
+    New data goes through GroupPersister.process_groups() in the pipeline.
+    """
     db = db or _default_db
     lot_manager = lot_manager or _default_lot_manager
     groups_created = 0
@@ -39,9 +43,9 @@ def seed_position_groups(*, db: DatabaseManager = None, lot_manager: LotManager 
 
         for chain_id, account_number, underlying in chain_rows:
 
-            # Check if group already exists for this chain
+            # Check if group already exists (group_id = chain_id by convention)
             exists = session.query(PositionGroup.group_id).filter(
-                PositionGroup.source_chain_id == chain_id,
+                PositionGroup.group_id == chain_id,
             ).first()
             if exists:
                 continue
@@ -88,7 +92,6 @@ def seed_position_groups(*, db: DatabaseManager = None, lot_manager: LotManager 
                 underlying=underlying or '',
                 strategy_label=strategy_label,
                 status=status,
-                source_chain_id=chain_id,
                 opening_date=opening_date,
                 closing_date=closing_date,
             ))
@@ -290,70 +293,6 @@ def net_opposing_equity_lots(*, db: DatabaseManager = None, lot_manager: LotMana
                     logger.info(f"Netted {total_closed} shares of {symbol}: lot {neg_id} ({neg_remaining}) vs {len(affected)} long lots")
 
     return netted
-
-
-def _reconcile_stale_groups(*, db: DatabaseManager = None):
-    """Update position_groups whose source_chain_id no longer exists in order_chains.
-
-    For groups with lots from multiple chains (e.g. user moved lots on Ledger),
-    set source_chain_id to the earliest lot's chain_id as a best-effort match
-    for future seeding.
-    """
-    db = db or _default_db
-    reconciled = 0
-    with db.get_session() as session:
-        # Fix stale source_chain_id references
-        stale_groups = session.query(
-            PositionGroup.group_id,
-            PositionGroup.source_chain_id,
-        ).outerjoin(
-            OrderChain, PositionGroup.source_chain_id == OrderChain.chain_id,
-        ).filter(
-            PositionGroup.source_chain_id.isnot(None),
-            OrderChain.chain_id.is_(None),
-        ).all()
-
-        for stale_gid, stale_chain_id in stale_groups:
-            # Find the actual chain_id(s) from the group's lots
-            chain_rows = session.query(
-                PositionLotModel.chain_id,
-            ).join(
-                PositionGroupLot,
-                PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
-            ).filter(
-                PositionGroupLot.group_id == stale_gid,
-                PositionLotModel.chain_id.isnot(None),
-            ).order_by(PositionLotModel.entry_date.asc()).distinct().all()
-
-            if chain_rows:
-                # Use the earliest lot's chain_id (best-effort for future seeding)
-                new_chain_id = chain_rows[0][0]
-                chain_info = session.query(
-                    OrderChain.underlying,
-                    OrderChain.strategy_type,
-                    OrderChain.opening_date,
-                    OrderChain.closing_date,
-                    OrderChain.chain_status,
-                ).filter(OrderChain.chain_id == new_chain_id).first()
-
-                if chain_info:
-                    group = session.query(PositionGroup).filter(
-                        PositionGroup.group_id == stale_gid,
-                    ).first()
-                    if group:
-                        group.source_chain_id = new_chain_id
-                        group.underlying = chain_info[0]
-                        group.strategy_label = chain_info[1]
-                        group.opening_date = chain_info[2]
-                        group.closing_date = chain_info[3]
-                        group.status = chain_info[4]
-                        reconciled += 1
-                        logger.info(f"Reconciled stale group {stale_gid}: "
-                                    f"{stale_chain_id} -> {new_chain_id} ({chain_info[0]})")
-
-    if reconciled:
-        logger.info(f"Reconciled {reconciled} stale position groups")
-    return reconciled
 
 
 def _refresh_group_strategy(group, session):

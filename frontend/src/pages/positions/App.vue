@@ -1089,34 +1089,17 @@ async function loadComments() {
 }
 
 function migrateCommentKeys() {
+  // Legacy migration from chain_* to group_* comment keys.
+  // source_chain_id was removed — migrate any remaining chain_* keys to group_*.
   try {
     for (const item of allItems.value) {
       if (item._isSubtotal) continue
       const groupId = item.group_id || item.chain_id
-      const sourceChainId = item.source_chain_id
-      if (!groupId || !sourceChainId || groupId === sourceChainId) continue
+      if (!groupId) continue
 
       const newKey = `group_${groupId}`
-      const oldKey = `chain_${sourceChainId}`
-
-      if (positionComments.value[oldKey] && !positionComments.value[newKey]) {
-        positionComments.value[newKey] = positionComments.value[oldKey]
-        Auth.authFetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: positionComments.value[oldKey] })
-        }).catch(err => console.error('Comment key migration error:', err))
-      }
-      if (positionComments.value[oldKey]) {
-        delete positionComments.value[oldKey]
-        Auth.authFetch(`/api/position-notes/${encodeURIComponent(oldKey)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: '' })
-        }).catch(err => console.error('Old key cleanup error:', err))
-      }
-
       const oldChainKey = `chain_${groupId}`
+
       if (positionComments.value[oldChainKey] && !positionComments.value[newKey]) {
         positionComments.value[newKey] = positionComments.value[oldChainKey]
         Auth.authFetch(`/api/position-notes/${encodeURIComponent(newKey)}`, {
