@@ -1,12 +1,11 @@
 """
-Group Manager — first-class position group creation with cross-order merging.
+Group Manager — position group creation by expiration (options) or underlying (equity).
 
 Public API:
-    assign_lots_to_groups(lots, chains) -> List[GroupSpec]   (pure, no DB)
-    GroupPersister.process_groups(chains, account_number)     (DB persistence)
+    assign_lots_to_groups(lots) -> List[GroupSpec]          (pure, no DB)
+    GroupPersister.process_groups(account_number)            (DB persistence)
 
-Part of OPT-121 Stage 6.  Built alongside existing ledger_service.py grouping
-— does not modify or replace it.
+Part of OPT-121 Stage 6.
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from datetime import datetime, date
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from src.models.lot_manager import Lot
-from src.models.order_processor import Chain
 from src.pipeline.strategy_engine import recognize, lots_to_legs
 
 if TYPE_CHECKING:
@@ -43,7 +41,6 @@ class GroupSpec:
     status: str                             # OPEN or CLOSED
     opening_date: Optional[datetime]
     lot_transaction_ids: List[str]
-    source_chain_ids: Set[str] = field(default_factory=set)
 
 
 # ---------------------------------------------------------------------------
@@ -52,19 +49,17 @@ class GroupSpec:
 
 def assign_lots_to_groups(
     lots: List[Lot],
-    chains: List[Chain],
 ) -> List[GroupSpec]:
-    """Pure function: lots + chains -> grouped, labeled GroupSpecs.
+    """Pure function: lots -> grouped, labeled GroupSpecs.
 
     Algorithm (chronological lot processing):
-    1. Build order_id -> chain_id lookup from chains
-    2. Sort lots by entry_date
-    3. For each lot:
+    1. Sort lots by entry_date
+    2. For each lot:
        a. Rule 1: options group by (account, underlying, expiration)
        b. Rule 2: equity group by (account, underlying), must be open
        c. Rule 3: create new group
-    4. Run strategy engine on each group's lots -> strategy_label
-    5. Compute status (OPEN if any lot has remaining_quantity != 0)
+    3. Run strategy engine on each group's lots -> strategy_label
+    4. Compute status (OPEN if any lot has remaining_quantity != 0)
 
     Index separation: equity lots only update au_to_group,
     option lots only update aue_to_group.  This prevents
@@ -73,20 +68,12 @@ def assign_lots_to_groups(
     if not lots:
         return []
 
-    # --- Step 1: Build order_id -> chain_id lookup -------------------------
-    order_to_chain: Dict[str, str] = {}
-    for chain in chains:
-        for order in chain.orders:
-            order_to_chain[order.order_id] = chain.chain_id
-
-    # --- Step 2: Sort lots chronologically ---------------------------------
+    # --- Step 1: Sort lots chronologically ---------------------------------
     sorted_lots = sorted(lots, key=lambda lot: lot.entry_date)
 
     # Internal group tracking
     # group_key -> list of Lot objects
     groups: Dict[str, List[Lot]] = {}
-    # group_key -> set of chain_ids
-    group_chains: Dict[str, Set[str]] = defaultdict(set)
     # (account, underlying, expiration) -> group_key  (options)
     aue_to_group: Dict[Tuple[str, str, date], str] = {}
     # (account, underlying) -> group_key  (equity)
@@ -103,21 +90,15 @@ def assign_lots_to_groups(
         group_counter += 1
         return f"g{group_counter}"
 
-    def _add_lot_to_group(lot: Lot, gk: str, chain_id: Optional[str]) -> None:
+    def _add_lot_to_group(lot: Lot, gk: str) -> None:
         groups[gk].append(lot)
-        if chain_id:
-            group_chains[gk].add(chain_id)
         if lot.expiration:
             aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
         if not lot.expiration:
             au_to_group[(lot.account_number, lot.underlying)] = gk
 
-    # --- Step 3: Assign each lot to a group --------------------------------
+    # --- Step 2: Assign each lot to a group --------------------------------
     for lot in sorted_lots:
-        chain_id = lot.chain_id
-        if not chain_id and lot.opening_order_id:
-            chain_id = order_to_chain.get(lot.opening_order_id)
-
         assigned = False
 
         # Rule 1: option lots group by (account, underlying, expiration)
@@ -125,7 +106,7 @@ def assign_lots_to_groups(
             aue_key = (lot.account_number, lot.underlying, lot.expiration)
             if aue_key in aue_to_group:
                 gk = aue_to_group[aue_key]
-                _add_lot_to_group(lot, gk, chain_id)
+                _add_lot_to_group(lot, gk)
                 assigned = True
 
         # Rule 2: equity lots group by (account, underlying)
@@ -134,16 +115,16 @@ def assign_lots_to_groups(
             if au_key in au_to_group:
                 gk = au_to_group[au_key]
                 if _is_group_open(gk):
-                    _add_lot_to_group(lot, gk, chain_id)
+                    _add_lot_to_group(lot, gk)
                     assigned = True
 
         # Rule 3: create new group
         if not assigned:
             gk = _new_group_key()
             groups[gk] = []
-            _add_lot_to_group(lot, gk, chain_id)
+            _add_lot_to_group(lot, gk)
 
-    # --- Step 4 & 5: Build GroupSpec results with strategy labels ----------
+    # --- Step 3 & 4: Build GroupSpec results with strategy labels ----------
     result: List[GroupSpec] = []
     for gk, lot_list in groups.items():
         # Strategy label from engine (uses only non-closed lots)
@@ -170,7 +151,6 @@ def assign_lots_to_groups(
             status=status,
             opening_date=opening_date,
             lot_transaction_ids=[lot.transaction_id for lot in lot_list],
-            source_chain_ids=set(group_chains[gk]),
         ))
 
     return result
@@ -191,7 +171,7 @@ def _label_from_all_lots(lot_list: List[Lot]) -> Optional[str]:
     equity_lots = [l for l in lot_list if l.instrument_type in ("Equity", "EQUITY")]
     option_lots = [l for l in lot_list if l.instrument_type not in ("Equity", "EQUITY")]
 
-    # For option lots, use only the latest opening cohort (handles rolls)
+    # For option lots, use only the latest opening cohort
     lots_for_label = _latest_opening_cohort(option_lots) if option_lots else []
 
     # Always include equity lots so Covered Calls are detected
@@ -356,7 +336,6 @@ class GroupPersister:
 
     def process_groups(
         self,
-        chains: List[Chain],
         account_number: Optional[str] = None,
     ) -> int:
         """Incremental group processing that preserves user merges.
@@ -414,12 +393,6 @@ class GroupPersister:
                 len(all_lots), len(existing_links), len(new_lots),
             )
 
-            # Build order_id -> chain_id lookup from chains
-            order_to_chain: Dict[str, str] = {}
-            for chain in chains:
-                for order in chain.orders:
-                    order_to_chain[order.order_id] = chain.chain_id
-
             # =================================================================
             # Phase 2: Seed routing indexes from existing groups
             # =================================================================
@@ -455,7 +428,7 @@ class GroupPersister:
             def _is_group_open(gid: str) -> bool:
                 return any(l.remaining_quantity != 0 for l in group_lots[gid])
 
-            def _add_new_lot(lot: Lot, group_id: str, chain_id: Optional[str]) -> None:
+            def _add_new_lot(lot: Lot, group_id: str) -> None:
                 group_lots[group_id].append(lot)
                 txn_to_group[lot.transaction_id] = group_id
                 if lot.expiration:
@@ -465,10 +438,6 @@ class GroupPersister:
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
-                chain_id = lot.chain_id
-                if not chain_id and lot.opening_order_id:
-                    chain_id = order_to_chain.get(lot.opening_order_id)
-
                 assigned = False
 
                 # Rule 1: option lots group by (account, underlying, expiration)
@@ -476,7 +445,7 @@ class GroupPersister:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
                         gk = aue_to_group[aue_key]
-                        _add_new_lot(lot, gk, chain_id)
+                        _add_new_lot(lot, gk)
                         assigned = True
 
                 # Rule 2: equity lots group by (account, underlying)
@@ -485,14 +454,14 @@ class GroupPersister:
                     if au_key in au_to_group:
                         gk = au_to_group[au_key]
                         if _is_group_open(gk):
-                            _add_new_lot(lot, gk, chain_id)
+                            _add_new_lot(lot, gk)
                             assigned = True
 
                 # Rule 3: create new group
                 if not assigned:
                     new_gid = str(_uuid.uuid4())
                     group_lots[new_gid] = []
-                    _add_new_lot(lot, new_gid, chain_id)
+                    _add_new_lot(lot, new_gid)
                     new_groups_created += 1
 
             # Persist new group-lot links
@@ -592,14 +561,6 @@ class GroupPersister:
                         label = _label_from_all_lots(lots_in_group)
                         if label:
                             group.strategy_label = label
-
-                # source_chain_id: set from lots' chain_ids if single-chain
-                lot_chain_ids = {l.chain_id for l in lots_in_group if l.chain_id}
-                if len(lot_chain_ids) == 1:
-                    group.source_chain_id = next(iter(lot_chain_ids))
-                elif not lot_chain_ids:
-                    group.source_chain_id = None
-                # Multi-chain: leave source_chain_id as-is (could be user-merged)
 
                 group.updated_at = now_str
                 count += 1

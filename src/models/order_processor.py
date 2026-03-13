@@ -140,8 +140,7 @@ class OrderProcessor:
     """Order processing engine — thin delegator to pipeline stages.
 
     Delegates to ``order_assembler.assemble_orders()`` (Stage 2) and
-    ``position_ledger.process_lots()`` (Stage 3).  Chain derivation is
-    handled separately by Stage 4 (``chain_graph.derive_chains()``).
+    ``position_ledger.process_lots()`` (Stage 3).
     """
 
     def __init__(self, db_manager, lot_manager: 'LotManager'):
@@ -149,11 +148,7 @@ class OrderProcessor:
         self.lot_manager = lot_manager
 
     def process_transactions(self, raw_transactions: List[Dict]) -> None:
-        """Convert raw transactions into lots via the pipeline.
-
-        Callers that need chains should use ``chain_graph.derive_chains()``
-        after calling this method.
-        """
+        """Convert raw transactions into lots via the pipeline."""
         from src.pipeline.order_assembler import assemble_orders
         from src.pipeline.position_ledger import process_lots
 

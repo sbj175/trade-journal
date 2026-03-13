@@ -461,7 +461,6 @@ async def reprocess_chains(user_id: str):
     from src.database.tenant import set_current_user_id
     from src.models.lot_manager import LotManager
     from src.pipeline.orchestrator import reprocess
-    from src.services.chain_service import update_chain_cache
 
     with get_session(unscoped=True) as session:
         user = session.get(User, user_id)
@@ -484,18 +483,15 @@ async def reprocess_chains(user_id: str):
 
         result = reprocess(admin_db, admin_lot_manager, raw_transactions)
 
-        if result.chains:
-            await update_chain_cache(result.chains, db=admin_db)
-
         loguru_logger.info(
-            "Admin reprocess completed for user {}: {} orders, {} chains",
-            user_id, result.orders_assembled, result.chains_derived,
+            "Admin reprocess completed for user {}: {} orders, {} groups",
+            user_id, result.orders_assembled, result.groups_processed,
         )
 
         return {
             "status": "ok",
             "orders_processed": result.orders_assembled,
-            "chains_created": result.chains_derived,
+            "groups_processed": result.groups_processed,
         }
     except Exception as exc:
         loguru_logger.error("Reprocess failed for user {}: {}", user_id, exc)

@@ -353,7 +353,7 @@ async function initialSync() {
     }
     showNotification(
       `Initial sync completed! ${result.transactions_processed || 0} transactions, ` +
-      `${result.orders_assembled || 0} orders in ${result.chains_derived || 0} chains`,
+      `${result.orders_assembled || 0} orders in ${result.groups_processed || 0} groups`,
       'success',
     )
   } catch (error) {
@@ -950,7 +950,7 @@ onMounted(async () => {
       <p class="text-tv-muted text-sm mb-6">
         {{ importResult.transactions_processed || 0 }} transactions imported across
         {{ importResult.orders_assembled || 0 }} orders in
-        {{ importResult.chains_derived || 0 }} chains
+        {{ importResult.groups_processed || 0 }} groups
       </p>
       <button @click="goToPositions"
               class="bg-tv-blue hover:bg-tv-blue/80 text-white font-medium px-6 py-2 rounded transition-colors">

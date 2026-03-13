@@ -288,7 +288,7 @@ async def background_incremental_sync(user_id: str = None, *, db: DatabaseManage
             from src.pipeline.orchestrator import reprocess
             raw_transactions = db.get_raw_transactions()
             result = reprocess(db, lot_manager, raw_transactions)
-            logger.info(f"Background sync: reprocessed {result.chains_derived} chains")
+            logger.info(f"Background sync: reprocessed {result.groups_processed} groups")
 
             db.update_last_sync_timestamp()
             logger.info("Background sync: completed successfully")
