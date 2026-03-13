@@ -12,8 +12,10 @@ const routes = [
     path: '/',
     component: DefaultLayout,
     children: [
-      { path: '', redirect: '/positions' },
-      { path: 'positions', name: 'positions', component: () => import('@/pages/positions/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Positions' } },
+      { path: '', redirect: '/positions/options' },
+      { path: 'positions', redirect: '/positions/options' },
+      { path: 'positions/options', name: 'positions-options', component: () => import('@/pages/positions/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Options Positions' } },
+      { path: 'positions/equities', name: 'positions-equities', component: () => import('@/pages/positions-equities/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Equity Positions' } },
       { path: 'ledger', name: 'ledger', component: () => import('@/pages/ledger/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Ledger' } },
       { path: 'reports', name: 'reports', component: () => import('@/pages/reports/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Reports' } },
       { path: 'risk', name: 'risk', component: RiskPage, meta: { requiresAuth: true, requiresTastytrade: true, title: 'Risk' } },
@@ -52,7 +54,7 @@ router.beforeEach(async (to, from) => {
   if (to.name === 'risk') {
     const authStore = useAuthStore()
     await authStore.init()
-    if (!authStore.riskPageEnabled) return { name: 'positions' }
+    if (!authStore.riskPageEnabled) return { name: 'positions-options' }
   }
 
   if (to.meta.requiresTastytrade && tastytradeConfigured !== true) {
