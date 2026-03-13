@@ -14,7 +14,6 @@ from src.services.sync_service import (
     enrich_and_save_positions, calculate_position_opening_dates,
     reconcile_positions_vs_chains,
 )
-from src.services.chain_service import update_chain_cache
 from src.pipeline.orchestrator import reprocess
 
 router = APIRouter()
@@ -72,7 +71,7 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
         db.update_last_sync_timestamp()
         logger.info("Updated last sync timestamp")
 
-        # Reprocess chains BEFORE saving positions
+        # Reprocess pipeline BEFORE saving positions
         if raw_saved > 0:
             affected_underlyings = set()
             for txn in transactions:
@@ -84,24 +83,23 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
             use_incremental = raw_saved < 50 and len(affected_underlyings) <= 10
 
             if use_incremental:
-                logger.info(f"Incremental chain reprocessing for {len(affected_underlyings)} underlyings: {affected_underlyings}")
+                logger.info(f"Incremental reprocessing for {len(affected_underlyings)} underlyings: {affected_underlyings}")
             else:
-                logger.info(f"Full chain reprocessing (raw_saved={raw_saved}, underlyings={len(affected_underlyings)})")
+                logger.info(f"Full reprocessing (raw_saved={raw_saved}, underlyings={len(affected_underlyings)})")
                 affected_underlyings = None
 
             try:
                 raw_transactions = db.get_raw_transactions()
                 result = reprocess(db, lot_manager,
                                    raw_transactions, affected_underlyings)
-                if result.chains:
-                    await update_chain_cache(result.chains, affected_underlyings, db=db)
-                    logger.info("Strategy detection and cache update completed")
-                else:
-                    logger.warning("No chains created during reprocessing")
+                logger.info(
+                    f"Pipeline completed: {result.orders_assembled} orders, "
+                    f"{result.groups_processed} groups"
+                )
             except Exception as e:
-                logger.error(f"Error during chain reprocessing: {str(e)}")
+                logger.error(f"Error during reprocessing: {str(e)}")
 
-        # Fetch and save positions AFTER chain reprocessing
+        # Fetch and save positions AFTER reprocessing
         logger.info("Fetching current positions from all accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
@@ -152,18 +150,14 @@ async def reprocess_pipeline(
         logger.info(f"Reprocessing {len(raw_transactions)} raw transactions (full pipeline)")
         result = reprocess(db, lot_manager, raw_transactions)
 
-        if result.chains:
-            await update_chain_cache(result.chains, db=db)
-
         logger.info(
             f"Reprocess completed: {result.orders_assembled} orders, "
-            f"{result.chains_derived} chains, {result.groups_processed} groups"
+            f"{result.groups_processed} groups"
         )
 
         return {
             "message": "Reprocess completed",
             "orders_assembled": result.orders_assembled,
-            "chains_derived": result.chains_derived,
             "groups_processed": result.groups_processed,
             "equity_lots_netted": result.equity_lots_netted,
         }
@@ -276,17 +270,14 @@ async def initial_sync(
         logger.info("Running full pipeline on initial sync data...")
         raw_transactions = db.get_raw_transactions()
         pipeline_result = reprocess(db, lot_manager, raw_transactions)
-        if pipeline_result.chains:
-            await update_chain_cache(pipeline_result.chains, db=db)
         logger.info(
             f"INITIAL SYNC completed: {pipeline_result.orders_assembled} orders, "
-            f"{pipeline_result.chains_derived} chains, {total_positions} positions"
+            f"{pipeline_result.groups_processed} groups, {total_positions} positions"
         )
 
         return {
             "message": "Initial sync completed successfully",
             "orders_assembled": pipeline_result.orders_assembled,
-            "chains_derived": pipeline_result.chains_derived,
             "groups_processed": pipeline_result.groups_processed,
             "positions_updated": total_positions,
             "transactions_processed": len(transactions),
@@ -301,4 +292,3 @@ async def initial_sync(
 async def get_reconciliation(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Run position reconciliation and return results."""
     return await reconcile_positions_vs_chains(db=db)
-

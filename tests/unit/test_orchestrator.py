@@ -8,7 +8,6 @@ import pytest
 from datetime import datetime
 
 from src.pipeline.orchestrator import reprocess, PipelineResult
-from src.pipeline.chain_graph import derive_chains
 from src.pipeline.group_manager import GroupPersister
 from src.pipeline.order_assembler import assemble_orders
 from src.database.models import (
@@ -89,7 +88,7 @@ class TestFullPipeline:
     """End-to-end tests running transactions through the full orchestrator."""
 
     def test_simple_open(self, db, lot_manager):
-        """Single STO option -> lot created, chain derived, group created."""
+        """Single STO option -> lot created, group created."""
         txs = [
             make_option_transaction(
                 id="tx-001", order_id="ORD-001", action="SELL_TO_OPEN",
@@ -102,26 +101,11 @@ class TestFullPipeline:
 
         assert isinstance(result, PipelineResult)
         assert result.orders_assembled == 1
-        assert result.chains_derived >= 1
         assert result.groups_processed >= 1
         assert _count_lots(db) >= 1
 
-    def test_chains_populated(self, db, lot_manager):
-        """chains field is populated for non-empty transactions."""
-        txs = [
-            make_option_transaction(
-                id="tx-oc-001", order_id="ORD-OC-001", action="SELL_TO_OPEN",
-                quantity=1, price=2.50,
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-        ]
-
-        result = reprocess(db, lot_manager, txs)
-
-        assert len(result.chains) >= 1
-
     def test_open_close(self, db, lot_manager):
-        """STO + BTC -> lots + closings, chain CLOSED, group CLOSED."""
+        """STO + BTC -> lots + closings, group CLOSED."""
 
         txs = [
             make_option_transaction(
@@ -139,7 +123,6 @@ class TestFullPipeline:
         result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled == 2
-        assert result.chains_derived >= 1
         assert result.groups_processed >= 1
         assert _count_lots(db) >= 1
         assert _count_closings(db) >= 1
@@ -186,7 +169,6 @@ class TestFullPipeline:
         result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled == 2
-        assert result.chains_derived >= 1
         assert result.groups_processed >= 1
         # 4 lots (one per leg)
         assert _count_lots(db) == 4
@@ -261,15 +243,13 @@ class TestFullPipeline:
         assert len(shares_groups[0]["lot_txn_ids"]) == 2
 
     def test_empty_transactions(self, db, lot_manager):
-        """No transactions -> PipelineResult with zeros, empty old_chains."""
+        """No transactions -> PipelineResult with zeros."""
         result = reprocess(db, lot_manager, [])
 
         assert result == PipelineResult(
             orders_assembled=0,
-            chains_derived=0,
             groups_processed=0,
             equity_lots_netted=0,
-            chains=[],
         )
 
 
@@ -350,7 +330,6 @@ class TestIdempotency:
         assert groups_after_1 == groups_after_2
         assert closings_after_1 == closings_after_2
         assert result1.orders_assembled == result2.orders_assembled
-        assert result1.chains_derived == result2.chains_derived
 
 
 # =====================================================================
@@ -378,15 +357,14 @@ class TestPipelineResultCounts:
         result = reprocess(db, lot_manager, txs)
 
         assert result.orders_assembled >= 1
-        assert result.chains_derived >= 1
         assert result.groups_processed >= 1
         # equity_lots_netted may be 0 for option-only scenarios
         assert result.equity_lots_netted >= 0
 
     def test_dataclass_equality(self):
         """PipelineResult supports equality for test assertions."""
-        r1 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1, chains=[])
-        r2 = PipelineResult(orders_assembled=5, chains_derived=3, groups_processed=2, equity_lots_netted=1, chains=[])
+        r1 = PipelineResult(orders_assembled=5, groups_processed=2, equity_lots_netted=1)
+        r2 = PipelineResult(orders_assembled=5, groups_processed=2, equity_lots_netted=1)
         assert r1 == r2
 
 

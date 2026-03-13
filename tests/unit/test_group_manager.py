@@ -6,7 +6,6 @@ from datetime import datetime, date
 from collections import defaultdict
 
 from src.models.lot_manager import Lot
-from src.models.order_processor import Chain, Order, OrderType
 from src.pipeline.group_manager import assign_lots_to_groups, GroupSpec, GroupPersister
 from src.pipeline.strategy_engine import recognize, lots_to_legs
 
@@ -101,25 +100,6 @@ def _equity_lot(
     )
 
 
-def _chain(chain_id, underlying="AAPL", account="ACCT1", order_ids=None):
-    """Build a Chain with minimal Order stubs."""
-    orders = []
-    for oid in (order_ids or []):
-        orders.append(Order(
-            order_id=oid,
-            account_number=account,
-            underlying=underlying,
-            executed_at=datetime(2026, 1, 15, 10, 0, 0),
-            order_type=OrderType.OPENING,
-        ))
-    return Chain(
-        chain_id=chain_id,
-        underlying=underlying,
-        account_number=account,
-        orders=orders,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Pure function tests (no DB)
 # ---------------------------------------------------------------------------
@@ -127,187 +107,140 @@ def _chain(chain_id, underlying="AAPL", account="ACCT1", order_ids=None):
 class TestAssignLotsToGroups:
 
     def test_single_lot_creates_group(self):
-        lots = [_lot(chain_id="C1")]
-        chains = [_chain("C1", order_ids=["O1"])]
-        specs = assign_lots_to_groups(lots, chains)
+        lots = [_lot()]
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert len(specs[0].lot_transaction_ids) == 1
 
-    def test_same_chain_lots_grouped(self):
+    def test_same_expiration_lots_grouped(self):
         lots = [
-            _lot(chain_id="C1", strike=170.0, option_type="Put",
+            _lot(strike=170.0, option_type="Put",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="C1", strike=165.0, option_type="Put",
+            _lot(strike=165.0, option_type="Put",
                  entry_date=datetime(2026, 1, 15, 10, 1)),
         ]
-        chains = [_chain("C1", order_ids=["O1"])]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert len(specs[0].lot_transaction_ids) == 2
 
-    def test_different_chains_different_underlying(self):
+    def test_different_underlying_different_groups(self):
         lots = [
-            _lot(chain_id="C1", underlying="AAPL",
+            _lot(underlying="AAPL",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="C2", underlying="MSFT", symbol="MSFT  260321C00300000",
+            _lot(underlying="MSFT", symbol="MSFT  260321C00300000",
                  entry_date=datetime(2026, 1, 15, 10, 1)),
         ]
-        chains = [
-            _chain("C1", underlying="AAPL", order_ids=["O1"]),
-            _chain("C2", underlying="MSFT", order_ids=["O2"]),
-        ]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 2
         underlyings = {s.underlying for s in specs}
         assert underlyings == {"AAPL", "MSFT"}
 
     def test_cross_order_iron_condor(self):
-        """Put spread + call spread from different chains, same expiration -> 1 group, Iron Condor."""
+        """Put spread + call spread same expiration -> 1 group, Iron Condor."""
         exp = date(2026, 4, 18)
         lots = [
-            # Put spread (chain A)
-            _lot(chain_id="CA", option_type="Put", strike=160.0, quantity=-1,
+            # Put spread
+            _lot(option_type="Put", strike=160.0, quantity=-1,
                  expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="CA", option_type="Put", strike=155.0, quantity=1,
+            _lot(option_type="Put", strike=155.0, quantity=1,
                  expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0)),
-            # Call spread (chain B)
-            _lot(chain_id="CB", option_type="Call", strike=180.0, quantity=-1,
+            # Call spread
+            _lot(option_type="Call", strike=180.0, quantity=-1,
                  expiration=exp, entry_date=datetime(2026, 1, 15, 10, 5)),
-            _lot(chain_id="CB", option_type="Call", strike=185.0, quantity=1,
+            _lot(option_type="Call", strike=185.0, quantity=1,
                  expiration=exp, entry_date=datetime(2026, 1, 15, 10, 5)),
         ]
-        chains = [
-            _chain("CA", order_ids=["OA"]),
-            _chain("CB", order_ids=["OB"]),
-        ]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert specs[0].strategy_label == "Iron Condor"
         assert len(specs[0].lot_transaction_ids) == 4
-        assert specs[0].source_chain_ids == {"CA", "CB"}
 
     def test_cross_order_different_expiration(self):
         """Same underlying, different expirations -> 2 groups."""
         lots = [
-            _lot(chain_id="C1", expiration=date(2026, 3, 21),
+            _lot(expiration=date(2026, 3, 21),
                  entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="C2", expiration=date(2026, 4, 18),
+            _lot(expiration=date(2026, 4, 18),
                  entry_date=datetime(2026, 1, 15, 10, 5)),
         ]
-        chains = [
-            _chain("C1", order_ids=["O1"]),
-            _chain("C2", order_ids=["O2"]),
-        ]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 2
 
-    def test_equity_and_option_separate_without_chain_link(self):
-        """Short call + equity lot (no shared chain) -> 2 groups.
-
-        Without a chain link, options and equity stay in separate groups.
-        Only equity lots register in the (account, underlying) index to
-        prevent option groups from stealing the pointer.
-        """
+    def test_equity_and_option_separate(self):
+        """Short call + equity lot -> 2 groups (options and equity are always separate)."""
         lots = [
-            _lot(chain_id="C1", option_type="Call", strike=180.0, quantity=-1,
+            _lot(option_type="Call", strike=180.0, quantity=-1,
                  entry_date=datetime(2026, 1, 15, 10, 0)),
-            _equity_lot(chain_id=None, quantity=100,
+            _equity_lot(quantity=100,
                         entry_date=datetime(2026, 1, 15, 10, 5)),
         ]
-        chains = [_chain("C1", order_ids=["O1"])]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 2
 
-    def test_closed_group_not_merged_into(self):
-        """Existing group all CLOSED, new lot same exp -> new group (not merged)."""
-        exp = date(2026, 3, 21)
+    def test_closed_equity_group_new_lot_new_group(self):
+        """Existing equity group all CLOSED, new equity lot -> new group."""
         lots = [
-            # Old lot - closed (remaining_quantity=0)
-            _lot(chain_id="C1", expiration=exp, remaining_quantity=0, status="CLOSED",
-                 entry_date=datetime(2026, 1, 10, 10, 0)),
-            # New lot - open, same exp
-            _lot(chain_id="C2", expiration=exp,
-                 entry_date=datetime(2026, 2, 1, 10, 0)),
+            _equity_lot(remaining_quantity=0, status="CLOSED",
+                        entry_date=datetime(2026, 1, 10, 10, 0)),
+            _equity_lot(entry_date=datetime(2026, 2, 1, 10, 0)),
         ]
-        chains = [
-            _chain("C1", order_ids=["O1"]),
-            _chain("C2", order_ids=["O2"]),
-        ]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 2
-        # One CLOSED, one OPEN
         statuses = {s.status for s in specs}
         assert statuses == {"OPEN", "CLOSED"}
 
-    def test_roll_chain_single_group(self):
-        """Open -> roll -> new position (1 chain) -> 1 group."""
+    def test_roll_different_expirations_separate_groups(self):
+        """Lots with different expirations -> separate groups (rolls detected post-hoc)."""
         lots = [
-            # Original position
-            _lot(chain_id="C1", expiration=date(2026, 3, 21), remaining_quantity=0,
+            _lot(expiration=date(2026, 3, 21), remaining_quantity=0,
                  status="CLOSED", entry_date=datetime(2026, 1, 15, 10, 0)),
-            # Rolled position (same chain)
-            _lot(chain_id="C1", expiration=date(2026, 4, 18),
+            _lot(expiration=date(2026, 4, 18),
                  entry_date=datetime(2026, 3, 20, 10, 0)),
         ]
-        chains = [_chain("C1", order_ids=["O1", "O2"])]
-        specs = assign_lots_to_groups(lots, chains)
-        assert len(specs) == 1
-        assert specs[0].status == "OPEN"
+        specs = assign_lots_to_groups(lots)
+        # Different expirations = different groups
+        assert len(specs) == 2
 
     def test_multiple_accounts_isolated(self):
         """Same underlying, different accounts -> 2 groups."""
         lots = [
-            _lot(account_number="ACCT1", chain_id="C1",
+            _lot(account_number="ACCT1",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(account_number="ACCT2", chain_id="C2",
+            _lot(account_number="ACCT2",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
         ]
-        chains = [
-            _chain("C1", account="ACCT1", order_ids=["O1"]),
-            _chain("C2", account="ACCT2", order_ids=["O2"]),
-        ]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 2
 
     def test_strategy_label_from_engine(self):
         """Put spread legs -> 'Bull Put Spread'."""
         exp = date(2026, 3, 21)
         lots = [
-            _lot(chain_id="C1", option_type="Put", strike=170.0, quantity=-1,
+            _lot(option_type="Put", strike=170.0, quantity=-1,
                  expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="C1", option_type="Put", strike=165.0, quantity=1,
+            _lot(option_type="Put", strike=165.0, quantity=1,
                  expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0)),
         ]
-        chains = [_chain("C1", order_ids=["O1"])]
-        specs = assign_lots_to_groups(lots, chains)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert specs[0].strategy_label == "Bull Put Spread"
 
     def test_empty_lots_returns_empty(self):
-        specs = assign_lots_to_groups([], [])
+        specs = assign_lots_to_groups([])
         assert specs == []
 
-    def test_lots_without_chain_or_expiration(self):
+    def test_lots_without_expiration(self):
         """Orphan equity lot -> creates a group with 'Shares' label."""
-        lots = [_equity_lot(chain_id=None)]
-        specs = assign_lots_to_groups(lots, [])
+        lots = [_equity_lot()]
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
-        # Single equity leg recognized as "Long Shares" or "Shares"
         assert "Shares" in specs[0].strategy_label or "Long" in specs[0].strategy_label
 
     def test_exercise_derived_equity_joins_equity_group(self):
-        """Exercise-derived stock lot joins existing equity group, not the option chain group.
+        """Exercise-derived stock lot joins existing equity group.
 
-        Scenario (modeled after IBIT Roth):
-        - Several direct stock purchases → equity group (OPEN)
-        - LEAPS options (separate chain) → option group
-        - LEAPS exercised → derived stock lot (has option chain_id)
-        - More stock purchases
-
-        All equity lots should end up in ONE group, not split between
-        the equity group and the option chain group.
+        All equity lots should end up in ONE group regardless of chain_id.
         """
-        # Direct equity purchases (different chains, all OPEN)
         eq1 = _equity_lot(
             underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-1",
             quantity=4800, entry_price=53.47,
@@ -319,7 +252,7 @@ class TestAssignLotsToGroups:
             entry_date=datetime(2025, 7, 9, 15, 0),
         )
 
-        # LEAPS options in their own chain (all CLOSED)
+        # LEAPS options (separate expiration)
         opt1 = _lot(
             chain_id="LEAPS-CHAIN", symbol="IBIT 251231C00047000",
             underlying="IBIT", option_type="Call", strike=47.0,
@@ -333,164 +266,72 @@ class TestAssignLotsToGroups:
             status="CLOSED", entry_date=datetime(2025, 6, 9, 15, 0),
         )
 
-        # Exercise-derived stock lot — has LEAPS chain_id!
+        # Exercise-derived stock lot — has LEAPS chain_id
         derived_eq = _equity_lot(
             underlying="IBIT", symbol="IBIT", chain_id="LEAPS-CHAIN",
             quantity=600, entry_price=47.0,
             entry_date=datetime(2025, 12, 31, 22, 0),
         )
 
-        # Later stock purchases (separate chains)
         eq3 = _equity_lot(
             underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-3",
             quantity=1000, entry_price=42.20,
             entry_date=datetime(2026, 2, 3, 19, 0),
         )
-        eq4 = _equity_lot(
-            underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-4",
-            quantity=1000, entry_price=37.12,
-            entry_date=datetime(2026, 2, 23, 16, 0),
-        )
 
-        all_lots = [eq1, eq2, opt1, opt2, derived_eq, eq3, eq4]
-        chains = [
-            _chain("EQ-CHAIN-1", underlying="IBIT", order_ids=["O1"]),
-            _chain("EQ-CHAIN-2", underlying="IBIT", order_ids=["O2"]),
-            _chain("LEAPS-CHAIN", underlying="IBIT", order_ids=["O-LEAPS"]),
-            _chain("EQ-CHAIN-3", underlying="IBIT", order_ids=["O3"]),
-            _chain("EQ-CHAIN-4", underlying="IBIT", order_ids=["O4"]),
-        ]
+        all_lots = [eq1, eq2, opt1, opt2, derived_eq, eq3]
 
-        specs = assign_lots_to_groups(all_lots, chains)
+        specs = assign_lots_to_groups(all_lots)
 
-        # Find the Shares groups
         shares_groups = [s for s in specs if s.strategy_label and "Shares" in s.strategy_label]
         open_shares = [s for s in shares_groups if s.status == "OPEN"]
 
-        # All open equity lots (including exercise-derived) should be in ONE group
-        assert len(open_shares) == 1, (
-            f"Expected 1 OPEN Shares group, got {len(open_shares)}: "
-            f"{[(s.strategy_label, s.status, len(s.lot_transaction_ids)) for s in shares_groups]}"
-        )
-
-        # That group should contain ALL equity lots (eq1 + eq2 + derived_eq + eq3 + eq4)
+        assert len(open_shares) == 1
         equity_txn_ids = {eq1.transaction_id, eq2.transaction_id,
-                          derived_eq.transaction_id, eq3.transaction_id, eq4.transaction_id}
+                          derived_eq.transaction_id, eq3.transaction_id}
         assert equity_txn_ids.issubset(set(open_shares[0].lot_transaction_ids))
 
-        # The LEAPS options should be in a separate group
+        # LEAPS options in a separate group
         option_groups = [s for s in specs
                          if any(tid == opt1.transaction_id for tid in s.lot_transaction_ids)]
         assert len(option_groups) == 1
-        assert opt1.transaction_id in option_groups[0].lot_transaction_ids
-        assert opt2.transaction_id in option_groups[0].lot_transaction_ids
-        # The option group should NOT contain the derived equity lot
         assert derived_eq.transaction_id not in option_groups[0].lot_transaction_ids
 
     def test_chronological_ordering_invariant(self):
         """Lots in random order -> same result as sorted."""
         exp = date(2026, 4, 18)
-        # Create lots with distinct times
-        lot_a = _lot(chain_id="CA", option_type="Put", strike=160.0, quantity=-1,
+        lot_a = _lot(option_type="Put", strike=160.0, quantity=-1,
                      expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0))
-        lot_b = _lot(chain_id="CA", option_type="Put", strike=155.0, quantity=1,
+        lot_b = _lot(option_type="Put", strike=155.0, quantity=1,
                      expiration=exp, entry_date=datetime(2026, 1, 15, 10, 1))
-        lot_c = _lot(chain_id="CB", option_type="Call", strike=180.0, quantity=-1,
+        lot_c = _lot(option_type="Call", strike=180.0, quantity=-1,
                      expiration=exp, entry_date=datetime(2026, 1, 15, 10, 5))
-        lot_d = _lot(chain_id="CB", option_type="Call", strike=185.0, quantity=1,
+        lot_d = _lot(option_type="Call", strike=185.0, quantity=1,
                      expiration=exp, entry_date=datetime(2026, 1, 15, 10, 6))
 
-        chains = [
-            _chain("CA", order_ids=["OA"]),
-            _chain("CB", order_ids=["OB"]),
-        ]
+        specs_sorted = assign_lots_to_groups([lot_a, lot_b, lot_c, lot_d])
+        specs_reversed = assign_lots_to_groups([lot_d, lot_c, lot_b, lot_a])
+        specs_shuffled = assign_lots_to_groups([lot_c, lot_a, lot_d, lot_b])
 
-        # Sorted order
-        specs_sorted = assign_lots_to_groups([lot_a, lot_b, lot_c, lot_d], chains)
-        # Reversed order
-        specs_reversed = assign_lots_to_groups([lot_d, lot_c, lot_b, lot_a], chains)
-        # Shuffled
-        specs_shuffled = assign_lots_to_groups([lot_c, lot_a, lot_d, lot_b], chains)
-
-        # All should produce same number of groups with same txn counts
         assert len(specs_sorted) == len(specs_reversed) == len(specs_shuffled)
         for s1, s2, s3 in zip(specs_sorted, specs_reversed, specs_shuffled):
             assert set(s1.lot_transaction_ids) == set(s2.lot_transaction_ids) == set(s3.lot_transaction_ids)
 
 
 # ---------------------------------------------------------------------------
-# Shadow comparison tests (compare with ledger_service.py grouping baseline)
+# Equity grouping tests
 # ---------------------------------------------------------------------------
 
-class TestShadowComparison:
-    """Verify group_manager produces same or better results than ledger_service."""
+class TestEquityGrouping:
+    """Verify equity lots group correctly by (account, underlying)."""
 
-    def test_shadow_simple_open_close(self):
-        """Single chain with open lots -> same result as chain-based grouping."""
+    def test_equity_same_underlying_one_group(self):
+        """Two equity lots same underlying -> 1 group."""
         lots = [
-            _lot(chain_id="C1", strike=170.0, option_type="Call", quantity=-1,
-                 entry_date=datetime(2026, 1, 15, 10, 0)),
+            _equity_lot(entry_date=datetime(2026, 1, 10, 10, 0)),
+            _equity_lot(entry_date=datetime(2026, 1, 12, 10, 0)),
         ]
-        chains = [_chain("C1", order_ids=["O1"])]
-
-        specs = assign_lots_to_groups(lots, chains)
-        assert len(specs) == 1
-        assert specs[0].source_chain_ids == {"C1"}
-        assert specs[0].status == "OPEN"
-
-    def test_shadow_roll_chain(self):
-        """Open -> roll -> close (single chain) -> 1 group, same as chain-based."""
-        lots = [
-            _lot(chain_id="C1", expiration=date(2026, 3, 21), remaining_quantity=0,
-                 status="CLOSED", entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="C1", expiration=date(2026, 4, 18),
-                 entry_date=datetime(2026, 3, 20, 10, 0)),
-        ]
-        chains = [_chain("C1", order_ids=["O1", "O2"])]
-
-        specs = assign_lots_to_groups(lots, chains)
-        # Chain-based grouping: 1 group for chain C1
-        assert len(specs) == 1
-        assert specs[0].source_chain_ids == {"C1"}
-
-    def test_shadow_iron_condor_cross_order(self):
-        """Put spread + call spread as separate orders -> IMPROVEMENT: 1 group vs 2.
-
-        ledger_service.py would produce 2 groups (one per chain).
-        group_manager merges them into 1 "Iron Condor" group.
-        """
-        exp = date(2026, 4, 18)
-        lots = [
-            _lot(chain_id="CA", option_type="Put", strike=160.0, quantity=-1,
-                 expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="CA", option_type="Put", strike=155.0, quantity=1,
-                 expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0)),
-            _lot(chain_id="CB", option_type="Call", strike=180.0, quantity=-1,
-                 expiration=exp, entry_date=datetime(2026, 1, 15, 11, 0)),
-            _lot(chain_id="CB", option_type="Call", strike=185.0, quantity=1,
-                 expiration=exp, entry_date=datetime(2026, 1, 15, 11, 0)),
-        ]
-        chains = [
-            _chain("CA", order_ids=["OA"]),
-            _chain("CB", order_ids=["OB"]),
-        ]
-
-        # Old behavior: 2 groups (one per chain)
-        # New behavior: 1 group
-        specs = assign_lots_to_groups(lots, chains)
-        assert len(specs) == 1  # IMPROVEMENT over ledger_service
-        assert specs[0].strategy_label == "Iron Condor"
-
-    def test_shadow_equity_ungrouped(self):
-        """Equity lots with no chain -> same 'Shares' group as ledger_service."""
-        lots = [
-            _equity_lot(chain_id=None,
-                        entry_date=datetime(2026, 1, 10, 10, 0)),
-            _equity_lot(chain_id=None,
-                        entry_date=datetime(2026, 1, 12, 10, 0)),
-        ]
-        specs = assign_lots_to_groups(lots, [])
-        # Both should be in same group (same account + underlying, Rule 2b)
+        specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert len(specs[0].lot_transaction_ids) == 2
 
@@ -551,15 +392,13 @@ class TestGroupPersister:
         """GroupPersister creates PositionGroup + PositionGroupLot rows."""
         from src.database.models import PositionGroup, PositionGroupLot
 
-        # Insert lots directly
         with db.get_session() as session:
-            lot1 = self._insert_lot(session, transaction_id="tx-A", chain_id="C1")
-            lot2 = self._insert_lot(session, transaction_id="tx-B", chain_id="C1",
+            lot1 = self._insert_lot(session, transaction_id="tx-A")
+            lot2 = self._insert_lot(session, transaction_id="tx-B",
                                     strike=165.0, option_type="Put")
 
-        chains = [_chain("C1", order_ids=["O1"])]
         persister = GroupPersister(db, lot_manager)
-        count = persister.process_groups(chains)
+        count = persister.process_groups()
 
         assert count >= 1
 
@@ -577,22 +416,18 @@ class TestGroupPersister:
         from src.database.models import PositionGroup
 
         with db.get_session() as session:
-            self._insert_lot(session, transaction_id="tx-R1", chain_id="C1")
+            self._insert_lot(session, transaction_id="tx-R1")
 
-        chains = [_chain("C1", order_ids=["O1"])]
         persister = GroupPersister(db, lot_manager)
 
-        # First run
-        persister.process_groups(chains)
+        persister.process_groups()
         with db.get_session() as session:
             groups1 = {g.group_id for g in session.query(PositionGroup).all()}
 
-        # Second run (reprocess)
-        persister.process_groups(chains)
+        persister.process_groups()
         with db.get_session() as session:
             groups2 = {g.group_id for g in session.query(PositionGroup).all()}
 
-        # Same UUIDs
         assert groups1 == groups2
 
     def test_closing_date_computed(self, db, lot_manager):
@@ -600,14 +435,13 @@ class TestGroupPersister:
         from src.database.models import PositionGroup
 
         with db.get_session() as session:
-            lot = self._insert_lot(session, transaction_id="tx-CL1", chain_id="C1",
+            lot = self._insert_lot(session, transaction_id="tx-CL1",
                                    remaining_quantity=0, status="CLOSED")
             self._insert_closing(session, lot.id,
                                  closing_date="2026-02-20T14:00:00")
 
-        chains = [_chain("C1", order_ids=["O1"])]
         persister = GroupPersister(db, lot_manager)
-        persister.process_groups(chains)
+        persister.process_groups()
 
         with db.get_session() as session:
             group = session.query(PositionGroup).first()
@@ -620,7 +454,6 @@ class TestGroupPersister:
         """Group with no remaining lots is deleted on reprocess."""
         from src.database.models import PositionGroup, PositionGroupLot
 
-        # Create a group manually that won't be covered by lots
         orphan_gid = str(uuid.uuid4())
         with db.get_session() as session:
             session.add(PositionGroup(
@@ -634,51 +467,36 @@ class TestGroupPersister:
                 transaction_id="tx-ORPHAN",
             ))
 
-        # Insert a real lot with a different chain
         with db.get_session() as session:
-            self._insert_lot(session, transaction_id="tx-REAL", chain_id="C1")
+            self._insert_lot(session, transaction_id="tx-REAL")
 
-        chains = [_chain("C1", order_ids=["O1"])]
         persister = GroupPersister(db, lot_manager)
-        persister.process_groups(chains)
+        persister.process_groups()
 
         with db.get_session() as session:
-            # Orphan group should be deleted
             orphan = session.query(PositionGroup).filter(
                 PositionGroup.group_id == orphan_gid,
             ).first()
             assert orphan is None
 
-            # Real group should exist
             groups = session.query(PositionGroup).all()
             assert len(groups) == 1
 
     def test_user_merged_groups_survive_reprocess(self, db, lot_manager):
-        """User-merged groups should survive when lots are cleared and recreated.
-
-        Simulates: user merges 3 IBIT share groups into 1, then syncs.
-        The merged group should survive because PositionGroupLot links
-        reference stable transaction_ids.
-        """
+        """User-merged groups should survive when lots are cleared and recreated."""
         from src.database.models import PositionGroup, PositionGroupLot
 
         merged_group_id = "merged-group-1"
         txn_ids = ["tx-share-1", "tx-share-2", "tx-share-3"]
 
-        # Step 1: Create lots and a merged group (simulating user merge)
         with db.get_session() as session:
             for txn_id in txn_ids:
                 self._insert_lot(session,
                     transaction_id=txn_id,
-                    chain_id=f"chain-{txn_id}",
-                    symbol="IBIT",
-                    underlying="IBIT",
-                    instrument_type="EQUITY",
-                    option_type=None,
-                    strike=None,
-                    expiration=None,
-                    quantity=100,
-                    remaining_quantity=100,
+                    symbol="IBIT", underlying="IBIT",
+                    instrument_type="EQUITY", option_type=None,
+                    strike=None, expiration=None,
+                    quantity=100, remaining_quantity=100,
                     entry_date="2026-01-10T10:00:00",
                 )
 
@@ -695,47 +513,32 @@ class TestGroupPersister:
                     transaction_id=txn_id,
                 ))
 
-        # Verify: all 3 lots in 1 group
         with db.get_session() as session:
             links = session.query(PositionGroupLot).all()
             assert len(links) == 3
-            assert all(l.group_id == merged_group_id for l in links)
 
-        # Step 2: Clear lots (simulating sync reprocess) — links survive
+        # Clear lots — links survive
         lot_manager.clear_all_lots()
 
-        # Verify: links still exist even though lots are gone
         with db.get_session() as session:
             links = session.query(PositionGroupLot).all()
-            assert len(links) == 3, f"Expected 3 surviving links, got {len(links)}"
+            assert len(links) == 3
 
-        # Step 3: Recreate lots with same transaction_ids
+        # Recreate lots with same transaction_ids
         with db.get_session() as session:
             for txn_id in txn_ids:
                 self._insert_lot(session,
                     transaction_id=txn_id,
-                    chain_id=f"chain-{txn_id}",
-                    symbol="IBIT",
-                    underlying="IBIT",
-                    instrument_type="EQUITY",
-                    option_type=None,
-                    strike=None,
-                    expiration=None,
-                    quantity=100,
-                    remaining_quantity=100,
+                    symbol="IBIT", underlying="IBIT",
+                    instrument_type="EQUITY", option_type=None,
+                    strike=None, expiration=None,
+                    quantity=100, remaining_quantity=100,
                     entry_date="2026-01-10T10:00:00",
                 )
 
-        # Step 4: Run process_groups (each lot has a different chain)
-        chains = [
-            _chain("chain-tx-share-1", order_ids=["O1"]),
-            _chain("chain-tx-share-2", order_ids=["O2"]),
-            _chain("chain-tx-share-3", order_ids=["O3"]),
-        ]
         persister = GroupPersister(db, lot_manager)
-        persister.process_groups(chains)
+        persister.process_groups()
 
-        # Verify: all 3 lots should STILL be in the merged group
         with db.get_session() as session:
             groups = session.query(PositionGroup).filter(
                 PositionGroup.underlying == "IBIT",
@@ -745,219 +548,6 @@ class TestGroupPersister:
             ).all()
             link_txns = {l.transaction_id for l in links}
 
-            assert len(groups) == 1, (
-                f"Expected 1 merged IBIT group, got {len(groups)}: "
-                f"{[(g.group_id, g.strategy_label) for g in groups]}"
-            )
+            assert len(groups) == 1
             assert groups[0].group_id == merged_group_id
-            assert link_txns == set(txn_ids), (
-                f"Expected all 3 txns in merged group, got {link_txns}"
-            )
-
-    def test_user_merged_groups_survive_with_new_lots(self, db, lot_manager):
-        """User-merged group survives reprocess AND new lots route to it.
-
-        Simulates: user merges 2 IBIT share groups into 1, then syncs
-        and a NEW IBIT transaction arrives. The new lot should join
-        the existing merged group via au_to_group routing.
-        """
-        from src.database.models import PositionGroup, PositionGroupLot
-
-        merged_group_id = "merged-group-2"
-        existing_txns = ["tx-old-1", "tx-old-2"]
-        new_txn = "tx-new-1"
-
-        # Step 1: Create existing lots + merged group
-        with db.get_session() as session:
-            for txn_id in existing_txns:
-                self._insert_lot(session,
-                    transaction_id=txn_id,
-                    chain_id=f"chain-{txn_id}",
-                    symbol="IBIT",
-                    underlying="IBIT",
-                    instrument_type="EQUITY",
-                    option_type=None,
-                    strike=None,
-                    expiration=None,
-                    quantity=100,
-                    remaining_quantity=100,
-                )
-
-            session.add(PositionGroup(
-                group_id=merged_group_id,
-                account_number="ACCT1",
-                underlying="IBIT",
-                strategy_label="Shares",
-                status="OPEN",
-            ))
-            for txn_id in existing_txns:
-                session.add(PositionGroupLot(
-                    group_id=merged_group_id,
-                    transaction_id=txn_id,
-                ))
-
-        # Step 2: Clear lots, recreate existing + add new lot
-        lot_manager.clear_all_lots()
-
-        with db.get_session() as session:
-            for txn_id in existing_txns + [new_txn]:
-                self._insert_lot(session,
-                    transaction_id=txn_id,
-                    chain_id=f"chain-{txn_id}",
-                    symbol="IBIT",
-                    underlying="IBIT",
-                    instrument_type="EQUITY",
-                    option_type=None,
-                    strike=None,
-                    expiration=None,
-                    quantity=100,
-                    remaining_quantity=100,
-                )
-
-        # Step 3: Run process_groups
-        chains = [
-            _chain("chain-tx-old-1", order_ids=["O1"]),
-            _chain("chain-tx-old-2", order_ids=["O2"]),
-            _chain("chain-tx-new-1", order_ids=["O3"]),
-        ]
-        persister = GroupPersister(db, lot_manager)
-        persister.process_groups(chains)
-
-        # Verify: all 3 lots in 1 group (the merged one)
-        with db.get_session() as session:
-            groups = session.query(PositionGroup).filter(
-                PositionGroup.underlying == "IBIT",
-            ).all()
-            all_links = session.query(PositionGroupLot).all()
-            merged_links = [l for l in all_links if l.group_id == merged_group_id]
-
-            assert len(groups) == 1, (
-                f"Expected 1 IBIT group, got {len(groups)}: "
-                f"{[(g.group_id, g.strategy_label, g.status) for g in groups]}"
-            )
-            assert groups[0].group_id == merged_group_id
-            assert len(merged_links) == 3, (
-                f"Expected 3 links in merged group, got {len(merged_links)}"
-            )
-
-    def test_full_reprocess_preserves_merged_shares(self, db, lot_manager):
-        """Full reprocess (clear_all_lots + recreate + process_groups) preserves merged group.
-
-        Simulates the exact sync flow:
-        1. User has 3 IBIT share lots merged into 1 group
-        2. Sync triggers clear_all_lots() (full reprocess)
-        3. Lots recreated with same transaction_ids + new option lots
-        4. process_groups() should keep shares in merged group
-        """
-        from src.database.models import PositionGroup, PositionGroupLot
-
-        merged_group_id = "merged-shares-group"
-        share_txns = ["tx-ibit-buy-1", "tx-ibit-buy-2", "tx-ibit-buy-3"]
-
-        # Step 1: Initial state — 3 share lots in a merged group
-        with db.get_session() as session:
-            for i, txn_id in enumerate(share_txns):
-                self._insert_lot(session,
-                    transaction_id=txn_id,
-                    chain_id=f"IBIT_OPENING_2026010{i+1}_ORDER{i+1}",
-                    symbol="IBIT",
-                    underlying="IBIT",
-                    instrument_type="EQUITY",
-                    option_type=None,
-                    strike=None,
-                    expiration=None,
-                    quantity=100,
-                    remaining_quantity=100,
-                    entry_date=f"2026-01-0{i+1}T10:00:00",
-                )
-
-            session.add(PositionGroup(
-                group_id=merged_group_id,
-                account_number="ACCT1",
-                underlying="IBIT",
-                strategy_label="Shares",
-                status="OPEN",
-            ))
-            for txn_id in share_txns:
-                session.add(PositionGroupLot(
-                    group_id=merged_group_id,
-                    transaction_id=txn_id,
-                ))
-
-        # Step 2: Full reprocess — clear ALL lots
-        lot_manager.clear_all_lots()
-
-        # Step 3: Recreate same share lots + new option lots (call roll)
-        with db.get_session() as session:
-            for i, txn_id in enumerate(share_txns):
-                self._insert_lot(session,
-                    transaction_id=txn_id,
-                    chain_id=f"IBIT_OPENING_2026010{i+1}_ORDER{i+1}",
-                    symbol="IBIT",
-                    underlying="IBIT",
-                    instrument_type="EQUITY",
-                    option_type=None,
-                    strike=None,
-                    expiration=None,
-                    quantity=100,
-                    remaining_quantity=100,
-                    entry_date=f"2026-01-0{i+1}T10:00:00",
-                )
-            # New option lots from call roll
-            self._insert_lot(session,
-                transaction_id="tx-ibit-call-old",
-                chain_id="IBIT_OPENING_20260115_OPTORD1",
-                symbol="IBIT  260307C00060000",
-                underlying="IBIT",
-                instrument_type="EQUITY_OPTION",
-                option_type="Call",
-                strike=60.0,
-                expiration="2026-03-07",
-                quantity=-1,
-                remaining_quantity=0,
-                status="CLOSED",
-                entry_date="2026-01-15T10:00:00",
-            )
-            self._insert_lot(session,
-                transaction_id="tx-ibit-call-new",
-                chain_id="IBIT_OPENING_20260115_OPTORD1",
-                symbol="IBIT  260314C00060000",
-                underlying="IBIT",
-                instrument_type="EQUITY_OPTION",
-                option_type="Call",
-                strike=60.0,
-                expiration="2026-03-14",
-                quantity=-1,
-                remaining_quantity=-1,
-                entry_date="2026-03-07T10:00:00",
-            )
-
-        # Step 4: Run process_groups with all chains
-        chains = [
-            _chain("IBIT_OPENING_20260101_ORDER1", order_ids=["ORDER1"]),
-            _chain("IBIT_OPENING_20260102_ORDER2", order_ids=["ORDER2"]),
-            _chain("IBIT_OPENING_20260103_ORDER3", order_ids=["ORDER3"]),
-            _chain("IBIT_OPENING_20260115_OPTORD1", order_ids=["OPTORD1"]),
-        ]
-        persister = GroupPersister(db, lot_manager)
-        persister.process_groups(chains)
-
-        # Verify: shares still in merged group, options in separate group
-        with db.get_session() as session:
-            all_groups = session.query(PositionGroup).filter(
-                PositionGroup.underlying == "IBIT",
-            ).all()
-            share_links = session.query(PositionGroupLot).filter(
-                PositionGroupLot.group_id == merged_group_id,
-            ).all()
-            share_txn_set = {l.transaction_id for l in share_links}
-
-            # All 3 share lots should remain in the merged group
-            assert share_txn_set == set(share_txns), (
-                f"Expected shares in merged group, got {share_txn_set}"
-            )
-            # Should have 2 groups: merged shares + options
-            assert len(all_groups) == 2, (
-                f"Expected 2 IBIT groups (shares + options), got {len(all_groups)}: "
-                f"{[(g.group_id, g.strategy_label, g.status) for g in all_groups]}"
-            )
+            assert link_txns == set(txn_ids)

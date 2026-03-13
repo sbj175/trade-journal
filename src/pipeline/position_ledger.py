@@ -5,8 +5,6 @@ Creates and closes lots from assembled Order objects.  Assignment and exercise
 handling creates derived stock lots linked to the originating option chain.
 
 Extracted from OrderProcessor._update_positions() and _process_assignments().
-All chain-derivation logic is gone — chains are derived in Stage 4
-(chain_graph.derive_chains) from the lots this module creates.
 
 Part of OPT-121.
 """
