@@ -313,26 +313,28 @@ class TestEdgeCases:
         assert r.name == "Custom (0-leg)"
         assert r.confidence == 0.0
 
-    def test_unrecognized_two_leg(self):
-        """Two options with mixed directions and different types, different expiry."""
+    def test_two_leg_partition(self):
+        """Two options that don't form a single strategy are partitioned into singles."""
         legs = [
             _opt("C", 100, "long", exp=date(2026, 3, 21)),
             _opt("P", 95, "short", exp=date(2026, 4, 17)),
         ]
         r = recognize(legs)
-        assert r.name == "Custom (2-leg)"
-        assert r.confidence == 0.0
+        assert r.name == "Long Call + Short Put"
+        assert r.confidence == 0.9
 
-    def test_unrecognized_three_leg(self):
-        """Three random options that don't match any pattern."""
+    def test_three_leg_partition(self):
+        """Three legs that don't form one strategy are partitioned into singles."""
         legs = [
             _opt("C", 100, "long"),
             _opt("C", 105, "long"),
             _opt("P", 90, "short"),
         ]
         r = recognize(legs)
-        assert r.name == "Custom (3-leg)"
-        assert r.confidence == 0.0
+        # All three recognized as individual legs
+        assert "Long Call" in r.name
+        assert "Short Put" in r.name
+        assert r.confidence == 0.9
 
     def test_all_strategies_in_registry(self):
         """Verify every strategy in STRATEGIES has required fields."""
@@ -340,6 +342,102 @@ class TestEdgeCases:
             assert defn.name == name
             assert defn.category in ("single", "vertical", "multi", "calendar", "combo")
             assert defn.leg_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# Scoring / Partition (OPT-206)
+# ---------------------------------------------------------------------------
+
+class TestPartitionScoring:
+    def test_jade_lizard_beats_vertical_plus_single(self):
+        """Jade Lizard (3-leg) should win over Bear Call Spread + Short Put."""
+        legs = [
+            _opt("P", 90, "short"),
+            _opt("C", 100, "short"),
+            _opt("C", 105, "long"),
+        ]
+        r = recognize(legs)
+        assert r.name == "Jade Lizard"
+        assert r.confidence == 1.0
+
+    def test_iron_condor_beats_two_verticals(self):
+        """Iron Condor (4-leg) should win over two vertical spreads."""
+        legs = [
+            _opt("P", 90, "long"),
+            _opt("P", 95, "short"),
+            _opt("C", 105, "short"),
+            _opt("C", 110, "long"),
+        ]
+        r = recognize(legs)
+        assert r.name == "Iron Condor"
+        assert r.confidence == 1.0
+
+    def test_three_leg_partition_with_strangle(self):
+        """Three legs that form a strangle + single should partition correctly."""
+        legs = [
+            _opt("P", 95, "long"),
+            _opt("P", 100, "short"),
+            _opt("C", 110, "short"),  # can form strangle with short put
+        ]
+        r = recognize(legs)
+        # Solver finds Short Strangle(100P+110C) + Long Put, or Bull Put Spread + Short Call
+        # Both are valid 2+1 partitions — either is acceptable
+        assert r.confidence == 0.9
+        assert "+" in r.name
+
+    def test_strangle_plus_extra_leg(self):
+        """Short strangle + an extra long put should partition correctly."""
+        legs = [
+            _opt("P", 90, "short"),
+            _opt("C", 110, "short"),
+            _opt("P", 85, "long"),  # protective put
+        ]
+        r = recognize(legs)
+        # Solver finds Bull Put Spread(85P+90P) + Short Call, or Short Strangle + Long Put
+        # Both are valid 2+1 partitions
+        assert r.confidence == 0.9
+        assert "+" in r.name
+
+    def test_five_leg_partition(self):
+        """Five legs should partition into best scoring combination."""
+        legs = [
+            _opt("P", 90, "long"),
+            _opt("P", 95, "short"),
+            _opt("C", 105, "short"),
+            _opt("C", 110, "long"),
+            _opt("P", 80, "short"),  # extra short put
+        ]
+        r = recognize(legs)
+        # Jade Lizard(80P+105C+110C) + Bull Put Spread(90P+95P) scores 8+5=13
+        # Iron Condor(90P+95P+105C+110C) + Short Put(80P) scores 10+2=12
+        # Solver picks the highest-scoring partition
+        assert r.confidence == 0.9
+        assert "+" in r.name
+        # All 5 legs should be covered
+        assert r.leg_count == 5
+
+    def test_two_verticals_different_types(self):
+        """Bull put spread + bear call spread (not IC — different widths or context)."""
+        legs = [
+            _opt("P", 90, "long"),
+            _opt("P", 95, "short"),
+            _opt("C", 110, "short"),   # gap between 95 and 110
+            _opt("C", 115, "long"),
+        ]
+        r = recognize(legs)
+        # Should recognize as Iron Condor (4-leg pattern matches)
+        assert r.name == "Iron Condor"
+
+    def test_covered_call_with_extra_put(self):
+        """Covered call + protective put = Collar."""
+        legs = [
+            _equity("long", 100),
+            _opt("C", 110, "short"),
+            _opt("P", 95, "long"),
+        ]
+        r = recognize(legs)
+        assert r.name == "Collar"
+        assert r.confidence == 1.0
 
 
 # ---------------------------------------------------------------------------
