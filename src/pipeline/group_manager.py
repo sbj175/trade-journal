@@ -16,7 +16,7 @@ import uuid as _uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, date
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from src.models.lot_manager import Lot
 from src.models.order_processor import Chain
@@ -60,17 +60,15 @@ def assign_lots_to_groups(
     1. Build order_id -> chain_id lookup from chains
     2. Sort lots by entry_date
     3. For each lot:
-       a. Equity-first: shares always group with shares (by account + underlying)
-       b. Rule 1: lot's chain already has a group -> add to it (options/rolls)
-       c. Rule 2: same (account, underlying, expiration) -> add (options)
-       d. Rule 3: create new group
+       a. Rule 1: options group by (account, underlying, expiration)
+       b. Rule 2: equity group by (account, underlying), must be open
+       c. Rule 3: create new group
     4. Run strategy engine on each group's lots -> strategy_label
     5. Compute status (OPEN if any lot has remaining_quantity != 0)
 
-    Index separation: equity lots only update au_to_group (underlying index),
-    option lots only update chain_to_group and aue_to_group (chain/expiration
-    indexes).  This prevents cross-contamination between equity and option
-    group routing.
+    Index separation: equity lots only update au_to_group,
+    option lots only update aue_to_group.  This prevents
+    cross-contamination between equity and option group routing.
     """
     if not lots:
         return []
@@ -181,12 +179,9 @@ def assign_lots_to_groups(
 def _label_from_all_lots(lot_list: List[Lot]) -> Optional[str]:
     """Derive a strategy label from all lots (including closed) for CLOSED groups.
 
-    When a group contains rolls (multiple opening orders), only the lots from
-    the latest opening order are used for labeling.  This prevents a rolled
-    bull call spread from being mislabeled as "Custom (4-leg)".
-
-    For mixed groups (equity + options), equity lots are always included
-    alongside the latest option cohort so Covered Calls are detected.
+    When a group has multiple opening orders, only the lots from the latest
+    opening order are used for labeling.  This prevents multi-leg strategies
+    from being mislabeled as "Custom (N-leg)".
     """
     # Check if all lots are equity
     if all(lot.instrument_type in ("Equity", "EQUITY") for lot in lot_list):
