@@ -731,6 +731,12 @@ async function toggleRollChain(group) {
   rollChainData.value[gid] = { loading: true, chain: null, error: null }
   try {
     const resp = await Auth.authFetch(`/api/ledger/group-roll-chain/${gid}`)
+    if (!resp.ok) {
+      const text = await resp.text()
+      console.error('Roll chain API error:', resp.status, text)
+      rollChainData.value[gid] = { loading: false, chain: null, error: `API error (${resp.status})` }
+      return
+    }
     const data = await resp.json()
     rollChainData.value[gid] = { loading: false, chain: data, error: null }
   } catch (e) {
