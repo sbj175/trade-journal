@@ -217,11 +217,20 @@ async def get_group_roll_chain(
             children = forward_map.get(gid, [])
             queue.extend(children)
 
-        # Load groups and lots for the chain
+        # Load groups for the chain — convert to dicts inside session
         chain_groups = session.query(PositionGroup).filter(
             PositionGroup.group_id.in_(chain_ids),
         ).all()
-        group_map = {g.group_id: g for g in chain_groups}
+        group_map = {}
+        for g in chain_groups:
+            group_map[g.group_id] = {
+                'underlying': g.underlying,
+                'strategy_label': g.strategy_label,
+                'status': g.status,
+                'opening_date': g.opening_date,
+                'closing_date': g.closing_date,
+                'rolled_from_group_id': g.rolled_from_group_id,
+            }
 
     # Load lots for realized P&L calculation
     lots_by_group = lot_manager.get_lots_for_groups_batch(chain_ids)
@@ -246,12 +255,7 @@ async def get_group_roll_chain(
         cumulative_pnl += realized
         chain_result.append({
             'group_id': gid,
-            'underlying': g.underlying,
-            'strategy_label': g.strategy_label,
-            'status': g.status,
-            'opening_date': g.opening_date,
-            'closing_date': g.closing_date,
-            'rolled_from_group_id': g.rolled_from_group_id,
+            **g,
             'realized_pnl': realized,
             'cumulative_pnl': cumulative_pnl,
             'lot_count': len(lots),
