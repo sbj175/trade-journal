@@ -549,6 +549,10 @@ function groupedOptionLegs(group) {
   return result
 }
 
+function groupInitialPremium(group) {
+  return (group.lots || []).reduce((s, l) => s + (l.cost_basis || 0), 0)
+}
+
 function openEquityLots(group) {
   return (group.lots || []).filter(l => l.instrument_type === 'EQUITY' && l.status !== 'CLOSED')
     .sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''))
@@ -1167,10 +1171,20 @@ function getSortLabel() {
           <!-- Note indicator -->
           <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
 
+          <!-- Initial Premium -->
+          <span class="ml-auto text-base text-tv-muted mr-4"
+                v-show="groupInitialPremium(group)">
+            <span class="text-xs uppercase tracking-wider mr-1">Premium</span>
+            <span :class="groupInitialPremium(group) > 0 ? 'text-tv-red' : 'text-tv-green'">
+              ${{ formatNumber(groupInitialPremium(group)) }}
+            </span>
+          </span>
+
           <!-- Realized P&L -->
-          <span class="ml-auto text-base font-medium"
+          <span class="text-base font-medium"
                 :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'"
                 v-show="group.realized_pnl">
+            <span class="text-xs uppercase tracking-wider text-tv-muted mr-1">Realized</span>
             ${{ formatNumber(group.realized_pnl) }}
           </span>
         </div>
@@ -1199,7 +1213,6 @@ function getSortLabel() {
                 <span class="w-10">Type</span>
                 <span class="w-20 text-center ml-3">Status</span>
                 <span class="w-20 text-right">Avg Entry</span>
-                <span class="w-24 text-right ml-2">Cost Basis</span>
                 <span class="w-20 text-right ml-2">Close $</span>
                 <span class="w-24 text-right ml-2">Proceeds</span>
                 <span class="w-24 text-right ml-2">Realized</span>
@@ -1220,7 +1233,6 @@ function getSortLabel() {
                     <span class="w-10 text-tv-muted">Stk</span>
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">OPEN</span>
                     <span class="w-20 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">${{ formatNumber(equityAggregate(group).costBasis) }}</span>
                     <span class="w-20 text-right ml-2"></span>
                     <span class="w-24 text-right ml-2"></span>
                     <span class="w-24 text-right ml-2"></span>
@@ -1262,7 +1274,6 @@ function getSortLabel() {
                       {{ leg.status }}
                     </span>
                     <span class="w-20 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">${{ formatNumber(leg.totalCostBasis) }}</span>
                     <span class="w-20 text-right text-tv-muted ml-2">{{ leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '' }}</span>
                     <span class="w-24 text-right text-tv-muted ml-2">{{ leg.totalProceeds ? '$' + formatNumber(leg.totalProceeds) : '' }}</span>
                     <span class="w-24 text-right ml-2"
