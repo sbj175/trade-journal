@@ -48,6 +48,16 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
 
     group_ids = [g['group_id'] for g in groups_raw]
 
+    # Batch-load roll source IDs (groups that have something rolled FROM them)
+    with db.get_session() as session:
+        roll_source_ids = {
+            row[0] for row in session.query(
+                PositionGroup.rolled_from_group_id,
+            ).filter(
+                PositionGroup.rolled_from_group_id.isnot(None),
+            ).all()
+        }
+
     # Batch-load tags for all groups
     tags_by_group: Dict[str, list] = {gid: [] for gid in group_ids}
     with db.get_session() as session:
@@ -164,6 +174,9 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             if oid in order_cache:
                 orders_data.append(order_cache[oid])
 
+        rolled_from = g.get('rolled_from_group_id')
+        has_roll_chain = bool(rolled_from) or (gid in roll_source_ids)
+
         result.append({
             'group_id': gid,
             'underlying': g['underlying'],
@@ -174,6 +187,8 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'closing_date': g['closing_date'],
             'last_activity_date': g.get('last_activity_date'),
             'source_chain_id': g['source_chain_id'],
+            'rolled_from_group_id': rolled_from,
+            'has_roll_chain': has_roll_chain,
             'total_pnl': total_realized,
             'realized_pnl': total_realized,
             'unrealized_pnl': 0.0,
@@ -185,6 +200,108 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
         })
 
     return result
+
+
+@router.get("/api/ledger/group-roll-chain/{group_id}")
+async def get_group_roll_chain(
+    group_id: str,
+    db: DatabaseManager = Depends(get_db),
+    lot_manager: LotManager = Depends(get_lot_manager),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Walk the roll chain for a group, returning all linked groups in order."""
+
+    with db.get_session() as session:
+        # Verify the starting group exists
+        start = session.query(PositionGroup).filter(
+            PositionGroup.group_id == group_id,
+        ).first()
+        if not start:
+            raise HTTPException(status_code=404, detail="Group not found")
+
+        # Walk backward to find the root
+        current = start
+        visited = {current.group_id}
+        while current.rolled_from_group_id:
+            parent = session.query(PositionGroup).filter(
+                PositionGroup.group_id == current.rolled_from_group_id,
+            ).first()
+            if not parent or parent.group_id in visited:
+                break
+            visited.add(parent.group_id)
+            current = parent
+        root_id = current.group_id
+
+        # Walk forward from root to build the full chain
+        # Build a reverse lookup: rolled_from_group_id -> group_id
+        all_links = session.query(
+            PositionGroup.group_id,
+            PositionGroup.rolled_from_group_id,
+        ).filter(
+            PositionGroup.rolled_from_group_id.isnot(None),
+        ).all()
+        forward_map: Dict[str, List[str]] = defaultdict(list)
+        for gid, rfgid in all_links:
+            forward_map[rfgid].append(gid)
+
+        chain_ids = []
+        queue = [root_id]
+        seen = set()
+        while queue:
+            gid = queue.pop(0)
+            if gid in seen:
+                continue
+            seen.add(gid)
+            chain_ids.append(gid)
+            # Add children sorted by opening_date
+            children = forward_map.get(gid, [])
+            queue.extend(children)
+
+        # Load groups and lots for the chain
+        chain_groups = session.query(PositionGroup).filter(
+            PositionGroup.group_id.in_(chain_ids),
+        ).all()
+        group_map = {g.group_id: g for g in chain_groups}
+
+    # Load lots for realized P&L calculation
+    lots_by_group = lot_manager.get_lots_for_groups_batch(chain_ids)
+    all_lot_ids = []
+    for lots in lots_by_group.values():
+        for lot in lots:
+            all_lot_ids.append(lot.id)
+    closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
+
+    # Build ordered response
+    chain_result = []
+    cumulative_pnl = 0.0
+    for gid in chain_ids:
+        g = group_map.get(gid)
+        if not g:
+            continue
+        lots = lots_by_group.get(gid, [])
+        realized = sum(
+            sum(c.realized_pnl for c in closings_by_lot.get(lot.id, []))
+            for lot in lots
+        )
+        cumulative_pnl += realized
+        chain_result.append({
+            'group_id': gid,
+            'underlying': g.underlying,
+            'strategy_label': g.strategy_label,
+            'status': g.status,
+            'opening_date': g.opening_date,
+            'closing_date': g.closing_date,
+            'rolled_from_group_id': g.rolled_from_group_id,
+            'realized_pnl': realized,
+            'cumulative_pnl': cumulative_pnl,
+            'lot_count': len(lots),
+        })
+
+    return {
+        'root_group_id': chain_ids[0] if chain_ids else group_id,
+        'chain_length': len(chain_result),
+        'chain': chain_result,
+    }
 
 
 @router.get("/api/ledger/suggestions")
