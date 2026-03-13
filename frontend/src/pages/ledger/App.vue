@@ -520,8 +520,8 @@ function groupedOptionLegs(group) {
   // Compute derived fields
   for (const leg of result) {
     const multiplier = leg.option_type ? 100 : 1
-    const totalQty = Math.abs(leg.lots.reduce((s, l) => s + (l.remaining_quantity ?? l.quantity), 0))
-    leg.avgEntryPrice = totalQty > 0 ? Math.abs(leg.totalCostBasis) / totalQty / multiplier : 0
+    const originalQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
+    leg.avgEntryPrice = originalQty > 0 ? Math.abs(leg.totalCostBasis) / originalQty / multiplier : 0
     // Weighted avg close price
     if (leg.totalProceeds && leg.status === 'CLOSED') {
       const closedQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
