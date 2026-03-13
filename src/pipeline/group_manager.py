@@ -97,6 +97,8 @@ def assign_lots_to_groups(
     aue_to_group: Dict[Tuple[str, str, date], str] = {}
     # (account, underlying) -> group_key  (Rule 2b lookup, equity)
     au_to_group: Dict[Tuple[str, str], str] = {}
+    # opening_order_id -> group_key  (sibling lot lookup for multi-fill orders)
+    order_to_group: Dict[str, str] = {}
     # group_key counter
     group_counter = 0
 
@@ -126,6 +128,9 @@ def assign_lots_to_groups(
         # Only equity lots update the underlying index
         if not lot.expiration:
             au_to_group[(lot.account_number, lot.underlying)] = gk
+        # Register opening_order_id so sibling fills join the same group
+        if lot.opening_order_id:
+            order_to_group[lot.opening_order_id] = gk
 
     # --- Step 3: Assign each lot to a group --------------------------------
     for lot in sorted_lots:
@@ -159,12 +164,20 @@ def assign_lots_to_groups(
             _add_lot_to_group(lot, gk, chain_id)
             assigned = True
 
-        # Rule 2: (account, underlying, expiration) matches an OPEN group
+        # Rule 1b: sibling fill from the same opening order → always join
+        # (handles multi-fill ROLLING orders where lots are already closed)
+        if not assigned and lot.opening_order_id and lot.opening_order_id in order_to_group:
+            gk = order_to_group[lot.opening_order_id]
+            _add_lot_to_group(lot, gk, chain_id)
+            assigned = True
+
+        # Rule 2: (account, underlying, expiration) matches an existing group
+        # For ROLLING lots, also merge into CLOSED groups (same-exp fills belong together)
         if not assigned and lot.expiration:
             aue_key = (lot.account_number, lot.underlying, lot.expiration)
             if aue_key in aue_to_group:
                 gk = aue_to_group[aue_key]
-                if _is_group_open(gk):
+                if _is_group_open(gk) or is_roll_opening:
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True
 
@@ -465,6 +478,8 @@ class GroupPersister:
             aue_to_group: Dict[Tuple[str, str, date], str] = {}
             # (account, underlying) -> group_id
             au_to_group: Dict[Tuple[str, str], str] = {}
+            # opening_order_id -> group_id  (sibling fill lookup)
+            order_to_group: Dict[str, str] = {}
             # group_id -> set of Lot objects (for open-check)
             group_lots: Dict[str, List[Lot]] = defaultdict(list)
 
@@ -493,6 +508,8 @@ class GroupPersister:
                     aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
                 if not lot.expiration:
                     au_to_group[(lot.account_number, lot.underlying)] = group_id
+                if lot.opening_order_id:
+                    order_to_group[lot.opening_order_id] = group_id
 
             # =================================================================
             # Phase 3: Route new lots
@@ -513,6 +530,8 @@ class GroupPersister:
                     aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
                 if not lot.expiration:
                     au_to_group[(lot.account_number, lot.underlying)] = group_id
+                if lot.opening_order_id:
+                    order_to_group[lot.opening_order_id] = group_id
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
@@ -541,12 +560,19 @@ class GroupPersister:
                     _add_new_lot(lot, gk, chain_id)
                     assigned = True
 
-                # Rule 2a: same (account, underlying, expiration) OPEN group (options)
+                # Rule 1b: sibling fill from the same opening order → always join
+                if not assigned and lot.opening_order_id and lot.opening_order_id in order_to_group:
+                    gk = order_to_group[lot.opening_order_id]
+                    _add_new_lot(lot, gk, chain_id)
+                    assigned = True
+
+                # Rule 2a: same (account, underlying, expiration) group (options)
+                # For ROLLING lots, also merge into CLOSED groups
                 if not assigned and lot.expiration:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
                         gk = aue_to_group[aue_key]
-                        if _is_group_open(gk):
+                        if _is_group_open(gk) or is_roll_opening:
                             _add_new_lot(lot, gk, chain_id)
                             assigned = True
 
