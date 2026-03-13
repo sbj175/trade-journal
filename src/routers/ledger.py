@@ -1,6 +1,5 @@
 """Ledger routes — position groups CRUD and lot management."""
 
-import json as _json
 import uuid as _uuid
 from collections import defaultdict
 from datetime import datetime
@@ -11,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
-from src.database.models import OrderChainCache, PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
+from src.database.models import PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
@@ -80,35 +79,6 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
 
     closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
 
-    # Collect all order_ids to derive orders per group
-    all_order_ids = set()
-    group_order_ids: Dict[str, set] = {gid: set() for gid in group_ids}
-
-    for gid, lots in lots_by_group.items():
-        for lot in lots:
-            if lot.opening_order_id:
-                all_order_ids.add(lot.opening_order_id)
-                group_order_ids[gid].add(lot.opening_order_id)
-            for closing in closings_by_lot.get(lot.id, []):
-                if closing.closing_order_id:
-                    all_order_ids.add(closing.closing_order_id)
-                    group_order_ids[gid].add(closing.closing_order_id)
-
-    # Fetch order data from cache
-    order_cache: Dict[str, Dict] = {}
-    if all_order_ids:
-        with db.get_session() as session:
-            rows = session.query(
-                OrderChainCache.order_id, OrderChainCache.order_data,
-            ).filter(
-                OrderChainCache.order_id.in_(list(all_order_ids)),
-            ).all()
-            for row in rows:
-                try:
-                    order_cache[row[0]] = _json.loads(row[1])
-                except Exception:
-                    pass
-
     # Build response
     result = []
     for g in groups_raw:
@@ -166,14 +136,6 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                 'closings': closings_data,
             })
 
-        # Build orders for Action view
-        orders_data = []
-        for oid in sorted(group_order_ids.get(gid, []),
-                          key=lambda x: order_cache.get(x, {}).get('order_date', ''),
-                          reverse=True):
-            if oid in order_cache:
-                orders_data.append(order_cache[oid])
-
         rolled_from = g.get('rolled_from_group_id')
         has_roll_chain = bool(rolled_from) or (gid in roll_source_ids)
 
@@ -194,7 +156,6 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'lot_count': len(lots),
             'open_lot_count': open_lot_count,
             'lots': lots_data,
-            'orders': orders_data,
             'tags': tags_by_group.get(gid, []),
         })
 

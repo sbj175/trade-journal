@@ -19,7 +19,9 @@ const dateFrom = ref(null)  // ISO date string or null
 const dateTo = ref(null)    // ISO date string or null
 const showOpen = ref(true)
 const showClosed = ref(true)
-const viewMode = ref('positions')
+const filterRollsOnly = ref(false)
+const rollChainData = ref({})     // { group_id: { loading, chain, error } }
+const rollChainVisible = ref({})  // { group_id: true/false }
 const sortColumn = ref('opening_date')
 const sortDirection = ref('desc')
 const loading = ref(true)
@@ -28,7 +30,6 @@ const stats = ref({ openCount: 0, closedCount: 0 })
 const filterDirection = ref([])
 const filterType = ref([])
 const groupNotes = ref({})
-const orderComments = ref({})
 const availableTags = ref([])
 const tagPopoverGroup = ref(null)
 const tagSearch = ref('')
@@ -91,7 +92,6 @@ onMounted(async () => {
       showClosed.value = state.showClosed !== undefined ? state.showClosed : true
       sortColumn.value = state.sortColumn || 'opening_date'
       sortDirection.value = state.sortDirection || 'desc'
-      viewMode.value = state.viewMode || 'positions'
       filterDirection.value = state.filterDirection || []
       filterType.value = state.filterType || []
       filterStrategy.value = state.filterStrategy || []
@@ -167,7 +167,7 @@ async function fetchLedger() {
     const url = '/api/ledger' + (params.toString() ? '?' + params.toString() : '')
     const response = await Auth.authFetch(url)
     const data = await response.json()
-    groups.value = data.map(g => ({ ...g, expanded: false, _viewMode: null, _movingLots: false, _editingStrategy: false }))
+    groups.value = data.map(g => ({ ...g, expanded: false, _movingLots: false, _editingStrategy: false }))
     applyFilters()
   } catch (error) {
     console.error('Error fetching ledger:', error)
@@ -268,6 +268,10 @@ function applyFilters() {
     filtered = filtered.filter(g =>
       (g.tags || []).some(t => filterTagIds.value.includes(t.id))
     )
+  }
+
+  if (filterRollsOnly.value) {
+    filtered = filtered.filter(g => g.has_roll_chain)
   }
 
   if (!showOpen.value) filtered = filtered.filter(g => g.status !== 'OPEN')
@@ -435,7 +439,6 @@ function saveState() {
     showClosed: showClosed.value,
     sortColumn: sortColumn.value,
     sortDirection: sortDirection.value,
-    viewMode: viewMode.value,
     filterDirection: filterDirection.value,
     filterType: filterType.value,
     filterStrategy: filterStrategy.value,
@@ -462,10 +465,6 @@ function clearAllMoveMode() {
 
 function cancelMoveMode() {
   clearAllMoveMode()
-}
-
-function groupViewMode(group) {
-  return group._viewMode || viewMode.value
 }
 
 function sortedLots(group) {
@@ -686,94 +685,13 @@ function getAccountBadgeClass(accountNumber) {
   return 'bg-tv-border text-tv-muted'
 }
 
-function formatAction(action) {
-  if (!action) return ''
-  const cleanAction = action.replace(/^(ORDERACTION\.|OrderAction\.)/, '')
-  const actionMap = {
-    'SELL_TO_OPEN': 'STO', 'BUY_TO_CLOSE': 'BTC',
-    'BUY_TO_OPEN': 'BTO', 'SELL_TO_CLOSE': 'STC',
-    'EXPIRED': 'EXPIRED', 'ASSIGNED': 'ASSIGNED',
-    'EXERCISED': 'EXERCISED', 'CASH_SETTLED': 'CASH_SETTLED',
-  }
-  return actionMap[cleanAction] || cleanAction
-}
-
-function getDisplayQuantity(position) {
-  if (!position || typeof position.quantity === 'undefined') return 0
-  const currentAction = (position.closing_action || position.opening_action || '').toUpperCase()
-  const isSellAction = currentAction.includes('SELL') || currentAction.includes('STC') || currentAction.includes('STO')
-  return isSellAction ? -Math.abs(position.quantity) : Math.abs(position.quantity)
-}
-
-// ==================== CREDIT/DEBIT HELPERS ====================
-function getCreditDebitDivisor(order) {
-  if (!order || !order.positions || order.positions.length === 0) return 0
-  const normalizeAction = (action) => action ? action.replace('OrderAction.', '').toUpperCase() : ''
-  const closingPositions = order.positions.filter(pos =>
-    pos.closing_action && (pos.closing_action === 'BTC' || pos.closing_action === 'STC')
-  )
-  if (closingPositions.length > 0) {
-    const qty = Math.abs(closingPositions[0].quantity || 0)
-    if (qty > 0) return qty
-  }
-  const closingByAction = order.positions.filter(pos => {
-    const n = normalizeAction(pos.opening_action)
-    return (n === 'BTC' || n === 'BUY_TO_CLOSE' || n === 'STC' || n === 'SELL_TO_CLOSE') && pos.status === 'CLOSED'
-  })
-  if (closingByAction.length > 0) {
-    const qty = Math.abs(closingByAction[0].quantity || 0)
-    if (qty > 0) return qty
-  }
-  const openingPositions = order.positions.filter(pos => {
-    const n = normalizeAction(pos.opening_action)
-    return (n === 'BTO' || n === 'BUY_TO_OPEN' || n === 'STO' || n === 'SELL_TO_OPEN') && pos.status !== 'CLOSED'
-  })
-  if (openingPositions.length > 0) {
-    const qty = Math.abs(openingPositions[0].quantity || 0)
-    if (qty > 0) return qty
-  }
-  return Math.abs(order.positions[0].quantity || 0)
-}
-
-function calculateCreditDebit(order, orderType) {
-  if (!order || order.order_type !== orderType || !order.positions || order.positions.length === 0) return null
-  let divisor
-  if (orderType === 'ROLLING') {
-    const normalizeAction = (action) => action ? action.replace('OrderAction.', '').toUpperCase() : ''
-    const openingPositions = order.positions.filter(pos => {
-      const a = normalizeAction(pos.opening_action)
-      return a === 'BTO' || a === 'BUY_TO_OPEN' || a === 'STO' || a === 'SELL_TO_OPEN'
-    })
-    divisor = openingPositions.length > 0
-      ? Math.abs(openingPositions[0].quantity || 0)
-      : getCreditDebitDivisor(order)
-  } else {
-    divisor = getCreditDebitDivisor(order)
-  }
-  if (divisor === 0) return null
-  const perRatioAmount = Math.abs(order.total_pnl || 0) / divisor / 100
-  return { amount: perRatioAmount, type: (order.total_pnl || 0) > 0 ? 'credit' : 'debit' }
-}
-
-function formatCreditDebit(order, orderType) {
-  const d = calculateCreditDebit(order, orderType)
-  return d ? `${d.amount.toFixed(2)} ${d.type}` : ''
-}
-
 // ==================== NOTES ====================
 async function loadNotes() {
   try {
-    const [notesResp, commentsResp] = await Promise.all([
-      Auth.authFetch('/api/position-notes'),
-      Auth.authFetch('/api/order-comments'),
-    ])
-    if (notesResp.ok) {
-      const data = await notesResp.json()
+    const resp = await Auth.authFetch('/api/position-notes')
+    if (resp.ok) {
+      const data = await resp.json()
       groupNotes.value = data.notes || {}
-    }
-    if (commentsResp.ok) {
-      const data = await commentsResp.json()
-      orderComments.value = data.comments || {}
     }
   } catch (error) {
     console.error('Error loading notes:', error)
@@ -800,24 +718,36 @@ function updateGroupNote(group, value) {
   }, 500)
 }
 
-function getOrderComment(orderId) {
-  return orderComments.value[orderId] || ''
+// ==================== ROLL CHAIN ====================
+async function toggleRollChain(group) {
+  const gid = group.group_id
+  if (rollChainVisible.value[gid]) {
+    rollChainVisible.value[gid] = false
+    return
+  }
+  rollChainVisible.value[gid] = true
+  if (rollChainData.value[gid]?.chain) return  // already loaded
+
+  rollChainData.value[gid] = { loading: true, chain: null, error: null }
+  try {
+    const resp = await Auth.authFetch(`/api/ledger/group-roll-chain/${gid}`)
+    const data = await resp.json()
+    rollChainData.value[gid] = { loading: false, chain: data, error: null }
+  } catch (e) {
+    rollChainData.value[gid] = { loading: false, chain: null, error: 'Failed to load roll chain' }
+    console.error('Error loading roll chain:', e)
+  }
 }
 
-function updateOrderComment(orderId, value) {
-  orderComments.value[orderId] = value
-  const timerKey = 'order_' + orderId
-  if (noteSaveTimers[timerKey]) clearTimeout(noteSaveTimers[timerKey])
-  noteSaveTimers[timerKey] = setTimeout(() => {
-    Auth.authFetch(`/api/order-comments/${encodeURIComponent(orderId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comment: value }),
-    }).then(res => {
-      if (!res.ok) console.error(`Failed to save order comment (HTTP ${res.status})`)
-    }).catch(err => console.error('Error saving order comment:', err))
-    delete noteSaveTimers[timerKey]
-  }, 500)
+function scrollToGroup(groupId) {
+  const target = filteredGroups.value.find(g => g.group_id === groupId)
+  if (target) {
+    target.expanded = true
+    nextTick(() => {
+      const el = document.getElementById('group-' + groupId)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 }
 
 // ==================== TAGS ====================
@@ -920,11 +850,6 @@ function getClosingTypeLabel(closingType, lotQuantity) {
   return closingType
 }
 
-function sortPositions(positions) {
-  return (positions || []).slice().sort((a, b) =>
-    new Date(a.expiration || 0) - new Date(b.expiration || 0) || (a.strike || 0) - (b.strike || 0)
-  )
-}
 
 </script>
 
@@ -1024,6 +949,14 @@ function sortPositions(positions) {
           Closed
         </button>
       </div>
+
+      <!-- Rolls Filter -->
+      <button @click="filterRollsOnly = !filterRollsOnly; applyFilters()"
+              :class="filterRollsOnly ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
+              class="px-3 py-1.5 text-sm border rounded transition-colors flex items-center gap-1.5">
+        <i class="fas fa-link text-xs"></i>
+        Rolls
+      </button>
 
       <div class="w-px h-6 bg-tv-border"></div>
 
@@ -1242,8 +1175,7 @@ function sortPositions(positions) {
                   <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                      @click="group._editingStrategy = true"
                      title="Edit strategy label"></i>
-                  <i v-show="groupViewMode(group) === 'positions'"
-                     class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+                  <i class="fas fa-right-left text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                      :class="group._movingLots ? '!text-tv-blue' : ''"
                      @click="toggleGroupMoveMode(group)"
                      title="Move lots between groups"></i>
@@ -1312,6 +1244,13 @@ function sortPositions(positions) {
           <!-- Closing date -->
           <span class="w-32 text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '\u2014' }}</span>
 
+          <!-- Roll chain indicator -->
+          <i v-if="group.has_roll_chain"
+             class="fas fa-link text-sm cursor-pointer transition-colors mr-2"
+             :class="rollChainVisible[group.group_id] ? 'text-tv-blue' : 'text-tv-muted hover:text-tv-blue'"
+             @click.stop="toggleRollChain(group)"
+             title="View roll chain"></i>
+
           <!-- Note indicator -->
           <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
 
@@ -1327,22 +1266,6 @@ function sortPositions(positions) {
         <div v-show="group.expanded"
              class="bg-tv-bg border-t border-tv-border/50 px-4 py-3">
 
-          <!-- Per-group view toggle -->
-          <div class="flex justify-start px-4 pt-1 pb-1">
-            <div class="flex items-center border border-tv-border rounded overflow-hidden text-xs">
-              <button @click.stop="group._viewMode = 'positions'"
-                      :class="groupViewMode(group) === 'positions' ? 'bg-tv-blue text-white' : 'bg-tv-bg text-tv-muted hover:text-tv-text'"
-                      class="px-2 py-1 transition-colors">
-                <i class="fas fa-layer-group mr-1"></i>Positions
-              </button>
-              <button @click.stop="group._viewMode = 'actions'; if (group._movingLots) { clearAllMoveMode() }"
-                      :class="groupViewMode(group) === 'actions' ? 'bg-tv-blue text-white' : 'bg-tv-bg text-tv-muted hover:text-tv-text'"
-                      class="px-2 py-1 transition-colors">
-                <i class="fas fa-list-ol mr-1"></i>Orders
-              </button>
-            </div>
-          </div>
-
           <!-- Group Notes -->
           <div class="px-4 pb-2">
             <textarea :value="getGroupNote(group)"
@@ -1353,7 +1276,6 @@ function sortPositions(positions) {
           </div>
 
           <!-- Position View -->
-          <template v-if="groupViewMode(group) === 'positions'">
             <div>
               <!-- Lots Table Header -->
               <div class="flex items-center text-sm text-tv-muted px-4 py-2 border-b border-tv-border/30 font-mono">
@@ -1631,122 +1553,50 @@ function sortPositions(positions) {
                 </div>
               </template>
             </div>
-          </template>
 
-          <!-- Action View -->
-          <template v-if="groupViewMode(group) === 'actions'">
-            <div>
-              <div v-for="(order, index) in (group.orders || []).filter(o => o != null)" :key="`${group.group_id}_order_${index}`"
-                   class="mx-2 my-3 p-3 bg-tv-panel rounded border border-tv-border">
-                <!-- Order Header -->
-                <div class="flex items-center text-base">
-                  <span class="w-8 text-tv-muted">{{ (group.orders || []).length - index }}</span>
-                  <span class="w-32 text-tv-muted">{{ formatOrderDate(order.order_date) }}</span>
-                  <span class="w-28 text-tv-amber">{{ order.display_type || order.order_type }}</span>
-                  <!-- Credit/Debit badges -->
-                  <span v-if="order.order_type === 'ROLLING' && formatCreditDebit(order, 'ROLLING')"
-                        class="text-base px-3 py-1 rounded-sm"
-                        :class="calculateCreditDebit(order, 'ROLLING')?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'">
-                    {{ formatCreditDebit(order, 'ROLLING') }}
-                  </span>
-                  <span v-else-if="order.order_type === 'OPENING' && formatCreditDebit(order, 'OPENING')"
-                        class="text-base px-3 py-1 rounded-sm"
-                        :class="calculateCreditDebit(order, 'OPENING')?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'">
-                    {{ formatCreditDebit(order, 'OPENING') }}
-                  </span>
-                  <span v-else-if="order.order_type === 'CLOSING' && formatCreditDebit(order, 'CLOSING')"
-                        class="text-base px-3 py-1 rounded-sm"
-                        :class="calculateCreditDebit(order, 'CLOSING')?.type === 'credit' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-red/20 text-tv-red'">
-                    {{ formatCreditDebit(order, 'CLOSING') }}
-                  </span>
-                  <!-- Order ID -->
-                  <span v-if="order.order_id && !order.order_id.startsWith('SYSTEM_')"
-                        class="ml-4 text-sm font-mono text-tv-muted">
-                    Order# <span class="text-tv-text">{{ order.order_id }}</span>
-                  </span>
-                  <span v-if="order.order_id && order.order_id.startsWith('SYSTEM_Expiration')"
-                        class="ml-4 text-sm font-mono text-tv-amber">
-                    EXPIRATION
-                  </span>
-                  <!-- P&L -->
-                  <span class="ml-auto font-medium"
-                        :class="order.total_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                    ${{ formatNumber(order.total_pnl) }}
-                  </span>
-                </div>
-
-                <!-- Order comment -->
-                <div class="px-8 pt-1">
-                  <input type="text"
-                         :value="getOrderComment(order.order_id)"
-                         @input="updateOrderComment(order.order_id, $event.target.value)"
-                         @click.stop
-                         class="w-full bg-transparent text-tv-muted text-xs border-b border-transparent hover:border-tv-border/30 focus:border-tv-blue/50 outline-none px-0 py-0.5"
-                         placeholder="Add notes...">
-                </div>
-
-                <!-- Positions table -->
-                <div v-if="order.positions && order.positions.length > 0" class="pt-3 space-y-1 font-mono">
-                  <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
-                    <span class="w-10 text-right">Qty</span>
-                    <span class="w-16 text-center mx-2">Exp</span>
-                    <span class="w-10">DTE</span>
-                    <span class="w-16 text-center mx-2">Strike</span>
-                    <span class="w-6">Type</span>
-                    <span class="w-12 ml-4">Action</span>
-                    <span class="w-20 text-right ml-auto">Price</span>
-                    <span class="w-24 text-right">Realized</span>
-                  </div>
-                  <div v-for="position in sortPositions(order.positions)" :key="`pos_${position.position_id || Math.random()}`">
-                    <div class="flex items-center text-sm">
-                      <span class="w-10 text-right font-medium"
-                            :class="getDisplayQuantity(position) > 0 ? 'text-tv-green' : 'text-tv-red'">
-                        {{ getDisplayQuantity(position) }}
-                      </span>
-                      <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-tv-text">
-                        {{ formatExpirationShort(position.expiration) }}
-                      </span>
-                      <span class="w-10 text-tv-muted">{{ calculateDTE(position.expiration) }}d</span>
-                      <span class="w-16 text-center bg-tv-bg mx-2 py-0.5 rounded text-tv-text">{{ position.strike }}</span>
-                      <span class="w-6 text-tv-muted">{{ (position.option_type || '').toUpperCase().startsWith('C') ? 'C' : 'P' }}</span>
-                      <span class="w-12 ml-4"
-                            :class="order.order_id?.startsWith('SYSTEM_Expiration') ? 'text-tv-amber' : position.opening_action?.includes('BUY') ? 'text-tv-green' : 'text-tv-red'">
-                        {{ order.order_id?.startsWith('SYSTEM_Expiration') ? 'EXPIRED' : formatAction(position.opening_action) }}
-                      </span>
-                      <span class="w-20 text-right text-tv-muted ml-auto">${{ formatNumber(position.opening_price) }}</span>
-                      <span class="w-24 text-right"
-                            :class="position.pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                        ${{ formatNumber(position.pnl) }}
-                      </span>
-                      <span v-if="position.closing_action?.includes('EXPIRED')" class="text-tv-amber ml-2">EXP</span>
-                      <span v-if="position.closing_action?.includes('ASSIGNED')" class="text-tv-orange ml-2">ASN</span>
-                    </div>
-                    <!-- Derived positions -->
-                    <template v-if="position.derived_positions && position.derived_positions.length > 0">
-                      <div v-for="derived in position.derived_positions" :key="`derived_${derived.lot_id}`"
-                           class="flex items-center text-sm ml-6 mt-1">
-                        <span class="text-tv-muted mr-2">&#8627;</span>
-                        <span class="w-10 text-right font-medium"
-                              :class="derived.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
-                          {{ derived.quantity }}
-                        </span>
-                        <span class="w-20 text-center text-tv-text mx-2">{{ derived.symbol }}</span>
-                        <span class="w-20 text-tv-orange">{{ derived.derivation_type }}</span>
-                        <span class="w-20 text-right text-tv-muted ml-auto">${{ formatNumber(derived.entry_price) }}</span>
-                        <span class="w-24 text-right text-tv-muted">{{ derived.status }}</span>
-                      </div>
-                    </template>
-                  </div>
-                </div>
-              </div>
-
-              <!-- No orders message -->
-              <div v-if="!group.orders || group.orders.length === 0"
-                   class="text-center py-4 text-tv-muted text-sm">
-                No orders found for this group
-              </div>
+          <!-- Roll Chain Panel -->
+          <div v-if="rollChainVisible[group.group_id]" class="mx-4 mt-3 mb-1 bg-tv-panel rounded border border-tv-blue/30">
+            <div v-if="rollChainData[group.group_id]?.loading" class="px-4 py-3 text-tv-muted text-sm">
+              Loading roll chain...
             </div>
-          </template>
+            <div v-else-if="rollChainData[group.group_id]?.error" class="px-4 py-3 text-tv-red text-sm">
+              {{ rollChainData[group.group_id].error }}
+            </div>
+            <template v-else-if="rollChainData[group.group_id]?.chain">
+              <div class="px-4 py-2.5 flex items-center justify-between border-b border-tv-border/30">
+                <span class="text-sm text-tv-text flex items-center gap-2">
+                  <i class="fas fa-link text-tv-blue"></i>
+                  <span class="font-medium">Roll Chain</span>
+                  <span class="text-tv-muted">({{ rollChainData[group.group_id].chain.chain_length }} {{ rollChainData[group.group_id].chain.chain_length === 1 ? 'group' : 'groups' }})</span>
+                </span>
+                <span class="text-sm font-medium"
+                      :class="rollChainData[group.group_id].chain.chain[rollChainData[group.group_id].chain.chain.length - 1]?.cumulative_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                  Cumulative: ${{ formatNumber(rollChainData[group.group_id].chain.chain[rollChainData[group.group_id].chain.chain.length - 1]?.cumulative_pnl || 0) }}
+                </span>
+              </div>
+              <div class="divide-y divide-tv-border/20">
+                <div v-for="(item, idx) in rollChainData[group.group_id].chain.chain" :key="item.group_id"
+                     class="flex items-center px-4 py-2 text-sm cursor-pointer transition-colors"
+                     :class="item.group_id === group.group_id ? 'bg-tv-blue/10' : 'hover:bg-tv-border/20'"
+                     @click="scrollToGroup(item.group_id)">
+                  <span class="w-6 text-tv-muted text-xs">{{ idx + 1 }}.</span>
+                  <span class="w-24 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
+                  <span class="text-tv-muted mx-2">&rarr;</span>
+                  <span class="w-24 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
+                  <span class="w-36 text-tv-text ml-4">{{ item.strategy_label || '\u2014' }}</span>
+                  <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center"
+                        :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
+                    {{ item.status }}
+                  </span>
+                  <span class="ml-auto text-sm font-medium"
+                        :class="item.realized_pnl > 0 ? 'text-tv-green' : item.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                    {{ item.realized_pnl ? '$' + formatNumber(item.realized_pnl) : '\u2014' }}
+                  </span>
+                  <span v-if="item.group_id === group.group_id" class="ml-2 text-tv-blue text-xs">&larr;</span>
+                </div>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
     </div>
