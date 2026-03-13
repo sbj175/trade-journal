@@ -16,10 +16,10 @@ import uuid as _uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, date
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from src.models.lot_manager import Lot
-from src.models.order_processor import Chain
+from src.models.order_processor import Chain, OrderType
 from src.pipeline.strategy_engine import recognize, lots_to_legs
 
 if TYPE_CHECKING:
@@ -75,11 +75,13 @@ def assign_lots_to_groups(
     if not lots:
         return []
 
-    # --- Step 1: Build order_id -> chain_id lookup -------------------------
+    # --- Step 1: Build order_id -> chain_id and order_type lookups ----------
     order_to_chain: Dict[str, str] = {}
+    order_to_type: Dict[str, OrderType] = {}
     for chain in chains:
         for order in chain.orders:
             order_to_chain[order.order_id] = chain.chain_id
+            order_to_type[order.order_id] = order.order_type
 
     # --- Step 2: Sort lots chronologically ---------------------------------
     sorted_lots = sorted(lots, key=lambda lot: lot.entry_date)
@@ -146,8 +148,13 @@ def assign_lots_to_groups(
                     _add_lot_to_group(lot, gk, chain_id)
                     assigned = True
 
-        # Rule 1: lot's chain already has a group (always merge — rolls stay together)
-        if not assigned and chain_id and chain_id in chain_to_group:
+        # Rule 1: lot's chain already has a group — merge unless this lot
+        # was opened by a ROLLING order (rolls get their own group).
+        is_roll_opening = (
+            lot.opening_order_id
+            and order_to_type.get(lot.opening_order_id) == OrderType.ROLLING
+        )
+        if not assigned and chain_id and chain_id in chain_to_group and not is_roll_opening:
             gk = chain_to_group[chain_id]
             _add_lot_to_group(lot, gk, chain_id)
             assigned = True
@@ -288,6 +295,89 @@ def _recognize_from_lots(lot_list: List[Lot]) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Roll-link detection
+# ---------------------------------------------------------------------------
+
+def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, List[Lot]]) -> None:
+    """Phase 4b: auto-detect roll relationships between groups.
+
+    Criteria (all must match):
+    1. Same account + underlying
+    2. Same effective strategy label (user override takes precedence)
+    3. Source group's closing_date same calendar day as target group's opening_date
+    4. Target doesn't already have a rolled_from_group_id
+    5. Skip Shares groups
+
+    Tie-breaking: prefer closest lot count.
+    Process sorted by opening_date so serial rolls (A→B→C) link correctly.
+    """
+    from src.database.models import PositionGroup
+
+    # Load all groups with their metadata
+    groups = session.query(PositionGroup).filter(
+        PositionGroup.group_id.in_(all_group_ids),
+    ).all()
+
+    if not groups:
+        return
+
+    # Sort by opening_date ascending for serial roll detection
+    sorted_groups = sorted(groups, key=lambda g: g.opening_date or '')
+
+    # Index CLOSED groups by (account, underlying, effective_label, closing_day)
+    closed_by_key: Dict[Tuple[str, str, str, str], List] = defaultdict(list)
+
+    for g in sorted_groups:
+        if g.status != 'CLOSED' or not g.closing_date:
+            continue
+        label = g.strategy_label or ''
+        if label == 'Shares':
+            continue
+        closing_day = str(g.closing_date)[:10]
+        key = (g.account_number, g.underlying, label, closing_day)
+        closed_by_key[key].append(g)
+
+    links_created = 0
+
+    for g in sorted_groups:
+        if g.rolled_from_group_id:
+            continue  # already linked
+        if not g.opening_date:
+            continue
+        label = g.strategy_label or ''
+        if label == 'Shares':
+            continue
+
+        opening_day = str(g.opening_date)[:10]
+        key = (g.account_number, g.underlying, label, opening_day)
+        candidates = closed_by_key.get(key, [])
+
+        # Filter: candidate must not be the same group
+        candidates = [c for c in candidates if c.group_id != g.group_id]
+        if not candidates:
+            continue
+
+        # Tie-break: prefer closest lot count
+        target_lot_count = len(group_lots.get(g.group_id, []))
+        best = min(
+            candidates,
+            key=lambda c: abs(len(group_lots.get(c.group_id, [])) - target_lot_count),
+        )
+
+        g.rolled_from_group_id = best.group_id
+        links_created += 1
+
+        # Register this group as a closed source too (for serial A→B→C)
+        if g.status == 'CLOSED' and g.closing_date:
+            closing_day = str(g.closing_date)[:10]
+            new_key = (g.account_number, g.underlying, label, closing_day)
+            closed_by_key[new_key].append(g)
+
+    if links_created:
+        logger.info(f"Phase 4b: detected {links_created} roll links")
+
+
+# ---------------------------------------------------------------------------
 # DB persistence layer
 # ---------------------------------------------------------------------------
 
@@ -358,11 +448,13 @@ class GroupPersister:
                 len(all_lots), len(existing_links), len(new_lots),
             )
 
-            # Build order_id -> chain_id lookup from chains
+            # Build order_id -> chain_id and order_type lookups from chains
             order_to_chain: Dict[str, str] = {}
+            order_to_type: Dict[str, OrderType] = {}
             for chain in chains:
                 for order in chain.orders:
                     order_to_chain[order.order_id] = chain.chain_id
+                    order_to_type[order.order_id] = order.order_type
 
             # =================================================================
             # Phase 2: Seed routing indexes from existing groups
@@ -439,8 +531,12 @@ class GroupPersister:
                             _add_new_lot(lot, gk, chain_id)
                             assigned = True
 
-                # Rule 1: chain already has a group
-                if not assigned and chain_id and chain_id in chain_to_group:
+                # Rule 1: chain already has a group — skip for ROLLING orders
+                is_roll_opening = (
+                    lot.opening_order_id
+                    and order_to_type.get(lot.opening_order_id) == OrderType.ROLLING
+                )
+                if not assigned and chain_id and chain_id in chain_to_group and not is_roll_opening:
                     gk = chain_to_group[chain_id]
                     _add_new_lot(lot, gk, chain_id)
                     assigned = True
@@ -582,6 +678,11 @@ class GroupPersister:
 
                 group.updated_at = now_str
                 count += 1
+
+            # =================================================================
+            # Phase 4b: Auto-detect roll links (rolled_from_group_id)
+            # =================================================================
+            _detect_roll_links(session, all_group_ids, group_lots)
 
             # =================================================================
             # Phase 5: Cleanup

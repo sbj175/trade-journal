@@ -406,6 +406,7 @@ class PositionGroup(Base):
     opening_date = Column(String)
     closing_date = Column(String)
     last_activity_date = Column(String)
+    rolled_from_group_id = Column(String, ForeignKey("position_groups.group_id"), nullable=True)
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 
@@ -415,6 +416,7 @@ class PositionGroup(Base):
         Index("idx_position_groups_underlying", "underlying"),
         Index("idx_position_groups_status", "status"),
         Index("idx_position_groups_source_chain", "source_chain_id"),
+        Index("idx_position_groups_rolled_from", "rolled_from_group_id"),
     )
 
 
