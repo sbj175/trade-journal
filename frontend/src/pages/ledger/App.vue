@@ -1250,12 +1250,14 @@ function getClosingTypeLabel(closingType, lotQuantity) {
           <!-- Closing date -->
           <span class="w-32 text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '\u2014' }}</span>
 
-          <!-- Roll chain indicator -->
-          <i v-if="group.has_roll_chain"
-             class="fas fa-link text-sm cursor-pointer transition-colors mr-2"
-             :class="rollChainVisible[group.group_id] ? 'text-tv-blue' : 'text-tv-muted hover:text-tv-blue'"
-             @click.stop="toggleRollChain(group)"
-             title="View roll chain"></i>
+          <!-- Roll chain toggle -->
+          <label v-if="group.has_roll_chain" class="relative inline-flex items-center cursor-pointer mr-2" @click.stop="toggleRollChain(group)" title="Roll chain">
+            <span class="w-8 h-4 rounded-full transition-colors"
+                  :class="rollChainVisible[group.group_id] ? 'bg-tv-blue' : 'bg-tv-border'">
+              <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+                    :class="rollChainVisible[group.group_id] ? 'translate-x-4' : ''"></span>
+            </span>
+          </label>
 
           <!-- Note indicator -->
           <i v-show="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
@@ -1581,11 +1583,11 @@ function getClosingTypeLabel(closingType, lotQuantity) {
                 </span>
               </div>
               <div class="divide-y divide-tv-border/20">
-                <div v-for="(item, idx) in rollChainData[group.group_id].chain.chain" :key="item.group_id"
+                <div v-for="(item, idx) in rollChainData[group.group_id].chain.chain.slice().reverse()" :key="item.group_id"
                      class="flex items-center px-4 py-2 text-sm cursor-pointer transition-colors"
                      :class="item.group_id === group.group_id ? 'bg-tv-blue/10' : 'hover:bg-tv-border/20'"
                      @click="scrollToGroup(item.group_id)">
-                  <span class="w-6 text-tv-muted text-xs">{{ idx + 1 }}.</span>
+                  <span class="w-6 text-tv-muted text-xs">{{ rollChainData[group.group_id].chain.chain.length - idx }}.</span>
                   <span class="w-24 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
                   <span class="text-tv-muted mx-2">&rarr;</span>
                   <span class="w-24 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
