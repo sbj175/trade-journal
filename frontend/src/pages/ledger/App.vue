@@ -1114,8 +1114,8 @@ function getSortLabel() {
                 <span class="w-10">Type</span>
                 <span class="w-20 text-center ml-3">Status</span>
                 <span class="w-24 text-right">Entry Price</span>
-                <span class="w-24 text-right ml-2">Close Price</span>
-                <span class="w-48 ml-3">Close Status</span>
+                <span class="w-24 text-right ml-2">Exit Price</span>
+                <span class="w-48 ml-3">Exit Type</span>
                 <span class="w-20 text-right ml-2">Fees</span>
               </div>
 
