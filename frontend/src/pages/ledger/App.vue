@@ -1114,8 +1114,8 @@ function getSortLabel() {
                 <span class="w-20 text-center ml-3">Status</span>
                 <span class="w-24 text-right">Entry Price</span>
                 <span class="w-24 text-right ml-2">Close Price</span>
-                <span class="flex-1 ml-3">Close Status</span>
-                <span class="w-20 text-right">Fees</span>
+                <span class="w-48 ml-3">Close Status</span>
+                <span class="w-20 text-right ml-2">Fees</span>
               </div>
 
               <!-- Section A: Equity Aggregate -->
@@ -1133,8 +1133,8 @@ function getSortLabel() {
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">OPEN</span>
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
                     <span class="w-24 text-right ml-2"></span>
-                    <span class="flex-1 ml-3"></span>
-                    <span class="w-20 text-right"></span>
+                    <span class="w-48 ml-3"></span>
+                    <span class="w-20 text-right ml-2"></span>
                   </div>
                 </div>
               </template>
@@ -1174,8 +1174,8 @@ function getSortLabel() {
                     </span>
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
                     <span class="w-24 text-right text-tv-muted ml-2">{{ (leg.expired || leg.exercised || leg.assigned) ? '\u2014' : (leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '') }}</span>
-                    <span class="flex-1 ml-3 text-tv-muted text-xs">{{ leg.closeStatus || '' }}</span>
-                    <span class="w-20 text-right text-tv-muted"
+                    <span class="w-48 ml-3 text-tv-muted text-xs truncate">{{ leg.closeStatus || '' }}</span>
+                    <span class="w-20 text-right ml-2 text-tv-muted"
                           :class="leg.totalFees < 0 ? 'text-tv-red' : ''">
                       {{ leg.totalFees ? '$' + formatNumber(Math.abs(leg.totalFees)) : '' }}
                     </span>
