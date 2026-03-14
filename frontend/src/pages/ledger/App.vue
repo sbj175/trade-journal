@@ -253,6 +253,9 @@ function applyFilters() {
     } else if (col === 'lot_count') {
       va = a.lot_count || 0
       vb = b.lot_count || 0
+    } else if (col === 'initial_premium') {
+      va = groupInitialPremium(a)
+      vb = groupInitialPremium(b)
     } else if (col === 'realized_pnl') {
       va = a.realized_pnl || 0
       vb = b.realized_pnl || 0
@@ -879,8 +882,8 @@ function getSortLabel() {
       Closed <span v-if="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
     <span class="w-10 text-center">Rolls</span>
-    <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-auto">
-      Initial Premium
+    <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-auto whitespace-nowrap" @click="sortGroups('initial_premium')">
+      Initial Premium <span v-if="sortColumn === 'initial_premium'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
     </span>
     <span class="w-28 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 ml-2" @click="sortGroups('realized_pnl')">
       Realized P&amp;L <span v-if="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '&#x25B2;' : '&#x25BC;' }}</span>
@@ -1010,7 +1013,7 @@ function getSortLabel() {
 
           <!-- Initial Premium -->
           <span class="w-28 text-right ml-auto text-base"
-                :class="groupInitialPremium(group) > 0 ? 'text-tv-red' : groupInitialPremium(group) < 0 ? 'text-tv-green' : 'text-tv-muted'">
+                :class="groupInitialPremium(group) > 0 ? 'text-tv-green' : groupInitialPremium(group) < 0 ? 'text-tv-red' : 'text-tv-muted'">
             {{ groupInitialPremium(group) ? '$' + formatNumber(groupInitialPremium(group)) : '' }}
           </span>
 

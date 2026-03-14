@@ -21,6 +21,7 @@ const lastQuoteUpdate = ref(null)
 const syncSummary = ref(null)
 const sortColumn = ref('underlying')
 const sortDirection = ref('asc')
+const expandedRows = ref({})
 
 let ws = null
 
@@ -167,6 +168,7 @@ async function loadPositions() {
             openingDate: chain.opening_date,
             hasOptions: (chain.open_legs || []).length > 0,
             optionStrategy: (chain.open_legs || []).length > 0 ? chain.strategy_type : null,
+            equityLegs: eqLegs,
           })
         })
       })
@@ -221,6 +223,23 @@ function getAccountBadgeClass(accountNumber) {
   if (symbol === 'I') return 'bg-tv-blue/20 text-tv-blue'
   if (symbol === 'T') return 'bg-tv-green/20 text-tv-green'
   return 'bg-tv-border text-tv-muted'
+}
+
+function toggleExpanded(groupId) {
+  expandedRows.value = { ...expandedRows.value, [groupId]: !expandedRows.value[groupId] }
+}
+
+function getLotMarketValue(item, leg) {
+  const price = getQuotePrice(item.underlying)
+  if (!price) return 0
+  const signed = leg.quantity_direction === 'Short' ? -leg.quantity : leg.quantity
+  return price * signed
+}
+
+function getLotPnL(item, leg) {
+  const mv = getLotMarketValue(item, leg)
+  if (mv === 0) return 0
+  return mv + (leg.cost_basis || 0)
 }
 
 function sort(column) {
@@ -362,6 +381,7 @@ onUnmounted(() => {
     <!-- Column Headers -->
     <div v-if="!isLoading && groupedPositions.length > 0"
          class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
+      <span class="w-6 mr-2"></span>
       <span class="w-8 mr-3"></span>
       <span class="w-56 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sort('underlying')">
         Symbol <span v-if="sortIcon('underlying')" class="text-tv-blue">{{ sortIcon('underlying') }}</span>
@@ -402,58 +422,103 @@ onUnmounted(() => {
   <!-- Position List -->
   <div v-else class="bg-tv-panel border-x border-b border-tv-border">
     <div class="divide-y divide-tv-border">
-      <div v-for="item in groupedPositions" :key="item.groupId"
-           class="flex items-center px-4 h-12 hover:bg-tv-border/20 transition-colors">
-        <!-- Account badge -->
-        <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3"
-              :class="getAccountBadgeClass(item.accountNumber)">
-          {{ getAccountSymbol(item.accountNumber) }}
-        </span>
-
-        <!-- Symbol + Streaming Price -->
-        <span class="w-56 flex items-center gap-3">
-          <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
-          <span v-if="item.hasOptions" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/30">
-            {{ item.optionStrategy }}
+      <div v-for="item in groupedPositions" :key="item.groupId">
+        <!-- Summary row -->
+        <div class="flex items-center px-4 h-12 hover:bg-tv-border/20 transition-colors"
+             :class="item.equityLegs.length > 1 ? 'cursor-pointer' : ''"
+             @click="item.equityLegs.length > 1 && toggleExpanded(item.groupId)">
+          <!-- Chevron (only when multiple lots) -->
+          <span class="w-6 mr-2">
+            <i v-if="item.equityLegs.length > 1"
+               class="fas fa-chevron-right text-tv-muted text-xs transition-transform duration-150"
+               :class="{ 'rotate-90': expandedRows[item.groupId] }"></i>
           </span>
-          <span class="ml-auto">
-            <StreamingPrice :quote="getQuote(item.underlying).price ? getQuote(item.underlying) : null" />
+
+          <!-- Account badge -->
+          <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3"
+                :class="getAccountBadgeClass(item.accountNumber)">
+            {{ getAccountSymbol(item.accountNumber) }}
           </span>
-        </span>
 
-        <!-- Shares -->
-        <span class="w-20 text-right text-base font-medium"
-              :class="item.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
-          {{ item.quantity }}
-        </span>
+          <!-- Symbol + Streaming Price -->
+          <span class="w-56 flex items-center gap-3">
+            <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
+            <span v-if="item.hasOptions" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/30">
+              {{ item.optionStrategy }}
+            </span>
+            <span v-if="item.equityLegs.length > 1" class="text-[10px] text-tv-muted">
+              {{ item.equityLegs.length }} lots
+            </span>
+            <span class="ml-auto">
+              <StreamingPrice :quote="getQuote(item.underlying).price ? getQuote(item.underlying) : null" />
+            </span>
+          </span>
 
-        <!-- Avg Price -->
-        <span class="w-24 text-right text-tv-muted text-base ml-4">
-          ${{ formatNumber(item.avgPrice) }}
-        </span>
+          <!-- Shares -->
+          <span class="w-20 text-right text-base font-medium"
+                :class="item.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
+            {{ item.quantity }}
+          </span>
 
-        <!-- Cost Basis -->
-        <span class="w-28 text-right text-tv-muted text-base ml-2">
-          ${{ formatNumber(item.costBasis) }}
-        </span>
+          <!-- Avg Price -->
+          <span class="w-24 text-right text-tv-muted text-base ml-4">
+            ${{ formatNumber(item.avgPrice) }}
+          </span>
 
-        <!-- Market Value -->
-        <span class="w-28 text-right text-base ml-2"
-              :class="getMarketValue(item) ? 'text-tv-text' : 'text-tv-muted'">
-          {{ getMarketValue(item) ? '$' + formatNumber(getMarketValue(item)) : '\u2014' }}
-        </span>
+          <!-- Cost Basis -->
+          <span class="w-28 text-right text-tv-muted text-base ml-2">
+            ${{ formatNumber(item.costBasis) }}
+          </span>
 
-        <!-- Unrealized P&L -->
-        <span class="w-28 text-right text-base font-medium ml-2"
-              :class="getUnrealizedPnL(item) > 0 ? 'text-tv-green' : getUnrealizedPnL(item) < 0 ? 'text-tv-red' : 'text-tv-muted'">
-          {{ getMarketValue(item) ? '$' + formatNumber(getUnrealizedPnL(item)) : '' }}
-        </span>
+          <!-- Market Value -->
+          <span class="w-28 text-right text-base ml-2"
+                :class="getMarketValue(item) ? 'text-tv-text' : 'text-tv-muted'">
+            {{ getMarketValue(item) ? '$' + formatNumber(getMarketValue(item)) : '\u2014' }}
+          </span>
 
-        <!-- P&L % -->
-        <span class="w-20 text-right text-base ml-2"
-              :class="getPnLPercent(item) > 0 ? 'text-tv-green' : getPnLPercent(item) < 0 ? 'text-tv-red' : 'text-tv-muted'">
-          {{ getMarketValue(item) ? formatNumber(getPnLPercent(item)) + '%' : '' }}
-        </span>
+          <!-- Unrealized P&L -->
+          <span class="w-28 text-right text-base font-medium ml-2"
+                :class="getUnrealizedPnL(item) > 0 ? 'text-tv-green' : getUnrealizedPnL(item) < 0 ? 'text-tv-red' : 'text-tv-muted'">
+            {{ getMarketValue(item) ? '$' + formatNumber(getUnrealizedPnL(item)) : '' }}
+          </span>
+
+          <!-- P&L % -->
+          <span class="w-20 text-right text-base ml-2"
+                :class="getPnLPercent(item) > 0 ? 'text-tv-green' : getPnLPercent(item) < 0 ? 'text-tv-red' : 'text-tv-muted'">
+            {{ getMarketValue(item) ? formatNumber(getPnLPercent(item)) + '%' : '' }}
+          </span>
+        </div>
+
+        <!-- Expanded lots -->
+        <div v-if="expandedRows[item.groupId] && item.equityLegs.length > 1"
+             class="bg-tv-bg border-t border-tv-border/30">
+          <div v-for="leg in item.equityLegs" :key="leg.lot_id"
+               class="flex items-center px-4 py-1.5 text-sm hover:bg-tv-border/10">
+            <span class="w-6 mr-2"></span>
+            <span class="w-8 mr-3"></span>
+            <span class="w-56 flex items-center gap-2">
+              <span v-if="leg.derivation_type" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/15 text-tv-blue border border-tv-blue/20 uppercase">
+                {{ leg.derivation_type }}
+              </span>
+              <span v-if="leg.entry_date" class="text-tv-muted text-xs">{{ formatDate(leg.entry_date) }}</span>
+            </span>
+            <span class="w-20 text-right font-medium"
+                  :class="leg.quantity_direction === 'Long' ? 'text-tv-green' : 'text-tv-red'">
+              {{ leg.quantity_direction === 'Short' ? -leg.quantity : leg.quantity }}
+            </span>
+            <span class="w-24 text-right text-tv-muted ml-4">${{ formatNumber(leg.entry_price) }}</span>
+            <span class="w-28 text-right text-tv-muted ml-2">${{ formatNumber(Math.abs(leg.cost_basis)) }}</span>
+            <span class="w-28 text-right ml-2"
+                  :class="getLotMarketValue(item, leg) ? 'text-tv-text' : 'text-tv-muted'">
+              {{ getLotMarketValue(item, leg) ? '$' + formatNumber(getLotMarketValue(item, leg)) : '\u2014' }}
+            </span>
+            <span class="w-28 text-right font-medium ml-2"
+                  :class="getLotPnL(item, leg) > 0 ? 'text-tv-green' : getLotPnL(item, leg) < 0 ? 'text-tv-red' : 'text-tv-muted'">
+              {{ getLotMarketValue(item, leg) ? '$' + formatNumber(getLotPnL(item, leg)) : '' }}
+            </span>
+            <span class="w-20"></span>
+          </div>
+        </div>
       </div>
     </div>
   </div>

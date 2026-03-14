@@ -243,6 +243,7 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                                 "cost_basis": leg_cost,
                                 "lot_id": lot.id,
                                 "derivation_type": lot.derivation_type,
+                                "entry_date": lot.entry_date,
                             })
 
                 # Consolidate legs with same symbol/strike/exp/direction (OPT-142)

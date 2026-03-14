@@ -95,7 +95,10 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             total_realized += lot_realized
 
             multiplier = 100 if lot.option_type else 1
+            # Positive = credit received (short), negative = debit paid (long)
             cost_basis = abs(lot.entry_price * lot.original_quantity * multiplier)
+            if lot.quantity > 0:
+                cost_basis = -cost_basis  # long positions are debits
 
             is_open = lot.remaining_quantity != 0 and lot.status != 'CLOSED'
             if is_open:
