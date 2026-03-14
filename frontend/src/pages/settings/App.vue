@@ -1,381 +1,56 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsConnection } from './useSettingsConnection'
+import { useSettingsTargets } from './useSettingsTargets'
+import { useSettingsTags } from './useSettingsTags'
+import { useSettingsSync } from './useSettingsSync'
+import { useSettingsPreferences } from './useSettingsPreferences'
 
 const Auth = useAuth()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
-// --- Reactive state ---
-const targets = ref([])
-const saving = ref(false)
+// --- Shared state ---
 const notification = ref(null)
-const saveStatus = ref(null)
-
-// Connection state
-const connectionStatus = ref(null)
-const providerSecret = ref('')
-const refreshToken = ref('')
-const savingCredentials = ref(false)
-const deletingCredentials = ref(false)
-
-// OAuth flow state
-const onboarding = ref(false)
-const authEnabled = ref(false)
-const connecting = ref(false)
-
-// Data consent
-const consentAcknowledged = ref(false)
-
-// Initial Sync
-const syncStartDate = ref(new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10))
-const syncMinDate = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10)
-const syncMaxDate = new Date().toISOString().slice(0, 10)
-const initialSyncing = ref(false)
-const importResult = ref(null)
-function goToPositions() { router.push('/positions') }
-
-// Tags
-const tags = ref([])
-const editingTag = ref(null)
-const editName = ref('')
-const editColor = ref('')
-const deletingTagId = ref(null)
-
-// Roll alerts
-const rollAlerts = ref({
-  enabled: true,
-  profitTarget: true,
-  lossLimit: true,
-  lateStage: true,
-  deltaSaturation: true,
-  lowRewardToRisk: true,
-})
-
-// Privacy & tabs
-const privacyMode = ref('off')
 const activeTab = ref('connection')
-
-// --- Computed ---
-const syncDaysBack = computed(() => {
-  const start = new Date(syncStartDate.value)
-  const now = new Date()
-  return Math.max(1, Math.round((now - start) / 86400000))
-})
-
-const CREDIT_NAMES = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
-  'Cash Secured Put', 'Covered Call', 'Short Put', 'Short Call',
-  'Short Strangle', 'Short Straddle', 'Jade Lizard']
-
-const DEBIT_NAMES = ['Bull Call Spread', 'Bear Put Spread', 'Long Call', 'Long Put',
-  'Long Strangle', 'Long Straddle', 'Calendar Spread', 'Diagonal Spread', 'Diagonal Call Spread']
-
-const MIXED_NAMES = ['Collar']
-const EQUITY_NAMES = ['Shares']
-
-const creditStrategies = computed(() => targets.value.filter(t => CREDIT_NAMES.includes(t.strategy_name)))
-const debitStrategies = computed(() => targets.value.filter(t => DEBIT_NAMES.includes(t.strategy_name)))
-const mixedStrategies = computed(() => targets.value.filter(t => MIXED_NAMES.includes(t.strategy_name)))
-const equityStrategies = computed(() => targets.value.filter(t => EQUITY_NAMES.includes(t.strategy_name)))
-
-
-// --- Methods ---
-async function checkConnection() {
-  try {
-    const resp = await Auth.authFetch('/api/connection/status')
-    if (resp.ok) {
-      connectionStatus.value = await resp.json()
-    }
-  } catch (e) {
-    connectionStatus.value = { connected: false, configured: false, error: 'Could not check connection status' }
-  }
-}
-
-async function connectTastytrade() {
-  connecting.value = true
-  try {
-    const resp = await Auth.authFetch('/api/auth/tastytrade/authorize', { method: 'POST' })
-    if (resp.ok) {
-      const data = await resp.json()
-      window.location.href = data.authorization_url
-      return
-    }
-    const err = await resp.json().catch(() => ({}))
-    showNotification(err.detail || 'Failed to start Tastytrade connection', 'error')
-  } catch (e) {
-    showNotification('Error: ' + e.message, 'error')
-  }
-  connecting.value = false
-}
-
-async function disconnectTastytrade() {
-  if (!confirm('Disconnect your Tastytrade account? You will need to reconnect to sync trades.')) return
-  deletingCredentials.value = true
-  try {
-    const resp = await Auth.authFetch('/api/auth/tastytrade/disconnect', { method: 'POST' })
-    if (resp.ok) {
-      showNotification('Tastytrade disconnected', 'success')
-      await checkConnection()
-    } else {
-      const data = await resp.json().catch(() => ({}))
-      showNotification(data.detail || 'Failed to disconnect', 'error')
-    }
-  } catch (e) {
-    showNotification('Error: ' + e.message, 'error')
-  }
-  deletingCredentials.value = false
-}
-
-async function saveCredentials() {
-  if (!providerSecret.value || !refreshToken.value) {
-    showNotification('Please fill in both fields', 'error')
-    return
-  }
-  savingCredentials.value = true
-  try {
-    const saveResp = await Auth.authFetch('/api/settings/credentials', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider_secret: providerSecret.value,
-        refresh_token: refreshToken.value,
-      }),
-    })
-    if (!saveResp.ok) {
-      showNotification('Failed to save credentials', 'error')
-      savingCredentials.value = false
-      return
-    }
-
-    const reconnResp = await Auth.authFetch('/api/connection/reconnect', { method: 'POST' })
-    if (reconnResp.ok) {
-      connectionStatus.value = await reconnResp.json()
-      if (connectionStatus.value.connected) {
-        showNotification('Connected to Tastytrade successfully!', 'success')
-        providerSecret.value = ''
-        refreshToken.value = ''
-      } else {
-        showNotification('Credentials saved but connection failed: ' + (connectionStatus.value.error || 'Unknown error'), 'error')
-      }
-    } else {
-      showNotification('Failed to reconnect', 'error')
-    }
-  } catch (e) {
-    showNotification('Error saving credentials: ' + e.message, 'error')
-  }
-  savingCredentials.value = false
-}
-
-async function deleteCredentials() {
-  if (!confirm('Remove your Tastytrade credentials? You will need to re-enter them to sync.')) return
-  deletingCredentials.value = true
-  try {
-    const resp = await Auth.authFetch('/api/settings/credentials', { method: 'DELETE' })
-    if (resp.ok) {
-      showNotification('Credentials removed', 'success')
-      await checkConnection()
-    } else {
-      const data = await resp.json().catch(() => ({}))
-      showNotification(data.detail || 'Failed to remove credentials', 'error')
-    }
-  } catch (e) {
-    showNotification('Error removing credentials: ' + e.message, 'error')
-  }
-  deletingCredentials.value = false
-}
-
-async function loadTargets() {
-  try {
-    const resp = await Auth.authFetch('/api/settings/targets')
-    if (resp.ok) {
-      targets.value = await resp.json()
-    }
-  } catch (e) {
-    showNotification('Failed to load targets', 'error')
-  }
-}
-
-let _saveTimer = null
-function debouncedSaveTargets() {
-  if (_saveTimer) clearTimeout(_saveTimer)
-  saveStatus.value = 'pending'
-  _saveTimer = setTimeout(() => saveTargets(), 800)
-}
-
-async function saveTargets() {
-  saveStatus.value = 'saving'
-  try {
-    const payload = targets.value.map(t => ({
-      strategy_name: t.strategy_name,
-      profit_target_pct: parseFloat(t.profit_target_pct),
-      loss_target_pct: parseFloat(t.loss_target_pct),
-    }))
-    const resp = await Auth.authFetch('/api/settings/targets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (resp.ok) {
-      saveStatus.value = 'saved'
-      setTimeout(() => { if (saveStatus.value === 'saved') saveStatus.value = null }, 2000)
-    } else {
-      showNotification('Failed to save targets', 'error')
-      saveStatus.value = null
-    }
-  } catch (e) {
-    showNotification('Failed to save targets', 'error')
-    saveStatus.value = null
-  }
-}
-
-async function resetToDefaults() {
-  try {
-    const resp = await Auth.authFetch('/api/settings/targets/reset', { method: 'POST' })
-    if (resp.ok) {
-      await loadTargets()
-      showNotification('Targets reset to defaults', 'success')
-    } else {
-      showNotification('Failed to reset targets', 'error')
-    }
-  } catch (e) {
-    showNotification('Failed to reset targets', 'error')
-  }
-}
-
-function loadRollAlerts() {
-  try {
-    const saved = localStorage.getItem('rollAlertSettings')
-    if (saved) rollAlerts.value = JSON.parse(saved)
-  } catch (e) { /* use defaults */ }
-}
-
-function saveRollAlerts() {
-  localStorage.setItem('rollAlertSettings', JSON.stringify(rollAlerts.value))
-  saveStatus.value = 'saved'
-  setTimeout(() => { if (saveStatus.value === 'saved') saveStatus.value = null }, 2000)
-}
-
-async function loadTags() {
-  try {
-    const resp = await Auth.authFetch('/api/tags')
-    if (resp.ok) tags.value = await resp.json()
-  } catch (e) {
-    showNotification('Failed to load tags', 'error')
-  }
-}
-
-function startEditTag(tag) {
-  editingTag.value = tag.id
-  editName.value = tag.name
-  editColor.value = tag.color
-}
-
-function cancelEditTag() {
-  editingTag.value = null
-  editName.value = ''
-  editColor.value = ''
-}
-
-async function saveTag() {
-  if (!editName.value.trim()) {
-    showNotification('Tag name cannot be empty', 'error')
-    return
-  }
-  try {
-    const resp = await Auth.authFetch(`/api/tags/${editingTag.value}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName.value.trim(), color: editColor.value }),
-    })
-    if (resp.ok) {
-      showNotification('Tag updated', 'success')
-      cancelEditTag()
-      await loadTags()
-    } else {
-      const data = await resp.json().catch(() => ({}))
-      showNotification(data.detail || 'Failed to update tag', 'error')
-    }
-  } catch (e) {
-    showNotification('Failed to update tag', 'error')
-  }
-}
-
-async function deleteTag(tag) {
-  const msg = tag.group_count > 0
-    ? `Delete "${tag.name}"? It is used by ${tag.group_count} position group${tag.group_count === 1 ? '' : 's'} and will be removed from all of them.`
-    : `Delete "${tag.name}"?`
-  if (!confirm(msg)) return
-  deletingTagId.value = tag.id
-  try {
-    const resp = await Auth.authFetch(`/api/tags/${tag.id}`, { method: 'DELETE' })
-    if (resp.ok) {
-      showNotification('Tag deleted', 'success')
-      await loadTags()
-    } else {
-      const data = await resp.json().catch(() => ({}))
-      showNotification(data.detail || 'Failed to delete tag', 'error')
-    }
-  } catch (e) {
-    showNotification('Failed to delete tag', 'error')
-  }
-  deletingTagId.value = null
-}
-
-function savePrivacyMode() {
-  localStorage.setItem('privacyMode', privacyMode.value)
-  saveStatus.value = 'saved'
-  setTimeout(() => { if (saveStatus.value === 'saved') saveStatus.value = null }, 2000)
-}
-
-async function initialSync() {
-  const days = syncDaysBack.value
-  const msg = onboarding.value
-    ? `This will import ${days} days of trading history from Tastytrade.\n\nThis may take a minute. Continue?`
-    : `Initial Sync will CLEAR the existing database and rebuild from scratch.\n\nThis will fetch ${days} days of transactions and may take several minutes.\n\nAre you sure you want to continue?`
-  if (!confirm(msg)) return
-
-  initialSyncing.value = true
-  try {
-    const response = await Auth.authFetch('/api/sync/initial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start_date: syncStartDate.value }),
-    })
-    if (!response.ok) throw new Error(`Initial sync failed: ${response.statusText}`)
-    const result = await response.json()
-
-    if (onboarding.value) {
-      importResult.value = result
-      return
-    }
-    showNotification(
-      `Initial sync completed! ${result.transactions_processed || 0} transactions, ` +
-      `${result.orders_assembled || 0} orders in ${result.groups_processed || 0} groups`,
-      'success',
-    )
-  } catch (error) {
-    showNotification('Initial sync failed: ' + error.message, 'error')
-  } finally {
-    initialSyncing.value = false
-  }
-}
-
-function toggleConsent() {
-  consentAcknowledged.value = !consentAcknowledged.value
-  if (consentAcknowledged.value) {
-    localStorage.setItem('dataConsentAcknowledged', 'true')
-  } else {
-    localStorage.removeItem('dataConsentAcknowledged')
-  }
-}
 
 function showNotification(message, type) {
   notification.value = { message, type }
   setTimeout(() => { notification.value = null }, 3000)
 }
+
+// --- Composables ---
+const {
+  connectionStatus, providerSecret, refreshToken, savingCredentials, deletingCredentials,
+  onboarding, authEnabled, connecting, consentAcknowledged,
+  checkConnection, connectTastytrade, disconnectTastytrade,
+  saveCredentials, deleteCredentials, toggleConsent,
+} = useSettingsConnection(Auth, { showNotification })
+
+const {
+  targets, saveStatus,
+  creditStrategies, debitStrategies, mixedStrategies, equityStrategies,
+  loadTargets, debouncedSaveTargets, resetToDefaults,
+} = useSettingsTargets(Auth, { showNotification })
+
+const {
+  tags, editingTag, editName, editColor, deletingTagId,
+  loadTags, startEditTag, cancelEditTag, saveTag, deleteTag,
+} = useSettingsTags(Auth, { showNotification })
+
+const {
+  syncStartDate, syncMinDate, syncMaxDate, initialSyncing, importResult,
+  syncDaysBack, goToPositions, initialSync,
+} = useSettingsSync(Auth, { showNotification, onboarding, router })
+
+const {
+  privacyMode, rollAlerts,
+  loadRollAlerts, saveRollAlerts, savePrivacyMode, loadPrivacyMode,
+} = useSettingsPreferences({ saveStatus })
 
 // --- Lifecycle ---
 onMounted(async () => {
@@ -392,7 +67,7 @@ onMounted(async () => {
   await loadTargets()
   await loadTags()
   loadRollAlerts()
-  privacyMode.value = localStorage.getItem('privacyMode') || 'off'
+  loadPrivacyMode()
   consentAcknowledged.value = localStorage.getItem('dataConsentAcknowledged') === 'true'
 })
 

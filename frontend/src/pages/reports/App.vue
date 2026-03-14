@@ -1,267 +1,57 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatPercent } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
+import { useReportsFilters } from './useReportsFilters'
+import { useReportsData } from './useReportsData'
 
 const Auth = useAuth()
 
-// --- State ---
-const accounts = ref([])
-const selectedAccount = ref('')
-const loading = ref(true)
+// ==================== COMPOSABLES ====================
+// Filters must be initialized first so getActiveStrategies is available for data composable.
+// onFilterChange is wired after useReportsData via lateBindFilterChange.
+let lateBindFilterChange = () => {}
+const {
+  filterDirection, filterType, filterShares, filterStrategies,
+  strategyDropdownOpen,
+  allStrategyNames, activeStrategyCount, totalStrategyCount,
+  getActiveStrategies,
+  toggleFilter, toggleShares, toggleStrategyPick, clearStrategyPicks,
+  saveFilters, loadSavedFilters,
+} = useReportsFilters({ onFilterChange: () => lateBindFilterChange() })
 
-// Date range filters
-const exitFrom = ref('')
-const exitTo = ref('')
+const {
+  accounts, selectedAccount, loading,
+  exitFrom, exitTo,
+  sortColumn, sortDirection,
+  summary, strategyBreakdown,
+  columns,
+  getAccountSymbol,
+  loadAccounts, fetchReport,
+  sortBreakdown,
+  onAccountChange, onDateFilterUpdate,
+  loadSavedState,
+} = useReportsData(Auth, { getActiveStrategies })
 
-// Category-based filtering
-const filterDirection = ref([])   // 'bullish', 'bearish', 'neutral'
-const filterType = ref([])        // 'credit', 'debit'
-const filterShares = ref(false)
-const filterStrategies = ref([])   // explicit strategy picks (overrides direction/type)
-const strategyDropdownOpen = ref(false)
+lateBindFilterChange = fetchReport
 
-// Sorting
-const sortColumn = ref('totalPnl')
-const sortDirection = ref('desc')
-
-// Report data
-const summary = ref({
-  totalPnl: 0, totalTrades: 0, wins: 0, losses: 0,
-  winRate: 0, avgPnl: 0, avgWin: 0, avgLoss: 0,
-  largestWin: 0, largestLoss: 0, avgMaxRisk: 0, avgMaxReward: 0,
-})
-const strategyBreakdown = ref([])
-
-
-// --- Computed ---
-const allStrategyNames = computed(() => Object.keys(STRATEGY_CATEGORIES).sort())
-const activeStrategyCount = computed(() => getActiveStrategies().length)
-const totalStrategyCount = computed(() => Object.keys(STRATEGY_CATEGORIES).length)
-
-// --- Date filter handler ---
-function onDateFilterUpdate({ from, to }) {
-  exitFrom.value = from || ''
-  exitTo.value = to || ''
-  fetchReport()
-}
-
-// --- Methods ---
-function getAccountSymbol(accountNumber) {
-  const account = accounts.value.find(a => a.account_number === accountNumber)
-  if (!account) return '?'
-  const name = (account.account_name || '').toUpperCase()
-  if (name.includes('ROTH')) return 'R'
-  if (name.includes('INDIVIDUAL')) return 'I'
-  if (name.includes('TRADITIONAL')) return 'T'
-  return name.charAt(0) || '?'
-}
-
-function loadSavedFilters() {
-  const savedAccount = localStorage.getItem('trade_journal_selected_account')
-  if (savedAccount !== null) selectedAccount.value = savedAccount
-
-  // Date filter state is managed by the DateFilter component via localStorage.
-  // exitFrom/exitTo are set on the initial @update emit from DateFilter.
-
-  const savedFilters = localStorage.getItem('reports_category_filters')
-  if (savedFilters) {
-    try {
-      const parsed = JSON.parse(savedFilters)
-      filterDirection.value = parsed.direction || []
-      filterType.value = parsed.type || []
-      filterShares.value = parsed.shares || false
-      filterStrategies.value = parsed.strategies || []
-    } catch (e) { /* default: no filters */ }
-  }
-
-  const savedSort = localStorage.getItem('reports_sort')
-  if (savedSort) {
-    try {
-      const parsed = JSON.parse(savedSort)
-      sortColumn.value = parsed.column || 'totalPnl'
-      sortDirection.value = parsed.direction || 'desc'
-    } catch (e) { /* default sort */ }
-  }
-}
-
-function saveFilters() {
-  localStorage.setItem('reports_category_filters', JSON.stringify({
-    direction: filterDirection.value,
-    type: filterType.value,
-    shares: filterShares.value,
-    strategies: filterStrategies.value,
-  }))
-}
-
-function onAccountChange() {
-  localStorage.setItem('trade_journal_selected_account', selectedAccount.value)
-  fetchReport()
-}
-
-function toggleFilter(category, value) {
-  filterStrategies.value = []  // clear explicit picks when using category filters
-  if (category === 'direction') {
-    const idx = filterDirection.value.indexOf(value)
-    if (idx >= 0) filterDirection.value.splice(idx, 1)
-    else filterDirection.value.push(value)
-  } else if (category === 'type') {
-    const idx = filterType.value.indexOf(value)
-    if (idx >= 0) filterType.value.splice(idx, 1)
-    else filterType.value = [value]
-  }
-  saveFilters()
-  fetchReport()
-}
-
-function toggleShares() {
-  filterStrategies.value = []  // clear explicit picks when using category filters
-  filterShares.value = !filterShares.value
-  saveFilters()
-  fetchReport()
-}
-
-function getActiveStrategies() {
-  // If explicit strategy picks are set, use those directly
-  if (filterStrategies.value.length > 0) return [...filterStrategies.value]
-
-  const noDir = filterDirection.value.length === 0
-  const noType = filterType.value.length === 0
-
-  // No filters active — return empty to include all groups (including Custom, Shares, etc.)
-  if (noDir && noType && !filterShares.value) return []
-
-  const strategies = []
-  for (const [strategy, cat] of Object.entries(STRATEGY_CATEGORIES)) {
-    if (cat.isShares) {
-      if (filterShares.value) strategies.push(strategy)
-      continue
-    }
-    const dirMatch = noDir || filterDirection.value.includes(cat.direction)
-    const typeMatch = noType || filterType.value.includes(cat.type)
-    if (dirMatch && typeMatch) strategies.push(strategy)
-  }
-  return strategies
-}
-
-function toggleStrategyPick(strategy) {
-  const idx = filterStrategies.value.indexOf(strategy)
-  if (idx >= 0) filterStrategies.value.splice(idx, 1)
-  else filterStrategies.value.push(strategy)
-  // Clear direction/type/shares when using explicit picks
-  if (filterStrategies.value.length > 0) {
-    filterDirection.value = []
-    filterType.value = []
-    filterShares.value = false
-  }
-  saveFilters()
-  fetchReport()
-}
-
-async function loadAccounts() {
-  try {
-    const response = await Auth.authFetch('/api/accounts')
-    const data = await response.json()
-    accounts.value = (data.accounts || []).sort((a, b) => {
-      const order = (name) => {
-        const u = (name || '').toUpperCase()
-        if (u.includes('ROTH')) return 1
-        if (u.includes('INDIVIDUAL')) return 2
-        if (u.includes('TRADITIONAL')) return 3
-        return 4
-      }
-      return order(a.account_name) - order(b.account_name)
-    })
-  } catch (error) {
-    console.error('Error loading accounts:', error)
-  }
-}
-
-async function fetchReport() {
-  loading.value = true
-  try {
-    const params = new URLSearchParams()
-    if (selectedAccount.value) params.append('account_number', selectedAccount.value)
-    if (exitFrom.value) params.append('exit_from', exitFrom.value)
-    if (exitTo.value) params.append('exit_to', exitTo.value)
-    params.append('strategies', getActiveStrategies().join(','))
-
-    const response = await Auth.authFetch(`/api/reports/performance?${params}`)
-    const data = await response.json()
-
-    if (data.error) { console.error('Report error:', data.error); return }
-
-    summary.value = data.summary || summary.value
-    strategyBreakdown.value = data.breakdown || []
-    applySortToBreakdown()
-  } catch (error) {
-    console.error('Error fetching report:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-function sortBreakdown(column) {
-  if (sortColumn.value === column) {
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortColumn.value = column
-    sortDirection.value = column === 'strategy' ? 'asc' : 'desc'
-  }
-  applySortToBreakdown()
-  localStorage.setItem('reports_sort', JSON.stringify({
-    column: sortColumn.value,
-    direction: sortDirection.value,
-  }))
-}
-
-function applySortToBreakdown() {
-  strategyBreakdown.value.sort((a, b) => {
-    let aVal = a[sortColumn.value]
-    let bVal = b[sortColumn.value]
-    if (sortColumn.value === 'strategy') {
-      aVal = (aVal || '').toLowerCase()
-      bVal = (bVal || '').toLowerCase()
-    } else {
-      aVal = aVal || 0
-      bVal = bVal || 0
-    }
-    if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
-    if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
-    return 0
-  })
-}
-
-// Close dropdown on outside click
+// ==================== DROPDOWN CLOSE ====================
 function onDocumentClick(e) {
   if (strategyDropdownOpen.value && !e.target.closest('.strategy-dropdown-wrapper')) {
     strategyDropdownOpen.value = false
   }
 }
 
-// --- Lifecycle ---
+// ==================== LIFECYCLE ====================
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
   await loadAccounts()
+  loadSavedState()
   loadSavedFilters()
   await fetchReport()
 })
 onUnmounted(() => document.removeEventListener('click', onDocumentClick))
-
-// Sortable columns config
-const columns = [
-  { key: 'strategy', label: 'Strategy', width: 'w-48', align: '' },
-  { key: 'totalTrades', label: 'Trades', width: 'w-28', align: 'text-center justify-center' },
-  { key: 'winRate', label: 'Win Rate', width: 'w-24', align: 'text-right justify-end' },
-  { key: 'totalPnl', label: 'Total P&L', width: 'w-32', align: 'text-right justify-end' },
-  { key: 'avgPnl', label: 'Avg P&L', width: 'w-28', align: 'text-right justify-end' },
-  { key: 'avgWin', label: 'Avg Win', width: 'w-28', align: 'text-right justify-end' },
-  { key: 'avgLoss', label: 'Avg Loss', width: 'w-28', align: 'text-right justify-end' },
-  { key: 'largestWin', label: 'Best', width: 'w-28', align: 'text-right justify-end' },
-  { key: 'largestLoss', label: 'Worst', width: 'w-28', align: 'text-right justify-end' },
-]
 </script>
 
 <template>
