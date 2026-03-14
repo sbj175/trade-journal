@@ -208,10 +208,10 @@ onUnmounted(() => {
             <span class="w-6 mr-2"></span>
             <span class="w-8 mr-3"></span>
             <span class="w-56 flex items-center gap-2">
-              <span v-if="leg.derivation_type" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/15 text-tv-blue border border-tv-blue/20 uppercase">
+              <span v-if="leg.entry_date" class="text-tv-muted text-xs">{{ formatDate(leg.entry_date) }}</span>
+              <span v-if="leg.derivation_type" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-muted/15 text-tv-muted border border-tv-muted/20 uppercase">
                 {{ leg.derivation_type }}
               </span>
-              <span v-if="leg.entry_date" class="text-tv-muted text-xs">{{ formatDate(leg.entry_date) }}</span>
             </span>
             <span class="w-20 text-right font-medium"
                   :class="leg.quantity_direction === 'Long' ? 'text-tv-green' : 'text-tv-red'">
