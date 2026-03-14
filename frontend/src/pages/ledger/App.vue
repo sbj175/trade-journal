@@ -506,6 +506,7 @@ function _addToLegMap(map, lot, disposition, qty, closings) {
       totalCostBasis: 0,
       totalProceeds: 0,
       totalRealized: 0,
+      totalFees: 0,
       entryDate: null,
       closeDate: null,
       lotCount: 0,
@@ -521,10 +522,13 @@ function _addToLegMap(map, lot, disposition, qty, closings) {
   const splitQty = Math.abs(qty)
   const proportion = totalLotQty > 0 ? splitQty / totalLotQty : 1
   agg.totalCostBasis += (lot.cost_basis || 0) * proportion
+  // Fees: proportional opening fees + closing fees for these specific closings
+  agg.totalFees += (lot.opening_fees || 0) * proportion
   // Proceeds from these specific closings
   for (const c of closings) {
     agg.totalProceeds += c.quantity_closed * (c.closing_price || 0) * multiplier
     agg.totalRealized += c.realized_pnl || 0
+    agg.totalFees += c.fees || 0
   }
   if (!agg.entryDate || (lot.entry_date && lot.entry_date < agg.entryDate)) {
     agg.entryDate = lot.entry_date
@@ -1111,6 +1115,7 @@ function getSortLabel() {
                 <span class="w-24 text-right">Entry Price</span>
                 <span class="w-24 text-right ml-2">Close Price</span>
                 <span class="flex-1 ml-3">Close Status</span>
+                <span class="w-20 text-right">Fees</span>
               </div>
 
               <!-- Section A: Equity Aggregate -->
@@ -1129,6 +1134,7 @@ function getSortLabel() {
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
                     <span class="w-24 text-right ml-2"></span>
                     <span class="flex-1 ml-3"></span>
+                    <span class="w-20 text-right"></span>
                   </div>
                 </div>
               </template>
@@ -1169,6 +1175,10 @@ function getSortLabel() {
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
                     <span class="w-24 text-right text-tv-muted ml-2">{{ (leg.expired || leg.exercised || leg.assigned) ? '\u2014' : (leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '') }}</span>
                     <span class="flex-1 ml-3 text-tv-muted text-xs">{{ leg.closeStatus || '' }}</span>
+                    <span class="w-20 text-right text-tv-muted"
+                          :class="leg.totalFees < 0 ? 'text-tv-red' : ''">
+                      {{ leg.totalFees ? '$' + formatNumber(Math.abs(leg.totalFees)) : '' }}
+                    </span>
                   </div>
                 </div>
               </template>

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
-from src.database.models import PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
+from src.database.models import PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RawTransaction, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
@@ -79,6 +79,32 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
 
     closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
 
+    # Batch-load fees from RawTransaction for opening + closing transaction IDs
+    all_txn_ids = set()
+    for lots in lots_by_group.values():
+        for lot in lots:
+            if lot.transaction_id:
+                all_txn_ids.add(lot.transaction_id)
+    for lot_closings in closings_by_lot.values():
+        for c in lot_closings:
+            if c.closing_transaction_id:
+                all_txn_ids.add(c.closing_transaction_id)
+
+    fees_by_txn: Dict[str, float] = {}
+    if all_txn_ids:
+        with db.get_session() as session:
+            fee_rows = session.query(
+                RawTransaction.id,
+                RawTransaction.commission,
+                RawTransaction.regulatory_fees,
+                RawTransaction.clearing_fees,
+            ).filter(
+                RawTransaction.id.in_(list(all_txn_ids)),
+            ).all()
+            for txn_id, commission, reg_fees, clearing in fee_rows:
+                total = (commission or 0) + (reg_fees or 0) + (clearing or 0)
+                fees_by_txn[txn_id] = round(total, 4)
+
     # Build response
     result = []
     for g in groups_raw:
@@ -87,6 +113,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
 
         lots_data = []
         total_realized = 0.0
+        total_fees = 0.0
         open_lot_count = 0
 
         for lot in lots:
@@ -105,7 +132,10 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                 open_lot_count += 1
 
             closings_data = []
+            lot_total_fees = fees_by_txn.get(lot.transaction_id, 0)
             for c in lot_closings:
+                closing_fees = fees_by_txn.get(c.closing_transaction_id, 0) if c.closing_transaction_id else 0
+                lot_total_fees += closing_fees
                 closings_data.append({
                     'closing_id': c.closing_id,
                     'quantity_closed': c.quantity_closed,
@@ -113,6 +143,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                     'closing_date': str(c.closing_date) if c.closing_date else None,
                     'closing_type': c.closing_type,
                     'realized_pnl': c.realized_pnl,
+                    'fees': closing_fees,
                 })
 
             lots_data.append({
@@ -136,8 +167,11 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                 'cost_basis': cost_basis,
                 'realized_pnl': lot_realized,
                 'total_pnl': lot_realized,
+                'fees': round(lot_total_fees, 4),
+                'opening_fees': fees_by_txn.get(lot.transaction_id, 0),
                 'closings': closings_data,
             })
+            total_fees += lot_total_fees
 
         rolled_from = g.get('rolled_from_group_id')
         has_roll_chain = bool(rolled_from) or (gid in roll_source_ids)
@@ -156,6 +190,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'total_pnl': total_realized,
             'realized_pnl': total_realized,
             'unrealized_pnl': 0.0,
+            'total_fees': round(total_fees, 4),
             'lot_count': len(lots),
             'open_lot_count': open_lot_count,
             'lots': lots_data,
