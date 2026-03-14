@@ -1167,7 +1167,7 @@ function getSortLabel() {
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3"
                           :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50'
                             : leg.expired ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
-                            : leg.exercised ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50'
+                            : leg.exercised ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
                             : leg.assigned ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50'
                             : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
                       {{ leg.expired ? 'EXPIRED' : leg.exercised ? 'EXERCISED' : leg.assigned ? 'ASSIGNED' : leg.status }}
