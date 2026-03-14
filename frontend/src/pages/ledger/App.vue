@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { STRATEGY_CATEGORIES } from '@/lib/constants'
 import { formatNumber, formatDate, formatExpirationShort } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
+import { groupedOptionLegs, openEquityLots, equityAggregate, groupInitialPremium } from './useLedgerLots'
+import { useLedgerGroups } from './useLedgerGroups'
 
 const Auth = useAuth()
 const route = useRoute()
@@ -16,32 +17,45 @@ const accounts = ref([])
 const filteredGroups = ref([])
 const selectedAccount = ref('')
 const filterUnderlying = ref('')
-const dateFrom = ref(null)  // ISO date string or null
-const dateTo = ref(null)    // ISO date string or null
+const dateFrom = ref(null)
+const dateTo = ref(null)
 const showOpen = ref(true)
 const showClosed = ref(true)
 const filterRollsOnly = ref(false)
-const rollChainModal = ref(null)  // group_id of active modal, or null
+const rollChainModal = ref(null)
 const sortColumn = ref('opening_date')
 const sortDirection = ref('desc')
 const loading = ref(true)
 const stats = ref({ openCount: 0, closedCount: 0 })
 const filterDirection = ref([])
 const filterType = ref([])
-const groupNotes = ref({})
-const availableTags = ref([])
-const tagPopoverGroup = ref(null)
-const tagSearch = ref('')
 const dateFilterRef = ref(null)
 const filterStrategy = ref([])
 const filterTagIds = ref([])
 const strategyDropdownOpen = ref(false)
 const tagDropdownOpen = ref(false)
 
-// Internal (non-reactive)
-const noteSaveTimers = {}
+// ==================== COMPOSABLES ====================
+const {
+  groupNotes, availableTags, tagPopoverGroup, tagSearch,
+  filteredTagSuggestions, uniqueStrategies,
+  loadAccounts, fetchLedger,
+  sortGroups, applyFilters, toggleFilter, toggleStrategyFilter, toggleTagFilter,
+  onAccountChange, onSymbolFilterApply, clearSymbolFilter, onDateFilterUpdate,
+  saveState,
+  updateGroupStrategy, onGroupHeaderClick, getSortLabel,
+  getAccountSymbol, getAccountBadgeClass,
+  loadNotes, getGroupNote, updateGroupNote,
+  loadAvailableTags, openTagPopover, closeTagPopover,
+  addTagToGroup, removeTagFromGroup, handleTagInput,
+} = useLedgerGroups(Auth, {
+  groups, filteredGroups, accounts, selectedAccount, loading,
+  filterUnderlying, filterDirection, filterType, filterStrategy, filterTagIds,
+  filterRollsOnly, showOpen, showClosed, sortColumn, sortDirection,
+  dateFrom, dateTo, stats,
+})
 
-// Close filter dropdowns on outside click
+// ==================== DROPDOWN CLOSE ====================
 function onDocumentClick(e) {
   if (strategyDropdownOpen.value && !e.target.closest('.strategy-dropdown-wrapper')) {
     strategyDropdownOpen.value = false
@@ -53,30 +67,10 @@ function onDocumentClick(e) {
 onMounted(() => document.addEventListener('click', onDocumentClick))
 onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
-// ==================== COMPUTED ====================
-const filteredTagSuggestions = computed(() => {
-  const search = (tagSearch.value || '').toLowerCase()
-  const group = groups.value.find(g => g.group_id === tagPopoverGroup.value)
-  const appliedIds = (group?.tags || []).map(t => t.id)
-  return availableTags.value
-    .filter(t => !appliedIds.includes(t.id))
-    .filter(t => !search || t.name.toLowerCase().includes(search))
-})
-
-
-const uniqueStrategies = computed(() => {
-  const set = new Set()
-  for (const g of groups.value) {
-    if (g.strategy_label) set.add(g.strategy_label)
-  }
-  return [...set].sort()
-})
-
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
   await loadAccounts()
 
-  // Restore state from localStorage
   const saved = localStorage.getItem('ledger_state')
   if (saved) {
     try {
@@ -95,7 +89,6 @@ onMounted(async () => {
   const savedAccount = localStorage.getItem('trade_journal_selected_account')
   if (savedAccount) selectedAccount.value = savedAccount
 
-  // URL params override saved state (via vue-router query)
   const underlyingParam = route.query.underlying
   const groupParam = route.query.group
   if (underlyingParam) {
@@ -111,10 +104,8 @@ onMounted(async () => {
   await loadNotes()
   await loadAvailableTags()
 
-  // Auto-expand and scroll to a specific group if linked from Positions page
   if (groupParam) {
     let target = filteredGroups.value.find(g => g.group_id === groupParam)
-    // If target not visible, the date filter may be hiding it — clear and retry
     if (!target && (dateFrom.value || dateTo.value)) {
       if (dateFilterRef.value) dateFilterRef.value.clear()
       applyFilters()
@@ -128,628 +119,6 @@ onMounted(async () => {
     }
   }
 })
-
-// ==================== DATA FETCHING ====================
-async function loadAccounts() {
-  try {
-    const response = await Auth.authFetch('/api/accounts')
-    const data = await response.json()
-    const list = data.accounts || []
-    list.sort((a, b) => {
-      const getOrder = (name) => {
-        const n = (name || '').toUpperCase()
-        if (n.includes('ROTH')) return 1
-        if (n.includes('INDIVIDUAL')) return 2
-        if (n.includes('TRADITIONAL')) return 3
-        return 4
-      }
-      return getOrder(a.account_name) - getOrder(b.account_name)
-    })
-    accounts.value = list
-  } catch (error) {
-    console.error('Error loading accounts:', error)
-  }
-}
-
-async function fetchLedger() {
-  loading.value = true
-  try {
-    const params = new URLSearchParams()
-    if (selectedAccount.value) params.set('account_number', selectedAccount.value)
-    const url = '/api/ledger' + (params.toString() ? '?' + params.toString() : '')
-    const response = await Auth.authFetch(url)
-    const data = await response.json()
-    groups.value = data.map(g => ({ ...g, expanded: false, _editingStrategy: false }))
-    applyFilters()
-  } catch (error) {
-    console.error('Error fetching ledger:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-
-// ==================== FILTERING & SORTING ====================
-function sortGroups(column) {
-  if (sortColumn.value === column) {
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortColumn.value = column
-    if (column === 'opening_date' || column === 'closing_date' || column === 'realized_pnl' || column === 'total_pnl') {
-      sortDirection.value = 'desc'
-    } else {
-      sortDirection.value = 'asc'
-    }
-  }
-  applyFilters()
-  saveState()
-}
-
-function applyFilters() {
-  let filtered = [...groups.value]
-
-  if (filterUnderlying.value) {
-    const sym = filterUnderlying.value.toUpperCase()
-    filtered = filtered.filter(g => (g.underlying || '').toUpperCase() === sym)
-  }
-
-  filtered = filtered.filter(g => groupMatchesCategoryFilters(g))
-
-  if (filterStrategy.value.length > 0) {
-    filtered = filtered.filter(g => filterStrategy.value.includes(g.strategy_label))
-  }
-
-  if (filterTagIds.value.length > 0) {
-    filtered = filtered.filter(g =>
-      (g.tags || []).some(t => filterTagIds.value.includes(t.id))
-    )
-  }
-
-  if (filterRollsOnly.value) {
-    filtered = filtered.filter(g => g.has_roll_chain)
-  }
-
-  if (!showOpen.value) filtered = filtered.filter(g => g.status !== 'OPEN')
-  if (!showClosed.value) filtered = filtered.filter(g => g.status !== 'CLOSED')
-
-  if (dateFrom.value || dateTo.value) {
-    const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
-    const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
-    filtered = filtered.filter(g => {
-      const opened = g.opening_date ? new Date(g.opening_date) : null
-      const closed = g.closing_date ? new Date(g.closing_date) : null
-      const inRange = (d) => {
-        if (!d) return false
-        if (from && d < from) return false
-        if (to && d > to) return false
-        return true
-      }
-      const lastActivity = g.last_activity_date ? new Date(g.last_activity_date) : null
-      if (inRange(opened) || inRange(closed) || inRange(lastActivity)) return true
-      // Check if any lot has activity (entry or closing) within the range
-      return (g.lots || []).some(lot => {
-        if (inRange(lot.entry_date ? new Date(lot.entry_date) : null)) return true
-        return (lot.closings || []).some(c => inRange(c.closing_date ? new Date(c.closing_date) : null))
-      })
-    })
-  }
-
-  // Sort
-  filtered.sort((a, b) => {
-    let va, vb
-    const col = sortColumn.value
-    if (col === 'opening_date' || col === 'closing_date') {
-      va = a[col] || ''
-      vb = b[col] || ''
-    } else if (col === 'underlying') {
-      va = a.underlying || ''
-      vb = b.underlying || ''
-    } else if (col === 'strategy_label') {
-      va = a.strategy_label || ''
-      vb = b.strategy_label || ''
-    } else if (col === 'status') {
-      va = a.status || ''
-      vb = b.status || ''
-    } else if (col === 'lot_count') {
-      va = a.lot_count || 0
-      vb = b.lot_count || 0
-    } else if (col === 'initial_premium') {
-      va = groupInitialPremium(a)
-      vb = groupInitialPremium(b)
-    } else if (col === 'realized_pnl') {
-      va = a.realized_pnl || 0
-      vb = b.realized_pnl || 0
-    } else if (col === 'total_pnl') {
-      va = a.total_pnl || 0
-      vb = b.total_pnl || 0
-    } else {
-      va = a[col] || ''
-      vb = b[col] || ''
-    }
-
-    let cmp = 0
-    if (typeof va === 'number' && typeof vb === 'number') {
-      cmp = va - vb
-    } else {
-      cmp = String(va).localeCompare(String(vb))
-    }
-    return sortDirection.value === 'desc' ? -cmp : cmp
-  })
-
-  filteredGroups.value = filtered
-  computeStats()
-}
-
-function computeStats() {
-  let openCount = 0, closedCount = 0
-  for (const g of filteredGroups.value) {
-    if (g.status === 'OPEN') openCount++
-    else closedCount++
-  }
-  stats.value = { openCount, closedCount }
-}
-
-function toggleFilter(category, value) {
-  if (category === 'direction') {
-    const idx = filterDirection.value.indexOf(value)
-    if (idx >= 0) {
-      filterDirection.value.splice(idx, 1)
-    } else {
-      filterDirection.value.push(value)
-    }
-  } else if (category === 'type') {
-    const idx = filterType.value.indexOf(value)
-    if (idx >= 0) {
-      filterType.value.splice(idx, 1)
-    } else {
-      filterType.value = [value]
-    }
-  }
-  saveState()
-  applyFilters()
-}
-
-function toggleStrategyFilter(strategy) {
-  const idx = filterStrategy.value.indexOf(strategy)
-  if (idx >= 0) filterStrategy.value.splice(idx, 1)
-  else filterStrategy.value.push(strategy)
-  saveState()
-  applyFilters()
-}
-
-function toggleTagFilter(tagId) {
-  const idx = filterTagIds.value.indexOf(tagId)
-  if (idx >= 0) filterTagIds.value.splice(idx, 1)
-  else filterTagIds.value.push(tagId)
-  saveState()
-  applyFilters()
-}
-
-function groupMatchesCategoryFilters(group) {
-  const strategy = group.strategy_label || ''
-  const noDirectionFilter = filterDirection.value.length === 0
-  const noTypeFilter = filterType.value.length === 0
-  if (noDirectionFilter && noTypeFilter) return true
-  const cat = STRATEGY_CATEGORIES[strategy]
-  if (!cat) return noDirectionFilter && noTypeFilter
-  if (cat.isShares) return noDirectionFilter && noTypeFilter
-  const directionMatch = noDirectionFilter || filterDirection.value.includes(cat.direction)
-  const typeMatch = noTypeFilter || filterType.value.includes(cat.type)
-  return directionMatch && typeMatch
-}
-
-function cleanUrlParams() {
-  const url = new URL(window.location)
-  if (url.searchParams.has('underlying')) {
-    url.searchParams.delete('underlying')
-    window.history.replaceState({}, '', url.pathname + (url.search || ''))
-  }
-}
-
-function onAccountChange() {
-  localStorage.setItem('trade_journal_selected_account', selectedAccount.value)
-  fetchLedger()
-}
-
-function onSymbolFilterApply() {
-  applyFilters()
-  localStorage.setItem('trade_journal_selected_underlying', filterUnderlying.value || '')
-  cleanUrlParams()
-}
-
-function clearSymbolFilter() {
-  filterUnderlying.value = ''
-  applyFilters()
-  localStorage.setItem('trade_journal_selected_underlying', '')
-  cleanUrlParams()
-}
-
-function onDateFilterUpdate({ from, to }) {
-  dateFrom.value = from
-  dateTo.value = to
-  applyFilters()
-}
-
-function saveState() {
-  localStorage.setItem('ledger_state', JSON.stringify({
-    showOpen: showOpen.value,
-    showClosed: showClosed.value,
-    sortColumn: sortColumn.value,
-    sortDirection: sortDirection.value,
-    filterDirection: filterDirection.value,
-    filterType: filterType.value,
-    filterStrategy: filterStrategy.value,
-    filterTagIds: filterTagIds.value,
-  }))
-}
-
-// ==================== GROUP MANAGEMENT ====================
-function sortedLots(group) {
-  return (group.lots || []).slice().sort((a, b) => {
-    const aOpen = a.status !== 'CLOSED' ? 0 : 1
-    const bOpen = b.status !== 'CLOSED' ? 0 : 1
-    if (aOpen !== bOpen) return aOpen - bOpen
-
-    if (aOpen === 0) {
-      // Open/partial: expiration asc, strike desc, entry date desc
-      const aExp = a.expiration || ''
-      const bExp = b.expiration || ''
-      if (aExp !== bExp) return aExp.localeCompare(bExp)
-      if ((a.strike || 0) !== (b.strike || 0)) return (b.strike || 0) - (a.strike || 0)
-      return (b.entry_date || '').localeCompare(a.entry_date || '')
-    }
-
-    // Closed: expiration desc, strike desc, entry date desc
-    const aExp = a.expiration || ''
-    const bExp = b.expiration || ''
-    if (aExp !== bExp) return bExp.localeCompare(aExp)
-    if ((a.strike || 0) !== (b.strike || 0)) return (b.strike || 0) - (a.strike || 0)
-    return (b.entry_date || '').localeCompare(a.entry_date || '')
-  })
-}
-
-function sortedOptionLots(group) {
-  return sortedLots(group).filter(l => l.instrument_type !== 'EQUITY' || l.status === 'CLOSED')
-}
-
-function groupedOptionLegs(group) {
-  const lots = sortedOptionLots(group)
-  const map = new Map()
-
-  for (const lot of lots) {
-    // For closed lots, determine the closing disposition(s)
-    // If a lot has closings with different types, split it across disposition groups
-    const closings = lot.closings || []
-    const isOpen = lot.status !== 'CLOSED'
-
-    if (isOpen || closings.length === 0) {
-      // Open lots or lots with no closing detail: group by strike only
-      const disposition = isOpen ? 'OPEN' : 'CLOSED'
-      _addToLegMap(map, lot, disposition, isOpen ? (lot.remaining_quantity ?? lot.quantity) : lot.quantity, closings)
-    } else {
-      // Closed lots: group closings by type, split lot across dispositions
-      const byType = {}
-      for (const c of closings) {
-        const dtype = c.closing_type || 'MANUAL'
-        if (!byType[dtype]) byType[dtype] = []
-        byType[dtype].push(c)
-      }
-      const types = Object.keys(byType)
-      if (types.length === 1) {
-        // All closings same type — single row
-        _addToLegMap(map, lot, types[0], lot.quantity, closings)
-      } else {
-        // Mixed dispositions — split into separate rows
-        for (const [dtype, dClosings] of Object.entries(byType)) {
-          const splitQty = dClosings.reduce((s, c) => s + c.quantity_closed, 0)
-          const signedQty = lot.quantity > 0 ? splitQty : -splitQty
-          _addToLegMap(map, lot, dtype, signedQty, dClosings)
-        }
-      }
-    }
-  }
-
-  const result = [...map.values()]
-  // Compute derived fields
-  for (const leg of result) {
-    const multiplier = leg.option_type ? 100 : 1
-    const originalQty = Math.abs(leg.totalQuantity)
-    leg.avgEntryPrice = originalQty > 0 ? Math.abs(leg.totalCostBasis) / originalQty / multiplier : 0
-    leg.expired = leg.disposition === 'EXPIRATION'
-    leg.exercised = leg.disposition === 'EXERCISE'
-    leg.assigned = leg.disposition === 'ASSIGNMENT'
-    // Close price: not meaningful for expiration/exercise/assignment
-    if (leg.expired || leg.exercised || leg.assigned) {
-      leg.avgClosePrice = null
-    } else if (leg.totalProceeds && leg.status === 'CLOSED') {
-      leg.avgClosePrice = originalQty > 0 ? Math.abs(leg.totalProceeds) / originalQty / multiplier : 0
-    } else {
-      leg.avgClosePrice = null
-    }
-    // Build close status text
-    leg.closeStatus = _buildCloseStatus(leg)
-  }
-
-  // Sort: open before closed, then by expiration, then highest strike first,
-  // then disposition (MANUAL before EXERCISE/EXPIRATION)
-  const dispOrder = { OPEN: 0, MANUAL: 1, CLOSED: 1, EXERCISE: 2, ASSIGNMENT: 3, EXPIRATION: 4 }
-  result.sort((a, b) => {
-    const aOpen = a.status !== 'CLOSED' ? 0 : 1
-    const bOpen = b.status !== 'CLOSED' ? 0 : 1
-    if (aOpen !== bOpen) return aOpen - bOpen
-    const aExp = a.expiration || ''
-    const bExp = b.expiration || ''
-    if (aOpen === 0) {
-      if (aExp !== bExp) return aExp.localeCompare(bExp)
-      return (b.strike || 0) - (a.strike || 0)
-    }
-    if (aExp !== bExp) return bExp.localeCompare(aExp)
-    if ((a.strike || 0) !== (b.strike || 0)) return (b.strike || 0) - (a.strike || 0)
-    return (dispOrder[a.disposition] || 9) - (dispOrder[b.disposition] || 9)
-  })
-
-  return result
-}
-
-function _addToLegMap(map, lot, disposition, qty, closings) {
-  const key = `${lot.expiration || '_'}|${lot.strike || '_'}|${lot.option_type || '_'}|${lot.instrument_type || '_'}|${disposition}`
-  if (!map.has(key)) {
-    map.set(key, {
-      key,
-      expiration: lot.expiration,
-      strike: lot.strike,
-      option_type: lot.option_type,
-      instrument_type: lot.instrument_type,
-      disposition,
-      status: disposition === 'OPEN' ? 'OPEN' : 'CLOSED',
-      totalQuantity: 0,
-      totalCostBasis: 0,
-      totalProceeds: 0,
-      totalRealized: 0,
-      totalFees: 0,
-      entryDate: null,
-      closeDate: null,
-      lotCount: 0,
-      lots: [],
-      _closings: [],
-    })
-  }
-  const agg = map.get(key)
-  agg.totalQuantity += qty
-  // Proportional cost basis when splitting
-  const multiplier = lot.option_type ? 100 : 1
-  const totalLotQty = Math.abs(lot.quantity)
-  const splitQty = Math.abs(qty)
-  const proportion = totalLotQty > 0 ? splitQty / totalLotQty : 1
-  agg.totalCostBasis += (lot.cost_basis || 0) * proportion
-  // Fees: proportional opening fees + closing fees for these specific closings
-  agg.totalFees += (lot.opening_fees || 0) * proportion
-  // Proceeds from these specific closings
-  for (const c of closings) {
-    agg.totalProceeds += c.quantity_closed * (c.closing_price || 0) * multiplier
-    agg.totalRealized += c.realized_pnl || 0
-    agg.totalFees += c.fees || 0
-  }
-  if (!agg.entryDate || (lot.entry_date && lot.entry_date < agg.entryDate)) {
-    agg.entryDate = lot.entry_date
-  }
-  for (const c of closings) {
-    if (c.closing_date && (!agg.closeDate || c.closing_date > agg.closeDate)) {
-      agg.closeDate = c.closing_date
-    }
-  }
-  agg.lotCount++
-  agg.lots.push(lot)
-  agg._closings.push(...closings)
-}
-
-function _buildCloseStatus(leg) {
-  if (leg.status !== 'CLOSED' || leg._closings.length === 0) return null
-  const disp = leg.disposition
-  const totalQty = leg._closings.reduce((s, c) => s + c.quantity_closed, 0)
-  // Find the latest closing date and format it
-  let latestDate = null
-  for (const c of leg._closings) {
-    if (c.closing_date && (!latestDate || c.closing_date > latestDate)) {
-      latestDate = c.closing_date
-    }
-  }
-  const dateStr = latestDate ? formatDate(latestDate) : ''
-  const labels = { MANUAL: 'Closed', EXPIRATION: 'Expired', EXERCISE: 'Exercised', ASSIGNMENT: 'Assigned' }
-  const label = labels[disp] || 'Closed'
-  return `${label} (${totalQty}, ${dateStr})`
-}
-
-function groupInitialPremium(group) {
-  return (group.lots || []).reduce((s, l) => s + (l.cost_basis || 0), 0)
-}
-
-function openEquityLots(group) {
-  return (group.lots || []).filter(l => l.instrument_type === 'EQUITY' && l.status !== 'CLOSED')
-    .sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''))
-}
-
-function equityAggregate(group) {
-  const lots = openEquityLots(group)
-  if (lots.length === 0) return null
-  const totalQty = lots.reduce((s, l) => s + (l.remaining_quantity ?? l.quantity), 0)
-  const totalCost = lots.reduce((s, l) => s + (l.cost_basis || 0), 0)
-  return {
-    quantity: totalQty,
-    avgPrice: totalQty !== 0 ? Math.abs(totalCost) / Math.abs(totalQty) : 0,
-    costBasis: totalCost,
-    lotCount: lots.length,
-  }
-}
-
-function lotCloseDate(lot) {
-  const closings = lot.closings || []
-  if (closings.length === 0) return null
-  return closings.reduce((latest, c) =>
-    !latest || (c.closing_date > latest) ? c.closing_date : latest, null)
-}
-
-function lotCloseSummary(lot) {
-  const closings = lot.closings || []
-  if (closings.length === 0) return null
-  const multiplier = lot.option_type ? 100 : 1
-  let totalQty = 0, totalValue = 0
-  for (const c of closings) {
-    totalQty += c.quantity_closed
-    totalValue += c.quantity_closed * (c.closing_price || 0) * multiplier
-  }
-  return {
-    avgPrice: totalQty > 0 ? totalValue / totalQty / multiplier : 0,
-    proceeds: totalValue,
-  }
-}
-
-async function updateGroupStrategy(group, value) {
-  if (value === group.strategy_label) return
-  try {
-    await Auth.authFetch(`/api/ledger/groups/${group.group_id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategy_label: value }),
-    })
-    group.strategy_label = value
-  } catch (error) {
-    console.error('Error updating strategy:', error)
-  }
-}
-
-// ==================== DISPLAY HELPERS ====================
-function getAccountSymbol(accountNumber) {
-  const account = accounts.value.find(a => a.account_number === accountNumber)
-  if (!account) return '?'
-  const name = (account.account_name || '').toUpperCase()
-  if (name.includes('ROTH')) return 'R'
-  if (name.includes('INDIVIDUAL')) return 'I'
-  if (name.includes('TRADITIONAL')) return 'T'
-  return name.charAt(0) || '?'
-}
-
-function getAccountBadgeClass(accountNumber) {
-  const symbol = getAccountSymbol(accountNumber)
-  if (symbol === 'R') return 'bg-tv-purple/20 text-tv-purple'
-  if (symbol === 'I') return 'bg-tv-blue/20 text-tv-blue'
-  if (symbol === 'T') return 'bg-tv-green/20 text-tv-green'
-  return 'bg-tv-border text-tv-muted'
-}
-
-// ==================== NOTES ====================
-async function loadNotes() {
-  try {
-    const resp = await Auth.authFetch('/api/position-notes')
-    if (resp.ok) {
-      const data = await resp.json()
-      groupNotes.value = data.notes || {}
-    }
-  } catch (error) {
-    console.error('Error loading notes:', error)
-  }
-}
-
-function getGroupNote(group) {
-  return groupNotes.value['group_' + group.group_id] || ''
-}
-
-function updateGroupNote(group, value) {
-  const key = 'group_' + group.group_id
-  groupNotes.value[key] = value
-  if (noteSaveTimers[key]) clearTimeout(noteSaveTimers[key])
-  noteSaveTimers[key] = setTimeout(() => {
-    Auth.authFetch(`/api/position-notes/${encodeURIComponent(key)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note: value }),
-    }).then(res => {
-      if (!res.ok) console.error(`Failed to save group note (HTTP ${res.status})`)
-    }).catch(err => console.error('Error saving group note:', err))
-    delete noteSaveTimers[key]
-  }, 500)
-}
-
-// ==================== ROLL CHAIN ====================
-// ==================== TAGS ====================
-async function loadAvailableTags() {
-  try {
-    const resp = await Auth.authFetch('/api/tags')
-    availableTags.value = await resp.json()
-  } catch (e) { console.error('Error loading tags:', e) }
-}
-
-function openTagPopover(groupId, event) {
-  if (event) event.stopPropagation()
-  tagPopoverGroup.value = tagPopoverGroup.value === groupId ? null : groupId
-  tagSearch.value = ''
-  if (tagPopoverGroup.value) {
-    nextTick(() => {
-      const input = document.getElementById('ledger-tag-input-' + groupId)
-      if (input) input.focus()
-    })
-  }
-}
-
-function closeTagPopover() {
-  tagPopoverGroup.value = null
-  tagSearch.value = ''
-}
-
-async function addTagToGroup(group, nameOrTag) {
-  const payload = typeof nameOrTag === 'string'
-    ? { name: nameOrTag.trim() }
-    : { tag_id: nameOrTag.id }
-  if (payload.name === '' && !payload.tag_id) return
-  try {
-    const resp = await Auth.authFetch(`/api/ledger/groups/${group.group_id}/tags`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const tag = await resp.json()
-    if (!group.tags) group.tags = []
-    if (!group.tags.find(t => t.id === tag.id)) group.tags.push(tag)
-    await loadAvailableTags()
-    tagSearch.value = ''
-  } catch (e) { console.error('Error adding tag:', e) }
-}
-
-async function removeTagFromGroup(group, tagId, event) {
-  if (event) event.stopPropagation()
-  try {
-    await Auth.authFetch(`/api/ledger/groups/${group.group_id}/tags/${tagId}`, { method: 'DELETE' })
-    group.tags = (group.tags || []).filter(t => t.id !== tagId)
-  } catch (e) { console.error('Error removing tag:', e) }
-}
-
-function handleTagInput(event, group) {
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    const search = tagSearch.value.trim()
-    if (!search) return
-    const exactMatch = filteredTagSuggestions.value.find(
-      t => t.name.toLowerCase() === search.toLowerCase()
-    )
-    addTagToGroup(group, exactMatch || search)
-  } else if (event.key === 'Escape') {
-    closeTagPopover()
-  }
-}
-
-function onGroupHeaderClick(group) {
-  group.expanded = !group.expanded
-}
-
-function getSortLabel() {
-  const map = {
-    opening_date: 'Date', underlying: 'Symbol', strategy_label: 'Strategy',
-    status: 'Status', closing_date: 'Closed', total_pnl: 'P&L',
-  }
-  return map[sortColumn.value] || sortColumn.value
-}
-
-
 </script>
 
 <template>
