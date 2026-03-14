@@ -992,13 +992,13 @@ function getSortLabel() {
           <span class="w-24 mr-4 text-lg font-semibold text-tv-text">{{ group.underlying }}</span>
 
           <!-- Strategy Label (inline edit) -->
-          <span class="w-48 mr-4 relative" @click.stop>
+          <span class="w-48 mr-4 relative">
             <template v-if="!group._editingStrategy">
               <span class="flex items-center group/strat">
                 <span class="text-tv-muted text-base truncate flex-1 min-w-0">{{ group.strategy_label || '\u2014' }}</span>
                 <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
                   <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
-                     @click="group._editingStrategy = true"
+                     @click.stop="group._editingStrategy = true"
                      title="Edit strategy label"></i>
                 </span>
               </span>
@@ -1009,6 +1009,7 @@ function getSortLabel() {
                      @keyup.enter="updateGroupStrategy(group, $event.target.value); group._editingStrategy = false"
                      @blur="updateGroupStrategy(group, $event.target.value); group._editingStrategy = false"
                      @keyup.escape="group._editingStrategy = false"
+                     @click.stop
                      @vue:mounted="({ el }) => { el.focus(); el.select() }"
                      class="w-36 bg-tv-bg border border-tv-border text-tv-text text-base px-2 py-1 rounded"
                      placeholder="Strategy label">
