@@ -28,14 +28,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _log_startup_banner():
+    """Log a configuration summary banner at startup."""
+    from src.database.engine import get_dialect
+
+    dialect = get_dialect()
+    db_backend = "PostgreSQL" if dialect == "postgresql" else "SQLite"
+    secret_set = bool(os.environ.get("ADMIN_SECRET"))
+    port = os.environ.get("APP_PORT", os.environ.get("ADMIN_PORT", "8001"))
+
+    lines = [
+        "",
+        "=" * 52,
+        "  OptionLedger Admin v1.0.0",
+        "=" * 52,
+        f"  Database           : {db_backend}",
+        f"  Admin secret       : {'configured' if secret_set else 'NOT SET'}",
+        f"  Port               : {port}",
+        "=" * 52,
+        "",
+    ]
+    for line in lines:
+        logger.info(line)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     admin_db.initialize_database()
-    secret = os.environ.get("ADMIN_SECRET", "")
-    if not secret:
-        logger.warning("ADMIN_SECRET not set — all API requests will be rejected")
-    else:
-        logger.info("Admin dashboard ready (ADMIN_SECRET configured)")
+    _log_startup_banner()
     yield
 
 
