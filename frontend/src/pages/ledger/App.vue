@@ -415,68 +415,64 @@ function sortedOptionLots(group) {
 function groupedOptionLegs(group) {
   const lots = sortedOptionLots(group)
   const map = new Map()
+
   for (const lot of lots) {
-    const key = `${lot.expiration || '_'}|${lot.strike || '_'}|${lot.option_type || '_'}|${lot.instrument_type || '_'}`
-    if (!map.has(key)) {
-      map.set(key, {
-        key,
-        expiration: lot.expiration,
-        strike: lot.strike,
-        option_type: lot.option_type,
-        instrument_type: lot.instrument_type,
-        status: 'CLOSED',
-        totalQuantity: 0,
-        totalCostBasis: 0,
-        totalProceeds: 0,
-        totalRealized: 0,
-        entryDate: null,
-        closeDate: null,
-        lotCount: 0,
-        lots: [],
-      })
-    }
-    const agg = map.get(key)
-    const qty = lot.status !== 'CLOSED' ? (lot.remaining_quantity ?? lot.quantity) : lot.quantity
-    agg.totalQuantity += qty
-    agg.totalCostBasis += lot.cost_basis || 0
-    const closeSummary = lotCloseSummary(lot)
-    if (closeSummary) agg.totalProceeds += closeSummary.proceeds
-    agg.totalRealized += lot.realized_pnl || 0
-    if (!agg.entryDate || (lot.entry_date && lot.entry_date < agg.entryDate)) {
-      agg.entryDate = lot.entry_date
-    }
-    const cd = lotCloseDate(lot)
-    if (cd && (!agg.closeDate || cd > agg.closeDate)) {
-      agg.closeDate = cd
-    }
-    if (lot.status !== 'CLOSED') agg.status = 'OPEN'
+    // For closed lots, determine the closing disposition(s)
+    // If a lot has closings with different types, split it across disposition groups
     const closings = lot.closings || []
-    if (closings.length > 0 && closings.every(c => c.closing_type === 'EXPIRATION')) {
-      agg._hasExpiration = true
-    } else if (closings.length > 0) {
-      agg._hasNonExpiration = true
+    const isOpen = lot.status !== 'CLOSED'
+
+    if (isOpen || closings.length === 0) {
+      // Open lots or lots with no closing detail: group by strike only
+      const disposition = isOpen ? 'OPEN' : 'CLOSED'
+      _addToLegMap(map, lot, disposition, isOpen ? (lot.remaining_quantity ?? lot.quantity) : lot.quantity, closings)
+    } else {
+      // Closed lots: group closings by type, split lot across dispositions
+      const byType = {}
+      for (const c of closings) {
+        const dtype = c.closing_type || 'MANUAL'
+        if (!byType[dtype]) byType[dtype] = []
+        byType[dtype].push(c)
+      }
+      const types = Object.keys(byType)
+      if (types.length === 1) {
+        // All closings same type — single row
+        _addToLegMap(map, lot, types[0], lot.quantity, closings)
+      } else {
+        // Mixed dispositions — split into separate rows
+        for (const [dtype, dClosings] of Object.entries(byType)) {
+          const splitQty = dClosings.reduce((s, c) => s + c.quantity_closed, 0)
+          const signedQty = lot.quantity > 0 ? splitQty : -splitQty
+          _addToLegMap(map, lot, dtype, signedQty, dClosings)
+        }
+      }
     }
-    agg.lotCount++
-    agg.lots.push(lot)
   }
 
   const result = [...map.values()]
   // Compute derived fields
   for (const leg of result) {
     const multiplier = leg.option_type ? 100 : 1
-    const originalQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
+    const originalQty = Math.abs(leg.totalQuantity)
     leg.avgEntryPrice = originalQty > 0 ? Math.abs(leg.totalCostBasis) / originalQty / multiplier : 0
-    leg.expired = leg._hasExpiration && !leg._hasNonExpiration
-    // Weighted avg close price
-    if (leg.totalProceeds && leg.status === 'CLOSED') {
-      const closedQty = Math.abs(leg.lots.reduce((s, l) => s + l.quantity, 0))
-      leg.avgClosePrice = closedQty > 0 ? Math.abs(leg.totalProceeds) / closedQty / multiplier : 0
+    leg.expired = leg.disposition === 'EXPIRATION'
+    leg.exercised = leg.disposition === 'EXERCISE'
+    leg.assigned = leg.disposition === 'ASSIGNMENT'
+    // Close price: not meaningful for expiration/exercise/assignment
+    if (leg.expired || leg.exercised || leg.assigned) {
+      leg.avgClosePrice = null
+    } else if (leg.totalProceeds && leg.status === 'CLOSED') {
+      leg.avgClosePrice = originalQty > 0 ? Math.abs(leg.totalProceeds) / originalQty / multiplier : 0
     } else {
       leg.avgClosePrice = null
     }
+    // Build close status text
+    leg.closeStatus = _buildCloseStatus(leg)
   }
 
-  // Sort: open before closed, then highest strike first within same expiration
+  // Sort: open before closed, then by expiration, then highest strike first,
+  // then disposition (MANUAL before EXERCISE/EXPIRATION)
+  const dispOrder = { OPEN: 0, MANUAL: 1, CLOSED: 1, EXERCISE: 2, ASSIGNMENT: 3, EXPIRATION: 4 }
   result.sort((a, b) => {
     const aOpen = a.status !== 'CLOSED' ? 0 : 1
     const bOpen = b.status !== 'CLOSED' ? 0 : 1
@@ -488,10 +484,76 @@ function groupedOptionLegs(group) {
       return (b.strike || 0) - (a.strike || 0)
     }
     if (aExp !== bExp) return bExp.localeCompare(aExp)
-    return (b.strike || 0) - (a.strike || 0)
+    if ((a.strike || 0) !== (b.strike || 0)) return (b.strike || 0) - (a.strike || 0)
+    return (dispOrder[a.disposition] || 9) - (dispOrder[b.disposition] || 9)
   })
 
   return result
+}
+
+function _addToLegMap(map, lot, disposition, qty, closings) {
+  const key = `${lot.expiration || '_'}|${lot.strike || '_'}|${lot.option_type || '_'}|${lot.instrument_type || '_'}|${disposition}`
+  if (!map.has(key)) {
+    map.set(key, {
+      key,
+      expiration: lot.expiration,
+      strike: lot.strike,
+      option_type: lot.option_type,
+      instrument_type: lot.instrument_type,
+      disposition,
+      status: disposition === 'OPEN' ? 'OPEN' : 'CLOSED',
+      totalQuantity: 0,
+      totalCostBasis: 0,
+      totalProceeds: 0,
+      totalRealized: 0,
+      entryDate: null,
+      closeDate: null,
+      lotCount: 0,
+      lots: [],
+      _closings: [],
+    })
+  }
+  const agg = map.get(key)
+  agg.totalQuantity += qty
+  // Proportional cost basis when splitting
+  const multiplier = lot.option_type ? 100 : 1
+  const totalLotQty = Math.abs(lot.quantity)
+  const splitQty = Math.abs(qty)
+  const proportion = totalLotQty > 0 ? splitQty / totalLotQty : 1
+  agg.totalCostBasis += (lot.cost_basis || 0) * proportion
+  // Proceeds from these specific closings
+  for (const c of closings) {
+    agg.totalProceeds += c.quantity_closed * (c.closing_price || 0) * multiplier
+    agg.totalRealized += c.realized_pnl || 0
+  }
+  if (!agg.entryDate || (lot.entry_date && lot.entry_date < agg.entryDate)) {
+    agg.entryDate = lot.entry_date
+  }
+  for (const c of closings) {
+    if (c.closing_date && (!agg.closeDate || c.closing_date > agg.closeDate)) {
+      agg.closeDate = c.closing_date
+    }
+  }
+  agg.lotCount++
+  agg.lots.push(lot)
+  agg._closings.push(...closings)
+}
+
+function _buildCloseStatus(leg) {
+  if (leg.status !== 'CLOSED' || leg._closings.length === 0) return null
+  const disp = leg.disposition
+  const totalQty = leg._closings.reduce((s, c) => s + c.quantity_closed, 0)
+  // Find the latest closing date and format it
+  let latestDate = null
+  for (const c of leg._closings) {
+    if (c.closing_date && (!latestDate || c.closing_date > latestDate)) {
+      latestDate = c.closing_date
+    }
+  }
+  const dateStr = latestDate ? formatDate(latestDate) : ''
+  const labels = { MANUAL: 'Closed', EXPIRATION: 'Expired', EXERCISE: 'Exercised', ASSIGNMENT: 'Assigned' }
+  const label = labels[disp] || 'Closed'
+  return `${label} (${totalQty}, ${dateStr})`
 }
 
 function groupInitialPremium(group) {
@@ -1048,6 +1110,7 @@ function getSortLabel() {
                 <span class="w-20 text-center ml-3">Status</span>
                 <span class="w-24 text-right">Entry Price</span>
                 <span class="w-24 text-right ml-2">Close Price</span>
+                <span class="flex-1 ml-3">Close Status</span>
               </div>
 
               <!-- Section A: Equity Aggregate -->
@@ -1065,6 +1128,7 @@ function getSortLabel() {
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3 bg-tv-green/20 text-tv-green border-tv-green/50">OPEN</span>
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(equityAggregate(group).avgPrice) }}</span>
                     <span class="w-24 text-right ml-2"></span>
+                    <span class="flex-1 ml-3"></span>
                   </div>
                 </div>
               </template>
@@ -1095,11 +1159,16 @@ function getSortLabel() {
                       {{ leg.option_type ? (leg.option_type.toUpperCase().startsWith('C') ? 'Call' : 'Put') : (leg.instrument_type === 'EQUITY' ? 'Stk' : '\u2014') }}
                     </span>
                     <span class="w-20 text-center text-sm px-1 py-0.5 rounded border ml-3"
-                          :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : leg.expired ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50' : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
-                      {{ leg.expired ? 'EXPIRED' : leg.status }}
+                          :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50'
+                            : leg.expired ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
+                            : leg.exercised ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50'
+                            : leg.assigned ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50'
+                            : 'bg-tv-muted/20 text-tv-muted border-tv-red/50'">
+                      {{ leg.expired ? 'EXPIRED' : leg.exercised ? 'EXERCISED' : leg.assigned ? 'ASSIGNED' : leg.status }}
                     </span>
                     <span class="w-24 text-right text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
-                    <span class="w-24 text-right text-tv-muted ml-2">{{ leg.expired ? '\u2014' : (leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '') }}</span>
+                    <span class="w-24 text-right text-tv-muted ml-2">{{ (leg.expired || leg.exercised || leg.assigned) ? '\u2014' : (leg.avgClosePrice != null ? '$' + formatNumber(leg.avgClosePrice) : '') }}</span>
+                    <span class="flex-1 ml-3 text-tv-muted text-xs">{{ leg.closeStatus || '' }}</span>
                   </div>
                 </div>
               </template>
