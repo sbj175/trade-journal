@@ -1,12 +1,17 @@
 """Health check and connection status routes."""
 
+import time
 from datetime import datetime
 from fastapi import APIRouter, Depends
+from loguru import logger
 
 from src.utils.auth_manager import ConnectionManager
-from src.dependencies import get_connection_manager, get_current_user_id, AUTH_ENABLED
+from src.dependencies import get_connection_manager, get_current_user_id, get_tastytrade_client, AUTH_ENABLED
 
 router = APIRouter()
+
+# In-memory cache for market status (shared across requests)
+_market_status_cache = {"data": None, "expires_at": 0}
 
 
 @router.get("/api/health")
@@ -27,6 +32,69 @@ async def get_connection_status(connection_manager: ConnectionManager = Depends(
     if AUTH_ENABLED:
         return connection_manager.get_user_status(user_id)
     return connection_manager.get_status()
+
+
+@router.get("/api/market-status")
+async def get_market_status(
+    connection_manager: ConnectionManager = Depends(get_connection_manager),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get current market session status from Tastytrade API."""
+    from tastytrade.market_sessions import (
+        ExchangeType, get_market_sessions,
+    )
+
+    now = time.time()
+    if _market_status_cache["data"] and now < _market_status_cache["expires_at"]:
+        return _market_status_cache["data"]
+
+    # Resolve the client
+    try:
+        if AUTH_ENABLED:
+            client = await connection_manager.get_user_client(user_id)
+        else:
+            client = connection_manager.get_client()
+        if not client or not client.session:
+            return {"connected": False, "sessions": []}
+    except Exception:
+        return {"connected": False, "sessions": []}
+
+    try:
+        exchanges = [ExchangeType.NYSE, ExchangeType.CFE]
+        sessions = await get_market_sessions(client.session, exchanges)
+
+        result = {
+            "connected": True,
+            "sessions": [],
+        }
+        for s in sessions:
+            session_data = {
+                "exchange": s.instrument_collection,
+                "status": s.status.value,
+                "open_at": s.open_at.isoformat() if s.open_at else None,
+                "close_at": s.close_at.isoformat() if s.close_at else None,
+                "close_at_ext": s.close_at_ext.isoformat() if s.close_at_ext else None,
+                "start_at": s.start_at.isoformat() if s.start_at else None,
+            }
+            if s.next_session:
+                session_data["next_session"] = {
+                    "open_at": s.next_session.open_at.isoformat(),
+                    "close_at": s.next_session.close_at.isoformat(),
+                    "session_date": s.next_session.session_date.isoformat(),
+                }
+            result["sessions"].append(session_data)
+
+        # Derive overall status from equity (NYSE) session
+        equity = next((s for s in sessions if s.instrument_collection == "Equity"), None)
+        result["overall_status"] = equity.status.value if equity else "Unknown"
+
+        _market_status_cache["data"] = result
+        _market_status_cache["expires_at"] = now + 60  # 60s cache
+
+        return result
+    except Exception as e:
+        logger.error(f"Failed to fetch market sessions: {e}")
+        return {"connected": True, "sessions": [], "overall_status": "Unknown", "error": str(e)}
 
 
 @router.post("/api/connection/reconnect")

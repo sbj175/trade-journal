@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber } from '@/lib/formatters'
 
@@ -18,6 +18,81 @@ const emit = defineEmits(['sync', 'update:syncSummary', 'update:symbolFilter', '
 
 const accountBalances = ref({})
 const privacyMode = ref('off')
+
+// Market status
+const marketStatus = ref(null)
+const marketExpanded = ref(false)
+let marketPollTimer = null
+
+const overallStatus = computed(() => marketStatus.value?.overall_status || null)
+
+const statusLabel = computed(() => {
+  if (!props.liveQuotesActive) return 'Disconnected'
+  const s = overallStatus.value
+  if (s === 'Open') return 'Market Open'
+  if (s === 'Pre-market') return 'Pre-Market'
+  if (s === 'Extended') return 'Extended Hours'
+  if (s === 'Closed') return 'Market Closed'
+  return 'Connected'
+})
+
+const statusColor = computed(() => {
+  if (!props.liveQuotesActive) return 'text-tv-red'
+  const s = overallStatus.value
+  if (s === 'Open') return 'text-tv-green'
+  if (s === 'Pre-market' || s === 'Extended') return 'text-tv-amber'
+  if (s === 'Closed') return 'text-tv-muted'
+  return 'text-tv-green'
+})
+
+const dotColor = computed(() => {
+  if (!props.liveQuotesActive) return 'bg-tv-red'
+  const s = overallStatus.value
+  if (s === 'Open') return 'bg-tv-green'
+  if (s === 'Pre-market' || s === 'Extended') return 'bg-tv-amber'
+  if (s === 'Closed') return 'bg-tv-muted'
+  return 'bg-tv-green'
+})
+
+function formatSessionTime(isoStr) {
+  if (!isoStr) return '—'
+  const d = new Date(isoStr)
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+}
+
+function formatSessionDate(isoStr) {
+  if (!isoStr) return '—'
+  const d = new Date(isoStr)
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function exchangeLabel(collection) {
+  if (collection === 'Equity') return 'Equities (NYSE)'
+  if (collection === 'CFE') return 'Options (CFE)'
+  return collection
+}
+
+function sessionStatusClass(status) {
+  if (status === 'Open') return 'text-tv-green'
+  if (status === 'Pre-market' || status === 'Extended') return 'text-tv-amber'
+  return 'text-tv-muted'
+}
+
+async function loadMarketStatus() {
+  try {
+    const resp = await Auth.authFetch('/api/market-status')
+    if (resp.ok) marketStatus.value = await resp.json()
+  } catch (e) { /* silent */ }
+}
+
+function toggleMarketExpanded(event) {
+  event.stopPropagation()
+  marketExpanded.value = !marketExpanded.value
+}
+
+function closeMarketExpanded() {
+  marketExpanded.value = false
+}
 
 const currentAccountBalance = computed(() => {
   if (!props.selectedAccount || props.selectedAccount === '') {
@@ -64,6 +139,14 @@ function clearSymbolFilter() {
 onMounted(() => {
   privacyMode.value = localStorage.getItem('privacyMode') || 'off'
   loadAccountBalances()
+  loadMarketStatus()
+  marketPollTimer = setInterval(loadMarketStatus, 60000)
+  document.addEventListener('click', closeMarketExpanded)
+})
+
+onUnmounted(() => {
+  if (marketPollTimer) clearInterval(marketPollTimer)
+  document.removeEventListener('click', closeMarketExpanded)
 })
 </script>
 
@@ -73,8 +156,8 @@ onMounted(() => {
       <button @click="$emit('sync')"
               :disabled="isLoading"
               class="bg-tv-green/20 hover:bg-tv-green/30 text-tv-green border border-tv-green/30 px-4 py-2 text-base disabled:opacity-50">
-        <i class="fas fa-sync-alt mr-2" :class="{'animate-spin': isLoading}"></i>
-        <span>{{ isLoading ? 'Syncing...' : 'Sync' }}</span>
+        <i class="fas fa-sync-alt" :class="{'animate-spin': isLoading}" style="margin-right: 0.5rem"></i>
+        <span>Sync</span>
       </button>
 
       <!-- Symbol Filter -->
@@ -120,13 +203,61 @@ onMounted(() => {
         </div>
       </template>
 
-      <span class="text-sm text-tv-muted ml-4" v-show="lastQuoteUpdate">
-        Quotes: {{ lastQuoteUpdate }}
-        <span v-show="liveQuotesActive" class="inline-flex items-center gap-1.5 ml-1">
-          <span class="pulse-dot bg-tv-green"></span>
-          <span class="text-tv-green">LIVE</span>
-        </span>
-      </span>
+      <!-- Market Status -->
+      <div class="relative ml-4">
+        <button @click="toggleMarketExpanded($event)"
+                class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity">
+          <span v-show="lastQuoteUpdate" class="text-tv-muted">{{ lastQuoteUpdate }}</span>
+          <span class="inline-flex items-center gap-1.5 ml-1">
+            <span class="pulse-dot" :class="dotColor"></span>
+            <span :class="statusColor" class="font-medium">{{ statusLabel }}</span>
+            <i class="fas fa-chevron-down text-[8px] text-tv-muted transition-transform"
+               :class="{ 'rotate-180': marketExpanded }"></i>
+          </span>
+        </button>
+
+        <!-- Expanded Market Details -->
+        <div v-show="marketExpanded"
+             class="absolute right-0 top-full mt-2 z-50 bg-tv-panel border border-tv-border rounded-lg shadow-2xl p-4 w-80"
+             @click.stop>
+          <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-semibold">Market Sessions</div>
+          <div v-if="marketStatus?.sessions?.length" class="space-y-3">
+            <div v-for="s in marketStatus.sessions" :key="s.exchange"
+                 class="border-b border-tv-border/30 pb-3 last:border-0 last:pb-0">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-sm font-medium text-tv-text">{{ exchangeLabel(s.exchange) }}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                      :class="s.status === 'Open' ? 'bg-tv-green/20 text-tv-green' : s.status === 'Pre-market' || s.status === 'Extended' ? 'bg-tv-amber/20 text-tv-amber' : 'bg-tv-muted/20 text-tv-muted'">
+                  {{ s.status }}
+                </span>
+              </div>
+              <div class="grid grid-cols-2 gap-1 text-xs">
+                <template v-if="s.status === 'Open' || s.status === 'Pre-market' || s.status === 'Extended'">
+                  <span class="text-tv-muted">Opens:</span>
+                  <span class="text-tv-text">{{ formatSessionTime(s.open_at) }}</span>
+                  <span class="text-tv-muted">Closes:</span>
+                  <span class="text-tv-text">{{ formatSessionTime(s.close_at) }}</span>
+                  <template v-if="s.close_at_ext">
+                    <span class="text-tv-muted">Extended:</span>
+                    <span class="text-tv-text">{{ formatSessionTime(s.close_at_ext) }}</span>
+                  </template>
+                </template>
+                <template v-else>
+                  <template v-if="s.next_session">
+                    <span class="text-tv-muted">Next Open:</span>
+                    <span class="text-tv-text">{{ formatSessionDate(s.next_session.session_date) }}</span>
+                    <span class="text-tv-muted">Opens At:</span>
+                    <span class="text-tv-text">{{ formatSessionTime(s.next_session.open_at) }}</span>
+                  </template>
+                </template>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-sm text-tv-muted">
+            {{ marketStatus?.connected === false ? 'Not connected to Tastytrade' : 'No session data available' }}
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

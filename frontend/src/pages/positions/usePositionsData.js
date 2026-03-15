@@ -17,6 +17,7 @@ export function usePositionsData(Auth) {
   const selectedAccount = ref('')
   const selectedUnderlying = ref('')
   const isLoading = ref(false)
+  const isSyncing = ref(false)
   const error = ref(null)
   const liveQuotesActive = ref(false)
   const lastQuoteUpdate = ref(null)
@@ -68,7 +69,10 @@ export function usePositionsData(Auth) {
   }
 
   async function fetchPositions(includeSync = false, { migrateCommentKeysFn, loadCommentsFn } = {}) {
-    isLoading.value = true
+    // Only show full-screen spinner on initial load (no data yet)
+    const hasData = allItems.value.length > 0
+    if (!hasData) isLoading.value = true
+    if (includeSync) isSyncing.value = true
     error.value = null
     try {
       if (includeSync) {
@@ -120,6 +124,9 @@ export function usePositionsData(Auth) {
       error.value = 'Failed to load positions'
     } finally {
       isLoading.value = false
+      isSyncing.value = false
+      // Re-subscribe WebSocket with any new symbols from sync
+      if (includeSync) requestLiveQuotes()
     }
   }
 
@@ -591,7 +598,7 @@ export function usePositionsData(Auth) {
     allChains, allItems, filteredItems, accounts,
     underlyingQuotes, quoteUpdateCounter,
     selectedAccount, selectedUnderlying,
-    isLoading, error, liveQuotesActive, lastQuoteUpdate, syncSummary,
+    isLoading, isSyncing, error, liveQuotesActive, lastQuoteUpdate, syncSummary,
     strategyTargets, rollAlertSettings, rollAnalysisMode,
     sortColumn, sortDirection, expandedRows,
 

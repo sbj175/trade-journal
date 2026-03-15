@@ -22,7 +22,7 @@ const {
   allChains, allItems, filteredItems, accounts,
   underlyingQuotes, quoteUpdateCounter,
   selectedAccount, selectedUnderlying,
-  isLoading, error, liveQuotesActive, lastQuoteUpdate, syncSummary,
+  isLoading, isSyncing, error, liveQuotesActive, lastQuoteUpdate, syncSummary,
   strategyTargets, rollAlertSettings, rollAnalysisMode,
   sortColumn, sortDirection, expandedRows,
   groupedPositions, underlyings,
@@ -113,7 +113,7 @@ onUnmounted(() => {
 
   <!-- Action Bar -->
   <PositionsToolbar
-    :is-loading="isLoading"
+    :is-loading="isSyncing"
     :live-quotes-active="liveQuotesActive"
     :last-quote-update="lastQuoteUpdate"
     :sync-summary="syncSummary"
