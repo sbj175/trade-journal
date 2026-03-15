@@ -224,7 +224,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
     </div>
 
     <!-- Strategy Breakdown Table -->
-    <div class="bg-tv-panel border border-tv-border rounded">
+    <div class="bg-black border border-tv-border rounded">
       <!-- Table Header -->
       <div class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel/50 sticky top-14 z-10">
         <span v-for="col in columns" :key="col.key"

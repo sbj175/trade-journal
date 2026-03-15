@@ -155,7 +155,7 @@ onUnmounted(() => {
   </div>
 
   <!-- Position List -->
-  <div v-else class="bg-tv-panel border-x border-b border-tv-border">
+  <div v-else class="bg-black border-x border-b border-tv-border">
     <div class="divide-y divide-tv-border">
       <div v-for="item in groupedPositions" :key="item.groupId">
         <!-- Summary row -->
