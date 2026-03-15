@@ -10,7 +10,7 @@ export const useMarketStore = defineStore('market', () => {
   const overallStatus = computed(() => marketStatus.value?.overall_status || null)
 
   const statusLabel = computed(() => {
-    return 'Market'
+    return 'Market Status'
   })
 
   const statusColor = computed(() => {
