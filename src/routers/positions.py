@@ -9,7 +9,7 @@ from loguru import logger
 
 from sqlalchemy import func
 
-from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, Tag
+from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RollChainSummary, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
@@ -156,6 +156,23 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                         except Exception:
                             pass
 
+            # Batch-load roll chain summaries for all open groups
+            roll_chain_by_group: Dict[str, Dict] = {}
+            with db.get_session() as session:
+                rc_rows = session.query(RollChainSummary).filter(
+                    RollChainSummary.current_group_id.in_(group_ids),
+                ).all()
+                for rc in rc_rows:
+                    roll_chain_by_group[rc.current_group_id] = {
+                        "root_group_id": rc.root_group_id,
+                        "chain_length": rc.chain_length,
+                        "roll_count": rc.roll_count,
+                        "first_opened": rc.first_opened,
+                        "last_rolled": rc.last_rolled,
+                        "cumulative_premium": rc.cumulative_premium,
+                        "cumulative_realized_pnl": rc.cumulative_realized_pnl,
+                    }
+
             result = {}
 
             for g in groups_raw:
@@ -262,12 +279,11 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                     c['lot_id'] = c['symbol']
                 open_option_legs = list(consolidated.values())
 
-                roll_count = 0
                 order_ids = group_order_ids.get(gid, set())
-                for oid in order_ids:
-                    od = order_cache.get(oid, {})
-                    if od.get('order_type') == 'ROLLING':
-                        roll_count += 1
+
+                # Roll chain summary (from materialized table)
+                rc = roll_chain_by_group.get(gid)
+                roll_count = rc["roll_count"] if rc else 0
 
                 equity_summary = None
                 if open_equity_legs:
@@ -303,6 +319,7 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                     "equity_legs": open_equity_legs,
                     "equity_summary": equity_summary,
                     "tags": tags_by_group.get(gid, []),
+                    "roll_chain": rc,
                 }
                 if open_option_legs or open_equity_legs:
                     result[acct]["chains"].append(group_obj)

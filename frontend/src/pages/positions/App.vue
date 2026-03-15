@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import PositionsToolbar from '@/components/PositionsToolbar.vue'
+import RollChainModal from '@/components/RollChainModal.vue'
 
 import { usePositionsData } from './usePositionsData'
 import { usePositionsNotes } from './usePositionsNotes'
@@ -49,6 +50,9 @@ const {
   addTagToGroup, removeTagFromGroup, handleTagInput,
   onDocumentClick,
 } = usePositionsNotes(Auth, { allItems })
+
+const rollChainModal = ref(null)
+const rollChainUnderlying = ref('')
 
 // --- Thin wrappers for template (adapt pure functions to reactive state) ---
 
@@ -274,15 +278,20 @@ onUnmounted(() => {
                 <StreamingPrice :quote="getUnderlyingQuote(group.underlying)" />
               </div>
 
-              <!-- Ledger Link -->
-              <div class="w-10">
+              <!-- Ledger Link + Roll Chain -->
+              <div class="w-10 flex items-center gap-1">
                 <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
                    class="text-tv-blue hover:text-tv-blue"
                    title="View in Ledger">
                   <i class="fas fa-book"></i>
-                  <span v-show="group.roll_count > 0" class="text-xs text-tv-muted ml-0.5">R{{ group.roll_count }}</span>
                 </a>
+                <button v-if="group.roll_chain"
+                        @click.stop="rollChainModal = group.group_id; rollChainUnderlying = group.underlying"
+                        class="text-[10px] px-1 py-0 rounded-sm bg-tv-blue/20 text-tv-blue border border-tv-blue/40 hover:bg-tv-blue/30 cursor-pointer leading-4"
+                        :title="`${group.roll_chain.roll_count} roll${group.roll_chain.roll_count > 1 ? 's' : ''} · Premium: $${formatNumber(group.roll_chain.cumulative_premium)} · P&L: $${formatNumber(group.roll_chain.cumulative_realized_pnl)}`">
+                  R{{ group.roll_chain.roll_count }}
+                </button>
               </div>
 
               <!-- Strategy -->
@@ -483,13 +492,26 @@ onUnmounted(() => {
 
                     <!-- Chain summary -->
                     <div class="flex items-center text-xs text-tv-muted mt-2 pt-1 border-t border-tv-border/30 gap-4">
-                      <span>Opened: {{ formatDate(group.opening_date) || 'N/A' }}</span>
+                      <span>Opened: {{ formatDate(group.roll_chain ? group.roll_chain.first_opened : group.opening_date) || 'N/A' }}</span>
                       <span>Orders: {{ group.order_count || 1 }}</span>
-                      <span v-show="group.roll_count > 0" class="text-tv-blue">Rolls: {{ group.roll_count }}</span>
+                      <span v-if="group.roll_chain" class="text-tv-blue cursor-pointer hover:underline"
+                            @click.stop="rollChainModal = group.group_id; rollChainUnderlying = group.underlying">
+                        Rolls: {{ group.roll_chain.roll_count }}
+                      </span>
                       <span v-show="group.realized_pnl !== 0"
                             :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
                         Realized: ${{ formatNumber(group.realized_pnl) }}
                       </span>
+                    </div>
+                    <!-- Roll chain cumulative stats -->
+                    <div v-if="group.roll_chain" class="flex items-center text-xs mt-1 gap-4">
+                      <span class="text-tv-muted">Chain Premium: <span class="text-tv-text">${{ formatNumber(group.roll_chain.cumulative_premium) }}</span></span>
+                      <span class="text-tv-muted">Chain P&L:
+                        <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                          ${{ formatNumber(group.roll_chain.cumulative_realized_pnl) }}
+                        </span>
+                      </span>
+                      <span class="text-tv-muted">Last Rolled: {{ formatDate(group.roll_chain.last_rolled) }}</span>
                     </div>
                   </div>
 
@@ -645,4 +667,11 @@ onUnmounted(() => {
     </div>
    </div>
   </main>
+
+  <!-- Roll Chain Modal -->
+  <RollChainModal
+    :group-id="rollChainModal"
+    :underlying="rollChainUnderlying"
+    @close="rollChainModal = null"
+  />
 </template>

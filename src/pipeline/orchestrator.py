@@ -17,6 +17,7 @@ from src.pipeline.order_assembler import assemble_orders
 from src.pipeline.position_ledger import process_lots
 from src.pipeline.group_manager import GroupPersister
 from src.pipeline.pnl_events import populate_pnl_events
+from src.pipeline.roll_chain_summary import populate_roll_chain_summaries
 from src.services.ledger_service import net_opposing_equity_lots
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ def _clear_groups(db_manager: "DatabaseManager") -> None:
     """Clear all position groups, group-lot links, tags, and notes for the current user."""
     from src.database.models import (
         PositionGroup, PositionGroupLot, PositionGroupTag, PositionNote,
+        RollChainSummary,
     )
     from src.database.tenant import DEFAULT_USER_ID
 
@@ -41,8 +43,9 @@ def _clear_groups(db_manager: "DatabaseManager") -> None:
             PositionNote.note_key.like("group_%"),
             PositionNote.user_id == user_id,
         ).delete(synchronize_session=False)
+        session.query(RollChainSummary).filter(RollChainSummary.user_id == user_id).delete()
         session.query(PositionGroup).filter(PositionGroup.user_id == user_id).delete()
-        logger.info("Cleared all groups, group-lot links, tags, and group notes (user-scoped)")
+        logger.info("Cleared all groups, group-lot links, tags, roll chain summaries, and group notes (user-scoped)")
 
 
 @dataclass
@@ -52,6 +55,7 @@ class PipelineResult:
     groups_processed: int
     equity_lots_netted: int
     pnl_events_populated: int = 0
+    roll_chain_summaries: int = 0
 
 
 def reprocess(
@@ -149,9 +153,14 @@ def reprocess(
     pnl_events_count = populate_pnl_events(db_manager)
     logger.info("Stage 6: populated %d pnl_events", pnl_events_count)
 
+    # ── Step 7: Roll Chain Summaries ───────────────────────────────────
+    roll_chain_count = populate_roll_chain_summaries(db_manager)
+    logger.info("Stage 7: populated %d roll_chain_summaries", roll_chain_count)
+
     return PipelineResult(
         orders_assembled=orders_assembled,
         groups_processed=groups_processed,
         equity_lots_netted=equity_lots_netted,
         pnl_events_populated=pnl_events_count,
+        roll_chain_summaries=roll_chain_count,
     )

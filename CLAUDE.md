@@ -1,476 +1,227 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## High-Level Application Overview
+## What is OptionLedger?
 
-### What is OptionLedger?
+A web application for options traders using Tastytrade. It imports, organizes, and analyzes trading data — grouping transactions into position groups, detecting strategies, tracking rolls, and providing real-time P&L.
 
-OptionLedger is a comprehensive local web application designed for options traders who use Tastytrade. It automatically imports, organizes, and analyzes your trading data to provide insights into your trading performance and current positions.
+**Stack**: FastAPI backend, Vue 3 SPA (Vite + Tailwind), SQLAlchemy ORM (SQLite default, PostgreSQL via Docker), WebSocket for live quotes.
 
-### Core Purpose
-
-The application solves several key problems for options traders:
-- **Trade Organization**: Automatically groups related transactions into coherent trades and chains
-- **Strategy Recognition**: Identifies complex multi-leg strategies (Iron Condors, Spreads, etc.)
-- **Roll Tracking**: Links rolled positions to show complete trade progression over time
-- **Live Monitoring**: Provides real-time P&L tracking for open positions
-- **Performance Analysis**: Calculates accurate profit/loss across complex trade chains
-
-### How It Works (User Perspective)
-
-1. **Setup**: User configures OAuth2 credentials (provider_secret + refresh_token) in `.env` or via Settings page
-2. **Auto-Connect**: App authenticates with Tastytrade on startup using OAuth2
-3. **Data Sync**: One-click sync imports all transactions from Tastytrade accounts
-4. **Automatic Processing**: System intelligently groups transactions into trades and identifies strategies
-5. **Live Tracking**: Open positions update with real-time market data via WebSocket
-6. **Analysis**: View trade chains, P&L progression, and performance metrics through web interface
-
-### Key Features
-
-**Position Management**:
-- Real-time portfolio overview with live P&L calculations
-- Days-to-expiration warnings for time-sensitive positions
-- Visual indicators showing current price relative to strike prices
-- Persistent user comments and notes on positions
-
-**Trade Chain Analysis**:
-- Links opening trades → rolls → closings into complete progressions
-- Accurate P&L calculation across entire chain lifecycle
-- Strategy detection for complex multi-leg positions
-- Visual chain progression with status indicators
-
-**Data Security & Privacy**:
-- 100% local application - no cloud storage or external data sharing
-- OAuth2 credentials stored in local `.env` file (never committed to git)
-- No login page or session cookies - app auto-connects on startup
-- SQLite database stored locally on user's machine
-
-### Technical Architecture
-
-The application follows a modern web architecture:
-- **Backend**: Python FastAPI server providing REST API and WebSocket endpoints
-- **Frontend**: Vue 3 Single-Page App (SPA) with Vue Router, Pinia stores, and Tailwind CSS (built by Vite)
-- **Database**: SQLAlchemy ORM with dual-dialect support (SQLite default, PostgreSQL optional via Docker)
-- **Real-time Data**: WebSocket integration for live market quotes
-- **Authentication**: OAuth2 via tastytrade SDK v12 (provider_secret + refresh_token in `.env`)
-
-### Data Flow Summary
-
+**Data flow**:
 ```
-Tastytrade API → Transaction Import → Strategy Detection → Database Storage → Web Interface
-                                                                ↓
-Live Market Data → WebSocket → Real-time Position Updates → User Dashboard
+Tastytrade API → Import → Pipeline (7 stages) → Database → Web Interface
+Live Market Data → WebSocket → Real-time Position Updates → Dashboard
 ```
 
-The system maintains two main views:
-1. **Open Positions**: Current portfolio with live P&L and risk metrics
-2. **Order Chains**: Historical view of complete trade progressions and strategy analysis
+## Running the Application
 
-## Project Overview
-
-OptionLedger is a local web application for tracking and analyzing options trades from Tastytrade. It uses FastAPI for the backend, Vue 3 / Vue Router / Tailwind CSS for the frontend (built by Vite), and SQLAlchemy ORM for data persistence (SQLite by default, PostgreSQL optional).
-
-## Common Development Commands
-
-### Running the Application
 ```bash
-# Start the application (Linux/Mac)
-./start.sh
-
-# Start the application (Windows)
-start.bat
-
-# Or directly with Python
-python app.py
+./start.sh          # Activates venv, builds frontend (vite build), runs python3 app.py
+python app.py       # Direct start (http://localhost:8000)
+docker compose up -d  # PostgreSQL + Redis (app, admin, postgres, redis services)
 ```
 
-The application runs on http://localhost:8000 with auto-reload enabled during development. The default route (`/`) redirects to `/positions`.
+Default route `/` redirects to `/positions/options`.
 
-### Authentication
-
-**Tastytrade API (OAuth2):**
-- Uses Tastytrade SDK v12 with OAuth2 authentication (async-only)
-- Credentials (`TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`) stored in `.env` file
-- App auto-connects on startup via `ConnectionManager` singleton
-- OAuth credentials can also be configured via the Settings page (`/settings`)
-- Get credentials from: my.tastytrade.com → Manage → My Profile → API → OAuth Applications
-
-**User Authentication (Supabase Auth — optional):**
-- When `SUPABASE_JWT_SECRET` is set, users must sign in via `/login` page
-- JWTs validated on every API request via `Depends(get_current_user_id)`
-- When not set, auth is disabled — app works as single-user local app
-- See "Authentication (Supabase Auth)" section below for details
-
-### Database Operations
+### Alembic Migrations
 ```bash
-# Query specific trades
-python query_db.py
-
-# Database schema managed by SQLAlchemy ORM models in src/database/models.py
-# Schema created via Base.metadata.create_all() in DatabaseManager.initialize_database()
+venv/bin/alembic upgrade head                    # SQLite
+DATABASE_URL=postgresql://... venv/bin/alembic upgrade head  # PostgreSQL
+# For fresh DB created by create_all(), stamp baseline first:
+venv/bin/alembic stamp 880552b12e57 && venv/bin/alembic upgrade head
 ```
 
-### Applying Schema Migrations
-After pulling code that includes new Alembic migrations, apply them before starting the app:
-```bash
-# SQLite (default)
-venv/bin/alembic upgrade head
+## Architecture
 
-# PostgreSQL
-DATABASE_URL=postgresql://optionledger:optionledger@localhost:5432/optionledger venv/bin/alembic upgrade head
+### Backend Structure
+
 ```
-For a brand-new database that was created by `create_all()` but never stamped by Alembic, stamp the baseline first:
-```bash
-venv/bin/alembic stamp 880552b12e57
-venv/bin/alembic upgrade head
+src/
+├── dependencies.py          # FastAPI deps (get_current_user_id, get_tastytrade_client)
+├── schemas.py               # Pydantic schemas
+├── sync_trades.py           # Legacy sync entrypoint
+├── api/
+│   └── tastytrade_client.py # OAuth2 auth, async methods, quote caching (30s TTL)
+├── auth/
+│   ├── jwt_validator.py     # Supabase JWT validation (HS256)
+│   └── user_provisioning.py # Auto-create User rows on first login
+├── database/
+│   ├── engine.py            # init_engine(), dialect_insert(), dual-dialect support
+│   ├── models.py            # 22 SQLAlchemy models
+│   ├── db_manager.py        # DatabaseManager, get_session()
+│   └── tenant.py            # Multi-tenant filtering (user_id scoping, ContextVar)
+├── models/
+│   ├── lot_manager.py       # LotManager — lot creation and closing logic
+│   ├── order_models.py      # Enums (OrderType, OrderStatus) and domain types
+│   ├── order_processor.py   # OrderProcessor — transaction grouping engine
+│   ├── pnl_calculator.py    # PnLCalculator — P&L with roll chain handling
+│   └── strategy_detector.py # StrategyDetector — option strategy identification
+├── pipeline/
+│   ├── orchestrator.py      # 7-stage pipeline orchestration
+│   ├── order_assembler.py   # Stage: assemble orders from transactions
+│   ├── position_ledger.py   # Stage: build position lots
+│   ├── pnl_events.py        # Stage: populate pnl_events fact table
+│   ├── group_manager.py     # Stage: create/update position groups
+│   └── strategy_engine/     # Pattern-based strategy recognition
+│       ├── recognizer.py    # Main recognizer entry point
+│       ├── adapters.py      # Data adapters
+│       ├── constants.py     # Strategy constants
+│       ├── types.py         # Type definitions
+│       └── patterns_*.py    # Pattern modules (single, vertical, combo, multi, calendar)
+├── routers/                 # 13 FastAPI routers
+│   ├── accounts.py          # /api/accounts, /api/account-balances
+│   ├── auth.py              # /api/auth/config, /api/waitlist
+│   ├── health.py            # /api/health, /api/connection/*
+│   ├── ledger.py            # /api/ledger, /api/ledger/groups/*, /api/ledger/move-lots
+│   ├── notes.py             # /api/order-comments, /api/position-notes
+│   ├── pages.py             # /login, /beta-full, catch-all SPA route
+│   ├── positions.py         # /api/positions/cached, /api/positions, /api/open-chains
+│   ├── quotes.py            # /api/quotes
+│   ├── reports.py           # /api/dashboard, /api/performance/*, /api/reports/*
+│   ├── settings.py          # /api/settings/targets, /api/settings/credentials
+│   ├── sync.py              # /api/sync, /api/reprocess, /api/sync/initial, /api/reconcile
+│   ├── tags.py              # /api/tags, /api/tags/{id}
+│   └── tastytrade_oauth.py  # /api/auth/tastytrade/authorize, /auth/tastytrade/callback
+├── services/
+│   ├── ledger_service.py    # Ledger business logic
+│   ├── report_service.py    # Report/dashboard queries
+│   └── sync_service.py      # Sync orchestration
+└── utils/
+    ├── auth_manager.py      # ConnectionManager singleton (per-user pool, LRU, 60-min TTL)
+    └── credential_encryption.py  # Fernet encrypt/decrypt
 ```
 
-### Running with PostgreSQL (optional)
-```bash
-# 1. Start PostgreSQL via Docker
-docker compose up -d
+### Pipeline (7 stages)
 
-# 2. Uncomment DATABASE_URL in .env
-# DATABASE_URL=postgresql://optionledger:optionledger@localhost:5432/optionledger
+The sync pipeline (`src/pipeline/orchestrator.py`) processes data in order:
+1. **Fetch** — pull transactions from Tastytrade API
+2. **Save** — persist raw transactions to database
+3. **Detect strategies** — identify multi-leg strategies via `strategy_engine/`
+4. **Process orders** — group transactions into order chains
+5. **Create lots** — build position lots from orders (`LotManager`)
+6. **Process groups** — create/update position groups (`GroupManager`)
+7. **Populate pnl_events** — denormalized fact table for time-based P&L reporting
 
-# 3. Start the app — tables auto-created on first run
-./start.sh
+### Database Models (22 tables)
 
-# 4. (Optional) Migrate existing SQLite data to PostgreSQL
-python scripts/migrate_sqlite_to_pg.py
-
-# To switch back to SQLite: comment out DATABASE_URL in .env
-```
-
-### Managing Trades
-```bash
-# Interactive trade management CLI
-python manage_trades.py
-```
-
-### Testing
-```bash
-# Run individual test files directly with Python
-python test_pnl_calculation.py
-python test_chain_creation.py
-python test_expiration.py
-# etc.
-```
-
-## Architecture Overview
-
-### Core Components
-
-1. **FastAPI Backend** (`app.py`):
-   - Serves the web interface and API endpoints
-   - Handles trade sync, filtering, and updates
-   - WebSocket endpoint for real-time quotes at `/ws/quotes`
-   - System components initialized on startup
-
-2. **Database Layer** (`src/database/db_manager.py`, `src/database/models.py`, `src/database/engine.py`):
-   - SQLAlchemy 2.0 ORM with dual-dialect support (SQLite + PostgreSQL)
-   - `engine.py`: `init_engine(db_url)` detects dialect, configures pool/pragmas, exports `dialect_insert()`
-   - `db.get_session()` for all database operations (ORM-based)
-   - `DATABASE_URL` env var selects backend; absent = SQLite (`trade_journal.db`)
-   - PostgreSQL available via Docker Compose (`docker compose up -d`)
-
-3. **Order Processing System**:
-   - **OrderProcessor** (`src/models/order_processor.py`): Core processing engine for transaction grouping
-   - **PositionInventoryManager** (`src/models/position_inventory.py`): Tracks open positions and matches closings
-   - **StrategyDetector** (`src/models/strategy_detector.py`): Identifies complex option strategies
-   - **PnLCalculator** (`src/models/pnl_calculator.py`): Calculates P&L with proper roll chain handling
-
-4. **Legacy Trade Recognition** (`src/models/trade_strategy.py`):
-   - Groups individual transactions into complete trades
-   - Recognizes multi-leg option strategies (Iron Condors, Verticals, etc.)
-   - Handles timezone conversion (UTC → US/Eastern)
-   - Still used alongside the order system for backward compatibility
-
-5. **Tastytrade Integration** (`src/api/tastytrade_client.py`):
-   - OAuth2 authentication via `Session(provider_secret, refresh_token)`
-   - All methods are async (tastytrade SDK v12 is async-only)
-   - Supports multiple accounts
-   - Quote caching with 30-second TTL
-
-6. **Connection Manager** (`src/utils/auth_manager.py`):
-   - `ConnectionManager` singleton holds a shared `TastytradeClient` instance
-   - Auto-connects on startup, reused across all API requests
-   - Provides `get_client()`, `is_configured()`, `get_status()` methods
-   - Reconnect endpoint available for credential updates
+**Core data**: Account, AccountBalance, Position, RawTransaction, SyncMetadata, QuoteCache (no user_id)
+**Order system**: OrderChain, OrderChainCache, OrderComment
+**Position model**: PositionLot, LotClosing, PositionGroup, PositionGroupLot
+**P&L**: PnlEvent (denormalized fact table)
+**User/auth**: User, UserCredential, WaitlistEntry
+**Config**: StrategyTarget, Tag, PositionGroupTag, PositionNote
 
 ### Frontend Structure
 
-The frontend is a **Vue 3 Single-Page App** using Vue Router for client-side routing. A single HTML shell (`static/index.html`) serves all routes; Vite builds one entry point (`frontend/src/main.js`) that code-splits per page via lazy `() => import()` routes.
+Vue 3 SPA with Vue Router, Pinia stores, `<script setup>` composition API. Vite builds from `frontend/src/main.js` → `static/dist/`.
 
-**Key files:**
-- `frontend/src/main.js` — SPA entry point (creates Vue app, Pinia, Router)
-- `frontend/src/App.vue` — root component (`<router-view />`)
-- `frontend/src/router/index.js` — routes + auth navigation guards
-- `frontend/src/layouts/DefaultLayout.vue` — shared NavBar + `<router-view />`
-- `frontend/src/components/NavBar.vue` — shared nav bar with `<router-link>` navigation
-- `frontend/src/stores/auth.js` — Pinia store for auth state
-- `frontend/src/stores/accounts.js` — Pinia store for account selection (persists across pages)
-- `frontend/vite.config.js` — single `app` entry, outputs to `static/dist/`
+```
+frontend/src/
+├── main.js, App.vue          # SPA entry + root component
+├── router/index.js           # Routes + auth/tastytrade navigation guards
+├── stores/
+│   ├── accounts.js           # Selected account, account list (localStorage)
+│   └── auth.js               # Auth state, user email, feature flags
+├── composables/
+│   └── useAuth.js            # Auth client wrapper
+├── components/               # Shared components
+│   ├── NavBar.vue, AccountSelect.vue, DateFilter.vue
+│   ├── PositionsToolbar.vue, RollChainModal.vue, StreamingPrice.vue
+├── layouts/DefaultLayout.vue # Shared nav + <router-view>
+├── lib/                      # Shared utilities
+│   ├── constants.js, design-tokens.js, formatters.js, rules.js
+└── pages/                    # Each page has App.vue + composables
+    ├── positions/            # /positions/options — options with live quotes, WebSocket
+    ├── positions-equities/   # /positions/equities — equity positions
+    ├── ledger/               # /ledger — position groups, lots, group management
+    ├── reports/              # /reports — strategy breakdown, performance (pnl_events)
+    ├── risk/                 # /risk — portfolio Greeks, Black-Scholes, ApexCharts
+    ├── settings/             # /settings — OAuth, connection, tags, targets, preferences
+    ├── privacy/              # /privacy — privacy policy (no auth)
+    └── components/           # /components — design system showcase (no auth)
+```
 
-**Page components** (each in `frontend/src/pages/<name>/App.vue`):
-- **Positions** (`/positions`) — live quotes, position management, WebSocket streaming
-- **Ledger** (`/ledger`) — position-group model, lot lifecycle, action/order toggle, group management
-- **Reports** (`/reports`) — strategy breakdown and historical performance
-- **Risk** (`/risk`) — real-time portfolio Greeks, Black-Scholes engine, ApexCharts visualizations (eagerly imported due to Firefox chunk loading issue)
-- **Settings** (`/settings`) — OAuth credential management, connection status, app configuration
-- **Privacy** (`/privacy`) — privacy policy (no auth required)
-- **Components** (`/components`) — design system showcase (no auth required)
+**Per-page composables** extract logic from page components (e.g., `usePositionsData.js`, `useLedgerGroups.js`, `useReportsFilters.js`, `useRiskCharts.js`, `useSettingsConnection.js`).
 
-**Standalone pages** (outside the SPA):
-- **Login** (`static/login.html` at `/login`) — Supabase auth page (Alpine.js, only when auth enabled)
+**Standalone page**: Login (`static/login.html`) — Supabase auth via Alpine.js (only when auth enabled).
 
-**Libraries & tooling:**
-- **Vue 3** with `<script setup>` composition API
-- **Vue Router 4** for SPA routing with `beforeEach` auth guards
-- **Pinia** for shared state management
-- **Tailwind CSS** compiled by Vite/PostCSS (not CDN)
-- **Supabase JS SDK** for auth (loaded from CDN in HTML shell)
-- **ApexCharts** for Risk page charts (dynamically loaded from CDN at runtime)
-- **Font Awesome** for icons (loaded from CDN)
-- **WebSocket** integration for real-time price streaming
-- **LocalStorage** for persistent user comments and settings
+### Routes
 
-### Data Flow
+| Path | Auth | Tastytrade | Description |
+|------|------|-----------|-------------|
+| `/positions/options` | Y | Y | Options positions with live P&L |
+| `/positions/equities` | Y | Y | Equity positions |
+| `/ledger` | Y | Y | Position groups and lots |
+| `/reports` | Y | Y | Performance reports |
+| `/risk` | Y | Y | Portfolio Greeks and risk |
+| `/settings` | Y | N | Configuration |
+| `/privacy` | N | N | Privacy policy |
+| `/components` | N | N | Design system |
 
-1. User clicks "Sync Trades" → API call to `/api/sync-trades`
-2. Backend fetches transactions from Tastytrade API
-3. Transactions grouped into trades by `StrategyRecognizer`
-4. Trades stored in database (SQLite or PostgreSQL)
-5. Frontend updates via API calls to display trades
+### Docker Compose Services
 
-### Live Data Features
-
-1. **Real-time Quotes**: WebSocket connection (`/ws/quotes`) streams live market data
-2. **Position Tracking**: Current positions fetched from Tastytrade API with live P&L
-3. **Cross-page State**: Account selection persists across SPA page navigations via Pinia store + localStorage
-4. **Persistent Comments**: User notes stored in localStorage, scoped by underlying + account
-
-### Sync Behavior by Page
-
-The Positions page calls the `/api/sync` endpoint:
-
-**Sync** (`/api/sync`):
-- Fetches transactions from Tastytrade → saves to database
-- Reprocesses order chains with strategy detection (if new transactions)
-- Fetches current positions → saves to database
-- Fetches account balances → saves to database
-- Runs reconciliation (positions vs lots)
-- Returns transaction/position counts and reconciliation summary
-
-## Key Implementation Details
-
-### Order Chain System
-The system links related trades into "chains" (opening → rolls → closing) by:
-- Matching positions based on underlying, quantity, and timing
-- Tracking roll relationships through position changes
-- Aggregating P&L across entire chains
-- Visual progression display with chain indicators
-
-### Transaction Grouping Algorithm
-The system matches closing transactions to their opening counterparts by:
-- Indexing all opening transactions by option details
-- Finding corresponding closings and grouping them together
-- Handling multi-leg strategies that may have time gaps between legs
-
-### Timezone Handling
-All timestamps from Tastytrade (UTC) are converted to US/Eastern time to ensure correct date display.
-
-### Trade Status Management
-- OPEN: Trade has unclosed positions
-- CLOSED: All positions closed
-- PARTIAL: Some legs closed (for multi-leg strategies)
-- ASSIGNED/EXPIRED: Special close types
-
-### Position Page Features
-- **DTE Column**: Shows minimum days to expiration for option positions (yellow/bold ≤21 days)
-- **Price Position Indicators**: Visual representation of current price vs strike prices for spreads
-- **Strategy Recognition**: Automatic identification of Iron Condors, Verticals, Covered Calls, etc.
-- **Live P&L**: Real-time unrealized P&L calculations using current market prices
-- **Comments System**: Persistent user notes stored locally with localStorage
-
-## Order System Notes
-
-The system uses position-based order chain tracking with:
-- Position-based tracking instead of trade-based
-- Better handling of rolls and chain relationships
-- More accurate P&L calculations for complex strategies
-- Separation of orders from trades for cleaner data model
-
-Key tables:
-- `orders`: Individual orders with strategy detection
-- `order_legs`: Option/stock legs for each order
-- `order_chains`: Links related orders (opening → rolls → closing)
-- `positions`: Current position inventory
+- **app** — FastAPI on port 8000
+- **admin** — admin_app.py on port 8001
+- **postgres** — PostgreSQL 16 with healthcheck
+- **redis** — Redis 7 with healthcheck
 
 ## Multi-Tenancy (user_id Scoping)
 
-Every data table (except `quote_cache`) has a `user_id` column that scopes data to a specific user. This is the foundation for SaaS multi-user support.
+Every data table (except `quote_cache`) has a `user_id` column for multi-user support.
 
-### How It Works
-
-- **`src/database/tenant.py`**: Contains `DEFAULT_USER_ID` constant and two SQLAlchemy session event listeners:
-  - `do_orm_execute`: Automatically appends `WHERE user_id = ?` to all ORM SELECT queries
-  - `before_flush`: Auto-sets `user_id` on new ORM objects from `session.info['user_id']`
+- **`src/database/tenant.py`**: SQLAlchemy event listeners auto-append `WHERE user_id = ?` on SELECTs and auto-set `user_id` on new objects
 - **`get_session(user_id=None)`**: Stores user_id in `session.info['user_id']`, defaults to `DEFAULT_USER_ID`
-- **`dialect_insert()` calls**: Bypass ORM events, so `user_id` must be included in `.values()` explicitly
+- **`dialect_insert()` calls**: Bypass ORM events — must include `user_id` in `.values()` explicitly
+- **`get_current_user_id()`** in `src/dependencies.py`: Validates JWT and returns authenticated user ID
 
-### Key Rules for Developers
+## Authentication
 
-1. **ORM queries** (session.query, session.add) are automatically scoped — no changes needed
-2. **`dialect_insert()`** calls must include `user_id=session.info.get("user_id", DEFAULT_USER_ID)` in `.values()`
-3. **QuoteCache** is global (shared market data) — no user_id column
-4. **Unique constraints** on SyncMetadata, StrategyTarget, and PositionsInventory include `user_id`
-5. **`get_current_user_id()`** in `src/dependencies.py` validates JWT and returns the authenticated user ID
+### Tastytrade API (OAuth2)
 
-### Tables with user_id (19 total)
+- Uses tastytrade SDK v12 (async-only) with OAuth2
+- Credentials in `.env` (`TASTYTRADE_PROVIDER_SECRET`, `TASTYTRADE_REFRESH_TOKEN`) or per-user in `user_credentials` table
+- `ConnectionManager` singleton with per-user connection pool (LRU, max 50, 60-min TTL)
+- Use `get_tastytrade_client` FastAPI dependency for endpoints needing the client
 
-Account, AccountBalance, Position, Order, OrderPosition, OrderChain, OrderChainMember, OrderChainCache, RawTransaction, SyncMetadata, StrategyTarget, PositionLot, LotClosing, PositionGroup, PositionGroupLot, PositionsInventory, OrderComment, PositionNote, UserCredential
+### Tastytrade OAuth2 Authorization Code Flow
 
-## Authentication (Supabase Auth)
+When auth is enabled, users connect via redirect flow: click "Connect to Tastytrade" → redirect to Tastytrade → authorize → redirect back with credentials stored automatically.
 
-### Overview
-
-User authentication is handled by Supabase Auth. When `SUPABASE_JWT_SECRET` is set, auth is enforced on all `/api/*` data endpoints. When not set, auth is disabled and the app works as a single-user local app (backward compatible).
-
-### How It Works
-
-1. **Frontend**: Supabase JS SDK handles sign-up/sign-in, stores JWT in browser
-2. **Backend**: FastAPI `Depends(get_current_user_id)` validates JWT on every request
-3. **User ID Flow**: JWT `sub` claim → `set_current_user_id()` contextvar → `get_session()` auto-scopes queries
-4. **User Provisioning**: First authenticated request auto-creates a `User` row
-
-### Architecture
-
-- **`src/auth/jwt_validator.py`**: Validates Supabase JWTs (HS256, audience="authenticated")
-- **`src/auth/user_provisioning.py`**: Auto-creates User rows on first login
-- **`src/dependencies.py`**: `get_current_user_id()` dependency — validates JWT or returns DEFAULT_USER_ID
-- **`src/database/tenant.py`**: `ContextVar` for per-request user_id propagation
-- **`src/routers/auth.py`**: Public config endpoint, data claim flow
-- **`static/js/auth.js`**: Frontend auth client (shared across all pages)
-
-### Environment Variables
+- **`src/routers/tastytrade_oauth.py`**: authorize, callback, disconnect endpoints
+- Callback endpoint is PUBLIC (receives redirect from Tastytrade); state parameter is Fernet-encrypted `{user_id, timestamp}`
+- Auth-code-flow users have `encrypted_provider_secret = NULL` — app-level client_secret from env is used
 
 ```
-SUPABASE_URL=https://your-project.supabase.co         # Public project URL
-SUPABASE_ANON_KEY=eyJ...                               # Public anon key (safe for browser)
-SUPABASE_JWT_SECRET=your-secret                         # From Supabase Dashboard > Settings > API
+TASTYTRADE_CLIENT_ID=<uuid>
+TASTYTRADE_CLIENT_SECRET=<secret>
+TASTYTRADE_REDIRECT_URI=http://localhost:8000/auth/tastytrade/callback
 ```
 
-**Behavioral switch:** `SUPABASE_JWT_SECRET` present → auth enforced; absent → auth disabled (DEFAULT_USER_ID used).
+### Supabase Auth (optional)
 
-### Key Rules for Developers
+When `SUPABASE_JWT_SECRET` is set, auth is enforced on all `/api/*` data endpoints. When not set, app works as single-user local app.
 
-1. **All `/api/*` data endpoints** must have `user_id: str = Depends(get_current_user_id)` — this enforces auth AND sets the contextvar
-2. **Public endpoints** (health checks, `/api/auth/config`) must NOT use the dependency
-3. **Frontend `fetch()` calls** must use `Auth.authFetch()` instead — it attaches the JWT header automatically
-4. **WebSocket connections** pass the token as `?token=JWT` query parameter
-5. **New pages** are Vue components registered in `frontend/src/router/index.js`. Auth is enforced via route `meta: { requiresAuth: true }` — the router navigation guard handles the rest. No per-page auth boilerplate needed.
-
-### Data Claim Flow
-
-When a user first logs in with Supabase, their data is empty (all existing data belongs to DEFAULT_USER_ID). The `/api/auth/claim-data` endpoint migrates all DEFAULT_USER_ID data to the authenticated user. This is a one-time operation.
-
-## Per-User Tastytrade Credentials (OPT-113)
-
-### Overview
-
-When auth is enabled, each user stores their own encrypted Tastytrade OAuth credentials in the `user_credentials` table instead of a global `.env`. Each user gets their own cached Tastytrade connection. When auth is disabled, the app works exactly as before (single connection from `.env`).
-
-### Architecture
-
-- **`src/utils/credential_encryption.py`**: Fernet-based encrypt/decrypt using `CREDENTIAL_ENCRYPTION_KEY` env var (auto-generated if missing)
-- **`src/database/models.py` → `UserCredential`**: Stores encrypted provider_secret + refresh_token per user/provider
-- **`src/utils/auth_manager.py` → `ConnectionManager`**: Per-user connection pool (LRU, max 50, 60-min TTL)
-- **`src/dependencies.py` → `get_tastytrade_client`**: FastAPI dependency that resolves global or per-user client based on `AUTH_ENABLED`
-
-### Environment Variables
+- All `/api/*` data endpoints must have `user_id: str = Depends(get_current_user_id)`
+- Public endpoints (health, `/api/auth/config`) must NOT use the dependency
+- Frontend uses `Auth.authFetch()` for authenticated requests
+- WebSocket passes token as `?token=JWT` query parameter
+- New pages: register in `frontend/src/router/index.js` with `meta: { requiresAuth: true }`
+- Data claim: `/api/auth/claim-data` migrates DEFAULT_USER_ID data to authenticated user (one-time)
 
 ```
-CREDENTIAL_ENCRYPTION_KEY=<Fernet key>   # Required to persist encrypted credentials across restarts
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_JWT_SECRET=your-secret
+CREDENTIAL_ENCRYPTION_KEY=<Fernet key>
 ```
 
-If not set, a temporary key is auto-generated and logged at startup.
+## Security
 
-### Key Rules for Developers
-
-1. **Use `get_tastytrade_client` dependency** for endpoints that need the Tastytrade client — replaces the old `connection_manager.get_client()` + null check pattern
-2. **Quotes endpoint** resolves the client manually (not via Depends) to allow cache fallback when not connected
-3. **WebSocket** resolves the client directly via `connection_manager.get_user_client(user_id)` after JWT validation
-4. **Settings save** (`POST /api/settings/credentials`): encrypts + upserts into `user_credentials` then evicts cached connection
-5. **Settings delete** (`DELETE /api/settings/credentials`): deletes credential row + evicts connection (auth-enabled only)
-6. **Startup**: when `AUTH_ENABLED`, skips global auto-connect and auto-sync (each user connects on demand)
-
-## Tastytrade OAuth2 Authorization Code Flow (OPT-53)
-
-### Overview
-
-When auth is enabled (SaaS/multi-user mode), new users connect their Tastytrade account via a "Login with Google"-style OAuth2 redirect flow. The user clicks "Connect to Tastytrade", gets redirected to Tastytrade to log in and click "Allow", and gets redirected back with everything configured automatically. No manual copy/paste of keys.
-
-When auth is disabled (single-user/self-hosted), the Settings page shows the existing manual credential form.
-
-### How It Works
-
-1. User visits a data page (Positions, Ledger, etc.) without Tastytrade credentials
-2. The Vue Router `beforeEach` guard checks `meta.requiresTastytrade`, detects missing credentials, and redirects to `/settings?tab=connection&onboarding=1`
-3. User clicks "Connect to Tastytrade" button
-4. Frontend calls `POST /api/auth/tastytrade/authorize` which returns an authorization URL
-5. Browser redirects to Tastytrade (`https://my.tastytrade.com/auth.html`)
-6. User logs in on Tastytrade and clicks "Allow"
-7. Tastytrade redirects to `GET /auth/tastytrade/callback?code=...&state=...`
-8. Backend exchanges the code for a refresh token via `POST https://api.tastyworks.com/oauth/token`
-9. Refresh token is encrypted and stored in `user_credentials` (provider_secret is NULL — the client_secret is app-level)
-10. Browser is redirected to `/positions`
-
-### Architecture
-
-- **`src/routers/tastytrade_oauth.py`**: Three endpoints (authorize, callback, disconnect)
-- **`static/js/auth.js` → `requireTastytrade()`**: Checks if user has credentials, redirects to Settings if not
-- **`frontend/src/pages/settings/App.vue`**: `connectTastytrade()` and `disconnectTastytrade()` methods
-- **`src/utils/auth_manager.py`**: `_load_user_credentials()` falls back to env var when `encrypted_provider_secret` is NULL
-
-### Environment Variables
-
-```
-TASTYTRADE_CLIENT_ID=<uuid>                              # OAuth app Client ID from Tastytrade
-TASTYTRADE_CLIENT_SECRET=<secret>                        # OAuth app Client Secret (same as TASTYTRADE_PROVIDER_SECRET)
-TASTYTRADE_REDIRECT_URI=http://localhost:8000/auth/tastytrade/callback   # Must match registered redirect URI
-```
-
-`TASTYTRADE_PROVIDER_SECRET` remains as a backward-compatible alias for `TASTYTRADE_CLIENT_SECRET`.
-
-### Key Rules for Developers
-
-1. **`requiresTastytrade` route meta** is set on data pages (Positions, Ledger, Reports, Risk) — NOT on Settings. The router `beforeEach` guard handles the redirect automatically.
-2. **The callback endpoint is PUBLIC** (no JWT) because it receives a redirect from Tastytrade; the state parameter carries the encrypted user_id
-3. **State parameter** is Fernet-encrypted `{user_id, timestamp}`, validated for max 10 minutes
-4. **Auth-code-flow users** have `encrypted_provider_secret = NULL` in `user_credentials` — the app-level client_secret from env is used
-5. **Manually-entered credentials** (legacy) still store both provider_secret and refresh_token per-user
-
-## Security Considerations
-
-- **Auth disabled**: Tastytrade OAuth2 credentials stored in local `.env` file (gitignored)
-- **Auth enabled**: Credentials encrypted at rest with Fernet in `user_credentials` table; `CREDENTIAL_ENCRYPTION_KEY` must be in `.env`
-- Supabase auth credentials (`SUPABASE_JWT_SECRET`) also in `.env` (never committed)
-- JWT validation is local (no network calls) — fast and reliable
-- Per-user `ConnectionManager` pool with LRU eviction; connections expire after 60 minutes
-- Never commit: `.env`, `*.db`, `docker-compose.yml` credentials
-- All data stored locally (SQLite file or local Docker PostgreSQL) - no external API calls except to Tastytrade and Supabase Auth
-
-## Common Issues and Solutions
-
-1. **Trades showing wrong dates**: Fixed by timezone conversion in `trade_strategy.py`
-2. **Multi-leg trades split up**: Fixed by improved transaction grouping in OrderProcessor
-3. **Database locked errors** (SQLite only): Use context managers, avoid long-running transactions
-4. **Authentication failures**: Check `.env` has valid `TASTYTRADE_PROVIDER_SECRET` and `TASTYTRADE_REFRESH_TOKEN`, or update via Settings page
-5. **Missing quotes**: Check market hours and ensure symbols are valid
-6. **Incorrect P&L for rolls**: The system properly tracks roll chains and calculates cumulative P&L
-7. **Expired positions showing as open**: The system handles expirations, assignments, and exercises as closing events
+- Auth disabled: credentials in local `.env` (gitignored)
+- Auth enabled: credentials encrypted at rest with Fernet in `user_credentials`
+- JWT validation is local (no network calls)
+- Never commit: `.env`, `*.db`, credentials
 
 ## Development Workflow
 
@@ -494,3 +245,7 @@ Every code change must follow this process:
 - **During work**: Update the issue comments in Linear with progress notes or decisions made
 - **Code complete**: Change status to "In Review" if you believe the issue is fixed or completed
 - **After merge to main**: Mark the issue as "Done"
+
+## Screenshot References
+
+When I reference an image like `img_88`, `img_12`, etc., resolve it to `screenshots/img_88.png` (relative to project root) and read the file.

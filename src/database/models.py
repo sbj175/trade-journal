@@ -533,6 +533,33 @@ class UserCredential(Base):
 # P&L Events (denormalized fact table for time-based reporting)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Roll chain summary (materialized roll chain statistics)
+# ---------------------------------------------------------------------------
+
+class RollChainSummary(Base):
+    __tablename__ = "roll_chain_summaries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    root_group_id = Column(String, nullable=False)
+    current_group_id = Column(String, nullable=False)
+    underlying = Column(String, nullable=False)
+    account_number = Column(String, nullable=False)
+    chain_length = Column(Integer, nullable=False, default=1)
+    roll_count = Column(Integer, nullable=False, default=0)
+    first_opened = Column(String)
+    last_rolled = Column(String)
+    cumulative_premium = Column(Float, nullable=False, default=0.0)
+    cumulative_realized_pnl = Column(Float, nullable=False, default=0.0)
+
+    __table_args__ = (
+        UniqueConstraint("current_group_id", "user_id", name="uq_roll_chain_current_group_user"),
+        Index("idx_roll_chain_underlying", "underlying", "account_number"),
+        Index("idx_roll_chain_root", "root_group_id"),
+    )
+
+
 class PnlEvent(Base):
     __tablename__ = "pnl_events"
 
