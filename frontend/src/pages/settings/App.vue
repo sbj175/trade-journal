@@ -376,7 +376,7 @@ onMounted(async () => {
                           ? 'bg-tv-blue hover:bg-tv-blue/80 text-white'
                           : 'bg-tv-red/20 hover:bg-tv-red/30 text-tv-red border border-tv-red/30'">
                   <i class="fas fa-database mr-2" :class="{ 'animate-spin': initialSyncing }"></i>
-                  {{ initialSyncing ? 'Importing...' : 'Import Transactions' }}
+                  Import Transactions
                 </button>
               </div>
               <div class="mt-4 flex items-center gap-3 ml-7">
@@ -390,12 +390,14 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Progress overlay -->
-        <div v-if="initialSyncing" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl">
-            <i class="fas fa-spinner animate-spin text-tv-blue text-3xl mb-4"></i>
-            <p class="text-tv-text text-lg font-medium">Importing transactions...</p>
-            <p class="text-tv-muted text-sm mt-2">This may take a few seconds</p>
+        <!-- Sync in progress banner -->
+        <div v-if="initialSyncing" class="mt-4 mx-1 p-4 rounded-lg border border-tv-blue/30 bg-tv-blue/10">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-spinner animate-spin text-tv-blue text-lg"></i>
+            <div>
+              <p class="text-tv-text font-medium">Importing transactions...</p>
+              <p class="text-tv-muted text-sm mt-1">This may take a minute depending on how much history you're importing. You can continue browsing while it runs — your data will appear when the import completes.</p>
+            </div>
           </div>
         </div>
 
@@ -622,13 +624,16 @@ onMounted(async () => {
 
   <!-- Import success modal (outside tab wrappers so v-show doesn't hide it) -->
   <div v-if="importResult" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-    <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl max-w-sm">
+    <div class="bg-tv-panel border border-tv-border rounded-lg px-8 py-6 text-center shadow-2xl max-w-md">
       <i class="fas fa-check-circle text-tv-green text-4xl mb-4"></i>
       <h3 class="text-tv-text text-lg font-semibold mb-2">Import Complete!</h3>
-      <p class="text-tv-muted text-sm mb-6">
+      <p class="text-tv-muted text-sm mb-4">
         {{ importResult.transactions_processed || 0 }} transactions imported across
         {{ importResult.orders_assembled || 0 }} orders in
-        {{ importResult.groups_processed || 0 }} groups
+        {{ importResult.groups_processed || 0 }} groups.
+      </p>
+      <p class="text-tv-muted text-sm mb-6">
+        Your positions are ready to view with live P&amp;L tracking. Use the Ledger page to explore trade history and roll chains.
       </p>
       <button @click="goToPositions"
               class="bg-tv-blue hover:bg-tv-blue/80 text-white font-medium px-6 py-2 rounded transition-colors">
