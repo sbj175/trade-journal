@@ -72,7 +72,9 @@ export const useMarketStore = defineStore('market', () => {
 
   function formatSessionDate(isoStr) {
     if (!isoStr) return '—'
-    const d = new Date(isoStr)
+    // Date-only strings like "2026-03-16" are parsed as UTC by JS,
+    // which shifts back a day in US timezones. Append T00:00:00 to force local.
+    const d = new Date(isoStr.length === 10 ? isoStr + 'T00:00:00' : isoStr)
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   }
 

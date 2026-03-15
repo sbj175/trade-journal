@@ -83,7 +83,6 @@ async def get_market_status(
                 # Handle both date and datetime objects from SDK
                 next_date = raw_date.date() if isinstance(raw_date, datetime) else raw_date
                 today = date.today()
-                logger.debug(f"Market next_session for {s.instrument_collection}: raw={raw_date} type={type(raw_date)} next_date={next_date} today={today}")
                 if next_date <= today:
                     next_date = today + timedelta(days=1)
                 # Skip weekends (5=Saturday, 6=Sunday)
