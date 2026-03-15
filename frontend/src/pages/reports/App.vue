@@ -134,7 +134,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
           <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
         </button>
         <div v-if="strategyDropdownOpen"
-             class="absolute top-full left-0 mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-50 py-1 min-w-[200px] max-h-64 overflow-y-auto">
+             class="fixed mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 min-w-[200px] max-h-64 overflow-y-auto">
           <button v-if="filterStrategies.length"
                   @click="filterStrategies = []; saveFilters(); fetchReport()"
                   class="w-full text-left px-3 py-1.5 text-sm text-tv-muted hover:bg-tv-bg border-b border-tv-border/50 mb-1">
