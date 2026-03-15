@@ -8,6 +8,7 @@ const Auth = useAuth()
 const props = defineProps({
   groupId: { type: String, default: null },
   underlying: { type: String, default: '' },
+  openPnl: { type: Number, default: null },
 })
 
 const emit = defineEmits(['close'])
@@ -19,6 +20,16 @@ const chain = ref(null)
 const cumulativePnl = () => {
   if (!chain.value?.chain?.length) return 0
   return chain.value.chain[chain.value.chain.length - 1]?.cumulative_pnl || 0
+}
+
+const netPremium = () => {
+  return chain.value?.net_premium || 0
+}
+
+const unrealizedPnl = () => {
+  // Prefer live value from prop, fall back to API (cached quotes)
+  if (props.openPnl !== null) return props.openPnl
+  return chain.value?.unrealized_pnl ?? null
 }
 
 async function loadChain(gid) {
@@ -121,11 +132,23 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         </div>
         <!-- Footer -->
         <div v-if="chain"
-             class="px-5 py-3 border-t border-tv-border/50 flex items-center justify-end">
-          <span class="text-sm font-medium"
-                :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">
-            Cumulative P&amp;L: ${{ formatNumber(cumulativePnl()) }}
-          </span>
+             class="px-5 py-3 border-t border-tv-border/50 flex flex-col gap-1.5">
+          <div class="flex items-center justify-end gap-6">
+            <span class="text-sm text-tv-muted">
+              Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
+            </span>
+            <span class="text-sm text-tv-muted">
+              Realized P&amp;L: <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
+            </span>
+            <span v-if="unrealizedPnl() !== null" class="text-sm text-tv-muted">
+              Unrealized: <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
+            </span>
+          </div>
+          <div v-if="unrealizedPnl() !== null" class="flex items-center justify-end">
+            <span class="text-sm text-tv-muted">
+              Chain Total: <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>

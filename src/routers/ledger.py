@@ -290,18 +290,59 @@ async def get_group_roll_chain(
             sum(c.realized_pnl for c in closings_by_lot.get(lot.id, []))
             for lot in lots
         )
+        # Initial premium for this group's lots
+        premium = 0.0
+        for lot in lots:
+            multiplier = 100 if lot.instrument_type == 'EQUITY_OPTION' else 1
+            if lot.entry_price and lot.original_quantity:
+                premium += abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
         cumulative_pnl += realized
         chain_result.append({
             'group_id': gid,
             **g,
+            'premium': premium,
             'realized_pnl': realized,
             'cumulative_pnl': cumulative_pnl,
             'lot_count': len(lots),
         })
 
+    # Net Premium = sum of realized P&L from closed groups + premium of current (last) group
+    net_premium = cumulative_pnl
+    if chain_result:
+        net_premium = sum(
+            item['realized_pnl'] for item in chain_result[:-1]
+        ) + chain_result[-1]['premium']
+
+    # Unrealized P&L for the current (open) group from cached quotes
+    unrealized_pnl = None
+    if chain_ids:
+        current_gid = chain_ids[-1]
+        current_lots = lots_by_group.get(current_gid, [])
+        open_lots = [l for l in current_lots if l.remaining_quantity != 0 and l.status != 'CLOSED']
+        if open_lots:
+            symbols = list({l.symbol for l in open_lots})
+            quotes = db.get_cached_quotes(symbols)
+            if quotes:
+                unrealized_pnl = 0.0
+                for lot in open_lots:
+                    quote = quotes.get(lot.symbol)
+                    mark = quote.get('mark') if quote else None
+                    if mark is None:
+                        continue
+                    multiplier = 100 if lot.instrument_type == 'EQUITY_OPTION' else 1
+                    qty = abs(lot.remaining_quantity)
+                    market_value = mark * qty * multiplier
+                    cost = abs(lot.entry_price) * qty * multiplier if lot.entry_price else 0
+                    if lot.quantity < 0:  # Short
+                        unrealized_pnl += cost - market_value
+                    else:  # Long
+                        unrealized_pnl += market_value - cost
+
     return {
         'root_group_id': chain_ids[0] if chain_ids else group_id,
         'chain_length': len(chain_result),
+        'net_premium': net_premium,
+        'unrealized_pnl': unrealized_pnl,
         'chain': chain_result,
     }
 

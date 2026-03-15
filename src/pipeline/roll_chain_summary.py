@@ -136,22 +136,33 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
             root = group_map[chain[0]]
             current = group_map[chain[-1]]
 
-            # Compute cumulative premium and P&L across all groups in chain
-            cumulative_premium = 0.0
+            # Compute net premium and cumulative P&L across all groups in chain
+            # Net Premium = realized P&L from closed groups + initial premium of current (open) group
             cumulative_realized_pnl = 0.0
+            per_group_realized: dict = {}
+            per_group_premium: dict = {}
 
             for gid in chain:
+                group_realized = 0.0
+                group_premium = 0.0
                 for txn_id in group_txn_ids.get(gid, []):
                     lot = lot_map.get(txn_id)
                     if not lot:
                         continue
-                    # Premium: entry_price * quantity * multiplier
                     multiplier = 100 if lot.instrument_type == 'EQUITY_OPTION' else 1
                     if lot.entry_price and lot.original_quantity:
-                        cumulative_premium += abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
-                    # Realized P&L from closings
+                        group_premium += abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
                     for c in closings_by_lot.get(lot.id, []):
-                        cumulative_realized_pnl += c.realized_pnl
+                        group_realized += c.realized_pnl
+                per_group_realized[gid] = group_realized
+                per_group_premium[gid] = group_premium
+                cumulative_realized_pnl += group_realized
+
+            # Net premium = sum of realized P&L from all closed groups + premium of current group
+            current_gid = chain[-1]
+            net_premium = sum(
+                per_group_realized[gid] for gid in chain[:-1]
+            ) + per_group_premium[current_gid]
 
             # Find last_rolled date (opening_date of the most recent non-root group)
             last_rolled = None
@@ -169,7 +180,7 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
                 roll_count=len(chain) - 1,
                 first_opened=root.opening_date,
                 last_rolled=last_rolled,
-                cumulative_premium=cumulative_premium,
+                cumulative_premium=net_premium,
                 cumulative_realized_pnl=cumulative_realized_pnl,
             )
             session.add(summary)

@@ -53,6 +53,13 @@ const {
 
 const rollChainModal = ref(null)
 const rollChainUnderlying = ref('')
+const rollChainGroup = ref(null)
+
+function openRollChainModal(group) {
+  rollChainModal.value = group.group_id
+  rollChainUnderlying.value = group.underlying
+  rollChainGroup.value = group
+}
 
 // --- Thin wrappers for template (adapt pure functions to reactive state) ---
 
@@ -279,18 +286,18 @@ onUnmounted(() => {
               </div>
 
               <!-- Ledger Link + Roll Chain -->
-              <div class="w-10 flex items-center gap-1">
+              <div class="w-10 flex items-center gap-1.5">
                 <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
-                   class="text-tv-blue hover:text-tv-blue"
+                   class="text-tv-muted hover:text-tv-blue transition-colors"
                    title="View in Ledger">
-                  <i class="fas fa-book"></i>
+                  <i class="fas fa-book text-xs"></i>
                 </a>
                 <button v-if="group.roll_chain"
-                        @click.stop="rollChainModal = group.group_id; rollChainUnderlying = group.underlying"
-                        class="text-[10px] px-1 py-0 rounded-sm bg-tv-blue/20 text-tv-blue border border-tv-blue/40 hover:bg-tv-blue/30 cursor-pointer leading-4"
-                        :title="`${group.roll_chain.roll_count} roll${group.roll_chain.roll_count > 1 ? 's' : ''} · Premium: $${formatNumber(group.roll_chain.cumulative_premium)} · P&L: $${formatNumber(group.roll_chain.cumulative_realized_pnl)}`">
-                  R{{ group.roll_chain.roll_count }}
+                        @click.stop="openRollChainModal(group)"
+                        class="text-[10px] px-1.5 py-0.5 rounded-full text-tv-blue hover:bg-tv-blue/20 cursor-pointer leading-3 font-medium transition-colors"
+                        :title="`${group.roll_chain.roll_count} roll${group.roll_chain.roll_count > 1 ? 's' : ''} · Net Premium: $${formatNumber(group.roll_chain.cumulative_premium)} · P&L: $${formatNumber(group.roll_chain.cumulative_realized_pnl)}`">
+                  <i class="fas fa-link text-[8px] mr-0.5"></i>{{ group.roll_chain.roll_count }}
                 </button>
               </div>
 
@@ -495,7 +502,7 @@ onUnmounted(() => {
                       <span>Opened: {{ formatDate(group.roll_chain ? group.roll_chain.first_opened : group.opening_date) || 'N/A' }}</span>
                       <span>Orders: {{ group.order_count || 1 }}</span>
                       <span v-if="group.roll_chain" class="text-tv-blue cursor-pointer hover:underline"
-                            @click.stop="rollChainModal = group.group_id; rollChainUnderlying = group.underlying">
+                            @click.stop="openRollChainModal(group)">
                         Rolls: {{ group.roll_chain.roll_count }}
                       </span>
                       <span v-show="group.realized_pnl !== 0"
@@ -505,7 +512,7 @@ onUnmounted(() => {
                     </div>
                     <!-- Roll chain cumulative stats -->
                     <div v-if="group.roll_chain" class="flex items-center text-xs mt-1 gap-4">
-                      <span class="text-tv-muted">Chain Premium: <span class="text-tv-text">${{ formatNumber(group.roll_chain.cumulative_premium) }}</span></span>
+                      <span class="text-tv-muted">Net Premium: <span class="text-tv-text">${{ formatNumber(group.roll_chain.cumulative_premium) }}</span></span>
                       <span class="text-tv-muted">Chain P&L:
                         <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
                           ${{ formatNumber(group.roll_chain.cumulative_realized_pnl) }}
@@ -672,6 +679,7 @@ onUnmounted(() => {
   <RollChainModal
     :group-id="rollChainModal"
     :underlying="rollChainUnderlying"
-    @close="rollChainModal = null"
+    :open-pnl="rollChainGroup ? getGroupOpenPnL(rollChainGroup) : null"
+    @close="rollChainModal = null; rollChainGroup = null"
   />
 </template>
