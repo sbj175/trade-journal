@@ -102,9 +102,14 @@ async def get_market_status(
                 }
             result["sessions"].append(session_data)
 
-        # Derive overall status from equity (NYSE) session
-        equity = next((s for s in sessions if s.instrument_collection == "Equity"), None)
-        result["overall_status"] = equity.status.value if equity else "Unknown"
+        # Derive overall status from all sessions — if any is open, market is open
+        statuses = [s.status.value for s in sessions]
+        if "Open" in statuses:
+            result["overall_status"] = "Open"
+        elif "Pre-market" in statuses or "Extended" in statuses:
+            result["overall_status"] = next(s for s in statuses if s in ("Pre-market", "Extended"))
+        else:
+            result["overall_status"] = "Closed"
 
         _market_status_cache["data"] = result
         _market_status_cache["expires_at"] = now + 60  # 60s cache

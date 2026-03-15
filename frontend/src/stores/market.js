@@ -10,12 +10,7 @@ export const useMarketStore = defineStore('market', () => {
   const overallStatus = computed(() => marketStatus.value?.overall_status || null)
 
   const statusLabel = computed(() => {
-    const s = overallStatus.value
-    if (s === 'Open') return 'Market Open'
-    if (s === 'Pre-market') return 'Pre-Market'
-    if (s === 'Extended') return 'Extended Hours'
-    if (s === 'Closed') return 'Market Closed'
-    return 'Unknown'
+    return 'Market'
   })
 
   const statusColor = computed(() => {
