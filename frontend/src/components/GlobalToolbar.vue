@@ -173,27 +173,37 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- Section 2: Account Balances (collapsible) -->
-  <div v-if="showToolbarExtras && showBalances && balancesStore.currentAccountBalance"
-       class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center gap-6 text-base">
-    <div>
-      <span class="text-tv-muted text-sm">Net Liq:</span>
-      <span class="font-medium ml-1">{{ balancesStore.privacyMode !== 'off' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.net_liquidating_value) }}</span>
-    </div>
-    <div>
-      <span class="text-tv-muted text-sm">Cash:</span>
-      <span class="font-medium ml-1">{{ balancesStore.privacyMode === 'high' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.cash_balance) }}</span>
-    </div>
-    <div>
-      <span class="text-tv-muted text-sm">Option BP:</span>
-      <span class="font-medium ml-1">{{ balancesStore.privacyMode === 'high' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.derivative_buying_power) }}</span>
-    </div>
-    <div>
-      <span class="text-tv-muted text-sm">Stock BP:</span>
-      <span class="font-medium ml-1">{{ balancesStore.privacyMode === 'high' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.equity_buying_power) }}</span>
+  <!-- Section 2: Account Balances (collapsible, animated) -->
+  <div v-if="showToolbarExtras && balancesStore.currentAccountBalance"
+       class="grid transition-[grid-template-rows] duration-200 ease-in-out"
+       :class="showBalances ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+    <div class="overflow-hidden">
+      <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center gap-6 text-base">
+        <div>
+          <span class="text-tv-muted text-sm">Net Liq:</span>
+          <span class="font-medium ml-1">{{ balancesStore.privacyMode !== 'off' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.net_liquidating_value) }}</span>
+        </div>
+        <div>
+          <span class="text-tv-muted text-sm">Cash:</span>
+          <span class="font-medium ml-1">{{ balancesStore.privacyMode === 'high' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.cash_balance) }}</span>
+        </div>
+        <div>
+          <span class="text-tv-muted text-sm">Option BP:</span>
+          <span class="font-medium ml-1">{{ balancesStore.privacyMode === 'high' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.derivative_buying_power) }}</span>
+        </div>
+        <div>
+          <span class="text-tv-muted text-sm">Stock BP:</span>
+          <span class="font-medium ml-1">{{ balancesStore.privacyMode === 'high' ? '••••••' : '$' + formatNumber(balancesStore.currentAccountBalance.equity_buying_power) }}</span>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Section 3: Page-specific filters (collapsible, via Teleport target) -->
-  <div v-show="showFilters" id="page-filters"></div>
+  <!-- Section 3: Page-specific filters (collapsible, animated, via Teleport target) -->
+  <div class="grid transition-[grid-template-rows] duration-200 ease-in-out"
+       :class="showFilters ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+    <div class="overflow-hidden">
+      <div id="page-filters"></div>
+    </div>
+  </div>
 </template>
