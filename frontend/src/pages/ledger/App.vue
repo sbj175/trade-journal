@@ -449,7 +449,7 @@ onMounted(async () => {
           </span>
 
           <!-- Notes indicator -->
-          <span class="w-6 flex items-center justify-center">
+          <span class="w-6 ml-3 flex items-center justify-center">
             <i v-if="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
           </span>
 
