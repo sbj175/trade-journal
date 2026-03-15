@@ -6,14 +6,11 @@ import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
 import { useMarketStore } from '@/stores/market'
 import { useBalancesStore } from '@/stores/balances'
-import { useQuotesStore } from '@/stores/quotes'
-
 const route = useRoute()
 const accountsStore = useAccountsStore()
 const syncStore = useSyncStore()
 const marketStore = useMarketStore()
 const balancesStore = useBalancesStore()
-const quotesStore = useQuotesStore()
 
 // Collapsible sections — persist in localStorage
 const showBalances = ref(localStorage.getItem('toolbar_showBalances') !== 'false')
@@ -73,8 +70,7 @@ onUnmounted(() => {
         <div class="relative">
           <button @click="marketStore.toggleExpanded($event)"
                   class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity">
-            <span v-if="quotesStore.lastQuoteUpdate" class="text-tv-muted">{{ quotesStore.lastQuoteUpdate }}</span>
-            <span class="inline-flex items-center gap-1.5" :class="quotesStore.lastQuoteUpdate ? 'ml-1' : ''">
+            <span class="inline-flex items-center gap-1.5">
               <span class="pulse-dot" :class="marketStore.dotColor"></span>
               <span :class="marketStore.statusColor" class="font-medium">{{ marketStore.statusLabel }}</span>
               <i class="fas fa-chevron-down text-[8px] text-tv-muted transition-transform"
