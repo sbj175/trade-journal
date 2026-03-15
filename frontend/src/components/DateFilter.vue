@@ -26,6 +26,7 @@ const viewYear = ref(new Date().getFullYear())
 const viewMonth = ref(new Date().getMonth())
 const dropdownRef = ref(null)
 const triggerRef = ref(null)
+const dropdownPos = ref({ top: 0, left: 0 })
 
 // --- Helpers ---
 function today() {
@@ -242,6 +243,11 @@ function toggle() {
     const target = toDate.value || today()
     viewYear.value = target.getFullYear()
     viewMonth.value = target.getMonth()
+    // Position dropdown using fixed coords to escape stacking contexts
+    if (triggerRef.value) {
+      const rect = triggerRef.value.getBoundingClientRect()
+      dropdownPos.value = { top: rect.bottom + 4, left: rect.left }
+    }
   }
 }
 
@@ -378,7 +384,8 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
 
     <!-- Dropdown -->
     <div v-if="open" ref="dropdownRef"
-         class="absolute top-full left-0 mt-1 z-[60] flex bg-tv-panel border border-tv-border rounded shadow-2xl shadow-black/50">
+         class="fixed z-[9999] flex bg-tv-panel border border-tv-border rounded shadow-2xl shadow-black/50"
+         :style="{ top: dropdownPos.top + 'px', left: dropdownPos.left + 'px' }">
 
       <!-- Left: Presets -->
       <div class="w-40 border-r border-tv-border py-2 flex flex-col">
