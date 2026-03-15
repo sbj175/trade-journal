@@ -378,7 +378,7 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
 
     <!-- Dropdown -->
     <div v-if="open" ref="dropdownRef"
-         class="absolute top-full left-0 mt-1 z-50 flex bg-tv-panel border border-tv-border rounded shadow-2xl shadow-black/50">
+         class="absolute top-full left-0 mt-1 z-[60] flex bg-tv-panel border border-tv-border rounded shadow-2xl shadow-black/50">
 
       <!-- Left: Presets -->
       <div class="w-40 border-r border-tv-border py-2 flex flex-col">
