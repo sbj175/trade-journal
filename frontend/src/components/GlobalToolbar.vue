@@ -17,10 +17,16 @@ const quotesStore = useQuotesStore()
 
 // Collapsible sections — persist in localStorage
 const showBalances = ref(localStorage.getItem('toolbar_showBalances') !== 'false')
+const showFilters = ref(localStorage.getItem('toolbar_showFilters') !== 'false')
 
 function toggleBalances() {
   showBalances.value = !showBalances.value
   localStorage.setItem('toolbar_showBalances', showBalances.value)
+}
+
+function toggleFilters() {
+  showFilters.value = !showFilters.value
+  localStorage.setItem('toolbar_showFilters', showFilters.value)
 }
 
 // Hide toolbar extras on settings/privacy/components
@@ -134,13 +140,22 @@ onUnmounted(() => {
         </select>
       </template>
 
-      <!-- Balances toggle -->
+      <!-- Section toggles -->
       <template v-if="showToolbarExtras">
-        <button @click="toggleBalances()"
-                class="text-tv-muted hover:text-tv-text text-xs transition-colors"
-                :title="showBalances ? 'Hide balances' : 'Show balances'">
-          <i class="fas" :class="showBalances ? 'fa-eye' : 'fa-eye-slash'"></i>
-        </button>
+        <div class="flex items-center gap-2 border-l border-tv-border pl-4">
+          <button @click="toggleBalances()"
+                  class="text-xs px-2 py-1 rounded transition-colors"
+                  :class="showBalances ? 'text-tv-text bg-tv-border/30' : 'text-tv-muted hover:text-tv-text'"
+                  title="Toggle account overview">
+            <i class="fas fa-dollar-sign text-[10px] mr-1"></i>Overview
+          </button>
+          <button @click="toggleFilters()"
+                  class="text-xs px-2 py-1 rounded transition-colors"
+                  :class="showFilters ? 'text-tv-text bg-tv-border/30' : 'text-tv-muted hover:text-tv-text'"
+                  title="Toggle filters">
+            <i class="fas fa-filter text-[10px] mr-1"></i>Filters
+          </button>
+        </div>
       </template>
     </div>
   </div>
@@ -179,6 +194,6 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- Section 3: Page-specific filters (via Teleport target) -->
-  <div id="page-filters"></div>
+  <!-- Section 3: Page-specific filters (collapsible, via Teleport target) -->
+  <div v-show="showFilters" id="page-filters"></div>
 </template>
