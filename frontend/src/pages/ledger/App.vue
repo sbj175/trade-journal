@@ -446,7 +446,11 @@ onMounted(async () => {
                       :class="rollChainModal === group.group_id ? 'translate-x-4' : ''"></span>
               </span>
             </label>
-            <i v-else-if="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
+          </span>
+
+          <!-- Notes indicator -->
+          <span class="w-6 flex items-center justify-center">
+            <i v-if="getGroupNote(group)" class="fas fa-sticky-note text-tv-amber text-sm" title="Has notes"></i>
           </span>
 
           <!-- Initial Premium -->
