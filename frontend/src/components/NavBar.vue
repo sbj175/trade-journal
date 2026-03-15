@@ -27,7 +27,7 @@ function isActiveParent(link) {
 </script>
 
 <template>
-  <nav class="bg-tv-panel border-b border-tv-border sticky top-0 z-50">
+  <nav class="bg-tv-panel border-b border-tv-border">
     <div class="h-[2px] bg-tv-blue"></div>
     <div class="flex items-center justify-between h-14 px-5">
       <div class="flex items-center h-full gap-8">
@@ -73,7 +73,6 @@ function isActiveParent(link) {
         </div>
       </div>
       <div class="flex items-center gap-5 text-sm">
-        <div id="nav-right"></div>
         <div v-if="authStore.authEnabled && authStore.userEmail" class="flex items-center gap-3 border-l border-tv-border pl-5">
           <span class="text-tv-muted text-xs truncate max-w-[150px]" :title="authStore.userEmail">{{ authStore.userEmail }}</span>
           <button @click="authStore.signOut()" class="text-tv-muted hover:text-tv-red transition-colors" title="Sign out">
