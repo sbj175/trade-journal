@@ -1,13 +1,18 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import StreamingPrice from '@/components/StreamingPrice.vue'
-import PositionsToolbar from '@/components/PositionsToolbar.vue'
+import { useAccountsStore } from '@/stores/accounts'
+import { useSyncStore } from '@/stores/sync'
+import { useQuotesStore } from '@/stores/quotes'
 import { useEquityQuotes } from './useEquityQuotes'
 import { useEquityPositions } from './useEquityPositions'
 
 const Auth = useAuth()
+const accountsStore = useAccountsStore()
+const syncStore = useSyncStore()
+const quotesStore = useQuotesStore()
 
 // Circular dependency: useEquityQuotes needs filteredItems (from positions),
 // useEquityPositions needs quote accessors (from quotes). Broken via lazy getter
@@ -31,11 +36,29 @@ const {
   getQuotePrice, getMarketValue, getUnrealizedPnL, getPnLPercent, quoteUpdateCounter,
 })
 
+// Watch account store for changes from GlobalToolbar
+watch(() => accountsStore.selectedAccount, (val) => {
+  selectedAccount.value = val
+  onAccountChange()
+})
+
+// Push quote timestamps to the quotes store
+watch(lastQuoteUpdate, (val) => {
+  quotesStore.setLastQuoteUpdate(val)
+})
+
+// Watch sync store — if sync triggered from toolbar, refetch
+watch(() => syncStore.lastSyncTime, async (val) => {
+  if (val) {
+    await loadPositions()
+    await loadCachedQuotes()
+  }
+})
+
 // --- Lifecycle ---
 
 onMounted(async () => {
-  const savedAccount = localStorage.getItem('trade_journal_selected_account')
-  if (savedAccount) selectedAccount.value = savedAccount
+  selectedAccount.value = accountsStore.selectedAccount
   await fetchAccounts()
   await loadPositions()
   await loadCachedQuotes()
@@ -48,30 +71,31 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to="#nav-right">
-    <select v-model="selectedAccount" @change="onAccountChange()"
-            class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
-      <option value="">All Accounts</option>
-      <option v-for="account in accounts" :key="account.account_number"
-              :value="account.account_number">
-        ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-      </option>
-    </select>
+  <!-- Page-specific filters teleported to GlobalToolbar -->
+  <Teleport to="#page-filters">
+    <div class="bg-tv-panel border-b border-tv-border px-4 py-2.5 flex items-center gap-4">
+      <!-- Symbol Filter -->
+      <div class="relative">
+        <input type="text"
+               :value="selectedUnderlying"
+               @input="selectedUnderlying = $event.target.value.toUpperCase()"
+               @focus="$event.target.select()"
+               placeholder="Symbol"
+               maxlength="5"
+               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+               :class="selectedUnderlying ? 'pr-8' : ''">
+        <button v-show="selectedUnderlying"
+                @click="selectedUnderlying = ''"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text"
+                title="Clear symbol filter">
+          <i class="fas fa-times-circle"></i>
+        </button>
+      </div>
+    </div>
   </Teleport>
 
-  <!-- Sticky Header -->
-  <div class="sticky top-14 z-30">
-    <PositionsToolbar
-      :is-loading="isLoading"
-      :live-quotes-active="liveQuotesActive"
-      :last-quote-update="lastQuoteUpdate"
-      :sync-summary="syncSummary"
-      :selected-account="selectedAccount"
-      v-model:symbol-filter="selectedUnderlying"
-      @sync="syncAndLoad()"
-      @update:sync-summary="syncSummary = $event"
-    />
-
+  <!-- Header -->
+  <div>
     <!-- Stats Bar -->
     <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center gap-8 text-base">
       <span class="text-tv-muted">

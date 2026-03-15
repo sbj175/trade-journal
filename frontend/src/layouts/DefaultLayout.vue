@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import NavBar from '@/components/NavBar.vue'
+import GlobalToolbar from '@/components/GlobalToolbar.vue'
 
 const authStore = useAuthStore()
 
@@ -11,6 +12,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <NavBar />
+  <div class="sticky top-0 z-50">
+    <NavBar />
+    <GlobalToolbar />
+  </div>
   <router-view />
 </template>

@@ -1,15 +1,19 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate, formatExpirationShort } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
+import { useAccountsStore } from '@/stores/accounts'
+import { useSyncStore } from '@/stores/sync'
 import { groupedOptionLegs, openEquityLots, equityAggregate, groupInitialPremium } from './useLedgerLots'
 import { useLedgerGroups } from './useLedgerGroups'
 
 const Auth = useAuth()
 const route = useRoute()
+const accountsStore = useAccountsStore()
+const syncStore = useSyncStore()
 
 // ==================== STATE ====================
 const groups = ref([])
@@ -67,6 +71,17 @@ function onDocumentClick(e) {
 onMounted(() => document.addEventListener('click', onDocumentClick))
 onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
+// Watch account store for changes from GlobalToolbar
+watch(() => accountsStore.selectedAccount, (val) => {
+  selectedAccount.value = val
+  onAccountChange()
+})
+
+// Watch sync store — refetch when sync completes
+watch(() => syncStore.lastSyncTime, async (val) => {
+  if (val) await fetchLedger()
+})
+
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
   await loadAccounts()
@@ -86,8 +101,7 @@ onMounted(async () => {
     } catch (e) {}
   }
 
-  const savedAccount = localStorage.getItem('trade_journal_selected_account')
-  if (savedAccount) selectedAccount.value = savedAccount
+  selectedAccount.value = accountsStore.selectedAccount
 
   const underlyingParam = route.query.underlying
   const groupParam = route.query.group
@@ -122,21 +136,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Teleport to="#nav-right">
-    <select v-model="selectedAccount" @change="onAccountChange()"
-            class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
-      <option value="">All Accounts</option>
-      <option v-for="account in accounts" :key="account.account_number"
-              :value="account.account_number">
-        ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-      </option>
-    </select>
-  </Teleport>
-
-  <!-- Sticky header block (filters + stats + column headers) -->
-  <div class="sticky top-14 z-30">
-
-  <!-- Filter Bar -->
+  <!-- Page-specific filters teleported to GlobalToolbar -->
+  <Teleport to="#page-filters">
   <div class="bg-tv-panel border-b border-tv-border">
     <!-- Row 1: Symbol + Date -->
     <div class="px-4 py-2.5 flex items-center gap-5 border-b border-tv-border/50">
@@ -282,6 +283,7 @@ onMounted(async () => {
 
     </div>
   </div>
+  </Teleport>
 
   <!-- Stats Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center gap-8 text-base">
@@ -325,7 +327,7 @@ onMounted(async () => {
     </span>
   </div>
 
-  </div><!-- /sticky header block -->
+  <!-- /header block -->
 
   <!-- Loading State -->
   <div v-if="loading" class="text-center py-16">

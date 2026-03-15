@@ -1,12 +1,16 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatPercent } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
+import { useAccountsStore } from '@/stores/accounts'
+import { useSyncStore } from '@/stores/sync'
 import { useReportsFilters } from './useReportsFilters'
 import { useReportsData } from './useReportsData'
 
 const Auth = useAuth()
+const accountsStore = useAccountsStore()
+const syncStore = useSyncStore()
 
 // ==================== COMPOSABLES ====================
 // Filters must be initialized first so getActiveStrategies is available for data composable.
@@ -43,10 +47,22 @@ function onDocumentClick(e) {
   }
 }
 
+// Watch account store for changes from GlobalToolbar
+watch(() => accountsStore.selectedAccount, (val) => {
+  selectedAccount.value = val
+  onAccountChange()
+})
+
+// Watch sync store — refetch when sync completes
+watch(() => syncStore.lastSyncTime, async (val) => {
+  if (val) await fetchReport()
+})
+
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
   await loadAccounts()
+  selectedAccount.value = accountsStore.selectedAccount
   loadSavedState()
   loadSavedFilters()
   await fetchReport()
@@ -55,18 +71,8 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 </script>
 
 <template>
-  <Teleport to="#nav-right">
-    <select v-model="selectedAccount" @change="onAccountChange()"
-            class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
-      <option value="">All Accounts</option>
-      <option v-for="account in accounts" :key="account.account_number"
-              :value="account.account_number">
-        ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-      </option>
-    </select>
-  </Teleport>
-
-  <!-- Filters Bar -->
+  <!-- Page-specific filters teleported to GlobalToolbar -->
+  <Teleport to="#page-filters">
   <div class="bg-tv-panel border-b border-tv-border">
     <!-- Row 1: Date Controls -->
     <div class="px-4 py-2.5 flex items-center gap-5 border-b border-tv-border/50">
@@ -149,6 +155,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
       </div>
     </div>
   </div>
+  </Teleport>
 
   <!-- Loading State -->
   <div v-if="loading" class="text-center py-16">

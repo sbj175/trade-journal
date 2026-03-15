@@ -1,12 +1,16 @@
 <script setup>
-import { onMounted, onUnmounted, nextTick } from 'vue'
+import { onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber } from '@/lib/formatters'
 import { formatDelta, shortNumber, getAccountSymbol as _getAccountSymbol } from './riskCalculations'
+import { useAccountsStore } from '@/stores/accounts'
+import { useSyncStore } from '@/stores/sync'
 import { useRiskData } from './useRiskData'
 import { useRiskCharts } from './useRiskCharts'
 
 const Auth = useAuth()
+const accountsStore = useAccountsStore()
+const syncStore = useSyncStore()
 
 // ==================== DATA COMPOSABLE ====================
 const {
@@ -34,11 +38,26 @@ function handleAccountChange() {
   onAccountChange(renderAllCharts)
 }
 
+// Watch account store for changes from GlobalToolbar
+watch(() => accountsStore.selectedAccount, (val) => {
+  selectedAccount.value = val
+  handleAccountChange()
+})
+
+// Watch sync store — refetch when sync completes
+watch(() => syncStore.lastSyncTime, async (val) => {
+  if (val) {
+    await fetchData()
+    await nextTick()
+    if (allPositions.value.length > 0) renderAllCharts()
+  }
+})
+
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
   try { await ensureApexCharts() } catch (e) { console.warn('ApexCharts failed to load:', e) }
   await fetchData()
-  selectedAccount.value = localStorage.getItem('trade_journal_selected_account') || ''
+  selectedAccount.value = accountsStore.selectedAccount
   connectWebSocket()
   await nextTick()
   if (allPositions.value.length > 0) renderAllCharts()
@@ -52,17 +71,6 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to="#nav-right">
-    <select v-model="selectedAccount" @change="handleAccountChange()"
-            class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
-      <option value="">All Accounts</option>
-      <option v-for="account in accounts" :key="account.account_number"
-              :value="account.account_number">
-        ({{ getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-      </option>
-    </select>
-  </Teleport>
-
   <!-- Status Bar -->
   <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center justify-between text-sm">
     <div class="flex items-center gap-6">
