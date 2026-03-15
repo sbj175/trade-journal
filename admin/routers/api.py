@@ -21,6 +21,7 @@ from src.database.models import (
     OrderChain,
     OrderChainCache,
     OrderComment,
+    PnlEvent,
     Position,
     PositionGroup,
     PositionGroupLot,
@@ -28,6 +29,7 @@ from src.database.models import (
     PositionLot,
     PositionNote,
     RawTransaction,
+    RollChainSummary,
     StrategyTarget,
     SyncMetadata,
     Tag,
@@ -387,6 +389,8 @@ async def reset_sync(user_id: str):
 
 # Tables containing user trading data (order matters for FK constraints)
 _USER_DATA_TABLES = [
+    PnlEvent,
+    RollChainSummary,
     LotClosing,
     PositionGroupLot,
     PositionGroupTag,
