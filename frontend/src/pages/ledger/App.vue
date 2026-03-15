@@ -343,7 +343,7 @@ onMounted(async () => {
   </div>
 
   <!-- Group List -->
-  <div v-else class="bg-black border-x border-b border-tv-border">
+  <div v-else class="bg-tv-row border-x border-b border-tv-border">
     <div class="divide-y divide-tv-border">
       <div v-for="group in filteredGroups" :key="group.group_id" :id="'group-' + group.group_id">
         <!-- Group Header Row -->

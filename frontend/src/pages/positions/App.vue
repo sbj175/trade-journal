@@ -229,7 +229,7 @@ onUnmounted(() => {
 
   <!-- Main Content -->
   <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0">
-   <div class="bg-black border-x border-b border-tv-border">
+   <div class="bg-tv-row border-x border-b border-tv-border">
     <!-- Position Groups -->
     <div class="divide-y divide-tv-border">
       <div v-for="(group, index) in groupedPositions" :key="group.groupKey">

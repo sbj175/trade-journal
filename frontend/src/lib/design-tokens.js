@@ -16,6 +16,7 @@ export const colors = {
   // Neutrals — deep layered dark with cool undertone
   bg:       '#0b0f19',
   panel:    '#141926',
+  row:      '#000000',   // data row background (positions, ledger, reports)
   border:   '#1e2536',
   hover:    '#283148',
   text:     '#e6e9f0',
