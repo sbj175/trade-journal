@@ -2,7 +2,9 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useConfirm } from '@/composables/useConfirm'
 import { useAuthStore } from '@/stores/auth'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import { useSettingsConnection } from './useSettingsConnection'
 import { useSettingsTargets } from './useSettingsTargets'
 import { useSettingsTags } from './useSettingsTags'
@@ -10,6 +12,7 @@ import { useSettingsSync } from './useSettingsSync'
 import { useSettingsPreferences } from './useSettingsPreferences'
 
 const Auth = useAuth()
+const { show: confirmShow, title: confirmTitle, message: confirmMessage, confirmText: confirmBtnText, cancelText: confirmCancelText, variant: confirmVariant, onConfirm, onCancel } = useConfirm()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -633,4 +636,15 @@ onMounted(async () => {
       </button>
     </div>
   </div>
+
+  <ConfirmModal
+    :show="confirmShow"
+    :title="confirmTitle"
+    :message="confirmMessage"
+    :confirm-text="confirmBtnText"
+    :cancel-text="confirmCancelText"
+    :variant="confirmVariant"
+    @confirm="onConfirm"
+    @cancel="onCancel"
+  />
 </template>

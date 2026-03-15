@@ -2,8 +2,10 @@
  * Connection status, OAuth flow, and manual credential management.
  */
 import { ref } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
 
 export function useSettingsConnection(Auth, { showNotification }) {
+  const { confirm } = useConfirm()
   // Connection state
   const connectionStatus = ref(null)
   const providerSecret = ref('')
@@ -48,7 +50,8 @@ export function useSettingsConnection(Auth, { showNotification }) {
   }
 
   async function disconnectTastytrade() {
-    if (!confirm('Disconnect your Tastytrade account? You will need to reconnect to sync trades.')) return
+    const ok = await confirm({ title: 'Disconnect Tastytrade', message: 'Disconnect your Tastytrade account? You will need to reconnect to sync trades.', confirmText: 'Disconnect', variant: 'danger' })
+    if (!ok) return
     deletingCredentials.value = true
     try {
       const resp = await Auth.authFetch('/api/auth/tastytrade/disconnect', { method: 'POST' })
@@ -106,7 +109,8 @@ export function useSettingsConnection(Auth, { showNotification }) {
   }
 
   async function deleteCredentials() {
-    if (!confirm('Remove your Tastytrade credentials? You will need to re-enter them to sync.')) return
+    const ok = await confirm({ title: 'Remove Credentials', message: 'Remove your Tastytrade credentials? You will need to re-enter them to sync.', confirmText: 'Remove', variant: 'danger' })
+    if (!ok) return
     deletingCredentials.value = true
     try {
       const resp = await Auth.authFetch('/api/settings/credentials', { method: 'DELETE' })

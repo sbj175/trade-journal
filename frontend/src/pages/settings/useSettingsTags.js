@@ -2,8 +2,10 @@
  * Tag management: load, edit, save, delete.
  */
 import { ref } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
 
 export function useSettingsTags(Auth, { showNotification }) {
+  const { confirm } = useConfirm()
   const tags = ref([])
   const editingTag = ref(null)
   const editName = ref('')
@@ -59,7 +61,8 @@ export function useSettingsTags(Auth, { showNotification }) {
     const msg = tag.group_count > 0
       ? `Delete "${tag.name}"? It is used by ${tag.group_count} position group${tag.group_count === 1 ? '' : 's'} and will be removed from all of them.`
       : `Delete "${tag.name}"?`
-    if (!confirm(msg)) return
+    const ok = await confirm({ title: 'Delete Tag', message: msg, confirmText: 'Delete', variant: 'danger' })
+    if (!ok) return
     deletingTagId.value = tag.id
     try {
       const resp = await Auth.authFetch(`/api/tags/${tag.id}`, { method: 'DELETE' })
