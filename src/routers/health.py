@@ -77,16 +77,20 @@ async def get_market_status(
                 "start_at": s.start_at.isoformat() if s.start_at else None,
             }
             if s.next_session:
-                # The SDK sometimes returns stale next_session dates (weekends/past).
-                # Advance to the next weekday if the session_date is today or earlier.
+                # The SDK sometimes returns stale next_session dates (past days).
+                # Advance to the next valid session date if needed.
                 raw_date = s.next_session.session_date
                 # Handle both date and datetime objects from SDK
                 next_date = raw_date.date() if isinstance(raw_date, datetime) else raw_date
                 today = date.today()
-                if next_date <= today:
-                    next_date = today + timedelta(days=1)
-                # Skip weekends (5=Saturday, 6=Sunday)
-                while next_date.weekday() in (5, 6):
+                # CFE (options/futures) opens Sunday evening — only skip Saturdays.
+                # Equities skip both Saturday and Sunday.
+                is_cfe = s.instrument_collection == "CFE"
+                skip_days = (5,) if is_cfe else (5, 6)  # 5=Saturday, 6=Sunday
+                if next_date < today:
+                    next_date = today
+                # Skip non-trading days for this exchange
+                while next_date.weekday() in skip_days:
                     next_date = next_date + timedelta(days=1)
                 # Compute day offset to shift open/close times accordingly
                 orig_date = raw_date.date() if isinstance(raw_date, datetime) else raw_date
