@@ -1,7 +1,7 @@
 """Health check and connection status routes."""
 
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends
 from loguru import logger
 
@@ -77,10 +77,21 @@ async def get_market_status(
                 "start_at": s.start_at.isoformat() if s.start_at else None,
             }
             if s.next_session:
+                # The SDK sometimes returns stale next_session dates (weekends/past).
+                # Advance to the next weekday if the session_date is today or earlier.
+                next_date = s.next_session.session_date
+                today = date.today()
+                if next_date <= today:
+                    next_date = today + timedelta(days=1)
+                # Skip weekends (5=Saturday, 6=Sunday)
+                while next_date.weekday() in (5, 6):
+                    next_date = next_date + timedelta(days=1)
+                # Compute day offset to shift open/close times accordingly
+                day_offset = next_date - s.next_session.session_date
                 session_data["next_session"] = {
-                    "open_at": s.next_session.open_at.isoformat(),
-                    "close_at": s.next_session.close_at.isoformat(),
-                    "session_date": s.next_session.session_date.isoformat(),
+                    "open_at": (s.next_session.open_at + day_offset).isoformat(),
+                    "close_at": (s.next_session.close_at + day_offset).isoformat(),
+                    "session_date": next_date.isoformat(),
                 }
             result["sessions"].append(session_data)
 
