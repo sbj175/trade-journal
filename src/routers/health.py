@@ -79,15 +79,19 @@ async def get_market_status(
             if s.next_session:
                 # The SDK sometimes returns stale next_session dates (weekends/past).
                 # Advance to the next weekday if the session_date is today or earlier.
-                next_date = s.next_session.session_date
+                raw_date = s.next_session.session_date
+                # Handle both date and datetime objects from SDK
+                next_date = raw_date.date() if isinstance(raw_date, datetime) else raw_date
                 today = date.today()
+                logger.debug(f"Market next_session for {s.instrument_collection}: raw={raw_date} type={type(raw_date)} next_date={next_date} today={today}")
                 if next_date <= today:
                     next_date = today + timedelta(days=1)
                 # Skip weekends (5=Saturday, 6=Sunday)
                 while next_date.weekday() in (5, 6):
                     next_date = next_date + timedelta(days=1)
                 # Compute day offset to shift open/close times accordingly
-                day_offset = next_date - s.next_session.session_date
+                orig_date = raw_date.date() if isinstance(raw_date, datetime) else raw_date
+                day_offset = next_date - orig_date
                 session_data["next_session"] = {
                     "open_at": (s.next_session.open_at + day_offset).isoformat(),
                     "close_at": (s.next_session.close_at + day_offset).isoformat(),
