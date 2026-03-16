@@ -78,6 +78,8 @@ def assign_lots_to_groups(
     aue_to_group: Dict[Tuple[str, str, date], str] = {}
     # (account, underlying) -> group_key  (equity)
     au_to_group: Dict[Tuple[str, str], str] = {}
+    # chain_id -> group_key  (chain-aware routing for partial rolls)
+    chain_to_group: Dict[str, str] = {}
     # group_key counter
     group_counter = 0
 
@@ -96,10 +98,19 @@ def assign_lots_to_groups(
             aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
         if not lot.expiration:
             au_to_group[(lot.account_number, lot.underlying)] = gk
+        if lot.chain_id:
+            chain_to_group[lot.chain_id] = gk
 
     # --- Step 2: Assign each lot to a group --------------------------------
     for lot in sorted_lots:
         assigned = False
+
+        # Rule 0: chain-aware routing — keep partially-rolled positions together
+        if not assigned and lot.chain_id and lot.chain_id in chain_to_group:
+            gk = chain_to_group[lot.chain_id]
+            if _is_group_open(gk):
+                _add_lot_to_group(lot, gk)
+                assigned = True
 
         # Rule 1: option lots group by (account, underlying, expiration)
         if not assigned and lot.expiration:
@@ -128,6 +139,10 @@ def assign_lots_to_groups(
     # May split groups when the recognizer finds multiple strategies.
     result: List[GroupSpec] = []
     for gk, lot_list in groups.items():
+        # Check if all lots share a single chain_id (indicates one position lifecycle)
+        chain_ids = {lot.chain_id for lot in lot_list if lot.chain_id}
+        single_chain = len(chain_ids) == 1
+
         # Strategy label from engine (uses only non-closed lots)
         legs = lots_to_legs(lot_list)
         if not legs:
@@ -136,8 +151,21 @@ def assign_lots_to_groups(
 
         if legs:
             sr = recognize(legs)
-            # Split group if recognizer found multiple distinct strategies
-            if sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
+
+            # For single-chain groups (partial rolls), if the recognizer finds
+            # multiple strategies from open legs, recover the original strategy
+            # by recognizing only the opening order's legs.
+            if single_chain and sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
+                first_order = min(lot_list, key=lambda l: l.entry_date).opening_order_id
+                if first_order:
+                    opening_lots = [l for l in lot_list if l.opening_order_id == first_order]
+                    opening_legs = _legs_from_all_lots(opening_lots)
+                    if opening_legs:
+                        sr = recognize(opening_legs)
+
+            # Split group if recognizer found multiple distinct strategies,
+            # but NOT if all lots share a chain (single position lifecycle).
+            if not single_chain and sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
                 sub_groups = _split_lots_by_partition(lot_list, legs, sr.sub_strategies)
                 for sub_label, sub_lots in sub_groups:
                     has_open = any(lot.remaining_quantity != 0 for lot in sub_lots)
@@ -586,6 +614,8 @@ class GroupPersister:
             aue_to_group: Dict[Tuple[str, str, date], str] = {}
             # (account, underlying) -> group_id  (equity)
             au_to_group: Dict[Tuple[str, str], str] = {}
+            # chain_id -> group_id  (chain-aware routing for partial rolls)
+            chain_to_group: Dict[str, str] = {}
             # group_id -> set of Lot objects (for open-check)
             group_lots: Dict[str, List[Lot]] = defaultdict(list)
 
@@ -605,6 +635,8 @@ class GroupPersister:
                     aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
                 if not lot.expiration:
                     au_to_group[(lot.account_number, lot.underlying)] = group_id
+                if lot.chain_id:
+                    chain_to_group[lot.chain_id] = group_id
 
             # =================================================================
             # Phase 3: Route new lots
@@ -621,10 +653,19 @@ class GroupPersister:
                     aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
                 if not lot.expiration:
                     au_to_group[(lot.account_number, lot.underlying)] = group_id
+                if lot.chain_id:
+                    chain_to_group[lot.chain_id] = group_id
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
                 assigned = False
+
+                # Rule 0: chain-aware routing — keep partially-rolled positions together
+                if not assigned and lot.chain_id and lot.chain_id in chain_to_group:
+                    gk = chain_to_group[lot.chain_id]
+                    if _is_group_open(gk):
+                        _add_new_lot(lot, gk)
+                        assigned = True
 
                 # Rule 1: option lots group by (account, underlying, expiration)
                 if not assigned and lot.expiration:
@@ -738,6 +779,10 @@ class GroupPersister:
 
                 # Strategy label (unless user overrode)
                 if not group.strategy_label_user_override:
+                    # Check if all lots share a single chain (one position lifecycle)
+                    lot_chain_ids = {l.chain_id for l in lots_in_group if l.chain_id}
+                    single_chain = len(lot_chain_ids) == 1
+
                     legs = lots_to_legs(lots_in_group)
                     if not legs:
                         legs = _legs_from_all_lots(lots_in_group)
@@ -745,8 +790,20 @@ class GroupPersister:
                     if legs:
                         sr = recognize(legs)
 
-                        # Split group if recognizer found multiple distinct strategies
-                        if sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
+                        # For single-chain groups (partial rolls), if the recognizer
+                        # finds multiple strategies from open legs, recover the
+                        # original strategy by recognizing the opening order's legs.
+                        if single_chain and sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
+                            first_order = min(lots_in_group, key=lambda l: l.entry_date).opening_order_id
+                            if first_order:
+                                opening_lots = [l for l in lots_in_group if l.opening_order_id == first_order]
+                                opening_legs = _legs_from_all_lots(opening_lots)
+                                if opening_legs:
+                                    sr = recognize(opening_legs)
+
+                        # Split group if recognizer found multiple distinct strategies,
+                        # but NOT if all lots share a chain (single position lifecycle).
+                        if not single_chain and sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
                             sub_groups = _split_lots_by_partition(
                                 lots_in_group, legs, sr.sub_strategies,
                             )

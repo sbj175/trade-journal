@@ -302,6 +302,13 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                 if not open_option_legs and open_equity_legs:
                     strategy_type = "Shares"
 
+                # Detect partial roll: open lots from multiple opening orders on
+                # the same chain — some legs were rolled while others remain
+                lot_chain_ids = {lot.chain_id for lot in lots if lot.chain_id}
+                open_order_ids = {lot.opening_order_id for lot in lots
+                                  if lot.remaining_quantity != 0 and lot.opening_order_id}
+                partially_rolled = len(lot_chain_ids) == 1 and len(open_order_ids) > 1
+
                 group_obj = {
                     "chain_id": gid,
                     "group_id": gid,
@@ -315,6 +322,7 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                     "roll_count": roll_count,
                     "order_count": len(order_ids),
                     "has_assignment": has_assignment,
+                    "partially_rolled": partially_rolled,
                     "open_legs": open_option_legs,
                     "equity_legs": open_equity_legs,
                     "equity_summary": equity_summary,

@@ -366,7 +366,7 @@ onMounted(async () => {
           <span class="w-48 mr-4 relative">
             <template v-if="!group._editingStrategy">
               <span class="flex items-center group/strat">
-                <span class="text-tv-muted text-base truncate flex-1 min-w-0">{{ group.strategy_label || '\u2014' }}</span>
+                <span class="text-tv-muted text-base truncate flex-1 min-w-0">{{ group.strategy_label || '\u2014' }}<span v-if="group.partially_rolled" class="text-tv-cyan cursor-help ml-0.5" title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span></span>
                 <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
                   <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                      @click.stop="group._editingStrategy = true"

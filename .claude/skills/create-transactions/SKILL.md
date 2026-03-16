@@ -210,6 +210,58 @@ Each invocation MUST produce a fresh, distinct set of transactions. Do NOT reuse
    - 50-60% winners, 30-40% losers, 10-20% still open
    - Mix of closing methods: bought/sold to close, expired worthless, assigned
 
+## Verification Query
+
+After reprocessing, always verify the results by querying the pipeline output. Use this exact pattern:
+
+```python
+# Verify groups and lots
+from sqlalchemy import text
+
+with get_session(user_id=USER_ID) as session:
+    print("=== GROUPS ===")
+    groups = session.execute(text(
+        "SELECT group_id, underlying, strategy_label, status, opening_date "
+        "FROM position_groups WHERE user_id = :uid ORDER BY opening_date"
+    ), {"uid": USER_ID}).fetchall()
+    for g in groups:
+        print(f"  {g.underlying}  strategy={g.strategy_label}  status={g.status}  opened={g.opening_date}")
+
+    print("\n=== LOTS ===")
+    lots = session.execute(text(
+        "SELECT l.symbol, l.quantity, l.option_type, l.strike, l.expiration, "
+        "l.status, l.entry_price, l.chain_id "
+        "FROM position_lots l WHERE l.user_id = :uid ORDER BY l.chain_id, l.symbol"
+    ), {"uid": USER_ID}).fetchall()
+    for l in lots:
+        print(f"  {l.symbol:30s}  qty={l.quantity}  type={l.option_type}  status={l.status}  entry={l.entry_price}  chain={l.chain_id[:8] if l.chain_id else 'none'}")
+```
+
+### Key Schema Reference (avoid wrong column names)
+
+**position_groups**: `id`, `group_id`, `user_id`, `account_number`, `underlying`, `strategy_label`, `strategy_label_user_override`, `status`, `opening_date`, `closing_date`, `last_activity_date`, `rolled_from_group_id`
+
+**position_lots**: `id`, `user_id`, `transaction_id`, `account_number`, `symbol`, `underlying`, `instrument_type`, `option_type`, `strike`, `expiration`, `quantity`, `entry_price`, `entry_date`, `remaining_quantity`, `original_quantity`, `chain_id`, `leg_index`, `opening_order_id`, `derived_from_lot_id`, `derivation_type`, `status`
+
+**position_group_lots**: `id`, `group_id`, `transaction_id`, `user_id`, `assigned_at`
+
+Common mistakes to avoid:
+- There is NO `quantity_direction` column — direction is inferred from context (Sell to Open = Short)
+- There is NO `lot_id` — use `id` on position_lots
+- There is NO `has_roll_chain` on position_groups
+- `position_group_lots.transaction_id` links to `position_lots.transaction_id`, NOT to `position_lots.id`
+
+### User Lookup
+
+```python
+from src.database.models import User
+with get_session(unscoped=True) as session:
+    for u in session.query(User).all():
+        print(f"{u.id} | {u.email}")
+```
+
+Note: Use `get_session` from `src.database.engine`, NOT from `DatabaseManager`. The `DatabaseManager.get_session()` does not accept `unscoped` or `user_id` kwargs.
+
 ## Notes
 
 - The dummy `user_credentials` row lets the user access Ledger/Reports/Positions pages

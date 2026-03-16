@@ -335,7 +335,12 @@ onUnmounted(() => {
 
               <!-- Strategy -->
               <div class="w-32 relative">
-                <div class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}</div>
+                <div class="text-sm text-tv-muted">
+                  {{ getGroupStrategyLabel(group) }}
+                  <span v-if="group.partially_rolled"
+                        class="text-tv-cyan cursor-help ml-0.5"
+                        title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>
+                </div>
                 <template v-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
                   <div class="flex flex-wrap gap-1 mt-0.5">
                     <span v-for="badge in group.rollAnalysis.badges" :key="badge.label"

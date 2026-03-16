@@ -176,6 +176,12 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
         rolled_from = g.get('rolled_from_group_id')
         has_roll_chain = bool(rolled_from) or (gid in roll_source_ids)
 
+        # Detect partial roll: open lots from multiple opening orders on same chain
+        lot_chain_ids = {lot.chain_id for lot in lots if lot.chain_id}
+        open_order_ids = {lot.opening_order_id for lot in lots
+                          if lot.remaining_quantity != 0 and lot.opening_order_id}
+        partially_rolled = len(lot_chain_ids) == 1 and len(open_order_ids) > 1
+
         result.append({
             'group_id': gid,
             'underlying': g['underlying'],
@@ -193,6 +199,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'total_fees': round(total_fees, 4),
             'lot_count': len(lots),
             'open_lot_count': open_lot_count,
+            'partially_rolled': partially_rolled,
             'lots': lots_data,
             'tags': tags_by_group.get(gid, []),
         })
