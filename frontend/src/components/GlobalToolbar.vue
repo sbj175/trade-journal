@@ -89,7 +89,7 @@ onUnmounted(() => {
                 <div class="flex items-center justify-between mb-1.5">
                   <span class="text-sm font-medium text-tv-text">{{ marketStore.exchangeLabel(s.exchange) }}</span>
                   <span class="text-xs px-2 py-0.5 rounded-full font-medium"
-                        :class="s.status === 'Open' ? 'bg-tv-green/20 text-tv-green' : s.status === 'Pre-market' || s.status === 'Extended' ? 'bg-tv-amber/20 text-tv-amber' : 'bg-tv-muted/20 text-tv-muted'">
+                        :class="s.status === 'Open' ? 'bg-tv-green/20 text-tv-green' : s.status === 'Pre-market' || s.status === 'Extended' ? 'bg-tv-amber/20 text-tv-amber' : s.status === 'Closed' ? 'bg-tv-red/20 text-tv-red' : 'bg-tv-muted/20 text-tv-muted'">
                     {{ s.status }}
                   </span>
                 </div>
@@ -128,7 +128,7 @@ onUnmounted(() => {
       <template v-if="showToolbarExtras">
         <select v-model="accountsStore.selectedAccount" @change="onAccountChange()"
                 class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
-          <option value="">All Accounts</option>
+          <option v-if="accountsStore.accounts.length > 1" value="">All Accounts</option>
           <option v-for="account in accountsStore.accounts" :key="account.account_number"
                   :value="account.account_number">
             ({{ accountsStore.getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
