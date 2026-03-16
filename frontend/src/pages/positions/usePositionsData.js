@@ -36,6 +36,8 @@ export function usePositionsData(Auth) {
   // Non-reactive
   let ws = null
   let wsReconnectTimer = null
+  let wsReconnectAttempts = 0
+  const WS_MAX_RECONNECT_ATTEMPTS = 5
 
   // --- Toggle helpers ---
   function toggleRollAnalysisMode() {
@@ -171,6 +173,7 @@ export function usePositionsData(Auth) {
 
       ws.onopen = () => {
         liveQuotesActive.value = true
+        wsReconnectAttempts = 0
         requestLiveQuotes()
       }
 
@@ -195,7 +198,11 @@ export function usePositionsData(Auth) {
 
       ws.onclose = () => {
         liveQuotesActive.value = false
-        wsReconnectTimer = setTimeout(() => initializeWebSocket(), 5000)
+        if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+          wsReconnectAttempts++
+          const delay = Math.min(5000 * Math.pow(2, wsReconnectAttempts - 1), 60000)
+          wsReconnectTimer = setTimeout(() => initializeWebSocket(), delay)
+        }
       }
     } catch (err) { console.error('WebSocket error:', err) }
   }
