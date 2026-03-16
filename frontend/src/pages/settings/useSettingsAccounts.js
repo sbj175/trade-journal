@@ -1,5 +1,9 @@
 import { ref } from 'vue'
 
+function sortAccounts(accounts) {
+  return [...accounts].sort((a, b) => (a.account_name || '').localeCompare(b.account_name || ''))
+}
+
 export function useSettingsAccounts(Auth, { showNotification }) {
   const allAccounts = ref([])
   const accountsSaving = ref(false)
@@ -9,7 +13,7 @@ export function useSettingsAccounts(Auth, { showNotification }) {
       const resp = await Auth.authFetch('/api/settings/accounts')
       if (resp.ok) {
         const data = await resp.json()
-        allAccounts.value = data.accounts || []
+        allAccounts.value = sortAccounts(data.accounts || [])
       }
     } catch (err) {
       console.error('Failed to load accounts:', err)
@@ -35,7 +39,7 @@ export function useSettingsAccounts(Auth, { showNotification }) {
       })
       if (resp.ok) {
         const data = await resp.json()
-        allAccounts.value = data.accounts || []
+        allAccounts.value = sortAccounts(data.accounts || [])
         showNotification(`${acct.account_name || acct.account_number} ${newActive ? 'enabled' : 'disabled'}`, 'success')
       } else {
         const err = await resp.json()
