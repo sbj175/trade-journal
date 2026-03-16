@@ -239,19 +239,26 @@ async def initial_sync(
             )
         logger.info(f"Saved {len(accounts)} accounts")
 
-        logger.info(f"Fetching ALL transactions (last {days_label} days)...")
+        # Get active account numbers for filtering
+        active_accounts = {a['account_number'] for a in db.get_accounts()}
+        logger.info(f"Active accounts for initial sync: {active_accounts}")
+
+        logger.info(f"Fetching transactions (last {days_label} days) for active accounts...")
         transactions = await tastytrade.get_transactions(start_date=sync_start) if sync_start else await tastytrade.get_transactions(days_back=MAX_DAYS_BACK)
-        logger.info(f"Fetched {len(transactions)} transactions")
+        transactions = [t for t in transactions if t.get('account_number') in active_accounts]
+        logger.info(f"Fetched {len(transactions)} transactions (filtered to active accounts)")
 
         logger.info("Saving raw transactions...")
         raw_saved, _ = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
 
-        logger.info("Fetching current positions from all accounts...")
+        logger.info("Fetching current positions from active accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
 
         for account_number, positions in all_positions.items():
+            if account_number not in active_accounts:
+                continue
             if positions:
                 positions_with_dates = calculate_position_opening_dates(positions, account_number, db=db)
                 success = db.save_positions(positions_with_dates, account_number)
@@ -264,7 +271,7 @@ async def initial_sync(
         logger.info("Fetching account balances...")
         balances = await tastytrade.get_account_balances()
         if balances:
-            for balance in balances:
+            for balance in [b for b in balances if b.get('account_number') in active_accounts]:
                 success = db.save_account_balance(balance)
                 if success:
                     logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
