@@ -62,6 +62,61 @@ async def update_account_active(
         return {"accounts": [a.to_dict() for a in all_accounts]}
 
 
+@router.delete("/api/settings/accounts/{account_number}/data")
+async def delete_account_data(
+    account_number: str,
+    db: DatabaseManager = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Delete all local data for a specific account (transactions, lots, groups, positions).
+
+    Does NOT delete the account record itself or affect the brokerage account.
+    """
+    from src.database.models import (
+        RawTransaction, PositionLot, LotClosing, PositionGroup,
+        PositionGroupLot, PositionGroupTag, PositionNote,
+        Position, PnlEvent, RollChainSummary,
+    )
+
+    with db.get_session() as session:
+        # Get lot IDs for this account to delete closings
+        lot_ids = [
+            r[0] for r in session.query(PositionLot.id).filter(
+                PositionLot.account_number == account_number,
+            ).all()
+        ]
+
+        # Get group IDs for this account
+        group_ids = [
+            r[0] for r in session.query(PositionGroup.group_id).filter(
+                PositionGroup.account_number == account_number,
+            ).all()
+        ]
+
+        # Delete in FK order
+        if lot_ids:
+            session.query(LotClosing).filter(LotClosing.lot_id.in_(lot_ids)).delete(synchronize_session=False)
+        if group_ids:
+            session.query(PnlEvent).filter(PnlEvent.group_id.in_(group_ids)).delete(synchronize_session=False)
+            session.query(RollChainSummary).filter(RollChainSummary.current_group_id.in_(group_ids)).delete(synchronize_session=False)
+            session.query(PositionGroupTag).filter(PositionGroupTag.group_id.in_(group_ids)).delete(synchronize_session=False)
+            session.query(PositionNote).filter(
+                PositionNote.note_key.in_([f"group_{gid}" for gid in group_ids]),
+            ).delete(synchronize_session=False)
+            session.query(PositionGroupLot).filter(PositionGroupLot.group_id.in_(group_ids)).delete(synchronize_session=False)
+            session.query(PositionGroup).filter(PositionGroup.group_id.in_(group_ids)).delete(synchronize_session=False)
+
+        session.query(PositionLot).filter(PositionLot.account_number == account_number).delete(synchronize_session=False)
+        session.query(Position).filter(Position.account_number == account_number).delete(synchronize_session=False)
+        session.query(RawTransaction).filter(RawTransaction.account_number == account_number).delete(synchronize_session=False)
+
+        deleted_txns = session.query(RawTransaction).filter(RawTransaction.account_number == account_number).count()
+        session.commit()
+
+        logger.info(f"Deleted all data for account {account_number}: {len(lot_ids)} lots, {len(group_ids)} groups")
+        return {"message": f"Data deleted for account {account_number}"}
+
+
 @router.get("/api/account-balances")
 async def get_account_balances(account_number: Optional[str] = None, db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Get account balances for specified account or all accounts"""

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
+import { useConfirm } from '@/composables/useConfirm'
 
 function sortAccounts(accounts) {
   return [...accounts].sort((a, b) => (a.account_name || '').localeCompare(b.account_name || ''))
@@ -7,6 +8,7 @@ function sortAccounts(accounts) {
 
 export function useSettingsAccounts(Auth, { showNotification }) {
   const accountsStore = useAccountsStore()
+  const { confirm } = useConfirm()
   const allAccounts = ref([])
   const accountsSaving = ref(false)
   const syncingAccount = ref(null)
@@ -25,12 +27,32 @@ export function useSettingsAccounts(Auth, { showNotification }) {
 
   async function toggleAccount(acct) {
     const newActive = !acct.is_active
+    const name = acct.account_name || acct.account_number
 
     // Prevent disabling the last active account
     const activeCount = allAccounts.value.filter(a => a.is_active).length
     if (!newActive && activeCount <= 1) {
       showNotification('At least one account must remain active', 'error')
       return
+    }
+
+    // Confirmation dialogs
+    if (newActive) {
+      const ok = await confirm({
+        title: 'Enable Account',
+        message: `Enable "${name}" and import its transaction history? This may take a moment.`,
+        confirmText: 'Enable & Import',
+        variant: 'default',
+      })
+      if (!ok) return
+    } else {
+      const ok = await confirm({
+        title: 'Disable Account',
+        message: `Disable "${name}" and delete its local data? This removes all imported transactions, positions, and groups for this account. Your brokerage account is not affected.`,
+        confirmText: 'Disable & Delete',
+        variant: 'danger',
+      })
+      if (!ok) return
     }
 
     accountsSaving.value = true
@@ -49,11 +71,11 @@ export function useSettingsAccounts(Auth, { showNotification }) {
         await accountsStore.loadAccounts()
 
         if (newActive) {
-          // Enabling an account — import its historical data
-          showNotification(`${acct.account_name || acct.account_number} enabled — importing transactions...`, 'success')
-          await syncAccount(acct.account_number, acct.account_name)
+          showNotification(`${name} enabled — importing transactions...`, 'success')
+          await syncAccount(acct.account_number, name)
         } else {
-          showNotification(`${acct.account_name || acct.account_number} disabled`, 'success')
+          // Delete local data for the disabled account
+          await deleteAccountData(acct.account_number, name)
         }
       } else {
         const err = await resp.json()
@@ -86,6 +108,19 @@ export function useSettingsAccounts(Auth, { showNotification }) {
       showNotification(`Failed to import ${accountName || accountNumber}`, 'error')
     } finally {
       syncingAccount.value = null
+    }
+  }
+
+  async function deleteAccountData(accountNumber, accountName) {
+    try {
+      const resp = await Auth.authFetch(`/api/settings/accounts/${accountNumber}/data`, { method: 'DELETE' })
+      if (resp.ok) {
+        showNotification(`${accountName || accountNumber} disabled — local data deleted`, 'success')
+      } else {
+        showNotification(`Failed to delete data for ${accountName || accountNumber}`, 'error')
+      }
+    } catch (err) {
+      showNotification(`Failed to delete data for ${accountName || accountNumber}`, 'error')
     }
   }
 
