@@ -516,11 +516,29 @@ class LotManager:
             if lot:
                 lot.chain_id = chain_id
 
-    def clear_all_lots(self, underlyings: set = None):
-        """Clear lots and their groups. If underlyings is provided, only clear for those symbols."""
+    def clear_all_lots(self, underlyings: set = None, account_number: str = None):
+        """Clear lots and their closings. Optionally filter by underlyings and/or account_number."""
         from src.database.tenant import DEFAULT_USER_ID
         with self.db.get_session() as session:
             user_id = session.info.get("user_id", DEFAULT_USER_ID)
+
+            # Account-scoped clearing
+            if account_number:
+                lot_filter = [
+                    PositionLotModel.account_number == account_number,
+                    PositionLotModel.user_id == user_id,
+                ]
+                if underlyings:
+                    lot_filter.append(PositionLotModel.underlying.in_(list(underlyings)))
+                lot_ids_sub = session.query(PositionLotModel.id).filter(*lot_filter).scalar_subquery()
+                session.query(LotClosingModel).filter(
+                    LotClosingModel.lot_id.in_(lot_ids_sub),
+                    LotClosingModel.user_id == user_id,
+                ).delete(synchronize_session='fetch')
+                deleted = session.query(PositionLotModel).filter(*lot_filter).delete(synchronize_session='fetch')
+                logger.info(f"Cleared {deleted} lots and closings for account {account_number}")
+                return
+
             if underlyings:
                 underlying_list = list(underlyings)
                 # Note: PositionGroupLot links are intentionally preserved here.

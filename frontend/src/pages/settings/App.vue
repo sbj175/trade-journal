@@ -36,7 +36,7 @@ const {
 } = useSettingsConnection(Auth, { showNotification })
 
 const {
-  allAccounts, accountsSaving,
+  allAccounts, accountsSaving, syncingAccount,
   loadAllAccounts, toggleAccount,
 } = useSettingsAccounts(Auth, { showNotification })
 
@@ -385,14 +385,19 @@ onMounted(async () => {
                 <div class="text-tv-muted text-xs">{{ acct.account_number }}<template v-if="acct.account_type && acct.account_type !== 'Unknown'"> · {{ acct.account_type }}</template></div>
               </div>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer" @click.prevent="toggleAccount(acct)">
-              <span class="w-10 h-5 rounded-full transition-colors"
-                    :class="acct.is_active ? 'bg-tv-green' : 'bg-tv-border'"
-                    :style="accountsSaving ? 'opacity: 0.5; pointer-events: none' : ''">
-                <span class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
-                      :class="acct.is_active ? 'translate-x-5' : ''"></span>
+            <div class="flex items-center gap-3">
+              <span v-if="syncingAccount === acct.account_number" class="text-tv-blue text-xs">
+                <i class="fas fa-sync-alt animate-spin mr-1"></i>Importing...
               </span>
-            </label>
+              <label class="relative inline-flex items-center cursor-pointer" @click.prevent="toggleAccount(acct)">
+                <span class="w-10 h-5 rounded-full transition-colors"
+                      :class="acct.is_active ? 'bg-tv-green' : 'bg-tv-border'"
+                      :style="accountsSaving || syncingAccount ? 'opacity: 0.5; pointer-events: none' : ''">
+                  <span class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                        :class="acct.is_active ? 'translate-x-5' : ''"></span>
+                </span>
+              </label>
+            </div>
           </div>
 
           <!-- Continue button (onboarding) -->

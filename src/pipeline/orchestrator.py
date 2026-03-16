@@ -63,6 +63,7 @@ def reprocess(
     lot_manager: "LotManager",
     raw_transactions: List[Dict],
     affected_underlyings: Optional[Set[str]] = None,
+    account_number: Optional[str] = None,
 ) -> PipelineResult:
     """Run the full processing pipeline on raw transactions.
 
@@ -79,6 +80,7 @@ def reprocess(
         lot_manager: LotManager instance
         raw_transactions: Raw transaction dicts from DB
         affected_underlyings: If set, only reprocess these underlyings (incremental)
+        account_number: If set, only reprocess this account (account-scoped import)
 
     Returns:
         PipelineResult with counts for each stage
@@ -92,7 +94,12 @@ def reprocess(
         )
 
     # ── Step 1: Clear existing state ──────────────────────────────────
-    if affected_underlyings:
+    if account_number:
+        # Account-scoped: filter transactions and clear only that account's lots
+        raw_transactions = [t for t in raw_transactions if t.get('account_number') == account_number]
+        lot_manager.clear_all_lots(account_number=account_number)
+        logger.info("Cleared lots for account %s (%d transactions)", account_number, len(raw_transactions))
+    elif affected_underlyings:
         lot_manager.clear_all_lots(underlyings=affected_underlyings)
         logger.info(
             "Cleared lots for %d affected underlyings",
@@ -146,7 +153,7 @@ def reprocess(
 
     # ── Step 5: Group Manager (strategy + persistence) ────────────────
     persister = GroupPersister(db_manager, lot_manager)
-    groups_processed = persister.process_groups()
+    groups_processed = persister.process_groups(account_number=account_number)
     logger.info("Stage 5: processed %d groups", groups_processed)
 
     # ── Step 6: P&L Events (denormalized fact table) ──────────────────

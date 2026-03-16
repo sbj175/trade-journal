@@ -295,6 +295,71 @@ async def initial_sync(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/sync/account/{account_number}")
+async def sync_account(
+    account_number: str,
+    tastytrade: TastytradeClient = Depends(get_tastytrade_client),
+    db: DatabaseManager = Depends(get_db),
+    lot_manager: LotManager = Depends(get_lot_manager),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Import a single account's full transaction history without clearing other accounts.
+
+    Used when enabling a previously disabled account — fetches its historical
+    data and merges it into the existing dataset.
+    """
+    try:
+        MAX_DAYS_BACK = 730
+
+        logger.info(f"Account-scoped sync for {account_number} ({MAX_DAYS_BACK} days)")
+
+        # Fetch transactions for this account only
+        transactions = await tastytrade.get_transactions(
+            days_back=MAX_DAYS_BACK, account_number=account_number,
+        )
+        logger.info(f"Fetched {len(transactions)} transactions for account {account_number}")
+
+        raw_saved, new_symbols = db.save_raw_transactions(transactions)
+        logger.info(f"Saved {raw_saved} new transactions")
+
+        # Fetch balances for this account
+        balances = await tastytrade.get_account_balances()
+        for balance in (balances or []):
+            if balance.get('account_number') == account_number:
+                db.save_account_balance(balance)
+
+        # Run account-scoped pipeline
+        if raw_saved > 0:
+            raw_transactions = db.get_raw_transactions()
+            result = reprocess(db, lot_manager, raw_transactions, account_number=account_number)
+            logger.info(
+                f"Account pipeline completed: {result.orders_assembled} orders, "
+                f"{result.groups_processed} groups"
+            )
+        else:
+            result = None
+
+        # Fetch and save positions for this account
+        all_positions = await tastytrade.get_positions(account_number=account_number)
+        total_positions = 0
+        for acct, positions in all_positions.items():
+            if positions:
+                enrich_and_save_positions(positions, acct, db=db)
+                total_positions += len(positions)
+
+        return {
+            "message": f"Imported {raw_saved} transactions for account {account_number}",
+            "new_transactions": raw_saved,
+            "symbols": sorted(new_symbols),
+            "positions_updated": total_positions,
+            "orders_assembled": result.orders_assembled if result else 0,
+            "groups_processed": result.groups_processed if result else 0,
+        }
+    except Exception as e:
+        logger.error(f"Account sync error for {account_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/reconcile")
 async def get_reconciliation(db: DatabaseManager = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Run position reconciliation and return results."""
