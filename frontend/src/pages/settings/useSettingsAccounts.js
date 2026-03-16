@@ -68,9 +68,22 @@ export function useSettingsAccounts(Auth, { showNotification, onboarding }) {
         const data = await resp.json()
         allAccounts.value = sortAccounts(data.accounts || [])
 
-        // Refresh the global accounts store so the selector updates
-        accountsStore.invalidate()
-        await accountsStore.loadAccounts()
+        // Update the global accounts store directly with active accounts
+        const activeAccounts = (data.accounts || []).filter(a => a.is_active)
+        accountsStore.accounts = activeAccounts.sort((a, b) => {
+          const order = (name) => {
+            const u = (name || '').toUpperCase()
+            if (u.includes('ROTH')) return 1
+            if (u.includes('INDIVIDUAL')) return 2
+            if (u.includes('TRADITIONAL')) return 3
+            return 4
+          }
+          return order(a.account_name) - order(b.account_name)
+        })
+        // Reset selection if current account was disabled
+        if (accountsStore.selectedAccount && !activeAccounts.find(a => a.account_number === accountsStore.selectedAccount)) {
+          accountsStore.selectedAccount = activeAccounts.length === 1 ? activeAccounts[0].account_number : ''
+        }
 
         if (onboarding.value) {
           // During onboarding: just toggle, no import/delete
