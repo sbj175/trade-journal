@@ -297,12 +297,13 @@ async def get_group_roll_chain(
             sum(c.realized_pnl for c in closings_by_lot.get(lot.id, []))
             for lot in lots
         )
-        # Initial premium for this group's lots
+        # Initial premium for this group's lots (credits minus debits)
         premium = 0.0
         for lot in lots:
             multiplier = 100 if lot.instrument_type == 'EQUITY_OPTION' else 1
             if lot.entry_price and lot.original_quantity:
-                premium += abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
+                amount = abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
+                premium += amount if lot.quantity < 0 else -amount
         cumulative_pnl += realized
         chain_result.append({
             'group_id': gid,
