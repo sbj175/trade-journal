@@ -1,10 +1,12 @@
 import { ref } from 'vue'
+import { useAccountsStore } from '@/stores/accounts'
 
 function sortAccounts(accounts) {
   return [...accounts].sort((a, b) => (a.account_name || '').localeCompare(b.account_name || ''))
 }
 
 export function useSettingsAccounts(Auth, { showNotification }) {
+  const accountsStore = useAccountsStore()
   const allAccounts = ref([])
   const accountsSaving = ref(false)
   const syncingAccount = ref(null)
@@ -41,6 +43,10 @@ export function useSettingsAccounts(Auth, { showNotification }) {
       if (resp.ok) {
         const data = await resp.json()
         allAccounts.value = sortAccounts(data.accounts || [])
+
+        // Refresh the global accounts store so the selector updates
+        accountsStore.invalidate()
+        await accountsStore.loadAccounts()
 
         if (newActive) {
           // Enabling an account — import its historical data
