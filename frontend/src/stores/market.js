@@ -9,23 +9,31 @@ export const useMarketStore = defineStore('market', () => {
 
   const overallStatus = computed(() => marketStatus.value?.overall_status || null)
 
+  // Use NYSE (Equity) session status for the toolbar indicator
+  const nyseStatus = computed(() => {
+    const sessions = marketStatus.value?.sessions
+    if (!sessions) return null
+    const nyse = sessions.find(s => s.exchange === 'Equity')
+    return nyse?.status || null
+  })
+
   const statusLabel = computed(() => {
     return 'Market Status'
   })
 
   const statusColor = computed(() => {
-    const s = overallStatus.value
+    const s = nyseStatus.value
     if (s === 'Open') return 'text-tv-green'
     if (s === 'Pre-market' || s === 'Extended') return 'text-tv-amber'
-    if (s === 'Closed') return 'text-tv-muted'
+    if (s === 'Closed') return 'text-tv-red'
     return 'text-tv-muted'
   })
 
   const dotColor = computed(() => {
-    const s = overallStatus.value
+    const s = nyseStatus.value
     if (s === 'Open') return 'bg-tv-green'
     if (s === 'Pre-market' || s === 'Extended') return 'bg-tv-amber'
-    if (s === 'Closed') return 'bg-tv-muted'
+    if (s === 'Closed') return 'bg-tv-red'
     return 'bg-tv-muted'
   })
 
@@ -82,6 +90,7 @@ export const useMarketStore = defineStore('market', () => {
   function sessionStatusClass(status) {
     if (status === 'Open') return 'text-tv-green'
     if (status === 'Pre-market' || status === 'Extended') return 'text-tv-amber'
+    if (status === 'Closed') return 'text-tv-red'
     return 'text-tv-muted'
   }
 
