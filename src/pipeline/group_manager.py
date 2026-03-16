@@ -619,10 +619,11 @@ class GroupPersister:
             # group_id -> set of Lot objects (for open-check)
             group_lots: Dict[str, List[Lot]] = defaultdict(list)
 
-            # Collect all existing group_ids from DB (for Phase 4)
-            all_group_ids: Set[str] = {
-                row[0] for row in session.query(PositionGroup.group_id).all()
-            }
+            # Collect existing group_ids from DB (for Phase 4)
+            gid_q = session.query(PositionGroup.group_id)
+            if account_number:
+                gid_q = gid_q.filter(PositionGroup.account_number == account_number)
+            all_group_ids: Set[str] = {row[0] for row in gid_q.all()}
 
             # Seed indexes from existing group-lot links
             for txn_id, group_id in txn_to_group.items():
@@ -837,12 +838,19 @@ class GroupPersister:
             # Phase 5: Cleanup
             # =================================================================
             # Delete stale PositionGroupLot links (transaction_id no longer in position_lots)
+            # When account-scoped, only clean up links for groups we processed
             valid_txn_ids = set(txn_to_lot.keys())
             if valid_txn_ids:
-                stale_links = session.query(PositionGroupLot).filter(
+                stale_q = session.query(PositionGroupLot).filter(
                     PositionGroupLot.user_id == user_id,
                     ~PositionGroupLot.transaction_id.in_(valid_txn_ids),
-                ).all()
+                )
+                if account_number:
+                    # Only clean links belonging to groups we touched
+                    stale_q = stale_q.filter(
+                        PositionGroupLot.group_id.in_(all_group_ids),
+                    )
+                stale_links = stale_q.all()
                 if stale_links:
                     stale_count = len(stale_links)
                     for link in stale_links:
