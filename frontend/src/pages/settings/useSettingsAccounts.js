@@ -1,0 +1,52 @@
+import { ref } from 'vue'
+
+export function useSettingsAccounts(Auth, { showNotification }) {
+  const allAccounts = ref([])
+  const accountsSaving = ref(false)
+
+  async function loadAllAccounts() {
+    try {
+      const resp = await Auth.authFetch('/api/settings/accounts')
+      if (resp.ok) {
+        const data = await resp.json()
+        allAccounts.value = data.accounts || []
+      }
+    } catch (err) {
+      console.error('Failed to load accounts:', err)
+    }
+  }
+
+  async function toggleAccount(acct) {
+    const newActive = !acct.is_active
+
+    // Prevent disabling the last active account
+    const activeCount = allAccounts.value.filter(a => a.is_active).length
+    if (!newActive && activeCount <= 1) {
+      showNotification('At least one account must remain active', 'error')
+      return
+    }
+
+    accountsSaving.value = true
+    try {
+      const resp = await Auth.authFetch('/api/settings/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ account_number: acct.account_number, is_active: newActive }]),
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        allAccounts.value = data.accounts || []
+        showNotification(`${acct.account_name || acct.account_number} ${newActive ? 'enabled' : 'disabled'}`, 'success')
+      } else {
+        const err = await resp.json()
+        showNotification(err.detail || 'Failed to update account', 'error')
+      }
+    } catch (err) {
+      showNotification('Failed to update account', 'error')
+    } finally {
+      accountsSaving.value = false
+    }
+  }
+
+  return { allAccounts, accountsSaving, loadAllAccounts, toggleAccount }
+}
