@@ -13,6 +13,8 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Set
 
+from src.utils.premium import lot_premium
+
 from src.database.models import (
     LotClosing as LotClosingModel,
     PositionGroup,
@@ -149,11 +151,7 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
                     lot = lot_map.get(txn_id)
                     if not lot:
                         continue
-                    multiplier = 100 if lot.instrument_type == 'EQUITY_OPTION' else 1
-                    if lot.entry_price and lot.original_quantity:
-                        amount = abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
-                        # Short legs (qty < 0) are credits, long legs are debits
-                        group_premium += amount if lot.quantity < 0 else -amount
+                    group_premium += lot_premium(lot)
                     for c in closings_by_lot.get(lot.id, []):
                         group_realized += c.realized_pnl
                 per_group_realized[gid] = group_realized

@@ -13,6 +13,7 @@ from sqlalchemy import func
 from src.database.models import PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RawTransaction, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
+from src.utils.premium import group_premium_from_lots
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
 from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup, GroupTagAdd
 from src.services.ledger_service import seed_position_groups, _refresh_group_status
@@ -298,12 +299,7 @@ async def get_group_roll_chain(
             for lot in lots
         )
         # Initial premium for this group's lots (credits minus debits)
-        premium = 0.0
-        for lot in lots:
-            multiplier = 100 if lot.instrument_type == 'EQUITY_OPTION' else 1
-            if lot.entry_price and lot.original_quantity:
-                amount = abs(lot.entry_price) * abs(lot.original_quantity) * multiplier
-                premium += amount if lot.quantity < 0 else -amount
+        premium = group_premium_from_lots(lots)
         cumulative_pnl += realized
         chain_result.append({
             'group_id': gid,
