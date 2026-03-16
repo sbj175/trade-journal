@@ -251,6 +251,8 @@ async def tastytrade_callback(
 
     # Discover and save accounts so the Accounts tab has data immediately
     try:
+        from src.database.tenant import set_current_user_id
+        set_current_user_id(user_id)
         client = await connection_manager.get_user_client(user_id)
         if client:
             accounts = client.get_all_accounts()
