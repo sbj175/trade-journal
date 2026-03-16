@@ -6,7 +6,7 @@ function sortAccounts(accounts) {
   return [...accounts].sort((a, b) => (a.account_name || '').localeCompare(b.account_name || ''))
 }
 
-export function useSettingsAccounts(Auth, { showNotification }) {
+export function useSettingsAccounts(Auth, { showNotification, onboarding }) {
   const accountsStore = useAccountsStore()
   const { confirm } = useConfirm()
   const allAccounts = ref([])
@@ -36,23 +36,25 @@ export function useSettingsAccounts(Auth, { showNotification }) {
       return
     }
 
-    // Confirmation dialogs
-    if (newActive) {
-      const ok = await confirm({
-        title: 'Enable Account',
-        message: `Enable "${name}" and import its transaction history? This may take a moment.`,
-        confirmText: 'Enable & Import',
-        variant: 'default',
-      })
-      if (!ok) return
-    } else {
-      const ok = await confirm({
-        title: 'Disable Account',
-        message: `Disable "${name}" and delete its local data? This removes all imported transactions, positions, and groups for this account. Your brokerage account is not affected.`,
-        confirmText: 'Disable & Delete',
-        variant: 'danger',
-      })
-      if (!ok) return
+    // During onboarding, no confirmations needed (no data exists yet)
+    if (!onboarding.value) {
+      if (newActive) {
+        const ok = await confirm({
+          title: 'Enable Account',
+          message: `Enable "${name}" and import its transaction history? This may take a moment.`,
+          confirmText: 'Enable & Import',
+          variant: 'default',
+        })
+        if (!ok) return
+      } else {
+        const ok = await confirm({
+          title: 'Disable Account',
+          message: `Disable "${name}" and delete its local data? This removes all imported transactions, positions, and groups for this account. Your brokerage account is not affected.`,
+          confirmText: 'Disable & Delete',
+          variant: 'danger',
+        })
+        if (!ok) return
+      }
     }
 
     accountsSaving.value = true
@@ -70,7 +72,10 @@ export function useSettingsAccounts(Auth, { showNotification }) {
         accountsStore.invalidate()
         await accountsStore.loadAccounts()
 
-        if (newActive) {
+        if (onboarding.value) {
+          // During onboarding: just toggle, no import/delete
+          showNotification(`${name} ${newActive ? 'enabled' : 'disabled'}`, 'success')
+        } else if (newActive) {
           showNotification(`${name} enabled — importing transactions...`, 'success')
           await syncAccount(acct.account_number, name)
         } else {

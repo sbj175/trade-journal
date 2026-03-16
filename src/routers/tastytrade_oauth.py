@@ -261,6 +261,7 @@ async def tastytrade_callback(
                     account['account_number'],
                     account['account_name'],
                     account['account_type'],
+                    is_active=False,
                 )
             logger.info(f"OAuth callback: discovered {len(accounts)} accounts for user {user_id[:8]}...")
     except Exception as e:

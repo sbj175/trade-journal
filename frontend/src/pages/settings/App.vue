@@ -38,7 +38,7 @@ const {
 const {
   allAccounts, accountsSaving, syncingAccount,
   loadAllAccounts, toggleAccount,
-} = useSettingsAccounts(Auth, { showNotification })
+} = useSettingsAccounts(Auth, { showNotification, onboarding })
 
 const {
   targets, saveStatus,
