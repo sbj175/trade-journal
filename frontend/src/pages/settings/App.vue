@@ -357,6 +357,17 @@ onMounted(async () => {
           <p class="text-tv-muted text-sm">Choose which Tastytrade accounts to sync. Disabled accounts will not be imported during sync.</p>
         </div>
 
+        <!-- Onboarding banner -->
+        <div v-if="onboarding" class="bg-tv-green/10 border border-tv-green/30 rounded p-4 mb-5">
+          <div class="flex items-start gap-3">
+            <i class="fas fa-check-circle text-tv-green text-lg mt-0.5"></i>
+            <div>
+              <p class="text-tv-text font-medium">Your Tastytrade account is connected!</p>
+              <p class="text-tv-muted text-sm mt-1">We found the accounts below. Toggle off any you don't want to sync, then continue to import your trades.</p>
+            </div>
+          </div>
+        </div>
+
         <div v-if="allAccounts.length === 0" class="text-tv-muted text-sm py-8 text-center">
           <i class="fas fa-info-circle mr-1"></i>No accounts found. Connect to Tastytrade first.
         </div>
@@ -382,6 +393,14 @@ onMounted(async () => {
                       :class="acct.is_active ? 'translate-x-5' : ''"></span>
               </span>
             </label>
+          </div>
+
+          <!-- Continue button (onboarding) -->
+          <div v-if="onboarding" class="pt-4">
+            <button @click="activeTab = 'import'"
+                    class="bg-tv-blue hover:bg-tv-blue/80 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors">
+              Continue to Import <i class="fas fa-arrow-right ml-2"></i>
+            </button>
           </div>
         </div>
       </div>
