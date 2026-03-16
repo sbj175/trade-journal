@@ -48,5 +48,9 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
-  return { accounts, selectedAccount, loaded, getAccountSymbol, loadAccounts }
+  function invalidate() {
+    loaded.value = false
+  }
+
+  return { accounts, selectedAccount, loaded, getAccountSymbol, loadAccounts, invalidate }
 })

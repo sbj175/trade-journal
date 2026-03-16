@@ -87,8 +87,8 @@ class DatabaseManager:
                 strategy_name=name, profit_target_pct=profit, loss_target_pct=loss,
             ))
     
-    def save_account(self, account_number: str, account_name: str = None, account_type: str = None) -> bool:
-        """Save account information"""
+    def save_account(self, account_number: str, account_name: str = None, account_type: str = None, is_active: bool = None) -> bool:
+        """Save account information. is_active only applies to new inserts (not upsert updates)."""
         from src.database.engine import dialect_insert
         from src.database.models import Account
         from src.database.tenant import DEFAULT_USER_ID
@@ -96,11 +96,14 @@ class DatabaseManager:
         try:
             with self.get_session() as session:
                 user_id = session.info.get("user_id", DEFAULT_USER_ID)
-                stmt = dialect_insert(Account).values(
+                values = dict(
                     account_number=account_number, account_name=account_name,
                     account_type=account_type, user_id=user_id,
                     updated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 )
+                if is_active is not None:
+                    values['is_active'] = is_active
+                stmt = dialect_insert(Account).values(**values)
                 session.execute(stmt.on_conflict_do_update(
                     index_elements=['account_number', 'user_id'],
                     set_={

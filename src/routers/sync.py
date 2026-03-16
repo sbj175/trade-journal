@@ -48,20 +48,25 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
             )
         logger.info(f"Saved {len(accounts)} accounts")
 
-        # Fetch transactions from all accounts
-        logger.info("Fetching transactions from all accounts...")
+        # Get active account numbers for filtering
+        active_accounts = {a['account_number'] for a in db.get_accounts()}
+        logger.info(f"Active accounts for sync: {active_accounts}")
+
+        # Fetch transactions from active accounts
+        logger.info("Fetching transactions from active accounts...")
         transactions = await tastytrade.get_transactions(days_back=days_back)
+        transactions = [t for t in transactions if t.get('account_number') in active_accounts]
         logger.info(f"Fetched {len(transactions)} transactions")
 
         logger.info("Saving raw transactions...")
         raw_saved, new_symbols = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
 
-        # Fetch account balances for all accounts
+        # Fetch account balances for active accounts
         logger.info("Fetching account balances...")
         balances = await tastytrade.get_account_balances()
         if balances:
-            for balance in balances:
+            for balance in [b for b in balances if b.get('account_number') in active_accounts]:
                 success = db.save_account_balance(balance)
                 if success:
                     logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
@@ -99,12 +104,14 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
             except Exception as e:
                 logger.error(f"Error during reprocessing: {str(e)}")
 
-        # Fetch and save positions AFTER reprocessing
-        logger.info("Fetching current positions from all accounts...")
+        # Fetch and save positions AFTER reprocessing (active accounts only)
+        logger.info("Fetching current positions from active accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
 
         for account_number, positions in all_positions.items():
+            if account_number not in active_accounts:
+                continue
             if positions:
                 success = enrich_and_save_positions(positions, account_number, db=db)
                 if success:
@@ -232,19 +239,26 @@ async def initial_sync(
             )
         logger.info(f"Saved {len(accounts)} accounts")
 
-        logger.info(f"Fetching ALL transactions (last {days_label} days)...")
+        # Get active account numbers for filtering
+        active_accounts = {a['account_number'] for a in db.get_accounts()}
+        logger.info(f"Active accounts for initial sync: {active_accounts}")
+
+        logger.info(f"Fetching transactions (last {days_label} days) for active accounts...")
         transactions = await tastytrade.get_transactions(start_date=sync_start) if sync_start else await tastytrade.get_transactions(days_back=MAX_DAYS_BACK)
-        logger.info(f"Fetched {len(transactions)} transactions")
+        transactions = [t for t in transactions if t.get('account_number') in active_accounts]
+        logger.info(f"Fetched {len(transactions)} transactions (filtered to active accounts)")
 
         logger.info("Saving raw transactions...")
         raw_saved, _ = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} raw transactions")
 
-        logger.info("Fetching current positions from all accounts...")
+        logger.info("Fetching current positions from active accounts...")
         all_positions = await tastytrade.get_positions()
         total_positions = 0
 
         for account_number, positions in all_positions.items():
+            if account_number not in active_accounts:
+                continue
             if positions:
                 positions_with_dates = calculate_position_opening_dates(positions, account_number, db=db)
                 success = db.save_positions(positions_with_dates, account_number)
@@ -257,7 +271,7 @@ async def initial_sync(
         logger.info("Fetching account balances...")
         balances = await tastytrade.get_account_balances()
         if balances:
-            for balance in balances:
+            for balance in [b for b in balances if b.get('account_number') in active_accounts]:
                 success = db.save_account_balance(balance)
                 if success:
                     logger.info(f"Successfully saved balance for account {balance.get('account_number')}")
@@ -285,6 +299,71 @@ async def initial_sync(
         }
     except Exception as e:
         logger.error(f"Initial sync error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/sync/account/{account_number}")
+async def sync_account(
+    account_number: str,
+    tastytrade: TastytradeClient = Depends(get_tastytrade_client),
+    db: DatabaseManager = Depends(get_db),
+    lot_manager: LotManager = Depends(get_lot_manager),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Import a single account's full transaction history without clearing other accounts.
+
+    Used when enabling a previously disabled account — fetches its historical
+    data and merges it into the existing dataset.
+    """
+    try:
+        MAX_DAYS_BACK = 730
+
+        logger.info(f"Account-scoped sync for {account_number} ({MAX_DAYS_BACK} days)")
+
+        # Fetch transactions for this account only
+        transactions = await tastytrade.get_transactions(
+            days_back=MAX_DAYS_BACK, account_number=account_number,
+        )
+        logger.info(f"Fetched {len(transactions)} transactions for account {account_number}")
+
+        raw_saved, new_symbols = db.save_raw_transactions(transactions)
+        logger.info(f"Saved {raw_saved} new transactions")
+
+        # Fetch balances for this account
+        balances = await tastytrade.get_account_balances()
+        for balance in (balances or []):
+            if balance.get('account_number') == account_number:
+                db.save_account_balance(balance)
+
+        # Run account-scoped pipeline
+        if raw_saved > 0:
+            raw_transactions = db.get_raw_transactions()
+            result = reprocess(db, lot_manager, raw_transactions, account_number=account_number)
+            logger.info(
+                f"Account pipeline completed: {result.orders_assembled} orders, "
+                f"{result.groups_processed} groups"
+            )
+        else:
+            result = None
+
+        # Fetch and save positions for this account
+        all_positions = await tastytrade.get_positions(account_number=account_number)
+        total_positions = 0
+        for acct, positions in all_positions.items():
+            if positions:
+                enrich_and_save_positions(positions, acct, db=db)
+                total_positions += len(positions)
+
+        return {
+            "message": f"Imported {raw_saved} transactions for account {account_number}",
+            "new_transactions": raw_saved,
+            "symbols": sorted(new_symbols),
+            "positions_updated": total_positions,
+            "orders_assembled": result.orders_assembled if result else 0,
+            "groups_processed": result.groups_processed if result else 0,
+        }
+    except Exception as e:
+        logger.error(f"Account sync error for {account_number}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

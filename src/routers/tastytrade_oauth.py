@@ -249,8 +249,26 @@ async def tastytrade_callback(
             status_code=302,
         )
 
-    # Success — send user to Import tab to run Initial Sync
-    return RedirectResponse(url="/settings?tab=import&onboarding=1", status_code=302)
+    # Discover and save accounts so the Accounts tab has data immediately
+    try:
+        from src.database.tenant import set_current_user_id
+        set_current_user_id(user_id)
+        client = await connection_manager.get_user_client(user_id)
+        if client:
+            accounts = client.get_all_accounts()
+            for account in accounts:
+                db.save_account(
+                    account['account_number'],
+                    account['account_name'],
+                    account['account_type'],
+                    is_active=False,
+                )
+            logger.info(f"OAuth callback: discovered {len(accounts)} accounts for user {user_id[:8]}...")
+    except Exception as e:
+        logger.warning(f"OAuth callback: failed to discover accounts: {e}")
+
+    # Success — send user to Accounts tab to select which accounts to sync
+    return RedirectResponse(url="/settings?tab=accounts&onboarding=1", status_code=302)
 
 
 @router.post("/api/auth/tastytrade/disconnect")
