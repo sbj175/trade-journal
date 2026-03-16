@@ -382,7 +382,7 @@ onMounted(async () => {
               </span>
               <div>
                 <div class="text-tv-text font-medium">{{ acct.account_name || acct.account_number }}</div>
-                <div class="text-tv-muted text-xs">{{ acct.account_number }} · {{ acct.account_type || 'Unknown' }}</div>
+                <div class="text-tv-muted text-xs">{{ acct.account_number }}<template v-if="acct.account_type && acct.account_type !== 'Unknown'"> · {{ acct.account_type }}</template></div>
               </div>
             </div>
             <label class="relative inline-flex items-center cursor-pointer" @click.prevent="toggleAccount(acct)">
