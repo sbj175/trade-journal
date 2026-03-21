@@ -171,11 +171,34 @@ export function usePositionsData(Auth) {
       const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes')
       ws = new WebSocket(wsUrl)
 
-      ws.onopen = () => {
-        liveQuotesActive.value = true
-        wsReconnectAttempts = 0
-        requestLiveQuotes()
-      }
+ws.onopen = () => {
+  liveQuotesActive.value = true
+  wsReconnectAttempts = 0
+
+  // Function to attempt subscription until symbols exist
+  const trySubscribe = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const symbols = collectSymbols()
+    if (symbols.length > 0) {
+      ws.send(JSON.stringify({ subscribe: symbols }))
+    } else {
+      // Retry after 50ms if empty
+      setTimeout(trySubscribe, 50)
+    }
+  }
+
+  trySubscribe()
+}
+
+// Optional: reactive watch for filteredItems changes to keep live quotes up to date
+watch(filteredItems, (newVal) => {
+  if (liveQuotesActive.value && newVal.length > 0) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const symbols = collectSymbols()
+      ws.send(JSON.stringify({ subscribe: symbols }))
+    }
+  }
+})
 
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data)
