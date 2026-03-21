@@ -87,12 +87,19 @@ export function useEquityQuotes(Auth, filteredItems) {
       const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes')
       ws = new WebSocket(wsUrl)
       ws.onopen = () => {
-        liveQuotesActive.value = true
-        const symbols = collectSymbols()
-        if (symbols.length > 0) {
-          ws.send(JSON.stringify({ type: 'subscribe', symbols }))
-        }
-      }
+  liveQuotesActive.value = true
+
+  const trySubscribe = () => {
+    const symbols = collectSymbols()
+    if (symbols.length > 0) {
+      ws.send(JSON.stringify({ type: 'subscribe', symbols }))
+    } else {
+      // Retry after a short delay until filteredItems is populated
+      setTimeout(trySubscribe, 50)
+    }
+  }
+  trySubscribe()
+}
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
