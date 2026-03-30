@@ -7,8 +7,8 @@ Revises: drop_source_chain_id_015
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "add_historical_prices_016"
-down_revision: str = "drop_source_chain_id_015"
+revision: str = "add_historical_prices_017"
+down_revision: str = "add_roll_chain_summaries_016"
 branch_labels = None
 depends_on = None
 
