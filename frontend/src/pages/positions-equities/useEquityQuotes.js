@@ -11,6 +11,10 @@ export function useEquityQuotes(Auth, filteredItems) {
   const lastQuoteUpdate = ref(null)
 
   let ws = null
+  let wsReconnectTimer = null
+  let wsReconnectAttempts = 0
+  const WS_MAX_RECONNECT_ATTEMPTS = 5
+  let pollTimer = null
 
   // --- Symbol collection ---
 
@@ -87,40 +91,77 @@ export function useEquityQuotes(Auth, filteredItems) {
       const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes')
       ws = new WebSocket(wsUrl)
       ws.onopen = () => {
-  liveQuotesActive.value = true
-
-  const trySubscribe = () => {
-    const symbols = collectSymbols()
-    if (symbols.length > 0) {
-      ws.send(JSON.stringify({ type: 'subscribe', symbols }))
-    } else {
-      // Retry after a short delay until filteredItems is populated
-      setTimeout(trySubscribe, 50)
-    }
-  }
-  trySubscribe()
-}
+        liveQuotesActive.value = true
+        wsReconnectAttempts = 0
+        stopPolling()
+        requestLiveQuotes()
+      }
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
-          if (msg.type === 'quote' && msg.symbol) {
-            underlyingQuotes.value = {
-              ...underlyingQuotes.value,
-              [msg.symbol]: { ...underlyingQuotes.value[msg.symbol], ...msg }
+          if (msg.type === 'quotes' && msg.data) {
+            const updated = { ...underlyingQuotes.value }
+            for (const [symbol, quoteData] of Object.entries(msg.data)) {
+              if (quoteData && typeof quoteData === 'object') {
+                updated[symbol] = { ...updated[symbol], ...quoteData }
+              }
             }
+            underlyingQuotes.value = updated
             lastQuoteUpdate.value = new Date().toLocaleTimeString()
             quoteUpdateCounter.value++
           }
         } catch (e) {}
       }
-      ws.onclose = () => { liveQuotesActive.value = false }
+      ws.onclose = () => {
+        liveQuotesActive.value = false
+        if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+          wsReconnectAttempts++
+          const delay = Math.min(5000 * Math.pow(2, wsReconnectAttempts - 1), 60000)
+          wsReconnectTimer = setTimeout(() => initializeWebSocket(), delay)
+        } else {
+          startPolling()
+        }
+      }
       ws.onerror = () => { liveQuotesActive.value = false }
     } catch (err) { console.error('WebSocket error:', err) }
   }
 
-  function closeWebSocket() {
-    if (ws) { ws.close(); ws = null }
+  function requestLiveQuotes() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const symbols = collectSymbols()
+    if (symbols.length > 0) {
+      ws.send(JSON.stringify({ subscribe: symbols }))
+    }
   }
+
+  function startPolling() {
+    if (pollTimer) return
+    pollTimer = setInterval(() => loadCachedQuotes(), 15000)
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) return
+    // Tab became visible — reconnect if WebSocket is dead
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      wsReconnectAttempts = 0
+      stopPolling()
+      initializeWebSocket()
+    }
+  }
+
+  function closeWebSocket() {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    stopPolling()
+    if (ws) { ws.onclose = null; ws.close(); ws = null }
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null }
+  }
+
+  // Register visibility listener on creation
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   return {
     // State
@@ -129,6 +170,6 @@ export function useEquityQuotes(Auth, filteredItems) {
     getQuote, getQuotePrice, getMarketValue, getUnrealizedPnL, getPnLPercent,
     getLotMarketValue, getLotPnL,
     // Data loading
-    loadCachedQuotes, initializeWebSocket, closeWebSocket,
+    loadCachedQuotes, requestLiveQuotes, initializeWebSocket, closeWebSocket,
   }
 }

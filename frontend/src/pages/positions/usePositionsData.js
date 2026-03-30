@@ -38,6 +38,7 @@ export function usePositionsData(Auth) {
   let wsReconnectTimer = null
   let wsReconnectAttempts = 0
   const WS_MAX_RECONNECT_ATTEMPTS = 5
+  let pollTimer = null
 
   // --- Toggle helpers ---
   function toggleRollAnalysisMode() {
@@ -171,34 +172,12 @@ export function usePositionsData(Auth) {
       const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes')
       ws = new WebSocket(wsUrl)
 
-ws.onopen = () => {
-  liveQuotesActive.value = true
-  wsReconnectAttempts = 0
-
-  // Function to attempt subscription until symbols exist
-  const trySubscribe = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    const symbols = collectSymbols()
-    if (symbols.length > 0) {
-      ws.send(JSON.stringify({ subscribe: symbols }))
-    } else {
-      // Retry after 50ms if empty
-      setTimeout(trySubscribe, 50)
-    }
-  }
-
-  trySubscribe()
-}
-
-// Optional: reactive watch for filteredItems changes to keep live quotes up to date
-watch(filteredItems, (newVal) => {
-  if (liveQuotesActive.value && newVal.length > 0) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      const symbols = collectSymbols()
-      ws.send(JSON.stringify({ subscribe: symbols }))
-    }
-  }
-})
+      ws.onopen = () => {
+        liveQuotesActive.value = true
+        wsReconnectAttempts = 0
+        stopPolling()
+        requestLiveQuotes()
+      }
 
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data)
@@ -225,6 +204,8 @@ watch(filteredItems, (newVal) => {
           wsReconnectAttempts++
           const delay = Math.min(5000 * Math.pow(2, wsReconnectAttempts - 1), 60000)
           wsReconnectTimer = setTimeout(() => initializeWebSocket(), delay)
+        } else {
+          startPolling()
         }
       }
     } catch (err) { console.error('WebSocket error:', err) }
@@ -238,7 +219,29 @@ watch(filteredItems, (newVal) => {
     }
   }
 
+  function startPolling() {
+    if (pollTimer) return
+    pollTimer = setInterval(() => loadCachedQuotes(), 15000)
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) return
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      wsReconnectAttempts = 0
+      stopPolling()
+      initializeWebSocket()
+    }
+  }
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
   function cleanupWebSocket() {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    stopPolling()
     if (ws) {
       ws.onclose = null
       ws.close()
