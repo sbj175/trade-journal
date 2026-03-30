@@ -591,3 +591,26 @@ class PnlEvent(Base):
         Index("idx_pnl_events_group", "group_id"),
         Index("idx_pnl_events_underlying", "underlying"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Historical EOD prices (global, not per-user)
+# ---------------------------------------------------------------------------
+
+class HistoricalPrice(Base):
+    __tablename__ = "historical_prices"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    date = Column(String, nullable=False)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    adj_close = Column(Float)
+    volume = Column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_historical_price_symbol_date"),
+        Index("idx_historical_prices_symbol_date", "symbol", "date"),
+    )
