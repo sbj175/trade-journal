@@ -614,3 +614,23 @@ class HistoricalPrice(Base):
         UniqueConstraint("symbol", "date", name="uq_historical_price_symbol_date"),
         Index("idx_historical_prices_symbol_date", "symbol", "date"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Realized volatility metrics (global, not per-user)
+# ---------------------------------------------------------------------------
+
+class SymbolVolatilityMetric(Base):
+    __tablename__ = "symbol_volatility_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    date = Column(String, nullable=False)
+    rv10 = Column(Float)
+    rv20 = Column(Float)
+    rv30 = Column(Float)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_volatility_metric_symbol_date"),
+        Index("idx_volatility_metrics_symbol_date", "symbol", "date"),
+    )
