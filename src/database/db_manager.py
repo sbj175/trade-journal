@@ -3,7 +3,7 @@ Database Manager for Trade Journal
 Handles all database operations via SQLAlchemy ORM.
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import json
@@ -372,12 +372,19 @@ class DatabaseManager:
             logger.error(f"Error caching quote for {symbol}: {str(e)}")
             return False
     
-    def get_cached_quotes(self, symbols: List[str] = None) -> Dict[str, Dict[str, Any]]:
-        """Get cached quotes from database"""
+    def get_cached_quotes(self, symbols: List[str] = None, max_age_seconds: int = 300) -> Dict[str, Dict[str, Any]]:
+        """Get cached quotes from database, filtering out stale entries.
+
+        Args:
+            symbols: List of symbols to fetch. None for all.
+            max_age_seconds: Maximum age in seconds before a cached quote is
+                considered stale. Defaults to 300 (5 minutes).
+        """
         from src.database.models import QuoteCache
         try:
+            cutoff = (datetime.now() - timedelta(seconds=max_age_seconds)).strftime('%Y-%m-%d %H:%M:%S')
             with self.get_session() as session:
-                q = session.query(QuoteCache)
+                q = session.query(QuoteCache).filter(QuoteCache.updated_at >= cutoff)
                 if symbols:
                     q = q.filter(QuoteCache.symbol.in_(symbols))
                 quotes = {}
