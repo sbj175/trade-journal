@@ -134,21 +134,25 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         <!-- Footer -->
         <div v-if="chain"
              class="px-5 py-3 border-t border-tv-border/50 flex flex-col gap-1.5">
-          <div class="flex items-center justify-end gap-6">
-            <span class="text-sm text-tv-muted">
-              Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
-            </span>
-            <span class="text-sm text-tv-muted">
-              Chain P&amp;L: <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
-            </span>
-            <span v-if="unrealizedPnl() !== null" class="text-sm text-tv-muted">
-              Unrealized: <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
-            </span>
-          </div>
-          <div v-if="unrealizedPnl() !== null" class="flex items-center justify-end">
-            <span class="text-sm text-tv-muted">
-              Chain Total: <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
-            </span>
+          <div class="flex flex-col items-end gap-0.5">
+            <div class="flex items-center justify-between w-56 text-sm">
+              <span class="text-tv-muted">Net Premium:</span>
+              <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
+            </div>
+            <div class="flex items-center justify-between w-56 text-sm">
+              <span class="text-tv-muted">Chain P&amp;L:</span>
+              <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
+            </div>
+            <div v-if="unrealizedPnl() !== null" class="flex items-center justify-between w-56 text-sm">
+              <span class="text-tv-muted">Unrealized:</span>
+              <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
+            </div>
+            <div v-if="unrealizedPnl() !== null" class="w-56 border-t border-tv-border/50 mt-0.5 pt-1">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-tv-muted">Chain Total:</span>
+                <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
+              </div>
+            </div>
           </div>
           <!-- Learn More -->
           <div class="border-t border-tv-border/30 mt-2 pt-2">
