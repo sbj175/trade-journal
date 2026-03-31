@@ -139,7 +139,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
             </span>
             <span class="text-sm text-tv-muted">
-              Realized P&amp;L: <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
+              Chain P&amp;L: <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
             </span>
             <span v-if="unrealizedPnl() !== null" class="text-sm text-tv-muted">
               Unrealized: <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
@@ -159,7 +159,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <div v-if="showLearnMore" class="mt-2 text-xs text-tv-muted leading-relaxed space-y-1.5">
               <p>A <span class="text-tv-text font-medium">roll</span> is automatically detected when a position is closed and a new position is opened on the <span class="text-tv-text">same account, underlying, and option type on the same day</span>.</p>
               <p>Multi-leg strategies (e.g. vertical spreads) are fully supported — each leg is matched independently, so rolling a spread counts as a single roll.</p>
-              <p><span class="text-tv-text font-medium">Chain P&amp;L</span> is the running total of realized P&amp;L from all closed links plus the current open position&apos;s unrealized P&amp;L. <span class="text-tv-text font-medium">Net Premium</span> is the total premium collected across all links in the chain.</p>
+              <p><span class="text-tv-text font-medium">Net Premium</span> — total premium collected across all positions in the chain.</p>
+              <p><span class="text-tv-text font-medium">Chain P&amp;L</span> — cumulative realized P&amp;L from all closed positions in the chain.</p>
+              <p><span class="text-tv-text font-medium">Unrealized</span> — the current open position&apos;s unrealized P&amp;L based on live market prices.</p>
+              <p><span class="text-tv-text font-medium">Chain Total</span> — Chain P&amp;L plus Unrealized. This is where you stand on the entire trade sequence right now.</p>
             </div>
           </div>
         </div>
