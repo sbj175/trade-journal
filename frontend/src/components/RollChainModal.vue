@@ -135,20 +135,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         <div v-if="chain"
              class="px-5 py-3 border-t border-tv-border/50 flex flex-col gap-1.5">
           <div class="flex items-start justify-between">
-            <div class="text-sm text-tv-muted">
+            <div class="text-sm text-tv-muted cursor-help" title="Total premium collected across all positions in the chain">
               Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
             </div>
             <div class="flex flex-col items-end gap-0.5">
-              <div class="flex items-center justify-between w-48 text-sm">
+              <div class="flex items-center justify-between w-48 text-sm cursor-help" title="Cumulative realized P&L from all closed positions in the chain">
                 <span class="text-tv-muted">Chain P&amp;L:</span>
                 <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
               </div>
-              <div v-if="unrealizedPnl() !== null" class="flex items-center justify-between w-48 text-sm">
+              <div v-if="unrealizedPnl() !== null" class="flex items-center justify-between w-48 text-sm cursor-help" title="Current open position's unrealized P&L based on live market prices">
                 <span class="text-tv-muted">Unrealized:</span>
                 <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
               </div>
               <div v-if="unrealizedPnl() !== null" class="w-48 border-t border-tv-border/50 mt-0.5 pt-1">
-                <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center justify-between text-sm cursor-help" title="Chain P&L plus Unrealized — where you stand on the entire trade sequence right now">
                   <span class="text-tv-muted">Chain Total:</span>
                   <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
                 </div>
@@ -164,10 +164,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <div v-if="showLearnMore" class="mt-2 text-xs text-tv-muted leading-relaxed space-y-1.5">
               <p>A <span class="text-tv-text font-medium">roll</span> is automatically detected when a position is closed and a new position is opened on the <span class="text-tv-text">same account, underlying, and option type on the same day</span>.</p>
               <p>Multi-leg strategies (e.g. vertical spreads) are fully supported — each leg is matched independently, so rolling a spread counts as a single roll.</p>
-              <p><span class="text-tv-text font-medium">Net Premium</span> — total premium collected across all positions in the chain.</p>
-              <p><span class="text-tv-text font-medium">Chain P&amp;L</span> — cumulative realized P&amp;L from all closed positions in the chain.</p>
-              <p><span class="text-tv-text font-medium">Unrealized</span> — the current open position&apos;s unrealized P&amp;L based on live market prices.</p>
-              <p><span class="text-tv-text font-medium">Chain Total</span> — Chain P&amp;L plus Unrealized. This is where you stand on the entire trade sequence right now.</p>
             </div>
           </div>
         </div>
