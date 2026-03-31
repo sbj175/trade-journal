@@ -302,7 +302,7 @@ def _refresh_group_strategy(group, session):
     """
     from src.models.lot_manager import LotManager
     from src.pipeline.strategy_engine import recognize, lots_to_legs
-    from src.pipeline.group_manager import _recognize_from_lots
+    from src.pipeline.group_manager import _label_from_all_lots
 
     lot_rows = session.query(PositionLotModel).join(
         PositionGroupLot,
@@ -321,7 +321,7 @@ def _refresh_group_strategy(group, session):
         group.strategy_label = sr.name
     else:
         # All lots closed — use the full-lot recognizer (latest opening cohort)
-        label = _recognize_from_lots(lots)
+        label = _label_from_all_lots(lots)
         if label:
             group.strategy_label = label
 
