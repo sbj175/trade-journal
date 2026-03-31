@@ -169,6 +169,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
                 <li>Same type (Call/Put)</li>
                 <li>Same day</li>
               </ul>
+              <p class="mt-1.5">Whether you're rolling your Covered Calls or legging out and back into a new Iron Condor, the roll is detected.</p>
             </div>
           </div>
         </div>
