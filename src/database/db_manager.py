@@ -163,6 +163,10 @@ class DatabaseManager:
                         raw_action = raw_action[len('OrderAction.'):]
                     raw_action = raw_action.upper().replace(' ', '_')
 
+                    _EXPECTED_ACTIONS = {'BUY_TO_OPEN', 'SELL_TO_OPEN', 'BUY_TO_CLOSE', 'SELL_TO_CLOSE', ''}
+                    if raw_action and raw_action not in _EXPECTED_ACTIONS:
+                        logger.warning(f"Unexpected action format after normalization: '{raw_action}' (original: '{txn.get('action')}') for txn {txn.get('id')}")
+
                     stmt = dialect_insert(RawTransaction).values(
                         id=txn.get('id'), account_number=txn.get('account_number'),
                         order_id=txn.get('order_id'), transaction_type=txn.get('transaction_type'),
