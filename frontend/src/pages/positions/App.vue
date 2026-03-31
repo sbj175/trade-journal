@@ -317,7 +317,7 @@ onUnmounted(() => {
                 <StreamingPrice :quote="getUnderlyingQuote(group.underlying)" />
               </div>
 
-              <!-- Ledger Link + Roll Chain -->
+              <!-- Ledger Link -->
               <div class="w-10 flex items-center gap-1.5">
                 <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
@@ -325,12 +325,6 @@ onUnmounted(() => {
                    title="View in Ledger">
                   <i class="fas fa-book text-xs"></i>
                 </a>
-                <button v-if="group.roll_chain"
-                        @click.stop="openRollChainModal(group)"
-                        class="text-[10px] px-1.5 py-0.5 rounded-full bg-tv-blue/15 text-tv-blue border border-tv-blue/30 hover:bg-tv-blue/25 cursor-pointer leading-3 font-medium transition-colors"
-                        :title="`${group.roll_chain.roll_count} roll${group.roll_chain.roll_count > 1 ? 's' : ''} · Net Premium: $${formatNumber(group.roll_chain.cumulative_premium)} · P&L: $${formatNumber(group.roll_chain.cumulative_realized_pnl)}`">
-                  <i class="fas fa-link text-[8px] mr-0.5"></i>{{ group.roll_chain.roll_count }}
-                </button>
               </div>
 
               <!-- Strategy -->
@@ -460,9 +454,11 @@ onUnmounted(() => {
                       <span v-show="group.roll_chain.cumulative_premium < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_premium) }}
                     </span>
                   </span>
-                  <span class="text-tv-muted/70">
-                    {{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
-                  </span>
+                  <button @click.stop="openRollChainModal(group)"
+                          class="text-[11px] px-2 py-0.5 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-3 font-medium transition-colors"
+                          title="View roll chain">
+                    <i class="fas fa-link text-[9px] mr-0.5"></i>{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
+                  </button>
                 </div>
               </div>
             </div>
