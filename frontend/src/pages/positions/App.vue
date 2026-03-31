@@ -456,7 +456,7 @@ onUnmounted(() => {
                   </span>
                   <button @click.stop="openRollChainModal(group)"
                           class="text-[11px] px-2 py-0.5 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-3 font-medium transition-colors"
-                          :title="`Click to view roll chain details.\n\nA roll is detected when a position is closed and reopened on the same account, underlying, and option type on the same day.\n\nMulti-leg strategies (e.g. spreads) are also detected — each leg is matched independently.\n\nUnrelated trades on the same day/underlying that happen to close and reopen are not distinguished from intentional rolls.`">
+                          title="Rolls detected — click to see the full chain">
                     <i class="fas fa-link text-[9px] mr-0.5"></i>{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
                   </button>
                 </div>

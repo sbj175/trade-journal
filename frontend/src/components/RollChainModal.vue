@@ -16,6 +16,7 @@ const emit = defineEmits(['close'])
 const loading = ref(false)
 const error = ref(null)
 const chain = ref(null)
+const showLearnMore = ref(false)
 
 const cumulativePnl = () => {
   if (!chain.value?.chain?.length) return 0
@@ -148,6 +149,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <span class="text-sm text-tv-muted">
               Chain Total: <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
             </span>
+          </div>
+          <!-- Learn More -->
+          <div class="border-t border-tv-border/30 mt-2 pt-2">
+            <button @click="showLearnMore = !showLearnMore"
+                    class="text-xs text-tv-blue hover:text-tv-blue/80 transition-colors cursor-pointer">
+              <i class="fas fa-info-circle mr-1"></i>{{ showLearnMore ? 'Hide' : 'Learn more about roll detection' }}
+            </button>
+            <div v-if="showLearnMore" class="mt-2 text-xs text-tv-muted leading-relaxed space-y-1.5">
+              <p>A <span class="text-tv-text font-medium">roll</span> is automatically detected when a position is closed and a new position is opened on the <span class="text-tv-text">same account, underlying, and option type on the same day</span>.</p>
+              <p>Multi-leg strategies (e.g. vertical spreads) are fully supported — each leg is matched independently, so rolling a spread counts as a single roll.</p>
+              <p><span class="text-tv-text font-medium">Chain P&amp;L</span> is the running total of realized P&amp;L from all closed links plus the current open position&apos;s unrealized P&amp;L. <span class="text-tv-text font-medium">Net Premium</span> is the total premium collected across all links in the chain.</p>
+            </div>
           </div>
         </div>
       </div>
