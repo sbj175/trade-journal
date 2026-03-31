@@ -285,7 +285,7 @@ onUnmounted(() => {
         <template v-else>
           <div>
             <!-- Group Row -->
-            <div class="flex items-center px-4 h-12 hover:bg-tv-border/20 cursor-pointer transition-colors"
+            <div class="flex flex-wrap items-center px-4 min-h-12 py-1.5 hover:bg-tv-border/20 cursor-pointer transition-colors"
                  @click="toggleExpanded(group.groupKey)">
               <!-- Chevron -->
               <div class="w-8">
@@ -327,7 +327,7 @@ onUnmounted(() => {
                 </a>
                 <button v-if="group.roll_chain"
                         @click.stop="openRollChainModal(group)"
-                        class="text-[10px] px-1.5 py-0.5 rounded-full text-tv-blue hover:bg-tv-blue/20 cursor-pointer leading-3 font-medium transition-colors"
+                        class="text-[10px] px-1.5 py-0.5 rounded-full bg-tv-blue/15 text-tv-blue border border-tv-blue/30 hover:bg-tv-blue/25 cursor-pointer leading-3 font-medium transition-colors"
                         :title="`${group.roll_chain.roll_count} roll${group.roll_chain.roll_count > 1 ? 's' : ''} · Net Premium: $${formatNumber(group.roll_chain.cumulative_premium)} · P&L: $${formatNumber(group.roll_chain.cumulative_realized_pnl)}`">
                   <i class="fas fa-link text-[8px] mr-0.5"></i>{{ group.roll_chain.roll_count }}
                 </button>
@@ -444,6 +444,27 @@ onUnmounted(() => {
               <!-- Note indicator -->
               <i class="fas fa-sticky-note text-tv-amber text-sm pl-2"
                  v-show="getPositionComment(group)" title="Has notes"></i>
+
+              <!-- Inline Chain P&L (only when rolled) -->
+              <div v-if="group.roll_chain" class="w-full flex items-center pl-8 pt-0.5">
+                <div class="text-[11px] text-tv-muted flex items-center gap-3">
+                  <span>
+                    <span class="text-tv-muted/70">Chain P&L:</span>
+                    <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+                      <span v-show="group.roll_chain.cumulative_realized_pnl < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl) }}
+                    </span>
+                  </span>
+                  <span>
+                    <span class="text-tv-muted/70">Net Premium:</span>
+                    <span :class="group.roll_chain.cumulative_premium >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+                      <span v-show="group.roll_chain.cumulative_premium < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_premium) }}
+                    </span>
+                  </span>
+                  <span class="text-tv-muted/70">
+                    {{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <!-- Expanded Detail Panel -->
