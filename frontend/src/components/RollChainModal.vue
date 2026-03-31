@@ -161,9 +161,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
                     class="text-xs text-tv-blue hover:text-tv-blue/80 transition-colors cursor-pointer">
               <i class="fas fa-info-circle mr-1"></i>{{ showLearnMore ? 'Hide' : 'Learn more about roll detection' }}
             </button>
-            <div v-if="showLearnMore" class="mt-2 text-xs text-tv-muted leading-relaxed space-y-1.5">
-              <p>A <span class="text-tv-text font-medium">roll</span> is automatically detected when a position is closed and a new position is opened on the <span class="text-tv-text">same account, underlying, and option type on the same day</span>.</p>
-              <p>Multi-leg strategies (e.g. vertical spreads) are fully supported — each leg is matched independently, so rolling a spread counts as a single roll.</p>
+            <div v-if="showLearnMore" class="mt-2 text-xs text-tv-muted leading-relaxed">
+              <p>A <span class="text-tv-text font-medium">roll</span> is automatically detected when a position is closed and a new one is opened matching on:</p>
+              <ul class="list-disc list-inside mt-1 space-y-0.5 ml-2">
+                <li>Same account</li>
+                <li>Same underlying</li>
+                <li>Same type (Call/Put)</li>
+                <li>Same day</li>
+              </ul>
             </div>
           </div>
         </div>
