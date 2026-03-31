@@ -156,12 +156,19 @@ class DatabaseManager:
             user_id = session.info.get("user_id", DEFAULT_USER_ID)
             for txn in transactions:
                 try:
+                    # Normalize action to uppercase underscore format
+                    # Handles TT SDK variants: "OrderAction.SELL_TO_OPEN", "Sell to Open", "SELL_TO_OPEN"
+                    raw_action = txn.get('action') or ''
+                    if raw_action.startswith('OrderAction.'):
+                        raw_action = raw_action[len('OrderAction.'):]
+                    raw_action = raw_action.upper().replace(' ', '_')
+
                     stmt = dialect_insert(RawTransaction).values(
                         id=txn.get('id'), account_number=txn.get('account_number'),
                         order_id=txn.get('order_id'), transaction_type=txn.get('transaction_type'),
                         transaction_sub_type=txn.get('transaction_sub_type'),
                         description=txn.get('description'), executed_at=txn.get('executed_at'),
-                        transaction_date=txn.get('transaction_date'), action=txn.get('action'),
+                        transaction_date=txn.get('transaction_date'), action=raw_action,
                         symbol=txn.get('symbol'), instrument_type=txn.get('instrument_type'),
                         underlying_symbol=txn.get('underlying_symbol'),
                         quantity=txn.get('quantity'), price=txn.get('price'),

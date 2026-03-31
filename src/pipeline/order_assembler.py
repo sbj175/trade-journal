@@ -69,10 +69,10 @@ def preprocess_transactions(
 
         for (acct, old_under, date_str), txs in sc_groups.items():
             close_txs = [
-                t for t in txs if "TO_CLOSE" in (t.get("action") or "")
+                t for t in txs if "TO_CLOSE" in (t.get("action") or "").upper().replace(" ", "_")
             ]
             open_txs = [
-                t for t in txs if "TO_OPEN" in (t.get("action") or "")
+                t for t in txs if "TO_OPEN" in (t.get("action") or "").upper().replace(" ", "_")
             ]
 
             # Derive new underlying from open legs' symbol

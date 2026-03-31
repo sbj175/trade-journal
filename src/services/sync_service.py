@@ -42,7 +42,7 @@ def calculate_position_opening_dates(positions: List[Dict[str, Any]], account_nu
                 RawTransaction.account_number == account_number,
                 RawTransaction.symbol.in_(position_symbols),
                 RawTransaction.action.in_([
-                    'OrderAction.BUY_TO_OPEN', 'OrderAction.SELL_TO_OPEN',
+                    'BUY_TO_OPEN', 'SELL_TO_OPEN',
                 ]),
             ).group_by(RawTransaction.symbol).all()
 

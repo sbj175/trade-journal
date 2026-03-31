@@ -49,6 +49,15 @@ class Transaction:
     value: float = 0.0
     net_value: float = 0.0
 
+    def __post_init__(self):
+        # Normalize action to uppercase underscore format
+        # Handles: "Sell to Open" -> "SELL_TO_OPEN", "OrderAction.SELL_TO_OPEN" -> "SELL_TO_OPEN"
+        if self.action:
+            a = self.action
+            if a.startswith('OrderAction.'):
+                a = a[len('OrderAction.'):]
+            self.action = a.upper().replace(' ', '_')
+
     @property
     def is_opening(self) -> bool:
         return 'TO_OPEN' in (self.action or '')
