@@ -135,11 +135,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         <div v-if="chain"
              class="px-5 py-3 border-t border-tv-border/50 flex flex-col gap-1.5">
           <div class="flex items-start justify-between">
-            <div class="text-sm text-tv-muted cursor-help" title="Total premium collected across all positions in the chain">
+            <div class="text-sm text-tv-muted cursor-help" title="Profits kept from closed positions + premium collected on the current position">
               Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
             </div>
             <div class="flex flex-col items-end gap-0.5">
-              <div class="flex items-center justify-between w-48 text-sm cursor-help" title="Cumulative realized P&L from all closed positions in the chain">
+              <div class="flex items-center justify-between w-48 text-sm cursor-help" title="Total realized P&L across all positions in the chain">
                 <span class="text-tv-muted">Chain P&amp;L:</span>
                 <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
               </div>
