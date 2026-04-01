@@ -106,8 +106,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               <span class="w-28">Opened</span>
               <span class="w-6"></span>
               <span class="w-28">Closed</span>
-              <span class="w-16 text-center ml-4">Status</span>
-              <span class="ml-auto text-right">Realized</span>
+              <span class="w-16 text-center">Status</span>
+              <span class="w-32 text-right">Realized</span>
             </div>
             <div class="divide-y divide-tv-border/20">
               <div v-for="(item, idx) in chain.chain.slice().reverse()" :key="item.group_id"
@@ -117,11 +117,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
                 <span class="w-28 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
                 <span class="w-6 text-tv-muted text-center">&rarr;</span>
                 <span class="w-28 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
-                <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center ml-4"
+                <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center"
                       :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
                   {{ item.status }}
                 </span>
-                <span class="ml-auto text-sm font-medium"
+                <span class="w-32 text-right text-sm font-medium"
                       :class="item.realized_pnl > 0 ? 'text-tv-green' : item.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
                   {{ item.realized_pnl ? '$' + formatNumber(item.realized_pnl) : '\u2014' }}
                 </span>
@@ -132,20 +132,22 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         <!-- Footer -->
         <div v-if="chain"
              class="px-5 py-3 border-t border-tv-border/50 flex flex-col gap-1.5">
-          <div class="flex items-start justify-between">
-            <div class="text-sm text-tv-muted cursor-help" title="Profits kept from closed positions + premium collected on the current position">
+          <div class="flex items-start">
+            <!-- Left: Net Premium (spans w-6 + w-28 + w-6 + w-28 = first 4 columns) -->
+            <div class="w-[17rem] text-sm text-tv-muted cursor-help whitespace-nowrap" title="Profits kept from closed positions + premium collected on the current position">
               Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
             </div>
-            <div class="flex flex-col items-end gap-0.5">
-              <div class="flex items-center justify-between w-48 text-sm cursor-help" title="Total realized P&L across all positions in the chain">
+            <!-- Right: P&L stack (spans w-16 + w-32 = last 2 columns) -->
+            <div class="flex flex-col items-end gap-0.5 w-48">
+              <div class="flex items-center justify-between w-full text-sm cursor-help" title="Total realized P&L across all positions in the chain">
                 <span class="text-tv-muted">Chain P&amp;L:</span>
                 <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
               </div>
-              <div v-if="unrealizedPnl() !== null" class="flex items-center justify-between w-48 text-sm cursor-help" title="Current open position's unrealized P&L based on live market prices">
+              <div v-if="unrealizedPnl() !== null" class="flex items-center justify-between w-full text-sm cursor-help" title="Current open position's unrealized P&L based on live market prices">
                 <span class="text-tv-muted">Unrealized:</span>
                 <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
               </div>
-              <div v-if="unrealizedPnl() !== null" class="w-48 border-t border-tv-border/50 mt-0.5 pt-1">
+              <div v-if="unrealizedPnl() !== null" class="w-full border-t border-tv-border/50 mt-0.5 pt-1">
                 <div class="flex items-center justify-between text-sm cursor-help" title="Chain P&L plus Unrealized — where you stand on the entire trade sequence right now">
                   <span class="text-tv-muted">Chain Total:</span>
                   <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
