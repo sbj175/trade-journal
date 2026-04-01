@@ -82,8 +82,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <i class="fas fa-link text-tv-blue"></i>
             <span class="text-tv-text font-semibold text-lg">Roll Chain</span>
             <span v-if="underlying" class="text-tv-muted text-base">&mdash; {{ underlying }}</span>
-            <span v-if="chain" class="text-tv-muted text-sm">
-              ({{ chain.chain_length }} {{ chain.chain_length === 1 ? 'group' : 'groups' }})
+            <span v-if="chain && chain.chain.length" class="text-tv-muted text-sm">
+              {{ chain.chain[0].strategy_label || '' }}
             </span>
           </span>
           <button @click="$emit('close')" class="text-tv-muted hover:text-tv-text text-lg w-8 h-8 flex items-center justify-center rounded hover:bg-tv-border/30 transition-colors">
@@ -106,8 +106,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               <span class="w-28">Opened</span>
               <span class="w-6"></span>
               <span class="w-28">Closed</span>
-              <span class="w-36 ml-4">Strategy</span>
-              <span class="w-16 text-center">Status</span>
+              <span class="w-16 text-center ml-4">Status</span>
               <span class="ml-auto text-right">Realized</span>
             </div>
             <div class="divide-y divide-tv-border/20">
@@ -118,8 +117,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
                 <span class="w-28 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
                 <span class="w-6 text-tv-muted text-center">&rarr;</span>
                 <span class="w-28 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
-                <span class="w-36 text-tv-text ml-4">{{ item.strategy_label || '\u2014' }}</span>
-                <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center"
+                <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center ml-4"
                       :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
                   {{ item.status }}
                 </span>
