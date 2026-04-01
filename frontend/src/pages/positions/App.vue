@@ -206,17 +206,9 @@ onUnmounted(() => {
       Net Liq
       <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('realized_pnl')">
-      Realized
-      <span v-show="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
     <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
-      Open
+      Open P&L
       <span v-show="sortColumn === 'open_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('total_pnl')">
-      Total
-      <span v-show="sortColumn === 'total_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
     <span class="w-20 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')"
           title="Return on capital: Total P&L ÷ Cost Basis. Measures how much you've made or lost relative to what you put in.">
@@ -260,22 +252,10 @@ onUnmounted(() => {
                :class="(group._subtotalNetLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalNetLiq)">
             <span v-show="group._subtotalNetLiq < 0">-</span>${{ formatDollar(group._subtotalNetLiq) }}
           </div>
-          <!-- Realized -->
-          <div class="w-[6.5rem] text-right font-medium"
-               :class="(group._subtotalRealizedPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalRealizedPnL)">
-            <span v-show="group._subtotalRealizedPnL !== 0">
-              <span v-show="group._subtotalRealizedPnL < 0">-</span>${{ formatDollar(group._subtotalRealizedPnL) }}
-            </span>
-          </div>
           <!-- Open P/L -->
           <div class="w-[6.5rem] text-right font-medium"
                :class="(group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalOpenPnL)">
             <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
-          </div>
-          <!-- Total P/L -->
-          <div class="w-[6.5rem] text-right font-medium"
-               :class="(group._subtotalTotalPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalTotalPnL)">
-            <span v-show="group._subtotalTotalPnL < 0">-</span>${{ formatDollar(group._subtotalTotalPnL) }}
           </div>
           <!-- % Rtn -->
           <div class="w-20"></div>
@@ -409,24 +389,10 @@ onUnmounted(() => {
                 <span v-show="getGroupNetLiqWithLiveQuotes(group) < 0">-</span>${{ formatDollar(getGroupNetLiqWithLiveQuotes(group)) }}
               </div>
 
-              <!-- Realized P/L -->
-              <div class="w-[6.5rem] text-right"
-                   :class="(getGroupRealizedPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupRealizedPnL(group))">
-                <template v-if="getGroupRealizedPnL(group) !== 0">
-                  <span v-show="getGroupRealizedPnL(group) < 0">-</span>${{ formatDollar(getGroupRealizedPnL(group)) }}
-                </template>
-              </div>
-
               <!-- Open P/L -->
               <div class="w-[6.5rem] text-right font-medium"
                    :class="(getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupOpenPnL(group))">
                 <span v-show="getGroupOpenPnL(group) < 0">-</span>${{ formatDollar(getGroupOpenPnL(group)) }}
-              </div>
-
-              <!-- Total P/L -->
-              <div class="w-[6.5rem] text-right font-medium"
-                   :class="(getGroupTotalPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(getGroupTotalPnL(group))">
-                <span v-show="getGroupTotalPnL(group) < 0">-</span>${{ formatDollar(getGroupTotalPnL(group)) }}
               </div>
 
               <!-- % Rtn -->
