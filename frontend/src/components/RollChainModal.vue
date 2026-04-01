@@ -82,7 +82,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <i class="fas fa-link text-tv-blue"></i>
             <span class="text-tv-text font-semibold text-lg">Roll Chain</span>
             <span v-if="underlying" class="text-tv-muted text-base">&mdash; {{ underlying }}</span>
-            <span v-if="chain && chain.chain.length" class="text-tv-muted text-sm">
+            <span v-if="chain && chain.chain.length" class="text-tv-muted text-base">
               {{ chain.chain[0].strategy_label || '' }}
             </span>
           </span>
