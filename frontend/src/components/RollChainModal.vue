@@ -100,59 +100,68 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             {{ error }}
           </div>
           <template v-else-if="chain">
-            <!-- Column headers -->
-            <div class="flex items-center px-5 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border/30">
-              <span class="w-6"></span>
-              <span class="w-28">Opened</span>
-              <span class="w-6"></span>
-              <span class="w-28">Closed</span>
-              <span class="w-16 text-center ml-4">Status</span>
-              <span class="ml-auto text-right">Realized</span>
-            </div>
-            <div class="divide-y divide-tv-border/20">
-              <div v-for="(item, idx) in chain.chain.slice().reverse()" :key="item.group_id"
-                   class="flex items-center px-5 py-2.5 text-sm"
-                   :class="item.group_id === groupId ? 'bg-tv-blue/10' : ''">
-                <span class="w-6 text-tv-muted text-xs">{{ chain.chain.length - idx }}.</span>
-                <span class="w-28 text-tv-muted">{{ formatDate(item.opening_date) }}</span>
-                <span class="w-6 text-tv-muted text-center">&rarr;</span>
-                <span class="w-28 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</span>
-                <span class="w-16 text-xs px-1.5 py-0.5 rounded text-center ml-4"
-                      :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
-                  {{ item.status }}
-                </span>
-                <span class="ml-auto text-sm font-medium"
+            <table class="min-w-full table-auto border-collapse text-sm">
+              <thead>
+                <tr class="text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border/30">
+                  <th class="px-5 py-2 text-left font-normal w-6"></th>
+                  <th class="py-2 text-left font-normal">Opened</th>
+                  <th class="py-2 text-center font-normal w-6"></th>
+                  <th class="py-2 text-left font-normal">Closed</th>
+                  <th class="py-2 text-center font-normal">Status</th>
+                  <th class="px-5 py-2 text-right font-normal">Realized</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, idx) in chain.chain.slice().reverse()" :key="item.group_id"
+                    class="border-b border-tv-border/20"
+                    :class="item.group_id === groupId ? 'bg-tv-blue/10' : ''">
+                  <td class="px-5 py-2.5 text-tv-muted text-xs">{{ chain.chain.length - idx }}.</td>
+                  <td class="py-2.5 text-tv-muted">{{ formatDate(item.opening_date) }}</td>
+                  <td class="py-2.5 text-tv-muted text-center">&rarr;</td>
+                  <td class="py-2.5 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</td>
+                  <td class="py-2.5 text-center">
+                    <span class="text-xs px-1.5 py-0.5 rounded"
+                          :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
+                      {{ item.status }}
+                    </span>
+                  </td>
+                  <td class="px-5 py-2.5 text-right font-medium"
                       :class="item.realized_pnl > 0 ? 'text-tv-green' : item.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
-                  {{ item.realized_pnl ? '$' + formatNumber(item.realized_pnl) : '\u2014' }}
-                </span>
-              </div>
-            </div>
+                    {{ item.realized_pnl ? '$' + formatNumber(item.realized_pnl) : '\u2014' }}
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="border-t border-tv-border/50">
+                  <td class="px-5 py-2.5" colspan="2">
+                    <span class="text-sm text-tv-muted cursor-help" title="Profits kept from closed positions + premium collected on the current position">
+                      Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
+                    </span>
+                  </td>
+                  <td></td>
+                  <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Total realized P&L across all positions in the chain">Chain P&amp;L:</td>
+                  <td></td>
+                  <td class="px-5 py-2.5 text-right text-sm font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</td>
+                </tr>
+                <tr v-if="unrealizedPnl() !== null">
+                  <td colspan="3"></td>
+                  <td class="py-1 text-right text-sm text-tv-muted cursor-help" title="Current open position's unrealized P&L based on live market prices">Unrealized:</td>
+                  <td></td>
+                  <td class="px-5 py-1 text-right text-sm font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</td>
+                </tr>
+                <tr v-if="unrealizedPnl() !== null" class="border-t border-tv-border/50">
+                  <td colspan="3"></td>
+                  <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Chain P&L plus Unrealized — where you stand on the entire trade sequence right now">Chain Total:</td>
+                  <td></td>
+                  <td class="px-5 py-2.5 text-right text-sm font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</td>
+                </tr>
+              </tfoot>
+            </table>
           </template>
         </div>
         <!-- Footer -->
         <div v-if="chain"
              class="px-5 py-3 border-t border-tv-border/50 flex flex-col gap-1.5">
-          <div class="flex items-start justify-between">
-            <div class="text-sm text-tv-muted cursor-help" title="Profits kept from closed positions + premium collected on the current position">
-              Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
-            </div>
-            <div class="flex flex-col items-end gap-0.5">
-              <div class="flex items-center justify-between w-48 text-sm cursor-help" title="Total realized P&L across all positions in the chain">
-                <span class="text-tv-muted">Chain P&amp;L:</span>
-                <span class="font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</span>
-              </div>
-              <div v-if="unrealizedPnl() !== null" class="flex items-center justify-between w-48 text-sm cursor-help" title="Current open position's unrealized P&L based on live market prices">
-                <span class="text-tv-muted">Unrealized:</span>
-                <span class="font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</span>
-              </div>
-              <div v-if="unrealizedPnl() !== null" class="w-48 border-t border-tv-border/50 mt-0.5 pt-1">
-                <div class="flex items-center justify-between text-sm cursor-help" title="Chain P&L plus Unrealized — where you stand on the entire trade sequence right now">
-                  <span class="text-tv-muted">Chain Total:</span>
-                  <span class="font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
           <!-- Learn More -->
           <div class="border-t border-tv-border/30 mt-2 pt-2">
             <button @click="showLearnMore = !showLearnMore"
