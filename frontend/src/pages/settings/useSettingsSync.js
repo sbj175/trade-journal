@@ -1,33 +1,23 @@
 /**
  * Initial sync / import trades functionality.
  */
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 
 export function useSettingsSync(Auth, { showNotification, onboarding, router }) {
   const { confirm } = useConfirm()
-  const syncStartDate = ref(new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10))
-  const syncMinDate = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10)
-  const syncMaxDate = new Date().toISOString().slice(0, 10)
   const initialSyncing = ref(false)
   const importResult = ref(null)
-
-  const syncDaysBack = computed(() => {
-    const start = new Date(syncStartDate.value)
-    const now = new Date()
-    return Math.max(1, Math.round((now - start) / 86400000))
-  })
 
   function goToPositions() {
     router.push('/positions')
   }
 
   async function initialSync() {
-    const days = syncDaysBack.value
     const title = onboarding.value ? 'Import Trading History' : 'Initial Sync'
     const msg = onboarding.value
-      ? `This will import ${days} days of trading history from Tastytrade.\n\nThis may take a minute.`
-      : `Initial Sync will CLEAR the existing database and rebuild from scratch.\n\nThis will fetch ${days} days of transactions and may take several minutes.`
+      ? 'This will import your full trading history from Tastytrade.\n\nThis may take a minute.'
+      : 'Initial Sync will CLEAR the existing database and rebuild from scratch.\n\nThis will fetch your full transaction history and may take several minutes.'
     const ok = await confirm({
       title,
       message: msg,
@@ -41,7 +31,7 @@ export function useSettingsSync(Auth, { showNotification, onboarding, router }) 
       const response = await Auth.authFetch('/api/sync/initial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start_date: syncStartDate.value }),
+        body: JSON.stringify({}),
       })
       if (!response.ok) throw new Error(`Initial sync failed: ${response.statusText}`)
       const result = await response.json()
@@ -63,12 +53,8 @@ export function useSettingsSync(Auth, { showNotification, onboarding, router }) 
   }
 
   return {
-    syncStartDate,
-    syncMinDate,
-    syncMaxDate,
     initialSyncing,
     importResult,
-    syncDaysBack,
     goToPositions,
     initialSync,
   }

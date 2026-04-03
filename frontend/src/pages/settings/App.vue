@@ -52,8 +52,7 @@ const {
 } = useSettingsTags(Auth, { showNotification })
 
 const {
-  syncStartDate, syncMinDate, syncMaxDate, initialSyncing, importResult,
-  syncDaysBack, goToPositions, initialSync,
+  initialSyncing, importResult, goToPositions, initialSync,
 } = useSettingsSync(Auth, { showNotification, onboarding, router })
 
 const {
@@ -438,7 +437,7 @@ onMounted(async () => {
                   <h3 class="text-tv-text font-medium mb-1">
                     <i class="fas fa-database mr-2 text-tv-muted"></i>Import Transactions
                   </h3>
-                  <p class="text-tv-muted text-sm">Clears the existing database and rebuilds it from scratch. Fetches all transactions from the selected start date.</p>
+                  <p class="text-tv-muted text-sm">Clears the existing database and rebuilds it from scratch. Imports your full account history automatically.</p>
                 </div>
                 <button @click="initialSync()" :disabled="initialSyncing"
                         class="flex-shrink-0 ml-6 px-5 py-2.5 rounded text-sm disabled:opacity-50 whitespace-nowrap"
@@ -448,13 +447,6 @@ onMounted(async () => {
                   <i class="fas fa-database mr-2" :class="{ 'animate-spin': initialSyncing }"></i>
                   Import Transactions
                 </button>
-              </div>
-              <div class="mt-4 flex items-center gap-3 ml-7">
-                <label class="text-tv-muted text-sm whitespace-nowrap">Import from:</label>
-                <input type="date" v-model="syncStartDate"
-                       :min="syncMinDate" :max="syncMaxDate"
-                       class="bg-tv-bg border border-tv-border text-tv-text px-3 py-1.5 rounded text-sm focus:outline-none focus:border-tv-blue">
-                <span class="text-tv-muted text-xs">{{ syncDaysBack }} days of history</span>
               </div>
             </div>
           </div>
