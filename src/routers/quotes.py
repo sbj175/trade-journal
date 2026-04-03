@@ -112,13 +112,12 @@ async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None
             client = await connection_manager.get_user_client(ws_user_id)
         else:
             client = connection_manager.get_client()
-        if not client:
-            logger.error("WebSocket connection rejected: Not connected to Tastytrade")
-            await websocket.send_json({"error": "Not connected to Tastytrade - check settings"})
-            await websocket.close()
-            return
 
-        logger.info("WebSocket client connected using shared Tastytrade session")
+        cache_only = client is None
+        if cache_only:
+            logger.info("WebSocket running in cache-only mode (no Tastytrade connection)")
+        else:
+            logger.info("WebSocket client connected using shared Tastytrade session")
 
         async def receive_messages():
             nonlocal subscribed_symbols
@@ -133,12 +132,22 @@ async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None
                             logger.info(f"WebSocket subscribing to quotes for: {symbols}")
 
                             if subscribed_symbols:
-                                client.clear_quote_cache()
-                                quotes = await client.get_quotes(subscribed_symbols)
-                                await websocket.send_json({
-                                    "type": "quotes",
-                                    "data": quotes
-                                })
+                                if cache_only:
+                                    cached = db.get_cached_quotes(subscribed_symbols)
+                                    if cached:
+                                        for sym, qd in cached.items():
+                                            if 'mark' in qd and qd['mark'] is not None:
+                                                qd['price'] = qd['mark']
+                                            if 'change_percent' in qd:
+                                                qd['changePercent'] = qd['change_percent']
+                                        await websocket.send_json({"type": "quotes", "data": cached})
+                                else:
+                                    client.clear_quote_cache()
+                                    quotes = await client.get_quotes(subscribed_symbols)
+                                    await websocket.send_json({
+                                        "type": "quotes",
+                                        "data": quotes
+                                    })
 
                     elif "unsubscribe" in data:
                         subscribed_symbols = []
@@ -161,22 +170,26 @@ async def websocket_quotes(websocket: WebSocket, token: str = Query(default=None
                         break
 
                     if subscribed_symbols:
-                        quotes = await client.get_quotes(subscribed_symbols)
+                        if cache_only:
+                            # In cache-only mode, just keep the connection alive
+                            await websocket.send_json({"pong": True})
+                        else:
+                            quotes = await client.get_quotes(subscribed_symbols)
 
-                        for symbol, quote_data in quotes.items():
-                            if quote_data:
-                                db.cache_quote(symbol, quote_data)
+                            for symbol, quote_data in quotes.items():
+                                if quote_data:
+                                    db.cache_quote(symbol, quote_data)
 
-                        try:
-                            await websocket.send_json({
-                                "type": "quotes",
-                                "data": quotes,
-                                "timestamp": datetime.now().isoformat()
-                            })
-                            logger.debug(f"Sent quote update for {len(quotes)} symbols, cached to database")
-                        except Exception as send_error:
-                            logger.info(f"WebSocket send failed (connection likely closed): {send_error}")
-                            break
+                            try:
+                                await websocket.send_json({
+                                    "type": "quotes",
+                                    "data": quotes,
+                                    "timestamp": datetime.now().isoformat()
+                                })
+                                logger.debug(f"Sent quote update for {len(quotes)} symbols, cached to database")
+                            except Exception as send_error:
+                                logger.info(f"WebSocket send failed (connection likely closed): {send_error}")
+                                break
 
             except asyncio.CancelledError:
                 logger.info("Quote update task cancelled")
