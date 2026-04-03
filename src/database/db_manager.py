@@ -87,7 +87,7 @@ class DatabaseManager:
                 strategy_name=name, profit_target_pct=profit, loss_target_pct=loss,
             ))
     
-    def save_account(self, account_number: str, account_name: str = None, account_type: str = None, is_active: bool = None) -> bool:
+    def save_account(self, account_number: str, account_name: str = None, account_type: str = None, is_active: bool = None, opened_at: str = None) -> bool:
         """Save account information. is_active only applies to new inserts (not upsert updates)."""
         from src.database.engine import dialect_insert
         from src.database.models import Account
@@ -103,14 +103,19 @@ class DatabaseManager:
                 )
                 if is_active is not None:
                     values['is_active'] = is_active
+                if opened_at is not None:
+                    values['opened_at'] = opened_at
                 stmt = dialect_insert(Account).values(**values)
+                update_set = {
+                    'account_name': stmt.excluded.account_name,
+                    'account_type': stmt.excluded.account_type,
+                    'updated_at': stmt.excluded.updated_at,
+                }
+                if opened_at is not None:
+                    update_set['opened_at'] = stmt.excluded.opened_at
                 session.execute(stmt.on_conflict_do_update(
                     index_elements=['account_number', 'user_id'],
-                    set_={
-                        'account_name': stmt.excluded.account_name,
-                        'account_type': stmt.excluded.account_type,
-                        'updated_at': stmt.excluded.updated_at,
-                    },
+                    set_=update_set,
                 ))
                 return True
         except Exception as e:

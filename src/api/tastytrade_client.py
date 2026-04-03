@@ -81,12 +81,14 @@ class TastytradeClient:
 
         account_list = []
         for account in self.accounts:
+            opened_at = getattr(account, 'opened_at', None)
             account_list.append({
                 'account_number': account.account_number,
                 'account_name': getattr(account, 'nickname', None) or account.account_number,
                 'account_type': getattr(account, 'account_type', 'Unknown'),
                 'is_closed': getattr(account, 'is_closed', False),
                 'day_trader_status': getattr(account, 'day_trader_status', False),
+                'opened_at': opened_at.isoformat() if opened_at else None,
             })
 
         return account_list

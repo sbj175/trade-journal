@@ -74,6 +74,7 @@ class Account(Base):
     account_name = Column(String)
     account_type = Column(String)
     is_active = Column(Boolean, default=True)
+    opened_at = Column(String, nullable=True)
     created_at = Column(String, server_default=func.now())
     updated_at = Column(String, server_default=func.now())
 

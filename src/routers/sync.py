@@ -34,8 +34,16 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
             days_back = min(days_back, 90)
             logger.info(f"Incremental sync: last sync {last_sync.strftime('%Y-%m-%d %H:%M')}, fetching {days_back} days")
         else:
-            days_back = 365
-            logger.info(f"First sync detected, fetching {days_back} days")
+            # First sync: use earliest account opened_at if available
+            db_accounts = db.get_accounts()
+            opened_dates = [a['opened_at'] for a in db_accounts if a.get('opened_at')]
+            if opened_dates:
+                earliest = datetime.fromisoformat(min(opened_dates))
+                days_back = (datetime.now() - earliest).days + 1
+                logger.info(f"First sync: using earliest account opened_at, fetching {days_back} days")
+            else:
+                days_back = 365
+                logger.info(f"First sync: no opened_at available, fetching {days_back} days")
 
         # Save all accounts to database
         logger.info("Saving account information...")
@@ -44,7 +52,8 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
             db.save_account(
                 account['account_number'],
                 account['account_name'],
-                account['account_type']
+                account['account_type'],
+                opened_at=account.get('opened_at'),
             )
         logger.info(f"Saved {len(accounts)} accounts")
 
@@ -184,30 +193,14 @@ async def initial_sync(
     """Complete initial sync - clears database and rebuilds from scratch.
 
     Accepts an optional start_date (YYYY-MM-DD) to control how far back to
-    import.  Capped at 730 days (2 years).  Defaults to 730 days if omitted.
+    import.  If omitted, uses the earliest account opened_at date from
+    Tastytrade so we import the full account history automatically.
     """
     from datetime import datetime as _dt
 
-    MAX_DAYS_BACK = 730
-    sync_start = None
-    if start_date:
-        try:
-            parsed = date.fromisoformat(start_date)
-            # Clamp: no earlier than MAX_DAYS_BACK ago, no later than today
-            earliest = date.today() - timedelta(days=MAX_DAYS_BACK)
-            if parsed < earliest:
-                parsed = earliest
-            if parsed > date.today():
-                parsed = date.today()
-            sync_start = _dt.combine(parsed, _dt.min.time())
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid start_date format: {start_date}")
-
-    days_label = (date.today() - sync_start.date()).days if sync_start else MAX_DAYS_BACK
-
     try:
 
-        logger.info(f"Starting INITIAL SYNC - importing {days_label} days of history")
+        logger.info("Starting INITIAL SYNC")
 
         db.reset_sync_metadata()
         logger.info("Skipping user data preservation (moving to order-based system)")
@@ -229,22 +222,47 @@ async def initial_sync(
 
         db.initialize_database()
 
+        # Save accounts first so we can read opened_at dates
         logger.info("Saving account information...")
         accounts = tastytrade.get_all_accounts()
         for account in accounts:
             db.save_account(
                 account['account_number'],
                 account['account_name'],
-                account['account_type']
+                account['account_type'],
+                opened_at=account.get('opened_at'),
             )
         logger.info(f"Saved {len(accounts)} accounts")
+
+        # Determine sync start date
+        sync_start = None
+        if start_date:
+            try:
+                parsed = date.fromisoformat(start_date)
+                if parsed > date.today():
+                    parsed = date.today()
+                sync_start = _dt.combine(parsed, _dt.min.time())
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid start_date format: {start_date}")
+        else:
+            # Use earliest account opened_at date
+            opened_dates = [a.get('opened_at') for a in accounts if a.get('opened_at')]
+            if opened_dates:
+                earliest_str = min(opened_dates)
+                sync_start = _dt.fromisoformat(earliest_str)
+                logger.info(f"Using earliest account opened_at: {earliest_str}")
+
+        days_label = (date.today() - sync_start.date()).days if sync_start else 730
+
+        logger.info(f"Importing {days_label} days of history")
 
         # Get active account numbers for filtering
         active_accounts = {a['account_number'] for a in db.get_accounts()}
         logger.info(f"Active accounts for initial sync: {active_accounts}")
 
         logger.info(f"Fetching transactions (last {days_label} days) for active accounts...")
-        transactions = await tastytrade.get_transactions(start_date=sync_start) if sync_start else await tastytrade.get_transactions(days_back=MAX_DAYS_BACK)
+        FALLBACK_DAYS_BACK = 730
+        transactions = await tastytrade.get_transactions(start_date=sync_start) if sync_start else await tastytrade.get_transactions(days_back=FALLBACK_DAYS_BACK)
         transactions = [t for t in transactions if t.get('account_number') in active_accounts]
         logger.info(f"Fetched {len(transactions)} transactions (filtered to active accounts)")
 
@@ -313,16 +331,26 @@ async def sync_account(
     """Import a single account's full transaction history without clearing other accounts.
 
     Used when enabling a previously disabled account — fetches its historical
-    data and merges it into the existing dataset.
+    data and merges it into the existing dataset.  Uses the account's opened_at
+    date when available, falling back to 730 days.
     """
     try:
-        MAX_DAYS_BACK = 730
+        FALLBACK_DAYS_BACK = 730
 
-        logger.info(f"Account-scoped sync for {account_number} ({MAX_DAYS_BACK} days)")
+        # Look up account opened_at for smarter date range
+        account_info = db.get_account(account_number)
+        opened_at = account_info.get('opened_at') if account_info else None
+        if opened_at:
+            start = datetime.fromisoformat(opened_at)
+            days_back = (datetime.now() - start).days + 1
+            logger.info(f"Account-scoped sync for {account_number} (opened_at={opened_at}, {days_back} days)")
+        else:
+            days_back = FALLBACK_DAYS_BACK
+            logger.info(f"Account-scoped sync for {account_number} (no opened_at, {days_back} days)")
 
         # Fetch transactions for this account only
         transactions = await tastytrade.get_transactions(
-            days_back=MAX_DAYS_BACK, account_number=account_number,
+            days_back=days_back, account_number=account_number,
         )
         logger.info(f"Fetched {len(transactions)} transactions for account {account_number}")
 
