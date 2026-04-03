@@ -209,10 +209,15 @@ class ConnectionManager:
                     )
                 )
 
-                return (
-                    provider_secret,
-                    decrypt_credential(row.encrypted_refresh_token),
+                refresh_token = (
+                    decrypt_credential(row.encrypted_refresh_token)
+                    if row.encrypted_refresh_token
+                    else None
                 )
+                if not refresh_token:
+                    return None
+
+                return (provider_secret, refresh_token)
         except Exception as e:
             logger.error(f"Failed to load credentials for user {user_id[:8]}...: {e}")
             return None
