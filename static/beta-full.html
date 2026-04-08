@@ -131,6 +131,9 @@
                             <input type="email" x-model="email" required
                                    class="w-full bg-tv-bg/80 border border-tv-border text-tv-text px-3.5 py-2.5 rounded-lg input-glow text-sm"
                                    placeholder="you@example.com">
+                            <!-- Honeypot — invisible to real users -->
+                            <input type="text" x-model="website" name="website" autocomplete="off" tabindex="-1"
+                                   style="position:absolute;left:-9999px;top:-9999px;height:0;width:0;overflow:hidden;">
                         </div>
 
                         <button type="submit" :disabled="loading"
@@ -157,6 +160,7 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('betaFullApp', () => ({
         email: '',
+        website: '',
         error: '',
         loading: false,
         submitted: false,
@@ -169,7 +173,7 @@ document.addEventListener('alpine:init', () => {
                 const resp = await fetch('/api/waitlist', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: this.email }),
+                    body: JSON.stringify({ email: this.email, website: this.website }),
                 });
 
                 if (!resp.ok) {

@@ -59,12 +59,17 @@ async def get_auth_config():
 # ── Waitlist ──────────────────────────────────────────────────────────────
 
 class WaitlistRequest(BaseModel):
-    email: str
+    email: EmailStr
+    website: str = ""  # honeypot — must be empty for real submissions
 
 
 @router.post("/api/waitlist")
 async def join_waitlist(body: WaitlistRequest):
     """Submit an email to the beta waitlist (public endpoint)."""
+    if body.website:
+        logger.info("Honeypot triggered for waitlist submission")
+        return {"status": "ok"}
+
     with get_session(unscoped=True) as session:
         existing = session.query(WaitlistEntry).filter(
             WaitlistEntry.email == body.email

@@ -7,27 +7,27 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        display: ['Newsreader', 'Georgia', 'serif'],
+                        sans: ['Outfit', 'system-ui', 'sans-serif'],
+                        mono: ['"IBM Plex Mono"', 'monospace'],
                     },
                     colors: {
-                        brand: {
-                            50: '#f0f4ff',
-                            100: '#dbe4ff',
-                            200: '#bac8ff',
-                            300: '#91a7ff',
-                            400: '#748ffc',
-                            500: '#5c7cfa',
-                            600: '#4c6ef5',
-                            700: '#4263eb',
-                            800: '#3b5bdb',
-                            900: '#364fc7',
-                        }
+                        cream: '#FDFAF5',
+                        parchment: '#F5F0E8',
+                        ink: '#1a1a2e',
+                        terracotta: {
+                            400: '#d4715a',
+                            500: '#c45d3e',
+                            600: '#b04e32',
+                            700: '#943f28',
+                        },
+                        muted: '#6b7280',
                     }
                 }
             }
@@ -35,52 +35,244 @@
     </script>
     <style>
         html { scroll-behavior: smooth; }
+
+        /* Editorial ruled line */
+        .ruled { border-bottom: 1px solid #d6d0c4; }
+        .ruled-thick { border-bottom: 3px double #1a1a2e; }
+        .ruled-top { border-top: 1px solid #d6d0c4; }
+        .ruled-top-thick { border-top: 3px double #1a1a2e; }
+
+        /* Drop cap for editorial feel */
+        .drop-cap::first-letter {
+            float: left;
+            font-family: 'Newsreader', Georgia, serif;
+            font-size: 3.5em;
+            line-height: 0.8;
+            padding-right: 0.08em;
+            padding-top: 0.05em;
+            color: #1a1a2e;
+            font-weight: 700;
+        }
+
+        /* Subtle paper texture */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.3;
+            background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.75' numOctaves='4' type='fractalNoise'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body > * { position: relative; z-index: 1; }
+
+        /* Scroll reveal */
+        .reveal {
+            opacity: 0;
+            transform: translateY(16px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        /* Stagger children */
+        .stagger > * { opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .stagger.visible > *:nth-child(1) { transition-delay: 0s; }
+        .stagger.visible > *:nth-child(2) { transition-delay: 0.1s; }
+        .stagger.visible > *:nth-child(3) { transition-delay: 0.2s; }
+        .stagger.visible > *:nth-child(4) { transition-delay: 0.3s; }
+        .stagger.visible > * { opacity: 1; transform: none; }
+
+        /* Feature row hover */
+        .feature-row {
+            transition: background-color 0.2s ease;
+        }
+        .feature-row:hover {
+            background-color: rgba(26, 26, 46, 0.03);
+        }
+
+        /* Ticker tape animation */
+        @keyframes ticker {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .ticker-track {
+            animation: ticker 30s linear infinite;
+        }
+
+        /* Page load entrance */
+        @keyframes masthead {
+            from { opacity: 0; letter-spacing: 0.3em; }
+            to { opacity: 1; letter-spacing: 0.02em; }
+        }
+        .masthead-enter {
+            animation: masthead 1s ease-out both;
+        }
+
+        @keyframes ruleReveal {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+        .rule-reveal {
+            overflow: hidden;
+        }
+        .rule-reveal::after {
+            content: '';
+            display: block;
+            height: 3px;
+            border-top: 3px double #1a1a2e;
+            animation: ruleReveal 0.8s ease-out 0.3s both;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-up { animation: fadeUp 0.7s ease-out both; }
+        .fade-up-d1 { animation: fadeUp 0.7s ease-out 0.2s both; }
+        .fade-up-d2 { animation: fadeUp 0.7s ease-out 0.4s both; }
+        .fade-up-d3 { animation: fadeUp 0.7s ease-out 0.6s both; }
+
+        /* Honeypot */
+        .ohnohoney {
+            position: absolute !important;
+            left: -9999px !important;
+            top: -9999px !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+        }
+
+        /* Form input */
+        .form-input:focus {
+            outline: none;
+            border-color: #1a1a2e;
+            box-shadow: 0 2px 0 0 #1a1a2e;
+        }
+
+        /* Step numbers */
+        .step-num {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #1a1a2e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Newsreader', serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1a1a2e;
+            flex-shrink: 0;
+        }
     </style>
 </head>
-<body class="bg-white text-gray-900 font-sans antialiased">
+<body class="bg-cream text-ink font-sans antialiased">
+
+    <!-- Ticker tape -->
+    <div class="bg-ink text-cream/60 text-xs font-mono py-1.5 overflow-hidden whitespace-nowrap">
+        <div class="ticker-track inline-block">
+            <span class="inline-block px-8">CHAIN TRACKING</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">ROLL DETECTION</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">STRATEGY RECOGNITION</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">REAL P&L</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">LIVE QUOTES</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">TASTYTRADE SYNC</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">IRON CONDORS</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">VERTICALS</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">CHAIN TRACKING</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">ROLL DETECTION</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">STRATEGY RECOGNITION</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">REAL P&L</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">LIVE QUOTES</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">TASTYTRADE SYNC</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">IRON CONDORS</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+            <span class="inline-block px-8">VERTICALS</span>
+            <span class="inline-block px-2 text-terracotta-400">&bull;</span>
+        </div>
+    </div>
 
     <!-- Nav -->
-    <nav class="fixed top-0 w-full bg-white/90 backdrop-blur-sm border-b border-gray-100 z-50">
+    <nav class="sticky top-0 bg-cream/90 backdrop-blur-sm z-50 ruled">
         <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-            <span class="text-xl font-bold text-gray-900">OptionLedger</span>
-            <a href="#signup" class="bg-brand-700 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-brand-800 transition-colors">
+            <div class="flex items-center gap-1.5 masthead-enter">
+                <span class="font-display text-2xl font-bold tracking-tight text-ink">Option</span><span class="font-display text-2xl font-bold tracking-tight text-terracotta-500">Ledger</span>
+            </div>
+            <a href="#signup" class="fade-up-d1 bg-ink text-cream px-5 py-2 text-sm font-medium hover:bg-ink/85 transition-colors">
                 Get Early Access
             </a>
         </div>
     </nav>
 
     <!-- Hero -->
-    <section class="pt-32 pb-20 px-6">
-        <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight text-gray-900">
-                The options trade journal that actually understands options.
-            </h1>
-            <p class="mt-6 text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                Automatically import, organize, and analyze your Tastytrade options trades. Track rolls, multi-leg strategies, and real P&L across entire trade chains &mdash; no spreadsheets required.
-            </p>
-            <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="#signup" class="bg-brand-700 text-white px-8 py-3.5 rounded-lg text-base font-semibold hover:bg-brand-800 transition-colors shadow-sm">
-                    Get Early Access
-                </a>
+    <section class="pt-16 sm:pt-24 pb-20 px-6">
+        <div class="max-w-6xl mx-auto">
+            <div class="rule-reveal mb-10"></div>
+
+            <div class="grid lg:grid-cols-12 gap-8 lg:gap-12">
+                <!-- Left column: headline -->
+                <div class="lg:col-span-7">
+                    <p class="font-mono text-xs text-terracotta-500 tracking-widest uppercase mb-5 fade-up">Est. 2026 &middot; Beta Coming Soon</p>
+                    <h1 class="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-[4.25rem] leading-[1.08] tracking-tight text-ink fade-up-d1">
+                        The options trade journal that actually <em class="text-terracotta-500">understands</em> options.
+                    </h1>
+                </div>
+
+                <!-- Right column: description + CTA -->
+                <div class="lg:col-span-5 lg:pt-12">
+                    <p class="text-lg text-muted leading-relaxed fade-up-d2">
+                        Automatically import, organize, and analyze your Tastytrade options trades. Track rolls, multi-leg strategies, and real P&L across entire trade chains&mdash;no spreadsheets required.
+                    </p>
+                    <div class="mt-8 flex flex-col sm:flex-row items-start gap-4 fade-up-d3">
+                        <a href="#signup" class="group bg-terracotta-500 text-white px-7 py-3 font-semibold hover:bg-terracotta-600 transition-colors inline-flex items-center gap-2">
+                            Get Early Access
+                            <span class="inline-block transition-transform group-hover:translate-x-1">&rarr;</span>
+                        </a>
+                        <span class="text-sm text-muted font-mono self-center">Free during beta</span>
+                    </div>
+                </div>
             </div>
-            <p class="mt-4 text-sm text-gray-500">Free during beta. Built by an options trader, for options traders.</p>
         </div>
     </section>
 
     <!-- Problem -->
-    <section class="py-20 px-6 bg-gray-50">
-        <div class="max-w-3xl mx-auto">
-            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
+    <section class="py-20 px-6 ruled-top-thick">
+        <div class="max-w-3xl mx-auto reveal">
+            <div class="flex items-baseline gap-4 mb-8">
+                <span class="font-mono text-[11px] text-terracotta-500 tracking-widest uppercase shrink-0">The Problem</span>
+                <div class="flex-1 border-b border-dashed" style="border-color: #d6d0c4;"></div>
+            </div>
+
+            <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight mb-10">
                 Trade journals weren't built for options traders.
             </h2>
-            <div class="mt-10 space-y-6 text-gray-600 text-lg leading-relaxed">
-                <p>
-                    You've tried the alternatives. TradesViz, TradeZella, TraderSync, WealthBee &mdash; they all treat options as an afterthought. They can't track your Iron Condor through three rolls. They don't link your opening trade to the adjustment you made two weeks later. And Tastytrade itself? You can't even add a comment to a trade.
+
+            <div class="text-muted text-[1.08rem] leading-[1.75] space-y-6">
+                <p class="drop-cap">
+                    You've tried the alternatives. TradesViz, TradeZella, TraderSync, WealthBee&mdash;they all treat options as an afterthought. They can't track your Iron Condor through three rolls. They don't link your opening trade to the adjustment you made two weeks later. And Tastytrade itself? You can't even add a comment to a trade.
                 </p>
                 <p>
                     So you end up in a spreadsheet, manually logging every entry, every roll, every closing. Then hoping you calculated P&L correctly across the entire chain.
                 </p>
-                <p class="font-semibold text-gray-900">
+                <p class="font-display text-ink text-xl italic">
                     There's a better way.
                 </p>
             </div>
@@ -88,202 +280,294 @@
     </section>
 
     <!-- Solution -->
-    <section class="py-20 px-6">
-        <div class="max-w-3xl mx-auto text-center">
-            <h2 class="text-3xl sm:text-4xl font-bold text-gray-900">
+    <section class="py-20 px-6 bg-parchment ruled-top">
+        <div class="max-w-3xl mx-auto text-center reveal">
+            <div class="flex items-center justify-center gap-4 mb-8">
+                <div class="flex-1 border-b border-dashed max-w-[80px]" style="border-color: #d6d0c4;"></div>
+                <span class="font-mono text-[11px] text-terracotta-500 tracking-widest uppercase">The Solution</span>
+                <div class="flex-1 border-b border-dashed max-w-[80px]" style="border-color: #d6d0c4;"></div>
+            </div>
+
+            <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight">
                 Your trades, automatically organized.
             </h2>
-            <p class="mt-6 text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
-                OptionLedger connects directly to your Tastytrade account and imports your entire trade history. It automatically groups related transactions into chains &mdash; openings, rolls, adjustments, closings &mdash; so you can see the full story of every trade.
+            <p class="mt-6 text-lg text-muted leading-relaxed max-w-2xl mx-auto">
+                OptionLedger connects directly to your Tastytrade account and imports your entire trade history. It automatically groups related transactions into chains&mdash;openings, rolls, adjustments, closings&mdash;so you can see the full story of every trade.
             </p>
         </div>
     </section>
 
     <!-- Features -->
-    <section class="py-20 px-6 bg-gray-50">
-        <div class="max-w-5xl mx-auto">
-            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
-                Built for how you actually trade.
-            </h2>
-            <div class="mt-14 grid sm:grid-cols-2 gap-8">
+    <section class="py-20 px-6 ruled-top-thick">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-14 reveal">
+                <span class="font-mono text-[11px] text-terracotta-500 tracking-widest uppercase block mb-4">Features</span>
+                <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight">
+                    Built for how you actually trade.
+                </h2>
+            </div>
 
-                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
-                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
-                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-                        </svg>
+            <div class="stagger reveal">
+                <!-- Feature 1 -->
+                <div class="feature-row flex gap-6 py-7 ruled items-start">
+                    <span class="font-mono text-sm text-terracotta-500 pt-0.5 shrink-0 w-8">01</span>
+                    <div>
+                        <h3 class="font-display text-xl text-ink mb-1.5">Automatic Chain Tracking</h3>
+                        <p class="text-muted leading-relaxed">
+                            Every opening, roll, and closing linked together. See the complete lifecycle of a trade&mdash;not isolated transactions.
+                        </p>
                     </div>
-                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Automatic Chain Tracking</h3>
-                    <p class="mt-2 text-gray-600 leading-relaxed">
-                        Every opening, roll, and closing linked together. See the complete lifecycle of a trade &mdash; not isolated transactions.
-                    </p>
                 </div>
 
-                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
-                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
-                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                        </svg>
+                <!-- Feature 2 -->
+                <div class="feature-row flex gap-6 py-7 ruled items-start">
+                    <span class="font-mono text-sm text-terracotta-500 pt-0.5 shrink-0 w-8">02</span>
+                    <div>
+                        <h3 class="font-display text-xl text-ink mb-1.5">Strategy Recognition</h3>
+                        <p class="text-muted leading-relaxed">
+                            Iron Condors, verticals, covered calls&mdash;automatically identified. No manual tagging required.
+                        </p>
                     </div>
-                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Strategy Recognition</h3>
-                    <p class="mt-2 text-gray-600 leading-relaxed">
-                        Iron Condors, verticals, covered calls &mdash; automatically identified. No manual tagging required.
-                    </p>
                 </div>
 
-                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
-                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
-                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
+                <!-- Feature 3 -->
+                <div class="feature-row flex gap-6 py-7 ruled items-start">
+                    <span class="font-mono text-sm text-terracotta-500 pt-0.5 shrink-0 w-8">03</span>
+                    <div>
+                        <h3 class="font-display text-xl text-ink mb-1.5">Real P&L Across Rolls</h3>
+                        <p class="text-muted leading-relaxed">
+                            Know your actual profit or loss across an entire chain, not just individual legs. Rolling a position doesn't mean starting over.
+                        </p>
                     </div>
-                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Real P&L Across Rolls</h3>
-                    <p class="mt-2 text-gray-600 leading-relaxed">
-                        Know your actual profit or loss across an entire chain, not just individual legs. Rolling a position doesn't mean starting over.
-                    </p>
                 </div>
 
-                <div class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
-                    <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
-                        <svg class="w-5 h-5 text-brand-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                        </svg>
+                <!-- Feature 4 -->
+                <div class="feature-row flex gap-6 py-7 ruled items-start">
+                    <span class="font-mono text-sm text-terracotta-500 pt-0.5 shrink-0 w-8">04</span>
+                    <div>
+                        <h3 class="font-display text-xl text-ink mb-1.5">Live Portfolio View</h3>
+                        <p class="text-muted leading-relaxed">
+                            See all open positions with real-time P&L, days to expiration, and price-relative indicators. Add notes to any position.
+                        </p>
                     </div>
-                    <h3 class="mt-4 text-lg font-semibold text-gray-900">Live Portfolio View</h3>
-                    <p class="mt-2 text-gray-600 leading-relaxed">
-                        See all open positions with real-time P&L, days to expiration, and price-relative indicators. Add notes to any position.
-                    </p>
                 </div>
-
             </div>
         </div>
     </section>
 
     <!-- How It Works -->
-    <section class="py-20 px-6">
+    <section class="py-20 px-6 bg-parchment ruled-top">
         <div class="max-w-4xl mx-auto">
-            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
-                Up and running in minutes.
-            </h2>
-            <div class="mt-14 grid sm:grid-cols-3 gap-10">
+            <div class="text-center mb-14 reveal">
+                <span class="font-mono text-[11px] text-terracotta-500 tracking-widest uppercase block mb-4">How It Works</span>
+                <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight">
+                    Up and running in minutes.
+                </h2>
+            </div>
 
-                <div class="text-center">
-                    <div class="w-12 h-12 bg-brand-700 text-white rounded-full flex items-center justify-center text-lg font-bold mx-auto">1</div>
-                    <h3 class="mt-5 text-lg font-semibold text-gray-900">Connect</h3>
-                    <p class="mt-2 text-gray-600">Link your Tastytrade account in seconds with secure OAuth.</p>
+            <div class="grid sm:grid-cols-3 gap-10 reveal stagger">
+                <div class="text-center sm:text-left">
+                    <div class="step-num mx-auto sm:mx-0 mb-4">1</div>
+                    <h3 class="font-display text-xl text-ink mb-2">Connect</h3>
+                    <p class="text-muted text-sm leading-relaxed">Link your Tastytrade account in seconds with secure OAuth.</p>
                 </div>
 
-                <div class="text-center">
-                    <div class="w-12 h-12 bg-brand-700 text-white rounded-full flex items-center justify-center text-lg font-bold mx-auto">2</div>
-                    <h3 class="mt-5 text-lg font-semibold text-gray-900">Sync</h3>
-                    <p class="mt-2 text-gray-600">One click imports your complete trade history.</p>
+                <div class="text-center sm:text-left">
+                    <div class="step-num mx-auto sm:mx-0 mb-4">2</div>
+                    <h3 class="font-display text-xl text-ink mb-2">Sync</h3>
+                    <p class="text-muted text-sm leading-relaxed">One click imports your complete trade history.</p>
                 </div>
 
-                <div class="text-center">
-                    <div class="w-12 h-12 bg-brand-700 text-white rounded-full flex items-center justify-center text-lg font-bold mx-auto">3</div>
-                    <h3 class="mt-5 text-lg font-semibold text-gray-900">Analyze</h3>
-                    <p class="mt-2 text-gray-600">See your trades organized into chains with accurate P&L across every roll.</p>
+                <div class="text-center sm:text-left">
+                    <div class="step-num mx-auto sm:mx-0 mb-4">3</div>
+                    <h3 class="font-display text-xl text-ink mb-2">Analyze</h3>
+                    <p class="text-muted text-sm leading-relaxed">See your trades organized into chains with accurate P&L across every roll.</p>
                 </div>
-
             </div>
         </div>
     </section>
 
     <!-- Trust / Security -->
-    <section class="py-20 px-6 bg-gray-50">
+    <section class="py-20 px-6 ruled-top-thick">
         <div class="max-w-4xl mx-auto">
-            <h2 class="text-3xl sm:text-4xl font-bold text-center text-gray-900">
-                Your account stays safe.
-            </h2>
-            <p class="mt-6 text-lg text-gray-600 text-center max-w-2xl mx-auto leading-relaxed">
-                We take security seriously. OptionLedger uses Tastytrade's official OAuth system and needs only <strong class="text-gray-900">read-only permissions</strong>. We never have access to place trades, move money, or modify your account in any way.
-            </p>
-            <div class="mt-12 grid sm:grid-cols-3 gap-8">
+            <div class="text-center mb-14 reveal">
+                <span class="font-mono text-[11px] text-terracotta-500 tracking-widest uppercase block mb-4">Security</span>
+                <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight">
+                    Your account stays safe.
+                </h2>
+                <p class="mt-5 text-lg text-muted max-w-2xl mx-auto leading-relaxed">
+                    We take security seriously. OptionLedger uses Tastytrade's official OAuth system and needs only <strong class="text-ink">read-only permissions</strong>. We never have access to place trades, move money, or modify your account in any way.
+                </p>
+            </div>
 
-                <div class="text-center">
-                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto">
-                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            <div class="grid sm:grid-cols-3 gap-px bg-ink/5 border border-ink/5 reveal">
+                <div class="bg-cream p-8 text-center">
+                    <div class="w-5 h-5 mx-auto mb-4">
+                        <svg class="text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                         </svg>
                     </div>
-                    <h3 class="mt-3 font-semibold text-gray-900">Read-Only Access</h3>
-                    <p class="mt-1 text-sm text-gray-600">Tastytrade OAuth with no "Trade" permission. We can view your history but never place orders or move funds.</p>
+                    <h3 class="font-display text-lg text-ink mb-2">Read-Only Access</h3>
+                    <p class="text-sm text-muted leading-relaxed">Tastytrade OAuth with no "Trade" permission. We can view your history but never place orders or move funds.</p>
                 </div>
 
-                <div class="text-center">
-                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto">
-                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                <div class="bg-cream p-8 text-center">
+                    <div class="w-5 h-5 mx-auto mb-4">
+                        <svg class="text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                         </svg>
                     </div>
-                    <h3 class="mt-3 font-semibold text-gray-900">Official OAuth</h3>
-                    <p class="mt-1 text-sm text-gray-600">We never see your Tastytrade password. Authentication goes directly through Tastytrade's official API.</p>
+                    <h3 class="font-display text-lg text-ink mb-2">Official OAuth</h3>
+                    <p class="text-sm text-muted leading-relaxed">We never see your Tastytrade password. Authentication goes directly through Tastytrade's official API.</p>
                 </div>
 
-                <div class="text-center">
-                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto">
-                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+                <div class="bg-cream p-8 text-center">
+                    <div class="w-5 h-5 mx-auto mb-4">
+                        <svg class="text-ink" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
                         </svg>
                     </div>
-                    <h3 class="mt-3 font-semibold text-gray-900">Revoke Anytime</h3>
-                    <p class="mt-1 text-sm text-gray-600">You control access. Disconnect OptionLedger from your Tastytrade account at any time with one click.</p>
+                    <h3 class="font-display text-lg text-ink mb-2">Revoke Anytime</h3>
+                    <p class="text-sm text-muted leading-relaxed">You control access. Disconnect OptionLedger from your Tastytrade account at any time with one click.</p>
                 </div>
-
             </div>
         </div>
     </section>
 
     <!-- Signup CTA -->
-    <section id="signup" class="py-24 px-6">
-        <div class="max-w-xl mx-auto text-center">
-            <h2 class="text-3xl sm:text-4xl font-bold text-gray-900">
-                Stop wrestling with spreadsheets.
-            </h2>
-            <p class="mt-4 text-lg text-gray-600">
-                Join the early access list and be the first to try OptionLedger when it launches.
-            </p>
+    <section id="signup" class="py-24 px-6 bg-ink text-cream">
+        <div class="max-w-xl mx-auto reveal">
+            <div class="text-center">
+                <span class="font-mono text-[11px] text-terracotta-400 tracking-widest uppercase block mb-4">Early Access</span>
+                <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-cream leading-tight">
+                    Stop wrestling with spreadsheets.
+                </h2>
+                <p class="mt-4 text-lg text-cream/60">
+                    Join the early access list and be the first to try OptionLedger when it launches.
+                </p>
+            </div>
 
             <!-- Email signup form -->
-            <form class="mt-8 flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onsubmit="handleSignup(event)">
+            <form id="signup-form" class="relative mt-10 flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onsubmit="handleSignup(event)">
                 <input
                     type="email"
+                    id="signup-email"
                     required
                     placeholder="you@example.com"
-                    class="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                    class="form-input flex-1 px-4 py-3 bg-cream/10 border border-cream/20 text-cream placeholder-cream/30 font-mono text-sm transition-all"
+                >
+                <!-- Honeypot field — invisible to real users -->
+                <input
+                    type="text"
+                    name="website"
+                    id="signup-website"
+                    autocomplete="off"
+                    tabindex="-1"
+                    class="ohnohoney"
                 >
                 <button
                     type="submit"
-                    class="bg-brand-700 text-white px-6 py-3 rounded-lg text-base font-semibold hover:bg-brand-800 transition-colors shadow-sm whitespace-nowrap"
+                    id="signup-btn"
+                    class="bg-terracotta-500 text-white px-6 py-3 font-semibold hover:bg-terracotta-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Get Early Access
                 </button>
             </form>
 
-            <p class="mt-4 text-sm text-gray-400">We'll only email you about launch updates. No spam.</p>
+            <p class="mt-5 text-center text-cream/30 text-xs font-mono">We'll only email you about launch updates. No spam.</p>
 
-            <!-- Success message (hidden by default) -->
-            <div id="signup-success" class="hidden mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <p class="text-green-800 font-medium">You're on the list! We'll be in touch when early access opens.</p>
+            <!-- Success message -->
+            <div id="signup-success" class="hidden mt-8 p-5 border border-green-700/30 text-center">
+                <p class="text-green-400 font-display text-lg">You're on the list!</p>
+                <p class="mt-1 text-sm text-cream/50">We'll be in touch when early access opens.</p>
+            </div>
+
+            <!-- Already registered -->
+            <div id="signup-already" class="hidden mt-8 p-5 border border-cream/20 text-center">
+                <p class="text-cream font-display text-lg">You're already on the list!</p>
+                <p class="mt-1 text-sm text-cream/50">We'll be in touch soon.</p>
+            </div>
+
+            <!-- Error message -->
+            <div id="signup-error" class="hidden mt-8 p-5 border border-terracotta-500/30 text-center">
+                <p class="text-terracotta-400 font-display text-lg">Something went wrong.</p>
+                <p class="mt-1 text-sm text-cream/50">Please try again.</p>
             </div>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="border-t border-gray-100 py-8 px-6">
+    <footer class="bg-ink border-t border-cream/10 py-8 px-6">
         <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-            <span class="text-sm text-gray-500">&copy; 2026 OptionLedger. All rights reserved.</span>
-            <span class="text-sm text-gray-400">Built by an options trader, for options traders.</span>
+            <div class="flex items-center gap-1.5">
+                <span class="font-display text-sm text-cream/40">Option</span><span class="font-display text-sm text-terracotta-500/60">Ledger</span>
+                <span class="text-cream/20 mx-2">&middot;</span>
+                <span class="text-xs text-cream/30 font-mono">&copy; 2026</span>
+            </div>
+            <span class="text-xs text-cream/30 font-mono">Built by an options trader, for options traders.</span>
         </div>
     </footer>
 
     <script>
-        function handleSignup(e) {
+        // Scroll reveal
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.12 });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Waitlist form handler
+        async function handleSignup(e) {
             e.preventDefault();
-            // TODO: Connect to email service (Mailchimp, ConvertKit, Buttondown, etc.)
-            // For now, just show the success message
-            document.getElementById('signup-success').classList.remove('hidden');
-            e.target.reset();
+
+            const email = document.getElementById('signup-email').value;
+            const website = document.getElementById('signup-website').value;
+            const btn = document.getElementById('signup-btn');
+            const form = document.getElementById('signup-form');
+            const successEl = document.getElementById('signup-success');
+            const alreadyEl = document.getElementById('signup-already');
+            const errorEl = document.getElementById('signup-error');
+
+            // Hide previous messages
+            successEl.classList.add('hidden');
+            alreadyEl.classList.add('hidden');
+            errorEl.classList.add('hidden');
+
+            // Disable button
+            btn.disabled = true;
+            btn.textContent = 'Submitting\u2026';
+
+            try {
+                const resp = await fetch('/api/waitlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, website }),
+                });
+
+                if (!resp.ok) {
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+
+                const data = await resp.json();
+
+                if (data.status === 'already_registered') {
+                    alreadyEl.classList.remove('hidden');
+                } else {
+                    successEl.classList.remove('hidden');
+                    form.reset();
+                }
+            } catch (err) {
+                errorEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Get Early Access';
+            }
         }
     </script>
 
