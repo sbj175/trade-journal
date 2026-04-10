@@ -16,5 +16,9 @@ onMounted(() => {
     <NavBar />
     <GlobalToolbar />
   </div>
-  <router-view />
+  <div class="w-full overflow-x-auto">
+    <div class="min-w-max">
+      <router-view />
+    </div>
+  </div>
 </template>
