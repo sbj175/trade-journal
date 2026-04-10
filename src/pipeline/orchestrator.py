@@ -117,6 +117,12 @@ def reprocess(
     orders_assembled = len(assembly.orders)
     logger.info("Stage 2: assembled %d orders", orders_assembled)
 
+    # ── Step 2.5: Split compound rolling orders ──────────────────────
+    from src.pipeline.roll_splitter import split_rolling_orders
+    assembly.orders = split_rolling_orders(assembly.orders)
+    if len(assembly.orders) != orders_assembled:
+        logger.info("Stage 2.5: split rolling orders → %d orders", len(assembly.orders))
+
     # ── Step 3: Lot operations (position_ledger) ──────────────────────
     if affected_underlyings:
         filtered_orders = [
