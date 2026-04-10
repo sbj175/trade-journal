@@ -409,15 +409,15 @@ onUnmounted(() => {
               <div v-if="group.roll_chain" class="w-full flex items-center pl-8 pt-0.5">
                 <div class="text-[11px] text-tv-muted flex items-center">
                   <span class="inline-flex items-center w-44">
-                    <span class="text-tv-muted/70">Net Premium:</span>
-                    <span :class="group.roll_chain.cumulative_premium >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium ml-1">
-                      <span v-show="group.roll_chain.cumulative_premium < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_premium) }}
+                    <span class="text-tv-muted/70">Chain Realized:</span>
+                    <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium ml-1">
+                      <span v-show="group.roll_chain.cumulative_realized_pnl < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl) }}
                     </span>
                   </span>
                   <span class="inline-flex items-center w-40">
-                    <span class="text-tv-muted/70">Chain P&L:</span>
-                    <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium ml-1">
-                      <span v-show="group.roll_chain.cumulative_realized_pnl < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl) }}
+                    <span class="text-tv-muted/70">Chain Total:</span>
+                    <span :class="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium ml-1">
+                      <span v-show="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) }}
                     </span>
                   </span>
                   <button @click.stop="openRollChainModal(group)"
@@ -532,10 +532,14 @@ onUnmounted(() => {
                     </div>
                     <!-- Roll chain cumulative stats -->
                     <div v-if="group.roll_chain" class="flex items-center text-xs mt-1 gap-4">
-                      <span class="text-tv-muted">Net Premium: <span class="text-tv-text">${{ formatNumber(group.roll_chain.cumulative_premium) }}</span></span>
-                      <span class="text-tv-muted">Chain P&L:
+                      <span class="text-tv-muted">Chain Realized:
                         <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
                           ${{ formatNumber(group.roll_chain.cumulative_realized_pnl) }}
+                        </span>
+                      </span>
+                      <span class="text-tv-muted">Chain Total:
+                        <span :class="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                          ${{ formatNumber(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) }}
                         </span>
                       </span>
                       <span class="text-tv-muted">Last Rolled: {{ formatDate(group.roll_chain.last_rolled) }}</span>

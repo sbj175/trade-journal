@@ -23,10 +23,6 @@ const cumulativePnl = () => {
   return chain.value.chain[chain.value.chain.length - 1]?.cumulative_pnl || 0
 }
 
-const netPremium = () => {
-  return chain.value?.net_premium || 0
-}
-
 const unrealizedPnl = () => {
   // Prefer live value from prop, fall back to API (cached quotes)
   if (props.openPnl !== null) return props.openPnl
@@ -133,13 +129,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               </tbody>
               <tfoot>
                 <tr class="border-t border-tv-border/50">
-                  <td class="px-5 py-2.5" colspan="2">
-                    <span class="text-sm text-tv-muted cursor-help" title="Profits kept from closed positions + premium collected on the current position">
-                      Net Premium: <span class="font-medium text-tv-text">${{ formatNumber(netPremium()) }}</span>
-                    </span>
-                  </td>
-                  <td></td>
-                  <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Total realized P&L across all positions in the chain">Chain P&amp;L:</td>
+                  <td colspan="3"></td>
+                  <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Total realized P&L across all positions in the chain">Chain Realized:</td>
                   <td></td>
                   <td class="px-5 py-2.5 text-right text-sm font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</td>
                 </tr>
@@ -151,7 +142,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
                 </tr>
                 <tr v-if="unrealizedPnl() !== null" class="border-t border-tv-border/50">
                   <td colspan="3"></td>
-                  <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Chain P&L plus Unrealized — where you stand on the entire trade sequence right now">Chain Total:</td>
+                  <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Chain Realized plus Unrealized — where you stand on the entire trade sequence right now">Chain Total:</td>
                   <td></td>
                   <td class="px-5 py-2.5 text-right text-sm font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</td>
                 </tr>
