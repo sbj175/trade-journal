@@ -76,7 +76,7 @@ watch(
     <div class="h-14 px-4 sm:px-5">
       <div class="flex items-center justify-between h-full gap-3">
         <!-- Left -->
-        <div class="flex items-center min-w-0 gap-3 sm:gap-8">
+        <div class="flex items-center min-w-0 gap-3 sm:gap-8 h-full">
           <router-link
             to="/positions/options"
             class="flex items-center min-w-0 gap-2.5"
