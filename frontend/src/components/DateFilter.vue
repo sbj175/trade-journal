@@ -27,6 +27,36 @@ const viewMonth = ref(new Date().getMonth())
 const dropdownRef = ref(null)
 const triggerRef = ref(null)
 const dropdownPos = ref({ top: 0, left: 0 })
+const isMobile = ref(false)
+const lockedScrollY = ref(0)
+
+function updateIsMobile() {
+  if (typeof window === 'undefined') return
+  isMobile.value = window.innerWidth < 768
+}
+
+function lockBodyScroll() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  lockedScrollY.value = window.scrollY || window.pageYOffset || 0
+  document.body.style.position = 'fixed'
+  document.body.style.top = `-${lockedScrollY.value}px`
+  document.body.style.left = '0'
+  document.body.style.right = '0'
+  document.body.style.width = '100%'
+  document.body.style.overflow = 'hidden'
+}
+
+function unlockBodyScroll() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  const scrollY = lockedScrollY.value
+  document.body.style.position = ''
+  document.body.style.top = ''
+  document.body.style.left = ''
+  document.body.style.right = ''
+  document.body.style.width = ''
+  document.body.style.overflow = ''
+  window.scrollTo(0, scrollY)
+}
 
 // --- Helpers ---
 function today() {
@@ -244,7 +274,7 @@ function toggle() {
     viewYear.value = target.getFullYear()
     viewMonth.value = target.getMonth()
     // Position dropdown using fixed coords to escape stacking contexts
-    if (triggerRef.value) {
+    if (!isMobile.value && triggerRef.value) {
       const rect = triggerRef.value.getBoundingClientRect()
       dropdownPos.value = { top: rect.bottom + 4, left: rect.left }
     }
@@ -321,7 +351,7 @@ function emitUpdate() {
 
 // --- Click outside ---
 function onClickOutside(e) {
-  if (!open.value) return
+  if (!open.value || isMobile.value) return
   const dropdown = dropdownRef.value
   const trigger = triggerRef.value
   if (dropdown && !dropdown.contains(e.target) &&
@@ -336,16 +366,28 @@ function onKeydown(e) {
   }
 }
 
+watch(open, (val) => {
+  if (val && isMobile.value) {
+    lockBodyScroll()
+  } else {
+    unlockBodyScroll()
+  }
+})
+
 onMounted(() => {
+  updateIsMobile()
   loadState()
   emitUpdate()
   document.addEventListener('mousedown', onClickOutside)
   document.addEventListener('keydown', onKeydown)
+  window.addEventListener('resize', updateIsMobile)
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', updateIsMobile)
+  unlockBodyScroll()
 })
 
 // --- Cell styling helpers ---
@@ -359,22 +401,22 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
 </script>
 
 <template>
-  <div class="relative inline-block">
+  <div class="relative inline-block w-full md:w-[initial]">
     <!-- Dormant trigger -->
     <div ref="triggerRef"
          @click="toggle"
-         class="flex items-center gap-2 px-4 py-2 bg-tv-panel border border-tv-border rounded cursor-pointer
+         class="flex justify-between md:justify-start items-center gap-2 px-4 py-2 bg-tv-panel border border-tv-border rounded cursor-pointer
                 hover:border-tv-blue/50 transition-colors select-none"
          :class="open ? 'border-tv-blue/50' : ''">
       <span class="text-tv-muted text-xs tracking-wide uppercase">Date Filter</span>
-      <span class="text-tv-text font-mono text-sm">{{ displayRange }}</span>
-      <svg class="w-4 h-4 text-tv-muted ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <span class="text-tv-text font-mono text-sm truncate md:truncate-none">{{ displayRange }}</span>
+      <svg class="w-4 h-4 text-tv-muted ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
       <button v-if="fromDate || toDate"
               @click.stop="clear"
-              class="ml-1 w-5 h-5 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors"
+              class="ml-1 w-5 h-5 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors shrink-0"
               title="Clear date filter">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -382,27 +424,42 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
       </button>
     </div>
 
+    <div v-if="open && isMobile"
+         class="fixed inset-0 z-[9998] bg-black/40 md:hidden"
+         @click="close"></div>
+
     <!-- Dropdown -->
     <div v-if="open" ref="dropdownRef"
-         class="fixed z-[9999] flex bg-tv-panel border border-tv-border rounded shadow-2xl shadow-black/50"
-         :style="{ top: dropdownPos.top + 'px', left: dropdownPos.left + 'px' }">
+         class="fixed z-[9999] bg-tv-panel border border-tv-border shadow-2xl shadow-black/50
+                inset-x-0 bottom-0 max-h-[90vh] rounded-t-xl flex flex-col overflow-hidden
+                md:inset-auto md:max-h-none md:rounded md:flex-row"
+         :style="isMobile ? {} : { top: dropdownPos.top + 'px', left: dropdownPos.left + 'px' }">
+
+      <div class="md:hidden flex items-center justify-between px-4 py-3 border-b border-tv-border">
+        <span class="text-tv-muted text-xs tracking-wide uppercase">Date Filter</span>
+        <button @click="close" class="text-tv-muted hover:text-tv-text transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
       <!-- Left: Presets -->
-      <div class="w-40 border-r border-tv-border py-2 flex flex-col">
+      <div class="w-full md:w-40 md:border-r border-tv-border py-3 md:py-2 px-4 md:px-0 flex flex-wrap md:flex-col gap-2 md:gap-0 overflow-y-auto">
         <button v-for="preset in PRESETS" :key="preset"
                 @click="selectPreset(preset)"
-                class="text-left px-4 py-2.5 text-sm transition-colors"
+                class="text-left px-4 py-2.5 text-sm transition-colors rounded md:rounded-none border md:border-0"
                 :class="activePreset === preset
-                  ? 'bg-tv-blue/30 text-tv-blue border-l-2 border-tv-blue'
-                  : 'text-tv-text hover:bg-tv-hover border-l-2 border-transparent'">
+                  ? 'bg-tv-blue/30 text-tv-blue border-tv-blue md:border-l-2'
+                  : 'text-tv-text hover:bg-tv-hover border border-tv-border md:border-l-2 md:border-transparent'">
           {{ preset }}
         </button>
       </div>
 
       <!-- Right: Calendar -->
-      <div class="w-[310px] p-4 flex flex-col">
+      <div class="w-full md:w-[310px] p-4 flex flex-col overflow-y-auto">
         <!-- Header -->
-        <div class="flex items-center justify-between mb-3">
+        <div class="hidden md:flex items-center justify-between mb-3">
           <span class="text-tv-muted text-xs tracking-wide uppercase">Selected Date Range</span>
           <button @click="close" class="text-tv-muted hover:text-tv-text transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -414,13 +471,13 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
         <!-- Month navigation -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex gap-1">
-            <button @click="prevYear" class="w-7 h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&laquo;</button>
-            <button @click="prevMonth" class="w-7 h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&lsaquo;</button>
+            <button @click="prevYear" class="w-8 h-8 md:w-7 md:h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&laquo;</button>
+            <button @click="prevMonth" class="w-8 h-8 md:w-7 md:h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&lsaquo;</button>
           </div>
           <span class="text-tv-text font-medium text-sm">{{ monthLabel }}</span>
           <div class="flex gap-1">
-            <button @click="nextMonth" class="w-7 h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&rsaquo;</button>
-            <button @click="nextYear" class="w-7 h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&raquo;</button>
+            <button @click="nextMonth" class="w-8 h-8 md:w-7 md:h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&rsaquo;</button>
+            <button @click="nextYear" class="w-8 h-8 md:w-7 md:h-7 flex items-center justify-center text-tv-muted hover:text-tv-text hover:bg-tv-hover rounded transition-colors text-xs font-bold">&raquo;</button>
           </div>
         </div>
 
@@ -434,7 +491,7 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
         <div class="grid grid-cols-7">
           <button v-for="(cell, i) in calendarDays" :key="i"
                   @click="clickCalendarDay(cell)"
-                  class="h-9 flex items-center justify-center text-sm transition-colors relative"
+                  class="h-11 md:h-9 flex items-center justify-center text-sm transition-colors relative"
                   :class="[
                     // Base text color
                     isFuture(cell.date) ? 'text-tv-muted/20 cursor-default'
@@ -455,7 +512,7 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
                       : '',
                   ]">
             <!-- Day number with circle for today / range endpoints -->
-            <span class="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+            <span class="w-9 h-9 md:w-8 md:h-8 flex items-center justify-center rounded-full transition-colors"
                   :class="[
                     isRangeStart(cell.date) || isRangeEnd(cell.date)
                       ? 'bg-tv-blue/30 text-tv-blue font-medium'
@@ -470,7 +527,7 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
         </div>
 
         <!-- From / To footer -->
-        <div class="flex items-center mt-4 pt-3 border-t border-tv-border">
+        <div class="flex flex-col md:flex-row gap-3 md:gap-0 mt-4 pt-3 border-t border-tv-border">
           <div class="flex-1">
             <div class="text-tv-muted text-xs mb-1">From</div>
             <button @click="clickFromDate"
@@ -484,11 +541,11 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
               {{ selectingField === 'from' ? 'Select date' : fmt(fromDate) || '--' }}
             </button>
           </div>
-          <svg class="w-4 h-4 text-tv-muted mx-3 mt-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="hidden md:block w-4 h-4 text-tv-muted mx-3 mt-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <div class="flex-1 text-right">
+          <div class="flex-1 md:text-right">
             <div class="text-tv-muted text-xs mb-1">To</div>
             <button @click="clickToDate"
                     class="font-mono text-sm transition-colors"
@@ -501,10 +558,18 @@ function isRangeSingle() { return sameDay(fromDate.value, toDate.value) }
               {{ selectingField === 'to' ? 'Select date' : fmt(toDate) || '--' }}
             </button>
           </div>
-          <svg class="w-4 h-4 text-tv-muted ml-3 mt-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="hidden md:block w-4 h-4 text-tv-muted ml-3 mt-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
+        </div>
+
+        <!-- Mobile actions -->
+        <div class="md:hidden mt-4 pt-3 border-t border-tv-border">
+          <button @click="close"
+                  class="w-full px-4 py-2.5 text-sm font-medium rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/40 hover:bg-tv-blue/30 transition-colors">
+            Done
+          </button>
         </div>
       </div>
     </div>

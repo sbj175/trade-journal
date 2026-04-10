@@ -82,7 +82,7 @@ onUnmounted(() => {
                @focus="$event.target.select()"
                placeholder="Symbol"
                maxlength="5"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 uppercase placeholder:normal-case placeholder:text-tv-muted w-full md:max-w-[300px]"
                :class="selectedUnderlying ? 'pr-8' : ''">
         <button v-show="selectedUnderlying"
                 @click="selectedUnderlying = ''"

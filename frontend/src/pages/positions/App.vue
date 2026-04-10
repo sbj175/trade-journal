@@ -130,9 +130,9 @@ onUnmounted(() => {
 <template>
   <!-- Page-specific filters teleported to GlobalToolbar -->
   <Teleport to="#page-filters">
-    <div class="bg-tv-panel border-b border-tv-border px-4 py-2.5 flex items-center gap-4">
+    <div class="bg-tv-panel border-b border-tv-border px-4 py-2.5 flex items-center gap-4 ">
       <!-- Symbol Filter -->
-      <div class="relative">
+      <div class="relative w-full">
         <input type="text"
                :value="selectedUnderlying"
                @input="selectedUnderlying = $event.target.value.toUpperCase(); onSymbolFilterCommit()"
@@ -141,7 +141,7 @@ onUnmounted(() => {
                @blur="selectedUnderlying = selectedUnderlying.trim(); onSymbolFilterCommit()"
                placeholder="Symbol"
                maxlength="5"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 uppercase placeholder:normal-case placeholder:text-tv-muted w-full md:max-w-[300px]"
                :class="selectedUnderlying ? 'pr-8' : ''">
         <button v-show="selectedUnderlying"
                 @click="selectedUnderlying = ''; onSymbolFilterCommit()"
