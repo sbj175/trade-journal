@@ -517,6 +517,18 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
         if not candidates:
             continue
 
+        # Filter: target must share a chain_id with at least one candidate.
+        # This ensures only groups created from ROLLING orders (which inherit
+        # the chain) are linked as rolls, not independent OPENING orders that
+        # happened to open on the same day.
+        target_chains = {lot.chain_id for lot in group_lots.get(g.group_id, []) if lot.chain_id}
+        candidates = [
+            c for c in candidates
+            if target_chains & {lot.chain_id for lot in group_lots.get(c.group_id, []) if lot.chain_id}
+        ]
+        if not candidates:
+            continue
+
         # Tie-break: prefer closest lot count
         target_lot_count = len(group_lots.get(g.group_id, []))
         best = min(
