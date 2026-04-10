@@ -1,5 +1,5 @@
 """
-OptionLedger Admin Dashboard — separate FastAPI process on port 8001.
+OptionLedger Admin Dashboard — separate FastAPI process on port 8002.
 
 Usage:
     ADMIN_SECRET=mysecret python admin_app.py
@@ -35,7 +35,7 @@ def _log_startup_banner():
     dialect = get_dialect()
     db_backend = "PostgreSQL" if dialect == "postgresql" else "SQLite"
     secret_set = bool(os.environ.get("ADMIN_SECRET"))
-    port = os.environ.get("APP_PORT", os.environ.get("ADMIN_PORT", "8001"))
+    port = os.environ.get("APP_PORT", os.environ.get("ADMIN_PORT", "8002"))
 
     lines = [
         "",
@@ -79,5 +79,5 @@ app.include_router(api.router)
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("ADMIN_PORT", "8001"))
+    port = int(os.environ.get("ADMIN_PORT", "8002"))
     uvicorn.run("admin_app:app", host="0.0.0.0", port=port)

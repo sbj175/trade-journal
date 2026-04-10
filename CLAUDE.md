@@ -162,7 +162,7 @@ frontend/src/
 ### Docker Compose Services
 
 - **app** — FastAPI on port 8000
-- **admin** — admin_app.py on port 8001
+- **admin** — admin_app.py on port 8002
 - **postgres** — PostgreSQL 16 with healthcheck
 - **redis** — Redis 7 with healthcheck
 
