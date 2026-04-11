@@ -12,9 +12,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="sticky top-0 z-50">
+  <div class="md:sticky top-0 z-50">
     <NavBar />
     <GlobalToolbar />
   </div>
-  <router-view />
+  <div class="w-full overflow-x-auto">
+    <div class="min-w-max">
+      <router-view />
+    </div>
+  </div>
 </template>

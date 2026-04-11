@@ -130,9 +130,9 @@ onUnmounted(() => {
 <template>
   <!-- Page-specific filters teleported to GlobalToolbar -->
   <Teleport to="#page-filters">
-    <div class="bg-tv-panel border-b border-tv-border px-4 py-2.5 flex items-center gap-4">
+    <div class="bg-tv-panel border-b border-tv-border px-4 py-2.5 flex items-center gap-4 ">
       <!-- Symbol Filter -->
-      <div class="relative">
+      <div class="relative w-full">
         <input type="text"
                :value="selectedUnderlying"
                @input="selectedUnderlying = $event.target.value.toUpperCase(); onSymbolFilterCommit()"
@@ -141,7 +141,7 @@ onUnmounted(() => {
                @blur="selectedUnderlying = selectedUnderlying.trim(); onSymbolFilterCommit()"
                placeholder="Symbol"
                maxlength="5"
-               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 w-28 uppercase placeholder:normal-case placeholder:text-tv-muted"
+               class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 uppercase placeholder:normal-case placeholder:text-tv-muted w-full md:max-w-[300px]"
                :class="selectedUnderlying ? 'pr-8' : ''">
         <button v-show="selectedUnderlying"
                 @click="selectedUnderlying = ''; onSymbolFilterCommit()"
@@ -153,7 +153,7 @@ onUnmounted(() => {
     </div>
   </Teleport>
 
-  <!-- Column headers block -->
+   <!-- Column headers block -->
   <div>
 
   <!-- Loading State -->
@@ -171,13 +171,13 @@ onUnmounted(() => {
   <!-- Column Headers -->
   <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
        class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
-    <span class="w-8"></span>
+    <span class="w-16"></span>
     <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
     <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
       Symbol
       <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
-    <span class="w-8 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
+    <span class="w-16 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
       IVR
       <span v-show="sortColumn === 'ivr'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -186,7 +186,7 @@ onUnmounted(() => {
       <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
     <span class="w-10"></span>
-    <span class="w-32 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
+    <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
       Strategy
       <span v-show="sortColumn === 'strategy'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -215,6 +215,8 @@ onUnmounted(() => {
       % Rtn
       <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
+    <span class="w-16 text-center"></span>
+    <span class="w-[250px] text-right">Tags / Signals</span>
   </div>
 
   </div><!-- /column headers block -->
@@ -228,16 +230,16 @@ onUnmounted(() => {
 
         <!-- Subtotal Row -->
         <div v-if="group._isSubtotal" class="flex items-center px-4 h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
-          <div class="w-8"></div>
+          <div class="w-16"></div>
           <div class="w-6" v-show="selectedAccount === ''"></div>
           <div class="w-14">
             <div class="font-bold text-base text-tv-text">{{ group.displayKey }}</div>
           </div>
-          <div class="w-8 mr-1"></div>
+          <div class="w-16 mr-1"></div>
           <div class="w-40"></div>
           <div class="w-10"></div>
           <!-- Strategy -->
-          <div class="w-32 text-xs text-tv-muted">{{ group._childCount }} positions</div>
+          <div class="w-40 text-xs text-tv-muted">{{ group._childCount }} positions</div>
           <!-- DTE -->
           <div class="w-10"></div>
           <!-- Days -->
@@ -259,6 +261,8 @@ onUnmounted(() => {
           </div>
           <!-- % Rtn -->
           <div class="w-20"></div>
+          <div class="w-16"></div>
+          <div class="w-[250px]"></div>
         </div>
 
         <!-- Regular Row (Chain or Share) -->
@@ -268,7 +272,7 @@ onUnmounted(() => {
             <div class="flex flex-wrap items-center px-4 min-h-12 py-1.5 hover:bg-tv-border/20 cursor-pointer transition-colors"
                  @click="toggleExpanded(group.groupKey)">
               <!-- Chevron -->
-              <div class="w-8">
+              <div class="w-16">
                 <i class="fas fa-chevron-right text-tv-muted transition-transform duration-200"
                    :class="{ 'rotate-90': expandedRows.has(group.groupKey) }"></i>
               </div>
@@ -287,7 +291,7 @@ onUnmounted(() => {
               </div>
 
               <!-- IVR -->
-              <div class="w-8 text-right mr-1"
+              <div class="w-16 text-right mr-1"
                    :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-tv-amber' : 'text-tv-muted'">
                 {{ getUnderlyingIVR(group.underlying) !== null ? getUnderlyingIVR(group.underlying) : '' }}
               </div>
@@ -301,70 +305,19 @@ onUnmounted(() => {
               <div class="w-10 flex items-center gap-1.5">
                 <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
                    @click.stop
-                   class="text-tv-muted hover:text-tv-blue transition-colors"
+                   class="inline-flex items-center justify-center min-w-5 h-5 text-tv-muted hover:text-tv-blue transition-colors"
                    title="View in Ledger">
-                  <i class="fas fa-book text-xs"></i>
+                  <i class="fas fa-book text-[11px]"></i>
                 </a>
               </div>
 
               <!-- Strategy -->
-              <div class="w-32 relative">
-                <div class="text-sm text-tv-muted">
+              <div class="w-40">
+                <div class="text-sm text-tv-muted truncate">
                   {{ getGroupStrategyLabel(group) }}
                   <span v-if="group.partially_rolled"
                         class="text-tv-cyan cursor-help ml-0.5"
                         title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>
-                </div>
-                <template v-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
-                  <div class="flex flex-wrap gap-1 mt-0.5">
-                    <span v-for="badge in group.rollAnalysis.badges" :key="badge.label"
-                          class="text-[10px] px-1.5 py-0 rounded-sm border leading-4"
-                          :class="{
-                            'bg-tv-green/20 text-tv-green border-tv-green/50': badge.color === 'green',
-                            'bg-tv-red/20 text-tv-red border-tv-red/50': badge.color === 'red',
-                            'bg-tv-amber/20 text-tv-amber border-tv-amber/50': badge.color === 'yellow',
-                            'bg-tv-orange/20 text-tv-orange border-tv-orange/50': badge.color === 'orange'
-                          }">{{ badge.label }}</span>
-                  </div>
-                </template>
-                <!-- Tag chips -->
-                <div class="flex flex-wrap gap-1 mt-0.5 items-center" data-tag-popover @click.stop>
-                  <span v-for="tag in (group.tags || [])" :key="tag.id"
-                        class="text-[10px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-0.5 leading-3"
-                        :style="`background: ${tag.color}20; color: ${tag.color}; border-color: ${tag.color}50`">
-                    <span>{{ tag.name }}</span>
-                    <button @click="removeTagFromGroup(group, tag.id, $event)"
-                            class="hover:opacity-70 ml-0.5 leading-none">&times;</button>
-                  </span>
-                  <button @click="openTagPopover(group.group_id, $event)"
-                          class="text-[10px] w-4 h-4 rounded-full border border-tv-border/50 text-tv-muted hover:text-tv-blue hover:border-tv-blue/50 flex items-center justify-center leading-none"
-                          title="Add tag">+</button>
-                </div>
-                <!-- Tag popover -->
-                <div v-if="tagPopoverGroup === group.group_id"
-                     class="absolute top-full left-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-lg p-1.5 w-44"
-                     data-tag-popover
-                     @click.stop>
-                  <input type="text"
-                         :id="'tag-input-' + group.group_id"
-                         v-model="tagSearch"
-                         @keydown="handleTagInput($event, group)"
-                         class="w-full bg-tv-bg border border-tv-border text-tv-text text-xs px-2 py-1 rounded outline-none focus:border-tv-blue/50"
-                         placeholder="Type tag name...">
-                  <div class="max-h-28 overflow-y-auto mt-1">
-                    <button v-for="tag in filteredTagSuggestions" :key="tag.id"
-                            @click="addTagToGroup(group, tag); closeTagPopover()"
-                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-text hover:bg-tv-panel rounded">
-                      <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background: ${tag.color}`"></span>
-                      <span>{{ tag.name }}</span>
-                    </button>
-                    <button v-if="tagSearch.trim() && !filteredTagSuggestions.find(t => t.name.toLowerCase() === tagSearch.trim().toLowerCase())"
-                            @click="addTagToGroup(group, tagSearch.trim()); closeTagPopover()"
-                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-blue hover:bg-tv-panel rounded">
-                      <i class="fas fa-plus text-[8px]"></i>
-                      <span>Create "{{ tagSearch.trim() }}"</span>
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -402,8 +355,64 @@ onUnmounted(() => {
               </div>
 
               <!-- Note indicator -->
-              <i class="fas fa-sticky-note text-tv-amber text-sm pl-2"
-                 v-show="getPositionComment(group)" title="Has notes"></i>
+              <div class="w-16 flex items-center justify-center">
+                <i class="fas fa-sticky-note text-tv-amber text-sm"
+                   v-show="getPositionComment(group)" title="Has notes"></i>
+              </div>
+
+              <!-- Tag chips / roll badges -->
+              <div class="w-[250px] relative flex flex-nowrap items-center justify-end gap-2" data-tag-popover @click.stop>
+                <template v-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
+                  <span v-for="badge in group.rollAnalysis.badges" :key="badge.label"
+                        class="text-[11px] px-2 py-0.5 rounded-sm border leading-4"
+                        :class="{
+                          'bg-tv-green/20 text-tv-green border-tv-green/50': badge.color === 'green',
+                          'bg-tv-red/20 text-tv-red border-tv-red/50': badge.color === 'red',
+                          'bg-tv-amber/20 text-tv-amber border-tv-amber/50': badge.color === 'yellow',
+                          'bg-tv-orange/20 text-tv-orange border-tv-orange/50': badge.color === 'orange'
+                        }">{{ badge.label }}</span>
+                </template>
+
+                <!-- Tag chips -->
+                <span v-for="tag in (group.tags || [])" :key="tag.id"
+                      class="text-[11px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 leading-4"
+                      :style="`background: ${tag.color}20; color: ${tag.color}; border-color: ${tag.color}50`">
+                  <span>{{ tag.name }}</span>
+                  <button @click="removeTagFromGroup(group, tag.id, $event)"
+                          class="hover:opacity-70 leading-none">&times;</button>
+                </span>
+
+                <button @click="openTagPopover(group.group_id, $event)"
+                        class="text-[11px] px-2.5 py-1 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-4 font-medium transition-colors text-nowrap"
+                        title="Add tag">+ Tag</button>
+
+                <!-- Tag popover -->
+                <div v-if="tagPopoverGroup === group.group_id"
+                     class="absolute top-full right-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-lg p-1.5 w-44"
+                     data-tag-popover
+                     @click.stop>
+                  <input type="text"
+                         :id="'tag-input-' + group.group_id"
+                         v-model="tagSearch"
+                         @keydown="handleTagInput($event, group)"
+                         class="w-full bg-tv-bg border border-tv-border text-tv-text text-xs px-2 py-1 rounded outline-none focus:border-tv-blue/50"
+                         placeholder="Type tag name...">
+                  <div class="max-h-28 overflow-y-auto mt-1">
+                    <button v-for="tag in filteredTagSuggestions" :key="tag.id"
+                            @click="addTagToGroup(group, tag); closeTagPopover()"
+                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-text hover:bg-tv-panel rounded">
+                      <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background: ${tag.color}`"></span>
+                      <span>{{ tag.name }}</span>
+                    </button>
+                    <button v-if="tagSearch.trim() && !filteredTagSuggestions.find(t => t.name.toLowerCase() === tagSearch.trim().toLowerCase())"
+                            @click="addTagToGroup(group, tagSearch.trim()); closeTagPopover()"
+                            class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-blue hover:bg-tv-panel rounded">
+                      <i class="fas fa-plus text-[8px]"></i>
+                      <span>Create "{{ tagSearch.trim() }}"</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <!-- Inline Chain P&L (only when rolled) -->
               <div v-if="group.roll_chain" class="w-full flex items-center pl-8 pt-0.5">
@@ -421,7 +430,7 @@ onUnmounted(() => {
                     </span>
                   </span>
                   <button @click.stop="openRollChainModal(group)"
-                          class="text-[11px] px-2 py-0.5 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-3 font-medium transition-colors"
+                          class="text-[11px] px-2.5 py-1 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-4 font-medium transition-colors"
                           title="Rolls detected — click to see the full chain">
                     <i class="fas fa-link text-[9px] mr-0.5"></i>{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
                   </button>
