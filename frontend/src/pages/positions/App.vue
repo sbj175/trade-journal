@@ -56,6 +56,14 @@ const {
   onDocumentClick,
 } = usePositionsNotes(Auth, { allItems })
 
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b] }; return a }
+function getPositionCount(group) {
+  const legs = group.positions || []
+  if (legs.length === 0) return null
+  const quantities = legs.map(l => Math.abs(getSignedQuantity(l)))
+  return quantities.reduce((a, b) => gcd(a, b))
+}
+
 const rollChainModal = ref(null)
 const rollChainUnderlying = ref('')
 const rollChainGroup = ref(null)
@@ -240,15 +248,15 @@ onUnmounted(() => {
            class="bg-tv-row border border-tv-border rounded-lg overflow-hidden"
            :class="group.rollAnalysis?.borderColor === 'green' ? 'border-l-2 border-l-tv-green/40' : group.rollAnalysis?.borderColor === 'red' ? 'border-l-2 border-l-tv-red/40' : ''">
 
-        <!-- Card Header — tap to expand -->
-        <div class="px-3 py-3 active:bg-tv-border/20" @click="toggleExpanded(group.groupKey)">
+        <!-- Card Header — tap to navigate to detail -->
+        <div class="px-3 py-3 active:bg-tv-border/20" @click="$router.push('/positions/options/' + group.group_id)">
           <!-- Row 1: Symbol + P&L -->
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="font-bold text-lg text-tv-text">{{ group.displayKey || group.underlying }}</span>
               <span v-show="hasEquity(group) && (group.positions || []).length > 0"
                     class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
-              <span class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}</span>
+              <span class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span></span>
             </div>
             <div class="text-right">
               <span class="font-semibold text-base"
@@ -459,7 +467,7 @@ onUnmounted(() => {
               <!-- Strategy -->
               <div class="w-40">
                 <div class="text-sm text-tv-muted truncate">
-                  {{ getGroupStrategyLabel(group) }}
+                  {{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span>
                   <span v-if="group.partially_rolled"
                         class="text-tv-cyan cursor-help ml-0.5"
                         title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>

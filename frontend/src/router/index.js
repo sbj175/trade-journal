@@ -15,6 +15,7 @@ const routes = [
       { path: '', redirect: '/positions/options' },
       { path: 'positions', redirect: '/positions/options' },
       { path: 'positions/options', name: 'positions-options', component: () => import('@/pages/positions/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Options Positions' } },
+      { path: 'positions/options/:groupId', name: 'position-detail', component: () => import('@/pages/positions/Detail.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Position Detail' } },
       { path: 'positions/equities', name: 'positions-equities', component: () => import('@/pages/positions-equities/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Equity Positions' } },
       { path: 'ledger', name: 'ledger', component: () => import('@/pages/ledger/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Ledger' } },
       { path: 'reports', name: 'reports', component: () => import('@/pages/reports/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Reports' } },

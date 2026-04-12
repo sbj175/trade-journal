@@ -48,7 +48,7 @@ function toggleFilters() {
 // Hide toolbar extras on settings/privacy/components
 const showToolbarExtras = computed(() => {
   const name = route.name
-  return !['settings', 'privacy', 'components'].includes(name)
+  return !['settings', 'privacy', 'components', 'position-detail'].includes(name)
 })
 
 // Account change handler — pages watch the store reactively
