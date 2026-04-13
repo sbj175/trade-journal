@@ -75,7 +75,7 @@ onUnmounted(() => {
   <div class="bg-tv-panel border-b border-tv-border">
     <div class="px-3 py-2 flex flex-col gap-2 md:hidden">
       <!-- Row 1: Sync + icon buttons -->
-      <div class="flex items-center gap-1.5">
+      <div class="flex items-center gap-1.5 relative">
         <template v-if="showToolbarExtras">
           <button @click="syncStore.performSync()"
                   :disabled="syncStore.isSyncing"
@@ -88,18 +88,17 @@ onUnmounted(() => {
         <div class="flex items-center gap-1.5 ml-auto">
           <!-- Market Status icon -->
           <template v-if="showToolbarExtras">
-            <div class="relative">
-              <button @click="marketStore.toggleExpanded($event)"
-                      class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
-                      :class="marketStore.marketExpanded ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
-                      title="Market status">
-                <span class="pulse-dot inline-block" :class="marketStore.dotColor" style="width:8px;height:8px;"></span>
-              </button>
+            <button @click="marketStore.toggleExpanded($event)"
+                    class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
+                    :class="marketStore.marketExpanded ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
+                    title="Market status">
+              <span class="pulse-dot inline-block" :class="marketStore.dotColor" style="width:8px;height:8px;"></span>
+            </button>
 
-              <!-- Expanded Market Details -->
-              <div v-show="marketStore.marketExpanded"
-                   class="absolute right-0 top-full mt-2 z-50 bg-tv-panel border border-tv-border rounded-lg shadow-2xl p-4 w-[calc(100vw-2rem)] max-w-80"
-                   @click.stop>
+            <!-- Expanded Market Details (spans the mobile toolbar row width) -->
+            <div v-show="marketStore.marketExpanded"
+                 class="absolute inset-x-0 top-full mt-2 z-50 bg-tv-panel border border-tv-border rounded-lg shadow-2xl p-4"
+                 @click.stop>
                 <div class="text-xs uppercase tracking-wider text-tv-muted mb-3 font-semibold">Market Sessions</div>
                 <div v-if="marketStore.marketStatus?.sessions?.length" class="space-y-3">
                   <div v-for="s in marketStore.marketStatus.sessions" :key="s.exchange"
@@ -137,7 +136,6 @@ onUnmounted(() => {
                   {{ marketStore.marketStatus?.connected === false ? 'Not connected to Tastytrade' : 'No session data available' }}
                 </div>
               </div>
-            </div>
           </template>
 
           <!-- Overview -->
@@ -155,6 +153,8 @@ onUnmounted(() => {
                     title="Toggle filters">
               <i class="fas fa-filter text-[11px]"></i>
             </button>
+            <!-- Sort (page-provided via Teleport) -->
+            <div id="page-sort" class="relative"></div>
           </template>
         </div>
       </div>

@@ -82,9 +82,7 @@ watch(
             class="flex items-center min-w-0 gap-2.5"
             @click="closeMobileMenu"
           >
-            <span class="w-8 h-8 rounded-lg bg-tv-blue flex items-center justify-center shadow-lg shadow-tv-blue/25 shrink-0">
-              <i class="fas fa-chart-line text-white text-sm"></i>
-            </span>
+            <img :src="'/static/logos/logo_mark_mono_transparent.png'" alt="OptionLedger" class="w-9 h-9 shrink-0" />
             <span class="text-base sm:text-lg font-bold tracking-tight truncate">
               Option<span class="text-tv-blue">Ledger</span>
             </span>

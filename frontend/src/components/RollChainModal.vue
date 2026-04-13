@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
 
 const Auth = useAuth()
@@ -56,6 +57,9 @@ function onKeydown(e) {
     emit('close')
   }
 }
+
+const isOpen = computed(() => !!props.groupId)
+useBackDismiss(isOpen, () => emit('close'))
 
 watch(() => props.groupId, (gid) => {
   if (gid) loadChain(gid)

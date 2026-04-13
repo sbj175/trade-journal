@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
@@ -68,6 +69,31 @@ const rollChainModal = ref(null)
 const rollChainUnderlying = ref('')
 const rollChainGroup = ref(null)
 
+// --- Mobile sort menu ---
+const showSortMenu = ref(false)
+const sortOptions = [
+  { key: 'underlying', label: 'Symbol' },
+  { key: 'strategy', label: 'Strategy' },
+  { key: 'dte', label: 'DTE' },
+  { key: 'ivr', label: 'IV Rank' },
+  { key: 'price', label: 'Price' },
+  { key: 'cost_basis', label: 'Cost Basis' },
+  { key: 'net_liq', label: 'Net Liq' },
+  { key: 'open_pnl', label: 'Open P&L' },
+  { key: 'pnl_percent', label: 'P&L %' },
+]
+function toggleSortMenu(e) {
+  e?.stopPropagation()
+  showSortMenu.value = !showSortMenu.value
+}
+function selectSort(key) {
+  sortPositions(key)
+  showSortMenu.value = false
+}
+function closeSortMenu() { showSortMenu.value = false }
+
+useBackDismiss(showSortMenu, closeSortMenu)
+
 function openRollChainModal(group) {
   rollChainModal.value = group.group_id
   rollChainUnderlying.value = group.underlying
@@ -113,6 +139,7 @@ watch(() => syncStore.lastSyncTime, async (val) => {
 
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
+  document.addEventListener('click', closeSortMenu)
 
   // Sync selectedAccount from store
   selectedAccount.value = accountsStore.selectedAccount
@@ -131,6 +158,7 @@ onMounted(async () => {
 onUnmounted(() => {
   cleanupWebSocket()
   document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('click', closeSortMenu)
   cleanupNoteTimers()
 })
 </script>
@@ -158,6 +186,30 @@ onUnmounted(() => {
           <i class="fas fa-times-circle"></i>
         </button>
       </div>
+    </div>
+  </Teleport>
+
+  <!-- Mobile sort button + dropdown teleported next to the filter button -->
+  <Teleport to="#page-sort">
+    <button @click="toggleSortMenu($event)"
+            class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px] md:hidden"
+            :class="showSortMenu ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
+            title="Sort positions">
+      <i class="fas fa-arrow-down-wide-short text-[11px]"></i>
+    </button>
+    <div v-if="showSortMenu"
+         @click.stop
+         class="absolute right-0 top-full mt-2 z-50 bg-tv-panel border border-tv-border rounded-lg shadow-2xl py-1 w-48 md:hidden">
+      <div class="text-[10px] uppercase tracking-wider text-tv-muted px-3 py-1.5 font-semibold border-b border-tv-border/50">Sort by</div>
+      <button v-for="opt in sortOptions" :key="opt.key"
+              @click="selectSort(opt.key)"
+              class="w-full flex items-center justify-between px-3 py-2.5 text-sm text-tv-text active:bg-tv-border/30"
+              :class="sortColumn === opt.key ? 'text-tv-blue' : ''">
+        <span>{{ opt.label }}</span>
+        <i v-if="sortColumn === opt.key"
+           class="fas text-[10px]"
+           :class="sortDirection === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
+      </button>
     </div>
   </Teleport>
 
