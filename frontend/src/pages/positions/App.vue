@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
@@ -56,9 +57,42 @@ const {
   onDocumentClick,
 } = usePositionsNotes(Auth, { allItems })
 
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b] }; return a }
+function getPositionCount(group) {
+  const legs = group.positions || []
+  if (legs.length === 0) return null
+  const quantities = legs.map(l => Math.abs(getSignedQuantity(l)))
+  return quantities.reduce((a, b) => gcd(a, b))
+}
+
 const rollChainModal = ref(null)
 const rollChainUnderlying = ref('')
 const rollChainGroup = ref(null)
+
+// --- Mobile sort menu ---
+const showSortMenu = ref(false)
+const sortOptions = [
+  { key: 'underlying', label: 'Symbol' },
+  { key: 'strategy', label: 'Strategy' },
+  { key: 'dte', label: 'DTE' },
+  { key: 'ivr', label: 'IV Rank' },
+  { key: 'price', label: 'Price' },
+  { key: 'cost_basis', label: 'Cost Basis' },
+  { key: 'net_liq', label: 'Net Liq' },
+  { key: 'open_pnl', label: 'Open P&L' },
+  { key: 'pnl_percent', label: 'P&L %' },
+]
+function toggleSortMenu(e) {
+  e?.stopPropagation()
+  showSortMenu.value = !showSortMenu.value
+}
+function selectSort(key) {
+  sortPositions(key)
+  showSortMenu.value = false
+}
+function closeSortMenu() { showSortMenu.value = false }
+
+useBackDismiss(showSortMenu, closeSortMenu)
 
 function openRollChainModal(group) {
   rollChainModal.value = group.group_id
@@ -105,6 +139,7 @@ watch(() => syncStore.lastSyncTime, async (val) => {
 
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
+  document.addEventListener('click', closeSortMenu)
 
   // Sync selectedAccount from store
   selectedAccount.value = accountsStore.selectedAccount
@@ -123,6 +158,7 @@ onMounted(async () => {
 onUnmounted(() => {
   cleanupWebSocket()
   document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('click', closeSortMenu)
   cleanupNoteTimers()
 })
 </script>
@@ -153,6 +189,30 @@ onUnmounted(() => {
     </div>
   </Teleport>
 
+  <!-- Mobile sort button + dropdown teleported next to the filter button -->
+  <Teleport to="#page-sort">
+    <button @click="toggleSortMenu($event)"
+            class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px] md:hidden"
+            :class="showSortMenu ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
+            title="Sort positions">
+      <i class="fas fa-arrow-down-wide-short text-[11px]"></i>
+    </button>
+    <div v-if="showSortMenu"
+         @click.stop
+         class="absolute right-0 top-full mt-2 z-50 bg-tv-panel border border-tv-border rounded-lg shadow-2xl py-1 w-48 md:hidden">
+      <div class="text-[10px] uppercase tracking-wider text-tv-muted px-3 py-1.5 font-semibold border-b border-tv-border/50">Sort by</div>
+      <button v-for="opt in sortOptions" :key="opt.key"
+              @click="selectSort(opt.key)"
+              class="w-full flex items-center justify-between px-3 py-2.5 text-sm text-tv-text active:bg-tv-border/30"
+              :class="sortColumn === opt.key ? 'text-tv-blue' : ''">
+        <span>{{ opt.label }}</span>
+        <i v-if="sortColumn === opt.key"
+           class="fas text-[10px]"
+           :class="sortDirection === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
+      </button>
+    </div>
+  </Teleport>
+
    <!-- Column headers block -->
   <div>
 
@@ -168,9 +228,9 @@ onUnmounted(() => {
     <p class="text-tv-muted">No open positions found</p>
   </div>
 
-  <!-- Column Headers -->
+  <!-- Column Headers (desktop only) -->
   <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
-       class="flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
+       class="hidden md:flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
     <span class="w-16"></span>
     <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
     <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
@@ -193,10 +253,6 @@ onUnmounted(() => {
     <span class="w-10 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
       DTE
       <span v-show="sortColumn === 'dte'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-10 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('days')">
-      Days
-      <span v-show="sortColumn === 'days'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
     <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
       Cost Basis
@@ -221,8 +277,159 @@ onUnmounted(() => {
 
   </div><!-- /column headers block -->
 
-  <!-- Main Content -->
-  <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0">
+  <!-- Mobile Card View -->
+  <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
+       class="md:hidden px-2 py-2 space-y-2 overflow-x-hidden">
+    <div v-for="group in groupedPositions" :key="'m-' + group.groupKey">
+
+      <!-- Mobile Subtotal -->
+      <div v-if="group._isSubtotal"
+           class="bg-tv-blue/10 border-l-2 border-tv-blue rounded px-3 py-2 flex items-center justify-between">
+        <span class="font-bold text-tv-text">{{ group.displayKey }}</span>
+        <div class="text-right">
+          <span class="text-xs text-tv-muted mr-2">{{ group._childCount }} pos</span>
+          <span class="font-medium"
+                :class="group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red'">
+            <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Mobile Position Card -->
+      <div v-else
+           class="bg-tv-row border border-tv-border rounded-lg overflow-hidden"
+           :class="group.rollAnalysis?.borderColor === 'green' ? 'border-l-2 border-l-tv-green/40' : group.rollAnalysis?.borderColor === 'red' ? 'border-l-2 border-l-tv-red/40' : ''">
+
+        <!-- Card Header — tap to navigate to detail -->
+        <div class="px-3 py-3 active:bg-tv-border/20" @click="$router.push('/positions/options/' + group.group_id)">
+          <!-- Row 1: Symbol + P&L -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-lg text-tv-text">{{ group.displayKey || group.underlying }}</span>
+              <span v-show="hasEquity(group) && (group.positions || []).length > 0"
+                    class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
+              <span class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span></span>
+            </div>
+            <div class="text-right">
+              <span class="font-semibold text-base"
+                    :class="getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                <span v-show="getGroupOpenPnL(group) < 0">-</span>${{ formatDollar(getGroupOpenPnL(group)) }}
+              </span>
+              <span class="text-sm ml-1"
+                    :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'">
+                {{ getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : '' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Row 2: Key metrics -->
+          <div class="flex items-center justify-between mt-2 text-sm text-tv-muted">
+            <div class="flex items-center gap-3">
+              <span v-if="getUnderlyingQuote(group.underlying)?.last">
+                Price: <span class="text-tv-text font-medium">{{ getUnderlyingQuote(group.underlying).last.toFixed(2) }}</span>
+              </span>
+              <span v-if="getMinDTE(group) !== null"
+                    :class="getMinDTE(group) <= 21 ? 'font-bold text-tv-amber' : ''">
+                {{ getMinDTE(group) }}d DTE
+              </span>
+              <span :class="getUnderlyingIVR(group.underlying) >= 50 ? 'font-bold text-tv-amber' : ''"
+                    v-if="getUnderlyingIVR(group.underlying) !== null">
+                IVR {{ getUnderlyingIVR(group.underlying) }}
+              </span>
+            </div>
+            <i class="fas fa-chevron-right text-tv-muted/30 text-xs transition-transform duration-200"
+               :class="{ 'rotate-90': expandedRows.has(group.groupKey) }"></i>
+          </div>
+
+          <!-- Row 3: Cost / Net Liq -->
+          <div class="flex items-center gap-4 mt-1.5 text-sm text-tv-muted">
+            <span>Cost: <span :class="getGroupCostBasis(group) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+              <span v-show="getGroupCostBasis(group) < 0">-</span>${{ formatDollar(getGroupCostBasis(group)) }}
+            </span></span>
+            <span>Net Liq: <span :class="getGroupNetLiqWithLiveQuotes(group) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+              <span v-show="getGroupNetLiqWithLiveQuotes(group) < 0">-</span>${{ formatDollar(getGroupNetLiqWithLiveQuotes(group)) }}
+            </span></span>
+          </div>
+
+          <!-- Row 4: Roll chain (if rolled) -->
+          <div v-if="group.roll_chain" class="flex flex-wrap items-center gap-2 mt-2 text-xs">
+            <span class="text-tv-muted">
+              Realized:
+              <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+                <span v-show="group.roll_chain.cumulative_realized_pnl < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl) }}
+              </span>
+            </span>
+            <span class="text-tv-muted">
+              Total:
+              <span :class="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+                <span v-show="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) }}
+              </span>
+            </span>
+            <button @click.stop="openRollChainModal(group)"
+                    class="text-xs px-2.5 py-1 rounded-full bg-tv-blue text-white active:bg-tv-blue/80 cursor-pointer font-medium min-h-[32px]">
+              <i class="fas fa-link text-[9px] mr-0.5"></i>{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
+            </button>
+          </div>
+
+          <!-- Badges -->
+          <div v-if="(group.rollAnalysis?.badges?.length > 0) || (group.tags?.length > 0)"
+               class="flex flex-wrap items-center gap-1 mt-1.5">
+            <span v-for="badge in (group.rollAnalysis?.badges || [])" :key="badge.label"
+                  class="text-[10px] px-1.5 py-0.5 rounded-sm border leading-3"
+                  :class="{
+                    'bg-tv-green/20 text-tv-green border-tv-green/50': badge.color === 'green',
+                    'bg-tv-red/20 text-tv-red border-tv-red/50': badge.color === 'red',
+                    'bg-tv-amber/20 text-tv-amber border-tv-amber/50': badge.color === 'yellow',
+                    'bg-tv-orange/20 text-tv-orange border-tv-orange/50': badge.color === 'orange'
+                  }">{{ badge.label }}</span>
+            <span v-for="tag in (group.tags || [])" :key="tag.id"
+                  class="text-[10px] px-1.5 py-0.5 rounded-full border leading-3"
+                  :style="`background: ${tag.color}20; color: ${tag.color}; border-color: ${tag.color}50`">
+              {{ tag.name }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Mobile Expanded Detail -->
+        <div v-show="expandedRows.has(group.groupKey)" class="border-t border-tv-border bg-tv-bg px-3 py-2">
+          <!-- Option legs -->
+          <div v-if="(group.positions || []).length > 0" class="space-y-1">
+            <div v-for="leg in sortedLegs(group.positions)" :key="leg.symbol"
+                 class="flex items-center justify-between text-xs py-1 border-b border-tv-border/20 last:border-0">
+              <div class="flex items-center gap-2">
+                <span class="text-tv-text font-medium w-8 text-right">{{ getSignedQuantity(leg) }}</span>
+                <span class="text-tv-muted">{{ getExpirationDate(leg) }}</span>
+                <span class="text-tv-text">{{ getStrikePrice(leg) }}</span>
+                <span :class="getOptionType(leg) === 'Call' ? 'text-tv-green' : 'text-tv-red'" class="text-[10px]">
+                  {{ getOptionType(leg) === 'Call' ? 'C' : 'P' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-tv-muted">{{ getDTE(leg) }}d</span>
+                <span :class="calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+                  ${{ formatNumber(calculateLegPnL(leg)) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Quick actions -->
+          <div class="flex items-center gap-3 mt-2 text-xs">
+            <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
+               class="text-tv-blue hover:underline">
+              <i class="fas fa-book mr-1"></i>Ledger
+            </a>
+            <span v-if="getPositionComment(group)" class="text-tv-amber">
+              <i class="fas fa-sticky-note mr-1"></i>Has notes
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop Main Content -->
+  <main v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
+        class="hidden md:block">
    <div class="bg-tv-row border-x border-b border-tv-border">
     <!-- Position Groups -->
     <div class="divide-y divide-tv-border">
@@ -241,8 +448,6 @@ onUnmounted(() => {
           <!-- Strategy -->
           <div class="w-40 text-xs text-tv-muted">{{ group._childCount }} positions</div>
           <!-- DTE -->
-          <div class="w-10"></div>
-          <!-- Days -->
           <div class="w-10"></div>
           <!-- Cost Basis -->
           <div class="w-[6.5rem] text-right font-medium"
@@ -314,7 +519,7 @@ onUnmounted(() => {
               <!-- Strategy -->
               <div class="w-40">
                 <div class="text-sm text-tv-muted truncate">
-                  {{ getGroupStrategyLabel(group) }}
+                  {{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span>
                   <span v-if="group.partially_rolled"
                         class="text-tv-cyan cursor-help ml-0.5"
                         title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>
@@ -326,9 +531,6 @@ onUnmounted(() => {
                    :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'font-bold text-tv-amber' : 'text-tv-text'">
                 {{ getMinDTE(group) !== null ? getMinDTE(group) + 'd' : '' }}
               </div>
-
-              <!-- Days -->
-              <div class="w-10 text-center text-tv-text">{{ getGroupDaysOpen(group) || '' }}</div>
 
               <!-- Cost Basis -->
               <div class="w-[6.5rem] text-right"
@@ -448,7 +650,6 @@ onUnmounted(() => {
                       <div>
                         <!-- Header row -->
                         <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
-                          <span class="w-10 text-right">Qty</span>
                           <span class="w-16 text-center mx-2">Exp</span>
                           <span class="w-10">DTE</span>
                           <span class="w-16 text-center mx-2">Strike</span>
@@ -461,10 +662,6 @@ onUnmounted(() => {
                         <!-- Option legs -->
                         <div v-for="leg in sortedLegs(group.positions)" :key="leg.lot_id || leg.symbol"
                              class="flex items-center text-sm py-0.5">
-                          <span class="w-10 text-right font-medium"
-                                :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'">
-                            {{ getSignedQuantity(leg) }}
-                          </span>
                           <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text">
                             {{ getExpirationDate(leg) }}
                           </span>

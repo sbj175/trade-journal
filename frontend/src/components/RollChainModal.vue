@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
 
 const Auth = useAuth()
@@ -57,6 +58,9 @@ function onKeydown(e) {
   }
 }
 
+const isOpen = computed(() => !!props.groupId)
+useBackDismiss(isOpen, () => emit('close'))
+
 watch(() => props.groupId, (gid) => {
   if (gid) loadChain(gid)
 }, { immediate: true })
@@ -99,11 +103,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
             <table class="min-w-full table-auto border-collapse text-sm">
               <thead>
                 <tr class="text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border/30">
-                  <th class="px-5 py-2 text-left font-normal w-6"></th>
+                  <th class="px-5 py-2 text-left font-normal w-6 hidden md:table-cell"></th>
                   <th class="py-2 text-left font-normal">Opened</th>
                   <th class="py-2 text-center font-normal w-6"></th>
                   <th class="py-2 text-left font-normal">Closed</th>
-                  <th class="py-2 text-center font-normal">Status</th>
+                  <th class="py-2 text-right font-normal">Premium</th>
                   <th class="px-5 py-2 text-right font-normal">Realized</th>
                 </tr>
               </thead>
@@ -111,15 +115,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
                 <tr v-for="(item, idx) in chain.chain.slice().reverse()" :key="item.group_id"
                     class="border-b border-tv-border/20"
                     :class="item.group_id === groupId ? 'bg-tv-blue/10' : ''">
-                  <td class="px-5 py-2.5 text-tv-muted text-xs">{{ chain.chain.length - idx }}.</td>
+                  <td class="px-5 py-2.5 text-tv-muted text-xs hidden md:table-cell">{{ chain.chain.length - idx }}.</td>
                   <td class="py-2.5 text-tv-muted">{{ formatDate(item.opening_date) }}</td>
                   <td class="py-2.5 text-tv-muted text-center">&rarr;</td>
                   <td class="py-2.5 text-tv-muted">{{ item.closing_date ? formatDate(item.closing_date) : '(open)' }}</td>
-                  <td class="py-2.5 text-center">
-                    <span class="text-xs px-1.5 py-0.5 rounded"
-                          :class="item.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
-                      {{ item.status }}
-                    </span>
+                  <td class="py-2.5 text-right font-medium"
+                      :class="(item.premium || 0) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                    {{ item.premium != null ? '$' + formatNumber(item.premium) : '\u2014' }}
                   </td>
                   <td class="px-5 py-2.5 text-right font-medium"
                       :class="item.realized_pnl > 0 ? 'text-tv-green' : item.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
@@ -129,21 +131,21 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
               </tbody>
               <tfoot>
                 <tr class="border-t border-tv-border/50">
+                  <td class="hidden md:table-cell"></td>
                   <td colspan="3"></td>
                   <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Total realized P&L across all positions in the chain">Chain Realized:</td>
-                  <td></td>
                   <td class="px-5 py-2.5 text-right text-sm font-medium" :class="cumulativePnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl()) }}</td>
                 </tr>
                 <tr v-if="unrealizedPnl() !== null">
+                  <td class="hidden md:table-cell"></td>
                   <td colspan="3"></td>
                   <td class="py-1 text-right text-sm text-tv-muted cursor-help" title="Current open position's unrealized P&L based on live market prices">Unrealized:</td>
-                  <td></td>
                   <td class="px-5 py-1 text-right text-sm font-medium" :class="unrealizedPnl() >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(unrealizedPnl()) }}</td>
                 </tr>
                 <tr v-if="unrealizedPnl() !== null" class="border-t border-tv-border/50">
+                  <td class="hidden md:table-cell"></td>
                   <td colspan="3"></td>
                   <td class="py-2.5 text-right text-sm text-tv-muted cursor-help" title="Chain Realized plus Unrealized — where you stand on the entire trade sequence right now">Chain Total:</td>
-                  <td></td>
                   <td class="px-5 py-2.5 text-right text-sm font-semibold" :class="(cumulativePnl() + unrealizedPnl()) >= 0 ? 'text-tv-green' : 'text-tv-red'">${{ formatNumber(cumulativePnl() + unrealizedPnl()) }}</td>
                 </tr>
               </tfoot>
