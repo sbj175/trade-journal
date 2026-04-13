@@ -198,34 +198,30 @@ onMounted(async () => {
       <div v-if="(group.positions || []).length > 0"
            class="px-1 py-2">
         <span class="text-xs font-semibold text-tv-muted uppercase tracking-wider block mb-3">Option Legs</span>
-        <div class="space-y-2">
+        <div class="space-y-3">
           <div v-for="leg in sortedLegs(group.positions)" :key="leg.lot_id || leg.symbol"
-               class="flex items-center justify-between py-2 border-b border-tv-border/20 last:border-0">
-            <div class="flex items-center gap-2">
-              <div class="flex flex-col">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-white text-base font-semibold">{{ getStrikePrice(leg) }}</span>
-                  <span :class="getOptionType(leg) === 'Call' ? 'text-tv-green' : 'text-tv-red'" class="text-sm font-medium">
-                    {{ getOptionType(leg) }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-2 text-sm text-tv-muted">
-                  <span>{{ getExpirationDate(leg) }}</span>
-                  <span :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 21 ? 'text-tv-amber' : ''">
-                    {{ getDTE(leg) }}d
-                  </span>
-                </div>
+               class="py-2 border-b border-tv-border/20 last:border-0">
+            <!-- Row 1: Strike + Type + P&L -->
+            <div class="flex items-baseline justify-between mb-1">
+              <div class="flex items-baseline gap-2">
+                <span class="text-white text-base font-semibold">{{ getStrikePrice(leg) }}</span>
+                <span :class="getOptionType(leg) === 'C' ? 'text-tv-green' : 'text-tv-red'" class="text-sm font-medium">
+                  {{ getOptionType(leg) === 'C' ? 'Call' : 'Put' }}
+                </span>
               </div>
-            </div>
-            <div class="text-right">
-              <span class="font-semibold text-base block"
+              <span class="font-semibold text-base"
                     :class="calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'">
                 ${{ formatNumber(calculateLegPnL(leg)) }}
               </span>
-              <div class="flex items-center gap-3 text-sm text-tv-muted justify-end">
-                <span>Cost ${{ formatNumber(leg.cost_basis || 0) }}</span>
-                <span>Mkt ${{ formatNumber(calculateLegMarketValue(leg)) }}</span>
-              </div>
+            </div>
+            <!-- Row 2: Exp, DTE, Cost, Mkt — aligned with row 1 -->
+            <div class="flex items-baseline justify-between text-sm text-tv-muted">
+              <span>{{ getExpirationDate(leg) }}</span>
+              <span :class="getDTE(leg) <= 7 ? 'text-tv-red' : getDTE(leg) <= 21 ? 'text-tv-amber' : ''">
+                {{ getDTE(leg) }}d
+              </span>
+              <span>Cost ${{ formatNumber(leg.cost_basis || 0) }}</span>
+              <span>Mkt ${{ formatNumber(calculateLegMarketValue(leg)) }}</span>
             </div>
           </div>
         </div>

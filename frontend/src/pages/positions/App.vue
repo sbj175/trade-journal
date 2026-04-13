@@ -598,7 +598,6 @@ onUnmounted(() => {
                       <div>
                         <!-- Header row -->
                         <div class="flex items-center text-xs text-tv-muted pb-1 border-b border-tv-border/30">
-                          <span class="w-10 text-right">Qty</span>
                           <span class="w-16 text-center mx-2">Exp</span>
                           <span class="w-10">DTE</span>
                           <span class="w-16 text-center mx-2">Strike</span>
@@ -611,10 +610,6 @@ onUnmounted(() => {
                         <!-- Option legs -->
                         <div v-for="leg in sortedLegs(group.positions)" :key="leg.lot_id || leg.symbol"
                              class="flex items-center text-sm py-0.5">
-                          <span class="w-10 text-right font-medium"
-                                :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'">
-                            {{ getSignedQuantity(leg) }}
-                          </span>
                           <span class="w-16 text-center bg-tv-border/30 mx-2 py-0.5 rounded text-tv-text">
                             {{ getExpirationDate(leg) }}
                           </span>
