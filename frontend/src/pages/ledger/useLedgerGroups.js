@@ -166,6 +166,11 @@ export function useLedgerGroups(Auth, state) {
       } else if (col === 'realized_pnl') {
         va = a.realized_pnl || 0
         vb = b.realized_pnl || 0
+      } else if (col === 'return_percent') {
+        const basisA = Math.abs(groupInitialPremium(a) || 0)
+        const basisB = Math.abs(groupInitialPremium(b) || 0)
+        va = basisA ? (a.realized_pnl || 0) / basisA : -Infinity
+        vb = basisB ? (b.realized_pnl || 0) / basisB : -Infinity
       } else if (col === 'total_pnl') {
         va = a.total_pnl || 0
         vb = b.total_pnl || 0
