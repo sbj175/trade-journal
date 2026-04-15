@@ -51,6 +51,62 @@
       }
     }
     </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does OptionLedger work with Tastytrade?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. OptionLedger is built specifically for Tastytrade. You connect with official Tastytrade OAuth, and we import your full trade history automatically. No CSV exports, no manual entry, no browser extension."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can it automatically track rolls on multi-leg options strategies?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Iron Condors, verticals, strangles, and other multi-leg positions are grouped into chains. When you roll a leg, the new leg is automatically linked to the original chain so your cost basis and P&L carry forward across every roll."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is OptionLedger different from TradesViz, TradeZella, or TraderSync?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Those tools were built for stock traders and added options later. They treat each transaction as independent, so a rolled Iron Condor looks like a closed trade and a new trade. OptionLedger was designed for options from day one: chains, rolls, adjustments, and multi-leg strategies are first-class concepts."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does OptionLedger calculate P&L across an entire roll chain?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Every transaction in a chain contributes to an aggregate P&L for the underlying position. Credits received on opening, debits paid on rolls, commissions, and the final closing price all roll up into a single number representing the full lifecycle of the trade."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is my Tastytrade account safe with OptionLedger?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. OptionLedger uses Tastytrade's official OAuth system and requests only read-only permissions. We can view your trade history but cannot place orders, move funds, or modify your account. You never share your password, and you can revoke access at any time."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is OptionLedger free?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, free during the beta. Early access users get the full product at no cost while we gather feedback and finish the roadmap. Long-term pricing has not been finalized, but early users will get favorable terms when paid plans launch."
+          }
+        }
+      ]
+    }
+    </script>
 
     <link rel="stylesheet" href="styles.css">
     <link rel="preload" href="fonts/newsreader-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -292,10 +348,10 @@
 
             <div class="text-muted text-[1.08rem] leading-[1.75] space-y-6">
                 <p class="drop-cap">
-                    You've tried the alternatives. TradesViz, TradeZella, TraderSync, WealthBee. They all treat options as an afterthought. They can't track your Iron Condor through three rolls. They don't link your opening trade to the adjustment you made two weeks later. And Tastytrade itself? You can't even add a comment to a trade.
+                    You've tried the alternatives. TradesViz, TradeZella, TraderSync, WealthBee. None of them track options rolls automatically. They can't follow your Iron Condor through three rolls and tell you the real P&L. They don't link your opening trade to the adjustment you made two weeks later. And Tastytrade itself? You can't even add a comment to a trade.
                 </p>
                 <p>
-                    So you end up in a spreadsheet, manually logging every entry, every roll, every closing. Then hoping you calculated P&L correctly across the entire chain.
+                    So you end up in a spreadsheet, manually logging every entry, every roll, every closing — the exact tastytrade trade history analysis nobody wants to do by hand. Then hoping you calculated P&L correctly across the entire chain.
                 </p>
                 <p class="font-display text-ink text-xl italic">
                     There's a better way.
@@ -314,10 +370,10 @@
             </div>
 
             <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight">
-                Your trades, automatically organized.
+                A tastytrade trade journal that tracks every roll automatically.
             </h2>
             <p class="mt-6 text-lg text-muted leading-relaxed max-w-2xl mx-auto">
-                OptionLedger connects directly to your Tastytrade account and imports your entire trade history. It automatically groups related transactions into chains, including openings, rolls, adjustments, and closings, so you can see the full story of every trade.
+                OptionLedger connects directly to your Tastytrade account and imports your entire trade history. It automatically groups related transactions into chains — openings, rolls, adjustments, and closings — so you can see the full story of every trade without touching a spreadsheet.
             </p>
         </div>
     </section>
@@ -339,7 +395,7 @@
                     <div>
                         <h3 class="font-display text-xl text-ink mb-1.5">Automatic Chain Tracking</h3>
                         <p class="text-muted leading-relaxed">
-                            Every opening, roll, and closing linked together. See the complete lifecycle of a trade, not isolated transactions.
+                            An options position tracker with full roll history. Every opening, roll, and closing linked together — see the complete lifecycle of a trade, not isolated transactions.
                         </p>
                     </div>
                 </div>
@@ -361,7 +417,7 @@
                     <div>
                         <h3 class="font-display text-xl text-ink mb-1.5">Real P&L Across Rolls</h3>
                         <p class="text-muted leading-relaxed">
-                            Know your actual profit or loss across an entire chain, not just individual legs. Rolling a position doesn't mean starting over.
+                            A tastytrade P&L tracker that understands chains. Know your actual profit or loss across an entire sequence of rolls, not just individual legs. Rolling a position doesn't mean starting over.
                         </p>
                     </div>
                 </div>
@@ -454,6 +510,62 @@
                     </div>
                     <h3 class="font-display text-lg text-ink mb-2">Revoke Anytime</h3>
                     <p class="text-sm text-muted leading-relaxed">You control access. Disconnect OptionLedger from your Tastytrade account at any time with one click.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="py-20 px-6 bg-parchment ruled-top">
+        <div class="max-w-3xl mx-auto">
+            <div class="text-center mb-14 reveal">
+                <span class="font-mono text-[11px] text-terracotta-500 tracking-widest uppercase block mb-4">Frequently Asked</span>
+                <h2 class="font-display text-3xl sm:text-4xl lg:text-[2.75rem] text-ink leading-tight">
+                    Questions, answered.
+                </h2>
+            </div>
+
+            <div class="space-y-10 reveal">
+                <div class="ruled pb-8">
+                    <h3 class="font-display text-xl text-ink mb-3">Does OptionLedger work with Tastytrade?</h3>
+                    <p class="text-muted leading-[1.75]">
+                        Yes. OptionLedger is built specifically for Tastytrade. You connect with official Tastytrade OAuth, and we import your full trade history automatically. No CSV exports, no manual entry, no browser extension.
+                    </p>
+                </div>
+
+                <div class="ruled pb-8">
+                    <h3 class="font-display text-xl text-ink mb-3">Can it automatically track rolls on multi-leg options strategies?</h3>
+                    <p class="text-muted leading-[1.75]">
+                        Yes — this is the core of what OptionLedger does. Iron Condors, verticals, strangles, and other multi-leg positions are grouped into chains. When you roll a leg, the new leg is automatically linked to the original chain so your cost basis and P&L carry forward across every roll.
+                    </p>
+                </div>
+
+                <div class="ruled pb-8">
+                    <h3 class="font-display text-xl text-ink mb-3">How is OptionLedger different from TradesViz, TradeZella, or TraderSync?</h3>
+                    <p class="text-muted leading-[1.75]">
+                        Those tools were built for stock traders and bolted options on later. They treat each transaction as independent, so a rolled Iron Condor looks like a closed trade and a new trade — not a single position. OptionLedger was designed for options from day one: chains, rolls, adjustments, and multi-leg strategies are first-class concepts, not afterthoughts.
+                    </p>
+                </div>
+
+                <div class="ruled pb-8">
+                    <h3 class="font-display text-xl text-ink mb-3">How does it calculate P&L across an entire roll chain?</h3>
+                    <p class="text-muted leading-[1.75]">
+                        Every transaction in a chain contributes to an aggregate P&L for the underlying position. Credits received on opening, debits paid on rolls, commissions, and the final closing price all roll up into a single number — so a chain that was opened for $1.20, rolled twice for $0.30 and $0.15 in credits, then closed for $0.40 shows you made $1.25 on the full lifecycle, not three separate trades to reconcile.
+                    </p>
+                </div>
+
+                <div class="ruled pb-8">
+                    <h3 class="font-display text-xl text-ink mb-3">Is my Tastytrade account safe?</h3>
+                    <p class="text-muted leading-[1.75]">
+                        Yes. OptionLedger uses Tastytrade's official OAuth system and requests only read-only permissions. We can view your trade history but cannot place orders, move funds, or modify your account in any way. You never share your Tastytrade password with us, and you can revoke access at any time from your Tastytrade settings.
+                    </p>
+                </div>
+
+                <div>
+                    <h3 class="font-display text-xl text-ink mb-3">Is OptionLedger free?</h3>
+                    <p class="text-muted leading-[1.75]">
+                        Yes, free during the beta. Early access users get the full product at no cost while we gather feedback and finish the roadmap. Long-term pricing hasn't been finalized, but early users will get favorable terms when paid plans launch.
+                    </p>
                 </div>
             </div>
         </div>
