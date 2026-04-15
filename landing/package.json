@@ -3,10 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "copy-fonts": "node scripts/copy-fonts.js",
+    "prebuild": "npm run copy-fonts",
     "build": "tailwindcss -i ./src/input.css -o ./styles.css --minify",
     "watch": "tailwindcss -i ./src/input.css -o ./styles.css --watch"
   },
   "devDependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/newsreader": "^5.2.10",
+    "@fontsource/outfit": "^5.2.8",
     "tailwindcss": "^3.4.17"
   }
 }
