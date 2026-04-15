@@ -1,0 +1,51 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <!-- Metallic steel gradient -->
+    <linearGradient id="steelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d0d0d0"/>
+      <stop offset="40%" stop-color="#8a8a8a"/>
+      <stop offset="60%" stop-color="#bfbfbf"/>
+      <stop offset="100%" stop-color="#5f5f5f"/>
+    </linearGradient>
+
+    <!-- Gold gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd27a"/>
+      <stop offset="40%" stop-color="#d49a2a"/>
+      <stop offset="60%" stop-color="#ffcf6b"/>
+      <stop offset="100%" stop-color="#9f6b0f"/>
+    </linearGradient>
+
+    <!-- Soft inner glow -->
+    <radialGradient id="innerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Circular arrow body -->
+  <path d="
+    M256 40
+    A216 216 0 1 1 120 420
+    L180 370
+    A140 140 0 1 0 256 116
+    Z
+  "
+  fill="url(#steelGrad)"/>
+
+  <!-- Arrow head -->
+  <polygon points="120,420 210,400 170,480"
+           fill="url(#steelGrad)"/>
+
+  <!-- Theta symbol -->
+  <ellipse cx="256" cy="256" rx="90" ry="120"
+           fill="url(#goldGrad)"/>
+
+  <rect x="166" y="236" width="180" height="40"
+        fill="url(#goldGrad)"/>
+
+  <!-- Inner glow highlight -->
+  <circle cx="256" cy="256" r="120"
+          fill="url(#innerGlow)"/>
+</svg>
