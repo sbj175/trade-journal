@@ -5,6 +5,8 @@ WORKDIR /build/frontend
 COPY frontend/package.json ./
 RUN npm install
 COPY frontend/ .
+ARG VITE_LOGOKIT_TOKEN
+ENV VITE_LOGOKIT_TOKEN=$VITE_LOGOKIT_TOKEN
 RUN npm run build
 # Vite outputs to resolve(__dirname, '../static/dist') → /build/static/dist
 

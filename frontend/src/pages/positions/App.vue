@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from '
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
+import { tickerLogoUrl } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
 import { useAccountsStore } from '@/stores/accounts'
@@ -254,7 +255,7 @@ onUnmounted(() => {
        class="hidden md:flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
     <span class="w-16"></span>
     <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
-    <span class="w-14 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
+    <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
       Symbol
       <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -326,6 +327,7 @@ onUnmounted(() => {
           <!-- Row 1: Symbol + P&L -->
           <div class="flex items-start justify-between gap-2">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 flex-1">
+              <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-7 h-7 rounded" loading="lazy">
               <span class="font-bold text-lg text-tv-text">{{ group.displayKey || group.underlying }}</span>
               <span v-show="hasEquity(group) && (group.positions || []).length > 0"
                     class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
@@ -446,6 +448,9 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    <div class="text-center py-3">
+      <span class="text-[11px] text-tv-muted/40">Logos by <a href="https://logokit.com" target="_blank" rel="noopener" class="hover:text-tv-muted/60">LogoKit</a></span>
+    </div>
   </div>
 
   <!-- Desktop Main Content -->
@@ -509,8 +514,9 @@ onUnmounted(() => {
               </div>
 
               <!-- Symbol -->
-              <div class="w-14">
-                <div class="font-semibold text-base text-tv-text">
+              <div class="w-20">
+                <div class="font-semibold text-base text-tv-text flex items-center gap-1.5">
+                  <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-7 h-7 rounded" loading="lazy">
                   {{ group.displayKey || group.underlying }}
                   <span v-show="hasEquity(group) && (group.positions || []).length > 0" class="text-[10px] text-tv-muted ml-1 bg-tv-border/50 px-1 rounded">+stk</span>
                 </div>
@@ -924,6 +930,9 @@ onUnmounted(() => {
       </div>
     </div>
    </div>
+    <div class="text-center py-3">
+      <span class="text-[11px] text-tv-muted/40">Logos by <a href="https://logokit.com" target="_blank" rel="noopener" class="hover:text-tv-muted/60">LogoKit</a></span>
+    </div>
   </main>
 
   <!-- Roll Chain Modal -->

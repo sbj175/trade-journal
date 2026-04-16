@@ -2,6 +2,10 @@
  * Shared constants for OptionLedger Vue pages.
  */
 
+export function tickerLogoUrl(symbol) {
+  return `https://img.logokit.com/ticker/${symbol}?token=pk_fr7585c85ca0d987ceb070`
+}
+
 export const STRATEGY_CATEGORIES = {
   'Bull Put Spread': { direction: 'bullish', type: 'credit' },
   'Bear Call Spread': { direction: 'bearish', type: 'credit' },

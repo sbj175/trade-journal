@@ -5,6 +5,7 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [vue()],
   root: __dirname,
+  envDir: resolve(__dirname, '..'),
   base: '/static/dist/',
   build: {
     outDir: resolve(__dirname, '../static/dist'),
