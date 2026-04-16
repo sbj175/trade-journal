@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+defineOptions({ name: 'PositionsOptions' })
+import { onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
@@ -63,6 +64,15 @@ function getPositionCount(group) {
   if (legs.length === 0) return null
   const quantities = legs.map(l => Math.abs(getSignedQuantity(l)))
   return quantities.reduce((a, b) => gcd(a, b))
+}
+function getGroupStrikes(group) {
+  const legs = group.positions || []
+  const strikes = legs
+    .map(l => Number(getStrikePrice(l)))
+    .filter(n => Number.isFinite(n) && n > 0)
+  if (strikes.length === 0) return null
+  const unique = [...new Set(strikes)].sort((a, b) => a - b)
+  return unique.join('/')
 }
 
 const rollChainModal = ref(null)
@@ -153,6 +163,17 @@ onMounted(async () => {
   await loadCachedQuotes()
   await loadAvailableTags()
   initializeWebSocket()
+})
+
+onActivated(async () => {
+  await fetchPositions(false, noteCallbacks)
+  await loadCachedQuotes()
+  initializeWebSocket()
+  requestLiveQuotes()
+})
+
+onDeactivated(() => {
+  cleanupWebSocket()
 })
 
 onUnmounted(() => {
@@ -303,22 +324,22 @@ onUnmounted(() => {
         <!-- Card Header — tap to navigate to detail -->
         <div class="px-3 py-3 active:bg-tv-border/20" @click="$router.push('/positions/options/' + group.group_id)">
           <!-- Row 1: Symbol + P&L -->
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 flex-1">
               <span class="font-bold text-lg text-tv-text">{{ group.displayKey || group.underlying }}</span>
               <span v-show="hasEquity(group) && (group.positions || []).length > 0"
                     class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
-              <span class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span></span>
+              <span class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getGroupStrikes(group)" class="text-tv-text ml-1">{{ getGroupStrikes(group) }}</span><span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span></span>
             </div>
-            <div class="text-right">
-              <span class="font-semibold text-base"
-                    :class="getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+            <div class="text-right shrink-0">
+              <div class="font-semibold text-base leading-tight"
+                   :class="getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red'">
                 <span v-show="getGroupOpenPnL(group) < 0">-</span>${{ formatDollar(getGroupOpenPnL(group)) }}
-              </span>
-              <span class="text-sm ml-1"
-                    :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'">
+              </div>
+              <div class="text-xs leading-tight"
+                   :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'">
                 {{ getGroupPnLPercent(group) !== null ? getGroupPnLPercent(group) + '%' : '' }}
-              </span>
+              </div>
             </div>
           </div>
 
@@ -519,7 +540,7 @@ onUnmounted(() => {
               <!-- Strategy -->
               <div class="w-40">
                 <div class="text-sm text-tv-muted truncate">
-                  {{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span>
+                  {{ getGroupStrategyLabel(group) }}<span v-if="getGroupStrikes(group)" class="text-tv-text ml-1">{{ getGroupStrikes(group) }}</span><span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span>
                   <span v-if="group.partially_rolled"
                         class="text-tv-cyan cursor-help ml-0.5"
                         title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>

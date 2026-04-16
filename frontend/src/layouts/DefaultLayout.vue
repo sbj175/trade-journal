@@ -18,7 +18,11 @@ onMounted(() => {
   </div>
   <div class="w-full md:overflow-x-auto">
     <div class="md:min-w-max">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <KeepAlive :include="['PositionsOptions']">
+          <component :is="Component" />
+        </KeepAlive>
+      </router-view>
     </div>
   </div>
 </template>

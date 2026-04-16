@@ -1,4 +1,5 @@
 <script setup>
+defineOptions({ name: 'PositionDetail' })
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
