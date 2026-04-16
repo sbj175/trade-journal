@@ -167,7 +167,11 @@ export function usePositionsData(Auth) {
   }
 
   // --- WebSocket ---
+  let visibilityListenerActive = false
+
   async function initializeWebSocket() {
+    if (ws && ws.readyState === WebSocket.OPEN) return
+    cleanupWebSocket()
     try {
       const wsUrl = await Auth.getAuthenticatedWsUrl('/ws/quotes')
       ws = new WebSocket(wsUrl)
@@ -208,6 +212,10 @@ export function usePositionsData(Auth) {
           startPolling()
         }
       }
+      if (!visibilityListenerActive) {
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        visibilityListenerActive = true
+      }
     } catch (err) { console.error('WebSocket error:', err) }
   }
 
@@ -237,10 +245,9 @@ export function usePositionsData(Auth) {
     }
   }
 
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-
   function cleanupWebSocket() {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
+    visibilityListenerActive = false
     stopPolling()
     if (ws) {
       ws.onclose = null
