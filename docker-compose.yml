@@ -2,7 +2,10 @@ name: optionledger
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_LOGOKIT_TOKEN: ${VITE_LOGOKIT_TOKEN}
     container_name: optionledger-app
     ports:
       - "8000:8000"

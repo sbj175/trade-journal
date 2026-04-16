@@ -4,6 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatDate } from '@/lib/formatters'
+import { tickerLogoUrl } from '@/lib/constants'
 import RollChainModal from '@/components/RollChainModal.vue'
 import {
   formatDollar,
@@ -110,7 +111,8 @@ onMounted(async () => {
       <!-- Hero section — no borders, flows on background -->
       <div class="px-4 pt-2 pb-4">
         <!-- Symbol + Strategy -->
-        <div class="flex items-baseline gap-2">
+        <div class="flex items-center gap-2">
+          <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-10 h-10 rounded" loading="lazy">
           <span class="font-bold text-2xl text-white">{{ group.displayKey || group.underlying }}</span>
           <span class="text-base text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)" class="ml-1">({{ getPositionCount(group) }})</span></span>
         </div>
