@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
-import { formatNumber, formatDate } from '@/lib/formatters'
+import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import { useAccountsStore } from '@/stores/accounts'
@@ -257,7 +257,7 @@ onUnmounted(() => {
 
           <!-- Unrealized P&L -->
           <span class="w-28 text-right text-base font-medium ml-2"
-                :class="getUnrealizedPnL(item) > 0 ? 'text-tv-green' : getUnrealizedPnL(item) < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                :class="pnlColorClass(getUnrealizedPnL(item))">
             {{ getMarketValue(item) ? '$' + formatNumber(getUnrealizedPnL(item)) : '' }}
           </span>
 
@@ -338,7 +338,7 @@ onUnmounted(() => {
           </div>
           <div class="text-right">
             <div class="text-base font-semibold leading-tight"
-                 :class="getUnrealizedPnL(item) > 0 ? 'text-tv-green' : getUnrealizedPnL(item) < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                 :class="pnlColorClass(getUnrealizedPnL(item))">
               {{ getMarketValue(item) ? '$' + formatNumber(getUnrealizedPnL(item)) : '\u2014' }}
             </div>
             <div class="text-[11px] leading-tight"

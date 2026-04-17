@@ -5,6 +5,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
+import { gcd } from '@/lib/math'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
 import { useAccountsStore } from '@/stores/accounts'
@@ -59,7 +60,6 @@ const {
   onDocumentClick,
 } = usePositionsNotes(Auth, { allItems })
 
-function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b] }; return a }
 function getPositionCount(group) {
   const legs = group.positions || []
   if (legs.length === 0) return null

@@ -18,6 +18,16 @@ export function tickerLogoUrl(symbol) {
   return `https://img.logokit.com/ticker/${symbol}?token=pk_fr7585c85ca0d987ceb070`
 }
 
+export const DEFAULT_TAG_COLOR = '#6b7280'
+
+export function accountSortOrder(accountName) {
+  const n = (accountName || '').toUpperCase()
+  if (n.includes('ROTH')) return 1
+  if (n.includes('INDIVIDUAL')) return 2
+  if (n.includes('TRADITIONAL')) return 3
+  return 4
+}
+
 export const STRATEGY_CATEGORIES = {
   'Bull Put Spread': { direction: 'bullish', type: 'credit' },
   'Bear Call Spread': { direction: 'bearish', type: 'credit' },

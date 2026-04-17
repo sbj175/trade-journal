@@ -4,8 +4,8 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
 // Eagerly import Risk and Components — their chunks consistently trigger
 // Firefox NS_ERROR_CORRUPTED_CONTENT when loaded as separate dynamic chunks.
-import RiskPage from '@/pages/risk/App.vue'
-import ComponentsPage from '@/pages/components/App.vue'
+import RiskPage from '@/pages/risk/index.vue'
+import ComponentsPage from '@/pages/components/index.vue'
 
 const routes = [
   {
@@ -14,14 +14,14 @@ const routes = [
     children: [
       { path: '', redirect: '/positions/options' },
       { path: 'positions', redirect: '/positions/options' },
-      { path: 'positions/options', name: 'positions-options', component: () => import('@/pages/positions/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Options Positions' } },
+      { path: 'positions/options', name: 'positions-options', component: () => import('@/pages/positions/index.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Options Positions' } },
       { path: 'positions/options/:groupId', name: 'position-detail', component: () => import('@/pages/positions/Detail.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Position Detail' } },
-      { path: 'positions/equities', name: 'positions-equities', component: () => import('@/pages/positions-equities/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Equity Positions' } },
-      { path: 'ledger', name: 'ledger', component: () => import('@/pages/ledger/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Ledger' } },
-      { path: 'reports', name: 'reports', component: () => import('@/pages/reports/App.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Reports' } },
+      { path: 'positions/equities', name: 'positions-equities', component: () => import('@/pages/positions-equities/index.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Equity Positions' } },
+      { path: 'ledger', name: 'ledger', component: () => import('@/pages/ledger/index.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Ledger' } },
+      { path: 'reports', name: 'reports', component: () => import('@/pages/reports/index.vue'), meta: { requiresAuth: true, requiresTastytrade: true, title: 'Reports' } },
       { path: 'risk', name: 'risk', component: RiskPage, meta: { requiresAuth: true, requiresTastytrade: true, title: 'Risk' } },
-      { path: 'settings', name: 'settings', component: () => import('@/pages/settings/App.vue'), meta: { requiresAuth: true, requiresTastytrade: false, title: 'Settings' } },
-      { path: 'privacy', name: 'privacy', component: () => import('@/pages/privacy/App.vue'), meta: { requiresAuth: false, title: 'Privacy' } },
+      { path: 'settings', name: 'settings', component: () => import('@/pages/settings/index.vue'), meta: { requiresAuth: true, requiresTastytrade: false, title: 'Settings' } },
+      { path: 'privacy', name: 'privacy', component: () => import('@/pages/privacy/index.vue'), meta: { requiresAuth: false, title: 'Privacy' } },
       { path: 'components', name: 'components', component: ComponentsPage, meta: { requiresAuth: false, title: 'Component Library' } },
     ],
   },

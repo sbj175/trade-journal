@@ -5,6 +5,7 @@
 import { ref, computed } from 'vue'
 import { buildOptionStratUrl, getGroupStrategyLabel } from './usePositionsDisplay'
 import { getRollAnalysis } from './usePositionsAnalysis'
+import { accountSortOrder } from '@/lib/constants'
 
 export function usePositionsData(Auth) {
   // --- State ---
@@ -58,16 +59,9 @@ export function usePositionsData(Auth) {
     try {
       const response = await Auth.authFetch('/api/accounts')
       const data = await response.json()
-      accounts.value = (data.accounts || []).sort((a, b) => {
-        const getOrder = (name) => {
-          const n = (name || '').toUpperCase()
-          if (n.includes('ROTH')) return 1
-          if (n.includes('INDIVIDUAL')) return 2
-          if (n.includes('TRADITIONAL')) return 3
-          return 4
-        }
-        return getOrder(a.account_name) - getOrder(b.account_name)
-      })
+      accounts.value = (data.accounts || []).sort((a, b) =>
+        accountSortOrder(a.account_name) - accountSortOrder(b.account_name)
+      )
     } catch (err) { console.error('Failed to load accounts:', err) }
   }
 

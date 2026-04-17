@@ -2,7 +2,7 @@
  * Group filtering, sorting, CRUD operations, notes, and tags.
  */
 import { ref, computed, nextTick } from 'vue'
-import { STRATEGY_CATEGORIES } from '@/lib/constants'
+import { STRATEGY_CATEGORIES, accountSortOrder } from '@/lib/constants'
 import { groupInitialPremium } from './useLedgerLots'
 
 export function useLedgerGroups(Auth, state) {
@@ -45,16 +45,9 @@ export function useLedgerGroups(Auth, state) {
       const response = await Auth.authFetch('/api/accounts')
       const data = await response.json()
       const list = data.accounts || []
-      list.sort((a, b) => {
-        const getOrder = (name) => {
-          const n = (name || '').toUpperCase()
-          if (n.includes('ROTH')) return 1
-          if (n.includes('INDIVIDUAL')) return 2
-          if (n.includes('TRADITIONAL')) return 3
-          return 4
-        }
-        return getOrder(a.account_name) - getOrder(b.account_name)
-      })
+      list.sort((a, b) =>
+        accountSortOrder(a.account_name) - accountSortOrder(b.account_name)
+      )
       accounts.value = list
     } catch (error) {
       console.error('Error loading accounts:', error)

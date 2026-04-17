@@ -3,8 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
-import { formatNumber, formatDate, formatExpirationShort } from '@/lib/formatters'
-import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import { formatNumber, formatDate, formatExpirationShort, pnlColorClass } from '@/lib/formatters'
+import { accountDotColor, getAccountTooltip, DEFAULT_TAG_COLOR } from '@/lib/constants'
+import { gcd } from '@/lib/math'
 import DateFilter from '@/components/DateFilter.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
 import InfoPopover from '@/components/InfoPopover.vue'
@@ -105,8 +106,6 @@ useBackDismiss(showSortMenu, closeSortMenu)
 const rollChainOpen = computed(() => !!rollChainModal.value)
 useBackDismiss(rollChainOpen, () => { rollChainModal.value = null })
 
-// Contract count per group: GCD of (preferably open) option leg quantities
-function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b] }; return a }
 // Aggregate header stats (recompute live as filters change)
 const closedFilteredGroups = computed(() => filteredGroups.value.filter(g => g.status !== 'OPEN'))
 const totalRealized = computed(() => filteredGroups.value.reduce((sum, g) => sum + (g.realized_pnl || 0), 0))
@@ -360,7 +359,7 @@ onMounted(async () => {
                       @click="toggleTagFilter(tag.id)"
                       class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
                 <i class="fas text-[10px]" :class="filterTagIds.includes(tag.id) ? 'fa-check-square text-tv-purple' : 'fa-square text-tv-muted'"></i>
-                <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || '#6b7280' }"></span>
+                <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || DEFAULT_TAG_COLOR }"></span>
                 <span :class="filterTagIds.includes(tag.id) ? 'text-tv-text' : 'text-tv-muted'">{{ tag.name }}</span>
               </button>
             </div>
@@ -507,7 +506,7 @@ onMounted(async () => {
                     @click="toggleTagFilter(tag.id)"
                     class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
               <i class="fas text-[10px]" :class="filterTagIds.includes(tag.id) ? 'fa-check-square text-tv-purple' : 'fa-square text-tv-muted'"></i>
-              <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || '#6b7280' }"></span>
+              <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || DEFAULT_TAG_COLOR }"></span>
               <span :class="filterTagIds.includes(tag.id) ? 'text-tv-text' : 'text-tv-muted'">{{ tag.name }}</span>
             </button>
           </div>
@@ -917,7 +916,7 @@ onMounted(async () => {
           <div class="text-right">
             <div class="text-tv-muted uppercase tracking-wide">Realized P&amp;L</div>
             <div class="text-sm font-medium leading-tight"
-                 :class="group.realized_pnl > 0 ? 'text-tv-green' : group.realized_pnl < 0 ? 'text-tv-red' : 'text-tv-muted'">
+                 :class="pnlColorClass(group.realized_pnl)">
               {{ group.realized_pnl ? '$' + formatNumber(group.realized_pnl) : '\u2014' }}
             </div>
             <div class="text-[11px] leading-tight"
