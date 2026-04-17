@@ -6,8 +6,11 @@ import { ref, computed } from 'vue'
 import { buildOptionStratUrl, getGroupStrategyLabel } from './usePositionsDisplay'
 import { getRollAnalysis } from './usePositionsAnalysis'
 import { accountSortOrder } from '@/lib/constants'
+import { useTargetsStore } from '@/stores/targets'
 
 export function usePositionsData(Auth) {
+  const targetsStore = useTargetsStore()
+
   // --- State ---
   const allChains = ref([])
   const allItems = ref([])
@@ -23,7 +26,6 @@ export function usePositionsData(Auth) {
   const liveQuotesActive = ref(false)
   const lastQuoteUpdate = ref(null)
   const syncSummary = ref(null)
-  const strategyTargets = ref({})
   const rollAlertSettings = ref({ enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true })
   const rollAnalysisMode = ref(localStorage.getItem('rollAnalysisMode') || 'chain')
 
@@ -506,16 +508,7 @@ export function usePositionsData(Auth) {
 
   // --- Strategy Targets ---
   async function loadStrategyTargets() {
-    try {
-      const response = await Auth.authFetch('/api/settings/targets')
-      if (response.ok) {
-        const data = await response.json()
-        const list = Array.isArray(data) ? data : (data.targets || [])
-        const mapped = {}
-        list.forEach(t => { if (t.strategy_name) mapped[t.strategy_name] = t })
-        strategyTargets.value = mapped
-      }
-    } catch (err) { }
+    await targetsStore.load()
   }
 
   function loadRollAlertSettings() {
@@ -605,7 +598,7 @@ export function usePositionsData(Auth) {
           underlyingQuotes: underlyingQuotes.value,
           rollAlertSettings: rollAlertSettings.value,
           rollAnalysisMode: rollAnalysisMode.value,
-          strategyTargets: strategyTargets.value,
+          strategyTargets: targetsStore.targetsMap.value,
           getGroupOpenPnLFn: getGroupOpenPnL,
           getMinDTEFn: getMinDTE,
         })
@@ -631,7 +624,7 @@ export function usePositionsData(Auth) {
     underlyingQuotes, quoteUpdateCounter,
     selectedAccount, selectedUnderlying,
     isLoading, isSyncing, error, liveQuotesActive, lastQuoteUpdate, syncSummary,
-    strategyTargets, rollAlertSettings, rollAnalysisMode,
+    strategyTargets: targetsStore.targetsMap, rollAlertSettings, rollAnalysisMode,
     sortColumn, sortDirection, expandedRows,
 
     // Computed
