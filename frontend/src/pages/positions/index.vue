@@ -13,7 +13,9 @@ import { usePositionsNotes } from './usePositionsNotes'
 import { getAccountSymbol as getAccountSymbolPure } from './usePositionsDisplay'
 import PositionsMobileCard from './PositionsMobileCard.vue'
 import PositionsDesktopRow from './PositionsDesktopRow.vue'
+import PositionsDesktopHeader from './PositionsDesktopHeader.vue'
 import { formatDollar, dollarSizeClass } from './usePositionsDisplay'
+import { DESKTOP_COLS_CLASS } from './positionsDesktopCols.js'
 
 function debounce(fn, ms) {
   let t
@@ -266,51 +268,12 @@ onUnmounted(() => {
   </div>
 
   <!-- Column Headers (desktop only) -->
-  <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
-       class="hidden md:flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
-    <span class="w-16"></span>
-    <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
-    <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
-      Symbol
-      <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-16 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1 mr-1" @click="sortPositions('ivr')">
-      IVR
-      <span v-show="sortColumn === 'ivr'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('price')">
-      Price
-      <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-10"></span>
-    <span class="w-40 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('strategy')">
-      Strategy
-      <span v-show="sortColumn === 'strategy'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-10 text-center cursor-pointer hover:text-tv-text flex items-center justify-center gap-1" @click="sortPositions('dte')">
-      DTE
-      <span v-show="sortColumn === 'dte'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('cost_basis')">
-      Cost Basis
-      <span v-show="sortColumn === 'cost_basis'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('net_liq')">
-      Net Liq
-      <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-[6.5rem] text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('open_pnl')">
-      Open P&L
-      <span v-show="sortColumn === 'open_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-20 text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1" @click="sortPositions('pnl_percent')"
-          title="Return on capital: Total P&L ÷ Cost Basis. Measures how much you've made or lost relative to what you put in.">
-      % Rtn
-      <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </span>
-    <span class="w-16 text-center"></span>
-    <span class="w-[250px] text-right">Tags / Signals</span>
-  </div>
+  <PositionsDesktopHeader
+    v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
+    :sort-column="sortColumn"
+    :sort-direction="sortDirection"
+    @sort="sortPositions"
+  />
 
   </div><!-- /column headers block -->
 
@@ -345,31 +308,31 @@ onUnmounted(() => {
     <div class="divide-y divide-tv-border">
       <div v-for="group in groupedPositions" :key="group.groupKey">
         <!-- Subtotal Row -->
-        <div v-if="group._isSubtotal" class="flex items-center px-4 h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
-          <div class="w-16"></div>
-          <div class="w-14">
-            <div class="font-bold text-base text-tv-text">{{ group.displayKey }}</div>
-          </div>
-          <div class="w-16 mr-1"></div>
-          <div class="w-40"></div>
-          <div class="w-10"></div>
-          <div class="w-40 text-xs text-tv-muted">{{ group._childCount }} positions</div>
-          <div class="w-10"></div>
-          <div class="w-[6.5rem] text-right font-medium"
+        <div v-if="group._isSubtotal"
+             :class="DESKTOP_COLS_CLASS"
+             class="h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
+          <div></div>
+          <div class="font-bold text-base text-tv-text">{{ group.displayKey }}</div>
+          <div></div>
+          <div></div>
+          <div></div>
+          <div class="text-xs text-tv-muted">{{ group._childCount }} positions</div>
+          <div></div>
+          <div class="text-right font-medium"
                :class="(group._subtotalCostBasis >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalCostBasis)">
             <span v-show="group._subtotalCostBasis < 0">-</span>${{ formatDollar(group._subtotalCostBasis) }}
           </div>
-          <div class="w-[6.5rem] text-right font-medium"
+          <div class="text-right font-medium"
                :class="(group._subtotalNetLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalNetLiq)">
             <span v-show="group._subtotalNetLiq < 0">-</span>${{ formatDollar(group._subtotalNetLiq) }}
           </div>
-          <div class="w-[6.5rem] text-right font-medium"
+          <div class="text-right font-medium"
                :class="(group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalOpenPnL)">
             <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
           </div>
-          <div class="w-20"></div>
-          <div class="w-16"></div>
-          <div class="w-[250px]"></div>
+          <div></div>
+          <div></div>
+          <div></div>
         </div>
         <!-- Regular Row -->
         <PositionsDesktopRow
