@@ -10,9 +10,7 @@ const props = defineProps({
   group: Object,
   rollAnalysisMode: String,
   notesState: Object,
-  calculateLegMarketValue: Function,
-  calculateLegPnL: Function,
-  calculateEquityMarketValue: Function,
+  positionCalc: Object,
 })
 defineEmits(['toggle-roll-analysis-mode', 'open-roll-chain'])
 </script>
@@ -53,11 +51,11 @@ defineEmits(['toggle-roll-analysis-mode', 'open-roll-chain'])
                   ${{ formatNumber(leg.cost_basis || 0) }}
                 </span>
                 <span class="w-20 text-right ml-3 text-tv-muted">
-                  ${{ formatNumber(calculateLegMarketValue(leg)) }}
+                  ${{ formatNumber(positionCalc.calculateLegMarketValue(leg)) }}
                 </span>
                 <span class="w-20 text-right ml-3 font-medium"
-                      :class="calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                  ${{ formatNumber(calculateLegPnL(leg)) }}
+                      :class="positionCalc.calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                  ${{ formatNumber(positionCalc.calculateLegPnL(leg)) }}
                 </span>
               </div>
             </div>
@@ -80,11 +78,11 @@ defineEmits(['toggle-roll-analysis-mode', 'open-roll-chain'])
                   ${{ formatNumber(group.equitySummary?.cost_basis || 0) }}
                 </span>
                 <span class="w-20 text-right ml-3 text-tv-muted">
-                  ${{ formatNumber(calculateEquityMarketValue(group)) }}
+                  ${{ formatNumber(positionCalc.calculateEquityMarketValue(group)) }}
                 </span>
                 <span class="w-20 text-right ml-3 font-medium"
-                      :class="(calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                  ${{ formatNumber(calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) }}
+                      :class="(positionCalc.calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                  ${{ formatNumber(positionCalc.calculateEquityMarketValue(group) + (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)) }}
                 </span>
               </div>
             </div>

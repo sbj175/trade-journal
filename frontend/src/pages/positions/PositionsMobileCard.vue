@@ -14,7 +14,7 @@ defineProps({
   expandedRows: Object,
   notesState: Object,
   tagsState: Object,
-  calculateLegPnL: Function,
+  positionCalc: Object,
   hasEquity: Function,
   getAccountSymbol: Function,
 })
@@ -149,8 +149,8 @@ defineEmits(['open-roll-chain', 'toggle-expanded'])
           </div>
           <div class="flex items-center gap-3">
             <span class="text-tv-muted">{{ getDTE(leg) }}d</span>
-            <span :class="calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
-              ${{ formatNumber(calculateLegPnL(leg)) }}
+            <span :class="positionCalc.calculateLegPnL(leg) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+              ${{ formatNumber(positionCalc.calculateLegPnL(leg)) }}
             </span>
           </div>
         </div>

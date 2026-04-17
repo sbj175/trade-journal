@@ -129,6 +129,12 @@ const tagsState = {
   handleTagInput,
 }
 
+const positionCalc = {
+  calculateLegPnL,
+  calculateLegMarketValue,
+  calculateEquityMarketValue,
+}
+
 // Watch account store for changes from GlobalToolbar
 watch(() => accountsStore.selectedAccount, (val) => {
   selectedAccount.value = val
@@ -320,7 +326,7 @@ onUnmounted(() => {
       :expanded-rows="expandedRows"
       :notes-state="notesState"
       :tags-state="tagsState"
-      :calculate-leg-pnl="calculateLegPnL"
+      :position-calc="positionCalc"
       :has-equity="hasEquity"
       :get-account-symbol="getAccountSymbol"
       @open-roll-chain="openRollChainModal"
@@ -375,9 +381,7 @@ onUnmounted(() => {
           :roll-analysis-mode="rollAnalysisMode"
           :notes-state="notesState"
           :tags-state="tagsState"
-          :calculate-leg-market-value="calculateLegMarketValue"
-          :calculate-leg-pnl="calculateLegPnL"
-          :calculate-equity-market-value="calculateEquityMarketValue"
+          :position-calc="positionCalc"
           :has-equity="hasEquity"
           :get-account-symbol="getAccountSymbol"
           @open-roll-chain="openRollChainModal"

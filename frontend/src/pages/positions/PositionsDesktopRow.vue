@@ -12,9 +12,7 @@ const props = defineProps({
   rollAnalysisMode: String,
   notesState: Object,
   tagsState: Object,
-  calculateLegMarketValue: Function,
-  calculateLegPnL: Function,
-  calculateEquityMarketValue: Function,
+  positionCalc: Object,
   hasEquity: Function,
   getAccountSymbol: Function,
 })
@@ -196,9 +194,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
       :group="group"
       :roll-analysis-mode="rollAnalysisMode"
       :notes-state="notesState"
-      :calculate-leg-market-value="calculateLegMarketValue"
-      :calculate-leg-pnl="calculateLegPnL"
-      :calculate-equity-market-value="calculateEquityMarketValue"
+      :position-calc="positionCalc"
       @toggle-roll-analysis-mode="$emit('toggle-roll-analysis-mode')"
       @open-roll-chain="$emit('open-roll-chain', $event)"
     />
