@@ -252,9 +252,6 @@ onUnmounted(() => {
     </div>
   </Teleport>
 
-   <!-- Column headers block -->
-  <div>
-
   <!-- Loading State -->
   <div v-show="isLoading" class="text-center py-16">
     <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
@@ -274,8 +271,6 @@ onUnmounted(() => {
     :sort-direction="sortDirection"
     @sort="sortPositions"
   />
-
-  </div><!-- /column headers block -->
 
   <!-- Mobile Card View -->
   <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
@@ -306,16 +301,13 @@ onUnmounted(() => {
    <div class="bg-tv-row border-x border-b border-tv-border">
     <!-- Position Groups -->
     <div class="divide-y divide-tv-border">
-      <div v-for="group in groupedPositions" :key="group.groupKey">
+      <template v-for="group in groupedPositions" :key="group.groupKey">
         <!-- Subtotal Row -->
         <div v-if="group._isSubtotal"
              :class="DESKTOP_COLS_CLASS"
              class="h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
           <div></div>
           <div class="font-bold text-base text-tv-text">{{ group.displayKey }}</div>
-          <div></div>
-          <div></div>
-          <div></div>
           <div class="text-xs text-tv-muted">{{ group._childCount }} positions</div>
           <div></div>
           <div class="text-right font-medium"
@@ -330,9 +322,6 @@ onUnmounted(() => {
                :class="(group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalOpenPnL)">
             <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
           </div>
-          <div></div>
-          <div></div>
-          <div></div>
         </div>
         <!-- Regular Row -->
         <PositionsDesktopRow
@@ -351,7 +340,7 @@ onUnmounted(() => {
           @toggle-expanded="toggleExpanded"
           @toggle-roll-analysis-mode="toggleRollAnalysisMode"
         />
-      </div>
+      </template>
     </div>
    </div>
     <div class="text-center py-3">
