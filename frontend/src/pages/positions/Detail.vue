@@ -32,7 +32,9 @@ const {
 
 const {
   positionComments,
-  getPositionComment, updatePositionComment, loadPositionComments,
+  getPositionComment,
+  updatePositionComment,
+  loadComments,
 } = usePositionsNotes(Auth, { allItems })
 
 // Roll chain modal
@@ -48,8 +50,10 @@ function openRollChainModal(group) {
 
 // Find the group matching the route param
 const group = computed(() => {
-  if (!groupedPositions.value) return null
-  return groupedPositions.value.find(g => g.group_id === route.params.groupId) || null
+  if (!groupedPositions.value?.length) return null
+  return groupedPositions.value.find(
+    g => String(g.group_id) === String(route.params.groupId)
+  ) || null
 })
 
 function goBack() {
@@ -57,16 +61,17 @@ function goBack() {
 }
 
 onMounted(async () => {
+  loadRollAlertSettings()
+  await loadStrategyTargets()
   await fetchPositions()
   await loadCachedQuotes()
-  await loadPositionComments()
+  await loadComments()
   initializeWebSocket()
   if (allItems.value.length > 0) {
     requestLiveQuotes()
   }
-  loadStrategyTargets()
-  loadRollAlertSettings()
 })
+
 </script>
 
 <template>

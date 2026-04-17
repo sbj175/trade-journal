@@ -204,7 +204,7 @@ export function getRollAnalysis(group, {
   const proximityToShort = ((Math.abs(underlyingPrice - shortStrike) / underlyingPrice) * 100).toFixed(1)
 
   // Strategy targets
-  const targets = strategyTargets[strategy] || {}
+  const targets = strategyTargets?.[strategy] || {}
   const profitTarget = targets.profit_target_pct || 50
   const lossLimit = targets.loss_target_pct || 100
 

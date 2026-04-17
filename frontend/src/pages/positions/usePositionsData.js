@@ -622,6 +622,7 @@ export function usePositionsData(Auth) {
       }
       return sorted
     } catch (err) {
+      console.error('groupedPositions failed:', err)
       return []
     }
   })
