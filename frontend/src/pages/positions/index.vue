@@ -103,11 +103,13 @@ function openRollChainModal(group) {
 // --- Thin wrappers for template (adapt pure functions to reactive state) ---
 
 const noteCallbacks = { migrateCommentKeysFn: migrateCommentKeys, loadCommentsFn: loadComments }
+let lastPositionsFetchAt = 0
 
 async function syncPositions() {
   await syncStore.performSync()
   await fetchPositions(false, noteCallbacks)
   await loadCachedQuotes()
+  lastPositionsFetchAt = Date.now()
   requestLiveQuotes()
 }
 
@@ -151,15 +153,20 @@ onMounted(async () => {
   loadFilterPreferences()
   await fetchPositions(false, noteCallbacks)
   await loadCachedQuotes()
+  lastPositionsFetchAt = Date.now()
   await loadAvailableTags()
   initializeWebSocket()
 })
 
 onActivated(async () => {
-  await fetchPositions(false, noteCallbacks)
-  await loadCachedQuotes()
   initializeWebSocket()
   requestLiveQuotes()
+  const stale = Date.now() - lastPositionsFetchAt > 10_000
+  if (stale) {
+    await fetchPositions(false, noteCallbacks)
+    await loadCachedQuotes()
+    lastPositionsFetchAt = Date.now()
+  }
 })
 
 onDeactivated(() => {

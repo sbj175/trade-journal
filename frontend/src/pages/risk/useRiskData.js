@@ -21,6 +21,23 @@ export function useRiskData(Auth) {
   // Internal (non-reactive)
   let ws = null
   let onQuoteUpdate = null
+  const _enrichCache = new Map()
+
+  function cachedEnrichPosition(pos, quotesMap) {
+    const underlying = pos.underlying_symbol || pos.symbol?.slice(0, 6).trim() || ''
+    const q = quotesMap[underlying] || {}
+    const price = q.price || q.mark || q.last || 0
+    const iv = q.iv || q.impliedVolatility || 0
+    const key = `${pos.lot_id || pos.symbol}:${price}:${iv}`
+    if (_enrichCache.has(key)) return _enrichCache.get(key)
+    const result = enrichPosition(pos, quotesMap)
+    _enrichCache.set(key, result)
+    if (_enrichCache.size > 5000) {
+      const firstKey = _enrichCache.keys().next().value
+      _enrichCache.delete(firstKey)
+    }
+    return result
+  }
 
   // ==================== COMPUTED ====================
   const allPositions = computed(() => {
@@ -35,7 +52,7 @@ export function useRiskData(Auth) {
   })
 
   const enrichedPositions = computed(() => {
-    return allPositions.value.map(p => enrichPosition(p, quotes.value)).filter(Boolean)
+    return allPositions.value.map(p => cachedEnrichPosition(p, quotes.value)).filter(Boolean)
   })
 
   const underlyingGroups = computed(() => {
