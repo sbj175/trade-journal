@@ -9,7 +9,7 @@ import RollChainModal from '@/components/RollChainModal.vue'
 import {
   formatDollar,
   getOptionType, getSignedQuantity, getExpirationDate, getStrikePrice, getDTE,
-  getGroupStrategyLabel, sortedLegs,
+  sortedLegs,
 } from './usePositionsDisplay'
 import { usePositionsData } from './usePositionsData'
 import { usePositionsNotes } from './usePositionsNotes'
@@ -20,27 +20,15 @@ const router = useRouter()
 
 const {
   allChains, allItems, filteredItems,
-  underlyingQuotes, quoteUpdateCounter,
   isLoading, liveQuotesActive,
   groupedPositions,
   fetchPositions, loadCachedQuotes,
   initializeWebSocket, requestLiveQuotes, cleanupWebSocket,
-  getGroupCostBasis, getGroupOpenPnL, getGroupRealizedPnL,
-  getGroupNetLiqWithLiveQuotes, getGroupPnLPercent, getMinDTE,
   calculateLegMarketValue, calculateLegPnL,
   hasEquity, calculateEquityMarketValue,
-  getUnderlyingQuote, getUnderlyingIVR,
   loadStrategyTargets, loadRollAlertSettings,
   rollAnalysisMode, toggleRollAnalysisMode,
 } = usePositionsData(Auth)
-
-function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b] }; return a }
-function getPositionCount(group) {
-  const legs = group.positions || []
-  if (legs.length === 0) return null
-  const quantities = legs.map(l => Math.abs(getSignedQuantity(l)))
-  return quantities.reduce((a, b) => gcd(a, b))
-}
 
 const {
   positionComments,
@@ -55,7 +43,7 @@ const rollChainOpenPnl = ref(null)
 function openRollChainModal(group) {
   rollChainGroupId.value = group.group_id
   rollChainUnderlying.value = group.underlying
-  rollChainOpenPnl.value = getGroupOpenPnL(group)
+  rollChainOpenPnl.value = group.openPnL
 }
 
 // Find the group matching the route param
@@ -114,29 +102,29 @@ onMounted(async () => {
         <div class="flex items-center gap-2">
           <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-10 h-10 rounded" loading="lazy">
           <span class="font-bold text-2xl text-white">{{ group.displayKey || group.underlying }}</span>
-          <span class="text-base text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getPositionCount(group)" class="ml-1">({{ getPositionCount(group) }})</span></span>
+          <span class="text-base text-tv-muted">{{ group.strategyLabel }}<span v-if="group.positionCount" class="ml-1">({{ group.positionCount }})</span></span>
         </div>
 
         <!-- Hero P&L -->
         <div class="mt-2">
           <span class="font-bold text-3xl"
-                :class="getGroupOpenPnL(group) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-            <span v-show="getGroupOpenPnL(group) < 0">-</span>${{ formatDollar(getGroupOpenPnL(group)) }}
+                :class="group.openPnL >= 0 ? 'text-tv-green' : 'text-tv-red'">
+            <span v-show="group.openPnL < 0">-</span>${{ formatDollar(group.openPnL) }}
           </span>
           <span class="text-lg ml-2"
-                :class="getGroupPnLPercent(group) !== null ? (parseFloat(getGroupPnLPercent(group)) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'">
-            {{ getGroupPnLPercent(group) !== null ? '(' + getGroupPnLPercent(group) + '%)' : '' }}
+                :class="group.pnlPercent !== null ? (parseFloat(group.pnlPercent) >= 0 ? 'text-tv-green' : 'text-tv-red') : 'text-tv-muted'">
+            {{ group.pnlPercent !== null ? '(' + group.pnlPercent + '%)' : '' }}
           </span>
         </div>
 
         <!-- Secondary metrics — flowing, no grid box -->
         <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <span :class="getMinDTE(group) !== null && getMinDTE(group) <= 21 ? 'text-tv-amber' : 'text-tv-muted'">
-            {{ getMinDTE(group) !== null ? getMinDTE(group) + 'd' : '--' }}
+          <span :class="group.minDTE !== null && group.minDTE <= 21 ? 'text-tv-amber' : 'text-tv-muted'">
+            {{ group.minDTE !== null ? group.minDTE + 'd' : '--' }}
           </span>
-          <span :class="getUnderlyingIVR(group.underlying) >= 50 ? 'text-tv-amber' : 'text-tv-muted'"
-                v-if="getUnderlyingIVR(group.underlying) !== null">
-            IVR {{ getUnderlyingIVR(group.underlying) }}
+          <span :class="group.ivr >= 50 ? 'text-tv-amber' : 'text-tv-muted'"
+                v-if="group.ivr !== null">
+            IVR {{ group.ivr }}
           </span>
           <span class="text-tv-muted">
             {{ formatDate(group.roll_chain ? group.roll_chain.first_opened : group.opening_date) }}
@@ -147,14 +135,14 @@ onMounted(async () => {
         <div class="mt-3 flex gap-6 text-sm">
           <div>
             <span class="text-tv-muted">Cost </span>
-            <span :class="getGroupCostBasis(group) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
-              <span v-show="getGroupCostBasis(group) < 0">-</span>${{ formatDollar(getGroupCostBasis(group)) }}
+            <span :class="group.costBasis >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+              <span v-show="group.costBasis < 0">-</span>${{ formatDollar(group.costBasis) }}
             </span>
           </div>
           <div>
             <span class="text-tv-muted">Net Liq </span>
-            <span :class="getGroupNetLiqWithLiveQuotes(group) >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
-              <span v-show="getGroupNetLiqWithLiveQuotes(group) < 0">-</span>${{ formatDollar(getGroupNetLiqWithLiveQuotes(group)) }}
+            <span :class="group.netLiq >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
+              <span v-show="group.netLiq < 0">-</span>${{ formatDollar(group.netLiq) }}
             </span>
           </div>
         </div>
@@ -186,8 +174,8 @@ onMounted(async () => {
             <div>
               <span class="text-tv-muted text-xs block">Chain Total</span>
               <span class="font-medium"
-                    :class="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) >= 0 ? 'text-tv-green' : 'text-tv-red'">
-                <span v-show="(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl + getGroupOpenPnL(group)) }}
+                    :class="(group.roll_chain.cumulative_realized_pnl + group.openPnL) >= 0 ? 'text-tv-green' : 'text-tv-red'">
+                <span v-show="(group.roll_chain.cumulative_realized_pnl + group.openPnL) < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl + group.openPnL) }}
               </span>
             </div>
             <div>

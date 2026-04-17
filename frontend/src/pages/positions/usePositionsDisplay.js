@@ -2,6 +2,7 @@
  * Pure display/formatting helpers for the Positions page.
  * No reactive state dependencies — all functions are stateless.
  */
+import { gcd } from '@/lib/math'
 import { formatNumber } from '@/lib/formatters'
 
 export function buildOptionStratUrl(strategyType, underlying, legs) {
@@ -89,6 +90,23 @@ export function sortedLegs(positions) {
     if (expA !== expB) return expA.localeCompare(expB)
     return (a.strike || 0) - (b.strike || 0)
   })
+}
+
+export function getPositionCount(group) {
+  const legs = group.positions || []
+  if (legs.length === 0) return null
+  const quantities = legs.map(l => Math.abs(getSignedQuantity(l)))
+  return quantities.reduce((a, b) => gcd(a, b))
+}
+
+export function getGroupStrikes(group) {
+  const legs = group.positions || []
+  const strikes = legs
+    .map(l => Number(getStrikePrice(l)))
+    .filter(n => Number.isFinite(n) && n > 0)
+  if (strikes.length === 0) return null
+  const unique = [...new Set(strikes)].sort((a, b) => a - b)
+  return unique.join('/')
 }
 
 export function getAccountSymbol(accounts, accountNumber) {

@@ -3,7 +3,7 @@
  * Composable that manages the core reactive state for the Positions page.
  */
 import { ref, computed } from 'vue'
-import { buildOptionStratUrl, getGroupStrategyLabel } from './usePositionsDisplay'
+import { buildOptionStratUrl, getGroupStrategyLabel, getGroupStrikes, getPositionCount } from './usePositionsDisplay'
 import { getRollAnalysis } from './usePositionsAnalysis'
 import { accountSortOrder } from '@/lib/constants'
 import { useTargetsStore } from '@/stores/targets'
@@ -592,8 +592,20 @@ export function usePositionsData(Auth) {
         return 0
       })
 
-      // Attach roll analysis to each group for reactive badge display
+      // Pre-compute per-group display properties so templates read properties
+      // instead of calling the same functions multiple times per render cycle.
       sorted.forEach(group => {
+        if (group._isSubtotal) return
+        group.strategyLabel = getGroupStrategyLabel(group)
+        group.strikes = getGroupStrikes(group)
+        group.positionCount = getPositionCount(group)
+        group.costBasis = getGroupCostBasis(group)
+        group.minDTE = getMinDTE(group)
+        group.openPnL = getGroupOpenPnL(group)
+        group.pnlPercent = getGroupPnLPercent(group)
+        group.netLiq = getGroupNetLiqWithLiveQuotes(group)
+        group.ivr = getUnderlyingIVR(group.underlying)
+        group.underlyingQuote = getUnderlyingQuote(group.underlying)
         group.rollAnalysis = getRollAnalysis(group, {
           underlyingQuotes: underlyingQuotes.value,
           rollAlertSettings: rollAlertSettings.value,
