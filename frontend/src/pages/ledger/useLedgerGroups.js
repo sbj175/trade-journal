@@ -356,9 +356,7 @@ export function useLedgerGroups(Auth, state) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: value }),
-      }).then(res => {
-        if (!res.ok)`)
-      }).catch(err =>)
+      }).catch(() => {})
       delete noteSaveTimers[key]
     }, 500)
   }

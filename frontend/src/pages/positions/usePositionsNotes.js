@@ -49,12 +49,11 @@ export function usePositionsNotes(Auth, { allItems }) {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ note: value })
-            }).catch(err =>)
+            }).catch(() => {})
             migrated = true
           }
         }
         localStorage.removeItem('positionComments')
-        if (migrated)
       }
     } catch (e) { /* ignore migration errors */ }
   }
@@ -76,7 +75,7 @@ export function usePositionsNotes(Auth, { allItems }) {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ note: positionComments.value[oldChainKey] })
-          }).catch(err =>)
+          }).catch(() => {})
         }
         if (positionComments.value[oldChainKey]) {
           delete positionComments.value[oldChainKey]
@@ -84,7 +83,7 @@ export function usePositionsNotes(Auth, { allItems }) {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ note: '' })
-          }).catch(err =>)
+          }).catch(() => {})
         }
       }
     } catch (e) { /* ignore migration errors */ }
@@ -115,7 +114,7 @@ export function usePositionsNotes(Auth, { allItems }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: value })
-      }).catch(err =>)
+      }).catch(() => {})
       delete _noteSaveTimers[key]
     }, 500)
   }
