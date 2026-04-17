@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { formatNumber } from '@/lib/formatters'
+import { accountDotColor } from '@/lib/constants'
 import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
 import { useMarketStore } from '@/stores/market'
@@ -51,14 +52,39 @@ const showToolbarExtras = computed(() => {
   return !['settings', 'privacy', 'components', 'position-detail'].includes(name)
 })
 
-// Account change handler — pages watch the store reactively
-function onAccountChange() {
-  // Store auto-persists via watch; pages react to selectedAccount changes
+// Account selector dropdown
+const acctDropdownMobile = ref(false)
+const acctDropdownDesktop = ref(false)
+const acctDropdownMobileEl = ref(null)
+const acctDropdownDesktopEl = ref(null)
+
+function selectAccount(accountNumber, dropdown) {
+  accountsStore.selectedAccount = accountNumber
+  accountsStore.persistSelection()
+  if (dropdown === 'mobile') acctDropdownMobile.value = false
+  else acctDropdownDesktop.value = false
+}
+
+function onAcctClickOutside(e) {
+  if (acctDropdownMobileEl.value && !acctDropdownMobileEl.value.contains(e.target)) acctDropdownMobile.value = false
+  if (acctDropdownDesktopEl.value && !acctDropdownDesktopEl.value.contains(e.target)) acctDropdownDesktop.value = false
+}
+
+function selectedAccountLabel() {
+  if (!accountsStore.selectedAccount) return 'All Accounts'
+  const acct = accountsStore.accounts.find(a => a.account_number === accountsStore.selectedAccount)
+  return acct?.account_name || accountsStore.selectedAccount
+}
+
+function selectedDotColor() {
+  if (!accountsStore.selectedAccount) return null
+  return accountDotColor(accountsStore.getAccountSymbol(accountsStore.selectedAccount))
 }
 
 // Close market popover on outside click
 onMounted(() => {
   document.addEventListener('click', marketStore.closeExpanded)
+  document.addEventListener('click', onAcctClickOutside)
   marketStore.startPolling()
   balancesStore.loadAccountBalances()
   accountsStore.loadAccounts()
@@ -161,14 +187,28 @@ onUnmounted(() => {
 
       <!-- Row 2: Account Selector (always visible) -->
       <template v-if="showToolbarExtras">
-        <select v-model="accountsStore.selectedAccount" @change="onAccountChange()"
-                class="w-full bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 rounded min-h-[44px]">
-          <option v-if="accountsStore.accounts.length > 1" value="">All Accounts</option>
-          <option v-for="account in accountsStore.accounts" :key="account.account_number"
-                  :value="account.account_number">
-            ({{ accountsStore.getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-          </option>
-        </select>
+        <div ref="acctDropdownMobileEl" class="relative w-full">
+          <button @click="acctDropdownMobile = !acctDropdownMobile"
+                  class="w-full bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 rounded min-h-[44px] flex items-center gap-2">
+            <span v-if="selectedDotColor()" class="text-xl leading-none" :style="{ color: selectedDotColor() }">●</span>
+            <span class="flex-1 text-left truncate">{{ selectedAccountLabel() }}</span>
+            <i class="fas fa-chevron-down text-[10px] text-tv-muted transition-transform" :class="acctDropdownMobile ? 'rotate-180' : ''"></i>
+          </button>
+          <div v-show="acctDropdownMobile" class="absolute top-full left-0 right-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-xl py-1">
+            <div v-if="accountsStore.accounts.length > 1" @click="selectAccount('', 'mobile')"
+                 class="px-3 py-2.5 text-sm cursor-pointer active:bg-tv-border/30 flex items-center gap-2"
+                 :class="!accountsStore.selectedAccount ? 'text-tv-text font-medium' : 'text-tv-muted'">
+              All Accounts
+            </div>
+            <div v-for="account in accountsStore.accounts" :key="account.account_number"
+                 @click="selectAccount(account.account_number, 'mobile')"
+                 class="px-3 py-2.5 text-sm cursor-pointer active:bg-tv-border/30 flex items-center gap-2"
+                 :class="accountsStore.selectedAccount === account.account_number ? 'text-tv-text font-medium' : 'text-tv-muted'">
+              <span class="text-xl leading-none" :style="{ color: accountDotColor(accountsStore.getAccountSymbol(account.account_number)) }">●</span>
+              <span>{{ account.account_name || account.account_number }}</span>
+            </div>
+          </div>
+        </div>
       </template>
     </div>
 
@@ -245,14 +285,28 @@ onUnmounted(() => {
       <div class="flex items-center gap-4">
         <!-- Account Selector -->
         <template v-if="showToolbarExtras">
-          <select v-model="accountsStore.selectedAccount" @change="onAccountChange()"
-                  class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded">
-            <option v-if="accountsStore.accounts.length > 1" value="">All Accounts</option>
-            <option v-for="account in accountsStore.accounts" :key="account.account_number"
-                    :value="account.account_number">
-              ({{ accountsStore.getAccountSymbol(account.account_number) }}) {{ account.account_name || account.account_number }}
-            </option>
-          </select>
+          <div ref="acctDropdownDesktopEl" class="relative">
+            <button @click="acctDropdownDesktop = !acctDropdownDesktop"
+                    class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded flex items-center gap-2 min-w-[180px]">
+              <span v-if="selectedDotColor()" class="text-xl leading-none" :style="{ color: selectedDotColor() }">●</span>
+              <span class="flex-1 text-left truncate">{{ selectedAccountLabel() }}</span>
+              <i class="fas fa-chevron-down text-[10px] text-tv-muted transition-transform" :class="acctDropdownDesktop ? 'rotate-180' : ''"></i>
+            </button>
+            <div v-show="acctDropdownDesktop" class="absolute top-full right-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-xl py-1 min-w-full">
+              <div v-if="accountsStore.accounts.length > 1" @click="selectAccount('', 'desktop')"
+                   class="px-3 py-2 text-sm cursor-pointer hover:bg-tv-border/30 flex items-center gap-2"
+                   :class="!accountsStore.selectedAccount ? 'text-tv-text font-medium' : 'text-tv-muted'">
+                All Accounts
+              </div>
+              <div v-for="account in accountsStore.accounts" :key="account.account_number"
+                   @click="selectAccount(account.account_number, 'desktop')"
+                   class="px-3 py-2 text-sm cursor-pointer hover:bg-tv-border/30 flex items-center gap-2"
+                   :class="accountsStore.selectedAccount === account.account_number ? 'text-tv-text font-medium' : 'text-tv-muted'">
+                <span class="text-xl leading-none" :style="{ color: accountDotColor(accountsStore.getAccountSymbol(account.account_number)) }">●</span>
+                <span>{{ account.account_name || account.account_number }}</span>
+              </div>
+            </div>
+          </div>
         </template>
 
         <!-- Section toggles -->

@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
+import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
@@ -217,15 +218,10 @@ onUnmounted(() => {
                :class="{ 'rotate-90': expandedRows[item.groupId] }"></i>
           </span>
 
-          <!-- Account badge -->
-          <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3"
-                :class="getAccountBadgeClass(item.accountNumber)">
-            {{ getAccountSymbol(item.accountNumber) }}
-          </span>
-
           <!-- Symbol + Streaming Price -->
           <span class="w-56 flex items-center gap-3">
             <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
+            <span v-show="selectedAccount === ''" class="text-xl leading-none -ml-2" :style="{ color: accountDotColor(getAccountSymbol(item.accountNumber)) }" :title="getAccountTooltip(accounts, item.accountNumber)">●</span>
             <span v-if="item.hasOptions" class="text-[10px] px-1.5 py-0.5 rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/30">
               {{ item.optionStrategy }}
             </span>
@@ -313,13 +309,10 @@ onUnmounted(() => {
          :class="item.equityLegs.length > 1 ? 'cursor-pointer' : ''"
          @click="item.equityLegs.length > 1 && toggleExpanded(item.groupId)">
       <div class="px-3 py-3">
-        <!-- Top row: account badge, symbol, live price, expand chevron -->
+        <!-- Top row: symbol, live price, expand chevron -->
         <div class="flex items-center gap-2 mb-2">
-          <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                :class="getAccountBadgeClass(item.accountNumber)">
-            {{ getAccountSymbol(item.accountNumber) }}
-          </span>
           <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
+          <span v-show="selectedAccount === ''" class="text-xl leading-none -ml-1" :style="{ color: accountDotColor(getAccountSymbol(item.accountNumber)) }" :title="getAccountTooltip(accounts, item.accountNumber)">●</span>
           <span v-if="item.hasOptions" class="text-[9px] px-1.5 py-0.5 rounded bg-tv-blue/20 text-tv-blue border border-tv-blue/30 uppercase">
             {{ item.optionStrategy }}
           </span>

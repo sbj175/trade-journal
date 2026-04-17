@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate, formatExpirationShort } from '@/lib/formatters'
+import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import DateFilter from '@/components/DateFilter.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
 import InfoPopover from '@/components/InfoPopover.vue'
@@ -128,6 +129,15 @@ function groupReturnPercent(group) {
   const basis = Math.abs(groupInitialPremium(group) || 0)
   if (!basis) return null
   return (group.realized_pnl / basis) * 100
+}
+function groupStrikes(group) {
+  const legs = groupedOptionLegs(group).filter(l => l.strike != null && l.instrument_type !== 'EQUITY')
+  if (legs.length === 0) return null
+  const unique = [...new Set(legs.map(l => Number(l.strike)).filter(n => Number.isFinite(n)))]
+  if (unique.length === 0) return null
+  unique.sort((a, b) => a - b)
+  // Strip trailing .0 (e.g. 100.0 → 100) but keep .5 etc.
+  return unique.map(n => Number.isInteger(n) ? String(n) : String(n)).join('/')
 }
 function groupContractCount(group) {
   const legs = groupedOptionLegs(group).filter(l => l.instrument_type !== 'EQUITY')
@@ -610,20 +620,14 @@ onMounted(async () => {
           <i class="fas fa-chevron-right w-6 text-tv-muted transition-transform duration-200"
              :class="group.expanded ? 'rotate-90' : ''"></i>
 
-          <!-- Account badge -->
-          <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-4"
-                :class="getAccountBadgeClass(group.account_number)">
-            {{ getAccountSymbol(group.account_number) }}
-          </span>
-
           <!-- Underlying -->
-          <span class="w-24 mr-4 text-lg font-semibold text-tv-text">{{ group.underlying }}</span>
+          <span class="w-24 mr-4 text-lg font-semibold text-tv-text flex items-center gap-1">{{ group.underlying }}<span v-show="selectedAccount === ''" class="text-xl leading-none" :style="{ color: accountDotColor(getAccountSymbol(group.account_number)) }" :title="getAccountTooltip(accounts, group.account_number)">●</span></span>
 
           <!-- Strategy Label (inline edit) -->
           <span class="w-48 mr-4 relative">
             <template v-if="!group._editingStrategy">
               <span class="flex items-center group/strat">
-                <span class="text-tv-muted text-base truncate flex-1 min-w-0">{{ group.strategy_label || '\u2014' }}<span v-if="groupContractCount(group)" class="text-tv-text ml-1">({{ groupContractCount(group) }})</span><span v-if="group.partially_rolled" class="text-tv-cyan cursor-help ml-0.5" title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span></span>
+                <span class="text-tv-muted text-base truncate flex-1 min-w-0">{{ group.strategy_label || '\u2014' }}<span v-if="groupStrikes(group)" class="text-tv-text ml-1">{{ groupStrikes(group) }}</span><span v-if="groupContractCount(group)" class="text-tv-text ml-1">({{ groupContractCount(group) }})</span><span v-if="group.partially_rolled" class="text-tv-cyan cursor-help ml-0.5" title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span></span>
                 <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
                   <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                      @click.stop="group._editingStrategy = true"
@@ -861,13 +865,10 @@ onMounted(async () => {
       <!-- Summary header (tap to expand) -->
       <div @click="onGroupHeaderClick(group)"
            class="px-3 py-3 cursor-pointer active:bg-tv-border/20 transition-colors min-w-0">
-        <!-- Top row: account, symbol, status, indicators, chevron -->
+        <!-- Top row: symbol, status, indicators, chevron -->
         <div class="flex items-center gap-2 mb-1.5 min-w-0">
-          <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                :class="getAccountBadgeClass(group.account_number)">
-            {{ getAccountSymbol(group.account_number) }}
-          </span>
           <span class="text-lg font-semibold text-tv-text truncate min-w-0">{{ group.underlying }}</span>
+          <span v-show="selectedAccount === ''" class="text-xl leading-none -ml-1" :style="{ color: accountDotColor(getAccountSymbol(group.account_number)) }" :title="getAccountTooltip(accounts, group.account_number)">●</span>
           <span class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
                 :class="group.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
             {{ group.status }}
@@ -884,7 +885,7 @@ onMounted(async () => {
         <!-- Strategy + tags -->
         <div class="flex flex-wrap items-center gap-1.5 mb-2 text-xs min-w-0">
           <span class="text-tv-muted truncate flex-1 min-w-0 basis-full sm:basis-auto">
-            {{ group.strategy_label || '\u2014' }}<span v-if="groupContractCount(group)" class="text-tv-text ml-1">({{ groupContractCount(group) }})</span>
+            {{ group.strategy_label || '\u2014' }}<span v-if="groupStrikes(group)" class="text-tv-text ml-1">{{ groupStrikes(group) }}</span><span v-if="groupContractCount(group)" class="text-tv-text ml-1">({{ groupContractCount(group) }})</span>
             <span v-if="group.partially_rolled" class="text-tv-cyan ml-0.5" title="Partially rolled">&#9432;</span>
           </span>
           <span v-for="tag in (group.tags || [])" :key="tag.id"

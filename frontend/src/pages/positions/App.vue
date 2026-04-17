@@ -4,7 +4,7 @@ import { onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from '
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
-import { tickerLogoUrl } from '@/lib/constants'
+import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import RollChainModal from '@/components/RollChainModal.vue'
 import { useAccountsStore } from '@/stores/accounts'
@@ -255,7 +255,7 @@ onUnmounted(() => {
        class="hidden md:flex items-center px-4 py-2 text-xs uppercase tracking-wider text-tv-muted border-b border-tv-border bg-tv-panel">
     <span class="w-16"></span>
     <span class="w-6 text-center" v-show="selectedAccount === ''"></span>
-    <span class="w-20 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
+    <span class="w-28 cursor-pointer hover:text-tv-text flex items-center gap-1" @click="sortPositions('underlying')">
       Symbol
       <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </span>
@@ -329,6 +329,7 @@ onUnmounted(() => {
             <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 flex-1">
               <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-7 h-7 rounded" loading="lazy">
               <span class="font-bold text-lg text-tv-text">{{ group.displayKey || group.underlying }}</span>
+              <span v-show="selectedAccount === ''" class="text-xl leading-none -ml-1" :style="{ color: accountDotColor(getAccountSymbol(group.accountNumber)) }" :title="getAccountTooltip(accounts, group.accountNumber)">●</span>
               <span v-show="hasEquity(group) && (group.positions || []).length > 0"
                     class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
               <span class="text-sm text-tv-muted">{{ getGroupStrategyLabel(group) }}<span v-if="getGroupStrikes(group)" class="text-tv-text ml-1">{{ getGroupStrikes(group) }}</span><span v-if="getPositionCount(group)"> ({{ getPositionCount(group) }})</span></span>
@@ -464,7 +465,6 @@ onUnmounted(() => {
         <!-- Subtotal Row -->
         <div v-if="group._isSubtotal" class="flex items-center px-4 h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
           <div class="w-16"></div>
-          <div class="w-6" v-show="selectedAccount === ''"></div>
           <div class="w-14">
             <div class="font-bold text-base text-tv-text">{{ group.displayKey }}</div>
           </div>
@@ -508,16 +508,12 @@ onUnmounted(() => {
                    :class="{ 'rotate-90': expandedRows.has(group.groupKey) }"></i>
               </div>
 
-              <!-- Account Symbol (only when All Accounts selected) -->
-              <div class="w-6 text-center text-tv-muted text-sm" v-show="selectedAccount === ''">
-                {{ getAccountSymbol(group.accountNumber) }}
-              </div>
-
               <!-- Symbol -->
-              <div class="w-20">
+              <div class="w-28">
                 <div class="font-semibold text-base text-tv-text flex items-center gap-1.5">
                   <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-7 h-7 rounded" loading="lazy">
                   {{ group.displayKey || group.underlying }}
+                  <span v-show="selectedAccount === ''" class="text-xl leading-none -ml-0.5" :style="{ color: accountDotColor(getAccountSymbol(group.accountNumber)) }" :title="getAccountTooltip(accounts, group.accountNumber)">●</span>
                   <span v-show="hasEquity(group) && (group.positions || []).length > 0" class="text-[10px] text-tv-muted ml-1 bg-tv-border/50 px-1 rounded">+stk</span>
                 </div>
               </div>
