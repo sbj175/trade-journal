@@ -20,6 +20,11 @@ import {
   getGroupStrategyLabel, sortedLegs, getAccountSymbol as getAccountSymbolPure,
 } from './usePositionsDisplay'
 
+function debounce(fn, ms) {
+  let t
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms) }
+}
+
 const Auth = useAuth()
 const accountsStore = useAccountsStore()
 const syncStore = useSyncStore()
@@ -39,7 +44,7 @@ const {
   fetchAccounts, fetchPositions, loadCachedQuotes,
   initializeWebSocket, requestLiveQuotes, cleanupWebSocket,
   applyFilters, filterPositions, saveFilterPreferences, loadFilterPreferences,
-  onAccountChange, onSymbolFilterCommit,
+  onAccountChange, onSymbolFilterCommit: onSymbolFilterCommitImmediate,
   sortPositions,
   getGroupCostBasis, getGroupOpenPnL, getGroupRealizedPnL, getGroupTotalPnL,
   getGroupNetLiqWithLiveQuotes, getGroupPnLPercent, getGroupDaysOpen, getMinDTE,
@@ -48,6 +53,9 @@ const {
   getUnderlyingQuote, getUnderlyingIVR, getOptionStratUrl,
   loadStrategyTargets, loadRollAlertSettings,
 } = usePositionsData(Auth)
+
+const onSymbolFilterCommit = debounce(onSymbolFilterCommitImmediate, 300)
+const onSymbolFilterCommitNow = onSymbolFilterCommitImmediate
 
 const {
   positionComments,
@@ -175,6 +183,8 @@ onActivated(async () => {
 
 onDeactivated(() => {
   cleanupWebSocket()
+  document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('click', closeSortMenu)
 })
 
 onUnmounted(() => {
@@ -195,14 +205,14 @@ onUnmounted(() => {
                :value="selectedUnderlying"
                @input="selectedUnderlying = $event.target.value.toUpperCase(); onSymbolFilterCommit()"
                @focus="$event.target.select()"
-               @keyup.enter="onSymbolFilterCommit()"
-               @blur="selectedUnderlying = selectedUnderlying.trim(); onSymbolFilterCommit()"
+               @keyup.enter="onSymbolFilterCommitNow()"
+               @blur="selectedUnderlying = selectedUnderlying.trim(); onSymbolFilterCommitNow()"
                placeholder="Symbol"
                maxlength="5"
                class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 uppercase placeholder:normal-case placeholder:text-tv-muted w-full md:max-w-[300px]"
                :class="selectedUnderlying ? 'pr-8' : ''">
         <button v-show="selectedUnderlying"
-                @click="selectedUnderlying = ''; onSymbolFilterCommit()"
+                @click="selectedUnderlying = ''; onSymbolFilterCommitNow()"
                 class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text"
                 title="Clear symbol filter">
           <i class="fas fa-times-circle"></i>
@@ -415,7 +425,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Mobile Expanded Detail -->
-        <div v-show="expandedRows.has(group.groupKey)" class="border-t border-tv-border bg-tv-bg px-3 py-2">
+        <div v-if="expandedRows.has(group.groupKey)" class="border-t border-tv-border bg-tv-bg px-3 py-2">
           <!-- Option legs -->
           <div v-if="(group.positions || []).length > 0" class="space-y-1">
             <div v-for="leg in sortedLegs(group.positions)" :key="leg.symbol"
@@ -664,7 +674,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Expanded Detail Panel -->
-            <div v-show="expandedRows.has(group.groupKey)" class="bg-tv-bg border-t border-tv-border">
+            <div v-if="expandedRows.has(group.groupKey)" class="bg-tv-bg border-t border-tv-border">
               <div class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border font-mono">
                 <div class="flex gap-4">
                   <div class="flex-shrink-0 space-y-1">

@@ -81,7 +81,6 @@ router.afterEach((to) => {
 })
 
 router.onError((error, to) => {
-  console.error('Navigation error:', error)
 })
 
 export default router

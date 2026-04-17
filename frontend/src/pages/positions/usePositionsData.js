@@ -62,7 +62,7 @@ export function usePositionsData(Auth) {
       accounts.value = (data.accounts || []).sort((a, b) =>
         accountSortOrder(a.account_name) - accountSortOrder(b.account_name)
       )
-    } catch (err) { console.error('Failed to load accounts:', err) }
+    } catch (err) { }
   }
 
   async function fetchPositions(includeSync = false, { migrateCommentKeysFn, loadCommentsFn } = {}) {
@@ -117,7 +117,6 @@ export function usePositionsData(Auth) {
       if (loadCommentsFn) await loadCommentsFn()
       applyFilters()
     } catch (err) {
-      console.error('Failed to load positions:', err)
       error.value = 'Failed to load positions'
     } finally {
       isLoading.value = false
@@ -146,7 +145,7 @@ export function usePositionsData(Auth) {
         lastQuoteUpdate.value = new Date().toLocaleTimeString()
         quoteUpdateCounter.value++
       }
-    } catch (err) { console.error('Error loading cached quotes:', err) }
+    } catch (err) { }
   }
 
   function collectSymbols() {
@@ -210,7 +209,7 @@ export function usePositionsData(Auth) {
         document.addEventListener('visibilitychange', handleVisibilityChange)
         visibilityListenerActive = true
       }
-    } catch (err) { console.error('WebSocket error:', err) }
+    } catch (err) { }
   }
 
   function requestLiveQuotes() {
@@ -516,7 +515,7 @@ export function usePositionsData(Auth) {
         list.forEach(t => { if (t.strategy_name) mapped[t.strategy_name] = t })
         strategyTargets.value = mapped
       }
-    } catch (err) { console.error('Failed to load strategy targets:', err) }
+    } catch (err) { }
   }
 
   function loadRollAlertSettings() {
@@ -618,7 +617,6 @@ export function usePositionsData(Auth) {
       }
       return sorted
     } catch (err) {
-      console.error('Error in groupedPositions:', err)
       return []
     }
   })

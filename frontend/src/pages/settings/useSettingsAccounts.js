@@ -21,7 +21,6 @@ export function useSettingsAccounts(Auth, { showNotification, onboarding }) {
         allAccounts.value = sortAccounts(data.accounts || [])
       }
     } catch (err) {
-      console.error('Failed to load accounts:', err)
     }
   }
 

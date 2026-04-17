@@ -35,7 +35,6 @@ export const useBalancesStore = defineStore('balances', () => {
       }
       accountBalances.value = newBalances
     } catch (err) {
-      console.error('Failed to load account balances:', err)
     }
   }
 

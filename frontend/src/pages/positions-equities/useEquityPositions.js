@@ -110,7 +110,7 @@ export function useEquityPositions(Auth, quoteAccessors) {
         }
         return getOrder(a.account_name) - getOrder(b.account_name)
       })
-    } catch (err) { console.error('Failed to load accounts:', err) }
+    } catch (err) { }
   }
 
   async function syncAndLoad() {
@@ -130,7 +130,6 @@ export function useEquityPositions(Auth, quoteAccessors) {
         }
       }
     } catch (err) {
-      console.error('Sync failed:', err)
     }
     await loadPositions()
   }
@@ -168,7 +167,6 @@ export function useEquityPositions(Auth, quoteAccessors) {
       }
       allItems.value = items
     } catch (err) {
-      console.error('Failed to load positions:', err)
       error.value = 'Failed to load positions'
     } finally {
       isLoading.value = false

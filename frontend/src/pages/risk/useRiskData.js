@@ -156,7 +156,6 @@ export function useRiskData(Auth) {
       }
     } catch (e) {
       error.value = e.message
-      console.error('Failed to fetch data:', e)
     }
     isLoading.value = false
   }
@@ -171,7 +170,6 @@ export function useRiskData(Auth) {
     ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
-      console.log('WebSocket connected')
       setTimeout(() => subscribeToQuotes(), 500)
     }
 

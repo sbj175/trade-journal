@@ -50,7 +50,6 @@ export function useLedgerGroups(Auth, state) {
       )
       accounts.value = list
     } catch (error) {
-      console.error('Error loading accounts:', error)
     }
   }
 
@@ -65,7 +64,6 @@ export function useLedgerGroups(Auth, state) {
       groups.value = data.map(g => ({ ...g, expanded: false, _editingStrategy: false }))
       applyFilters()
     } catch (error) {
-      console.error('Error fetching ledger:', error)
     } finally {
       loading.value = false
     }
@@ -299,7 +297,6 @@ export function useLedgerGroups(Auth, state) {
       })
       group.strategy_label = value
     } catch (error) {
-      console.error('Error updating strategy:', error)
     }
   }
 
@@ -343,7 +340,6 @@ export function useLedgerGroups(Auth, state) {
         groupNotes.value = data.notes || {}
       }
     } catch (error) {
-      console.error('Error loading notes:', error)
     }
   }
 
@@ -361,8 +357,8 @@ export function useLedgerGroups(Auth, state) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: value }),
       }).then(res => {
-        if (!res.ok) console.error(`Failed to save group note (HTTP ${res.status})`)
-      }).catch(err => console.error('Error saving group note:', err))
+        if (!res.ok)`)
+      }).catch(err =>)
       delete noteSaveTimers[key]
     }, 500)
   }
@@ -372,7 +368,7 @@ export function useLedgerGroups(Auth, state) {
     try {
       const resp = await Auth.authFetch('/api/tags')
       availableTags.value = await resp.json()
-    } catch (e) { console.error('Error loading tags:', e) }
+    } catch (e) { }
   }
 
   function openTagPopover(groupId, event) {
@@ -408,7 +404,7 @@ export function useLedgerGroups(Auth, state) {
       if (!group.tags.find(t => t.id === tag.id)) group.tags.push(tag)
       await loadAvailableTags()
       tagSearch.value = ''
-    } catch (e) { console.error('Error adding tag:', e) }
+    } catch (e) { }
   }
 
   async function removeTagFromGroup(group, tagId, event) {
@@ -416,7 +412,7 @@ export function useLedgerGroups(Auth, state) {
     try {
       await Auth.authFetch(`/api/ledger/groups/${group.group_id}/tags/${tagId}`, { method: 'DELETE' })
       group.tags = (group.tags || []).filter(t => t.id !== tagId)
-    } catch (e) { console.error('Error removing tag:', e) }
+    } catch (e) { }
   }
 
   function handleTagInput(event, group) {

@@ -64,7 +64,6 @@ export function useReportsData(Auth, { getActiveStrategies }) {
         return order(a.account_name) - order(b.account_name)
       })
     } catch (error) {
-      console.error('Error loading accounts:', error)
     }
   }
 
@@ -80,13 +79,12 @@ export function useReportsData(Auth, { getActiveStrategies }) {
       const response = await Auth.authFetch(`/api/reports/performance?${params}`)
       const data = await response.json()
 
-      if (data.error) { console.error('Report error:', data.error); return }
+      if (data.error) {; return }
 
       summary.value = data.summary || summary.value
       strategyBreakdown.value = data.breakdown || []
       applySortToBreakdown()
     } catch (error) {
-      console.error('Error fetching report:', error)
     } finally {
       loading.value = false
     }

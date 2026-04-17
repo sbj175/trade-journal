@@ -55,7 +55,7 @@ watch(() => syncStore.lastSyncTime, async (val) => {
 
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
-  try { await ensureApexCharts() } catch (e) { console.warn('ApexCharts failed to load:', e) }
+  try { await ensureApexCharts() } catch (e) { }
   await fetchData()
   selectedAccount.value = accountsStore.selectedAccount
   connectWebSocket()

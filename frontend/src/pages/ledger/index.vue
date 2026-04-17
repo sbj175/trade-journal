@@ -597,7 +597,7 @@ onMounted(async () => {
 
   <!-- Loading State -->
   <div v-if="loading" class="text-center py-16">
-    <div class="spinner mx-auto mb-4" style="width: 32px; height: 32px; border-width: 3px;"></div>
+    <div class="spinner mx-auto mb-4 w-8 h-8 border-[3px]"></div>
     <p class="text-tv-muted">Loading ledger data...</p>
   </div>
 
@@ -733,7 +733,7 @@ onMounted(async () => {
         </div>
 
         <!-- Expanded Detail -->
-        <div v-show="group.expanded"
+        <div v-if="group.expanded"
              class="bg-tv-bg border-t border-tv-border/50 px-4 py-3">
 
           <!-- Group Notes -->
@@ -928,7 +928,7 @@ onMounted(async () => {
       </div>
 
       <!-- Mobile expanded detail -->
-      <div v-show="group.expanded" class="bg-tv-bg border-t border-tv-border/30 px-3 py-2 space-y-2">
+      <div v-if="group.expanded" class="bg-tv-bg border-t border-tv-border/30 px-3 py-2 space-y-2">
         <!-- Notes -->
         <textarea :value="getGroupNote(group)"
                   @input="updateGroupNote(group, $event.target.value)"

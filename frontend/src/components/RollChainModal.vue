@@ -93,7 +93,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         <!-- Body -->
         <div class="overflow-y-auto flex-1">
           <div v-if="loading" class="px-5 py-8 text-tv-muted text-sm text-center">
-            <div class="spinner mx-auto mb-3" style="width: 24px; height: 24px; border-width: 2px;"></div>
+            <div class="spinner mx-auto mb-3 w-6 h-6 border-2"></div>
             Loading roll chain...
           </div>
           <div v-else-if="error" class="px-5 py-8 text-tv-red text-sm text-center">
