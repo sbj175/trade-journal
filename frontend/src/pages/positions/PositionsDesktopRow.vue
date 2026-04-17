@@ -170,7 +170,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
       </div>
 
       <!-- Roll chain bar (below main grid row, full width) -->
-      <div v-if="group.roll_chain" class="flex items-center pl-10 pb-1 text-[11px] text-tv-muted gap-4">
+      <div v-if="group.roll_chain" class="flex items-center pl-10 py-1.5 text-[11px] text-tv-muted gap-4 border-t border-tv-border/40 bg-tv-bg/60">
         <span class="inline-flex items-center gap-1">
           <span class="text-tv-muted/70">Chain Realized:</span>
           <span :class="group.roll_chain.cumulative_realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'" class="font-medium">
