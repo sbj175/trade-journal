@@ -2,6 +2,18 @@
  * Shared constants for OptionLedger Vue pages.
  */
 
+export function accountDotColor(accountSymbol) {
+  if (accountSymbol === 'R') return '#f59e0b'
+  if (accountSymbol === 'I') return '#38bdf8'
+  if (accountSymbol === 'T') return '#4ade80'
+  return '#9ca3af'
+}
+
+export function getAccountTooltip(accounts, accountNumber) {
+  const acct = accounts.find(a => a.account_number === accountNumber)
+  return acct?.account_name || accountNumber
+}
+
 export function tickerLogoUrl(symbol) {
   return `https://img.logokit.com/ticker/${symbol}?token=pk_fr7585c85ca0d987ceb070`
 }
