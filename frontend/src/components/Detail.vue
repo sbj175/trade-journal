@@ -10,9 +10,9 @@ import {
   formatDollar,
   getOptionType, getSignedQuantity, getExpirationDate, getStrikePrice, getDTE,
   sortedLegs,
-} from './usePositionsDisplay'
-import { usePositionsData } from './usePositionsData'
-import { usePositionsNotes } from './usePositionsNotes'
+} from '@/composables/usePositionsDisplay'
+import { usePositionsData } from '@/composables/usePositionsData'
+import { usePositionsNotes } from '@/composables/usePositionsNotes'
 
 const Auth = useAuth()
 const route = useRoute()

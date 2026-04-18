@@ -4,7 +4,7 @@
  */
 import { formatNumber } from '@/lib/formatters'
 import { evaluateRules } from '@/lib/rules'
-import { getGroupStrategyLabel } from './usePositionsDisplay'
+import { getGroupStrategyLabel } from '@/composables/usePositionsDisplay'
 
 export function normalCDF(x) {
   const t = 1 / (1 + 0.2316419 * Math.abs(x))

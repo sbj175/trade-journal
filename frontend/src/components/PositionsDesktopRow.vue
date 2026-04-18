@@ -1,9 +1,9 @@
 <script setup>
-import { formatDollar, dollarSizeClass } from './usePositionsDisplay'
+import { formatDollar, dollarSizeClass } from '@/composables/usePositionsDisplay'
 import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
-import PositionsExpandedPanel from './PositionsExpandedPanel.vue'
-import { DESKTOP_COLS_CLASS } from './positionsDesktopCols.js'
+import PositionsExpandedPanel from '@/components/PositionsExpandedPanel.vue'
+import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
 
 const props = defineProps({
   group: Object,

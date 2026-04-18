@@ -5,8 +5,8 @@ import { formatNumber, formatPercent } from '@/lib/formatters'
 import DateFilter from '@/components/DateFilter.vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
-import { useReportsFilters } from './useReportsFilters'
-import { useReportsData } from './useReportsData'
+import { useReportsFilters } from '@/composables/useReportsFilters'
+import { useReportsData } from '@/composables/useReportsData'
 
 const Auth = useAuth()
 const accountsStore = useAccountsStore()

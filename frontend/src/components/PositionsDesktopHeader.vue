@@ -1,5 +1,5 @@
 <script setup>
-import { DESKTOP_COLS_CLASS } from './positionsDesktopCols.js'
+import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
 
 defineProps({
   sortColumn: String,

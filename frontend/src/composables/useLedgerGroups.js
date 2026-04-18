@@ -3,7 +3,7 @@
  */
 import { ref, computed, nextTick } from 'vue'
 import { STRATEGY_CATEGORIES, accountSortOrder } from '@/lib/constants'
-import { groupInitialPremium } from './useLedgerLots'
+import { groupInitialPremium } from '@/composables/useLedgerLots'
 
 export function useLedgerGroups(Auth, state) {
   const {

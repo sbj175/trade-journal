@@ -8,8 +8,8 @@ import StreamingPrice from '@/components/StreamingPrice.vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
 import { useQuotesStore } from '@/stores/quotes'
-import { useEquityQuotes } from './useEquityQuotes'
-import { useEquityPositions } from './useEquityPositions'
+import { useEquityQuotes } from '@/composables/useEquityQuotes'
+import { useEquityPositions } from '@/composables/useEquityPositions'
 
 const Auth = useAuth()
 const accountsStore = useAccountsStore()

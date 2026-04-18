@@ -3,8 +3,8 @@
  * Composable that manages the core reactive state for the Positions page.
  */
 import { ref, computed } from 'vue'
-import { buildOptionStratUrl, getGroupStrategyLabel, getGroupStrikes, getPositionCount } from './usePositionsDisplay'
-import { getRollAnalysis } from './usePositionsAnalysis'
+import { buildOptionStratUrl, getGroupStrategyLabel, getGroupStrikes, getPositionCount } from '@/composables/usePositionsDisplay'
+import { getRollAnalysis } from '@/composables/usePositionsAnalysis'
 import { accountSortOrder } from '@/lib/constants'
 import { useTargetsStore } from '@/stores/targets'
 

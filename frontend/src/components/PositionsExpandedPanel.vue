@@ -3,8 +3,8 @@ import { formatNumber, formatDate } from '@/lib/formatters'
 import {
   getOptionType, getSignedQuantity, getExpirationDate, getStrikePrice, getDTE,
   sortedLegs,
-} from './usePositionsDisplay'
-import PositionsRollAnalysis from './PositionsRollAnalysis.vue'
+} from '@/composables/usePositionsDisplay'
+import PositionsRollAnalysis from '@/components/PositionsRollAnalysis.vue'
 
 const props = defineProps({
   group: Object,

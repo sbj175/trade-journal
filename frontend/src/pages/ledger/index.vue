@@ -11,8 +11,8 @@ import RollChainModal from '@/components/RollChainModal.vue'
 import InfoPopover from '@/components/InfoPopover.vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
-import { groupedOptionLegs, openEquityLots, equityAggregate, groupInitialPremium } from './useLedgerLots'
-import { useLedgerGroups } from './useLedgerGroups'
+import { groupedOptionLegs, openEquityLots, equityAggregate, groupInitialPremium } from '@/composables/useLedgerLots'
+import { useLedgerGroups } from '@/composables/useLedgerGroups'
 
 const Auth = useAuth()
 const route = useRoute()

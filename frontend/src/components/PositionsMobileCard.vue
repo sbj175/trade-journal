@@ -1,10 +1,10 @@
 <script setup>
 import { formatNumber } from '@/lib/formatters'
-import { formatDollar } from './usePositionsDisplay'
+import { formatDollar } from '@/composables/usePositionsDisplay'
 import {
   getOptionType, getSignedQuantity, getExpirationDate, getStrikePrice, getDTE,
   sortedLegs,
-} from './usePositionsDisplay'
+} from '@/composables/usePositionsDisplay'
 import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
 
 defineProps({

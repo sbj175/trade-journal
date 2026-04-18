@@ -2,7 +2,7 @@
  * Data fetching, WebSocket connection, and position state management.
  */
 import { ref, computed, nextTick } from 'vue'
-import { enrichPosition, calcCapitalAtRisk, getUnderlying } from './riskCalculations'
+import { enrichPosition, calcCapitalAtRisk, getUnderlying } from '@/lib/riskCalculations'
 
 export function useRiskData(Auth) {
   // ==================== STATE ====================

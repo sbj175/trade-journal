@@ -3,7 +3,7 @@
  */
 import { formatNumber } from '@/lib/formatters'
 import { chart as C } from '@/lib/design-tokens'
-import { calcThetaProjection, calcScenarios, shortNumber } from './riskCalculations'
+import { calcThetaProjection, calcScenarios, shortNumber } from '@/lib/riskCalculations'
 
 export function useRiskCharts(deps) {
   const { underlyingGroups, enrichedPositions } = deps

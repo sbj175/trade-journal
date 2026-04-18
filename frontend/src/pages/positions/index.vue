@@ -8,14 +8,14 @@ import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
 import { useQuotesStore } from '@/stores/quotes'
 
-import { usePositionsData } from './usePositionsData'
-import { usePositionsNotes } from './usePositionsNotes'
-import { getAccountSymbol as getAccountSymbolPure } from './usePositionsDisplay'
-import PositionsMobileCard from './PositionsMobileCard.vue'
-import PositionsDesktopRow from './PositionsDesktopRow.vue'
-import PositionsDesktopHeader from './PositionsDesktopHeader.vue'
-import { formatDollar, dollarSizeClass } from './usePositionsDisplay'
-import { DESKTOP_COLS_CLASS } from './positionsDesktopCols.js'
+import { usePositionsData } from '@/composables/usePositionsData'
+import { usePositionsNotes } from '@/composables/usePositionsNotes'
+import { getAccountSymbol as getAccountSymbolPure } from '@/composables/usePositionsDisplay'
+import PositionsMobileCard from '@/components/PositionsMobileCard.vue'
+import PositionsDesktopRow from '@/components/PositionsDesktopRow.vue'
+import PositionsDesktopHeader from '@/components/PositionsDesktopHeader.vue'
+import { formatDollar, dollarSizeClass } from '@/composables/usePositionsDisplay'
+import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
 
 function debounce(fn, ms) {
   let t
