@@ -24,7 +24,12 @@ const navLinks = computed(() => allNavLinks.filter(l => !l.enabled || l.enabled(
 
 const openDropdown = ref(null)
 const mobileMenuOpen = ref(false)
-const mobileOpenSections = ref({})
+const isDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+function toggleTheme() {
+  isDark.value = !isDark.value
+  console.log('[theme] mode:', isDark.value ? 'dark' : 'light')
+}
 
 function isActiveParent(link) {
   if (link.children) return route.path.startsWith(link.to)
@@ -39,32 +44,12 @@ function closeMobileMenu() {
   mobileMenuOpen.value = false
 }
 
-function toggleMobileSection(linkTo) {
-  mobileOpenSections.value = {
-    ...mobileOpenSections.value,
-    [linkTo]: !mobileOpenSections.value[linkTo],
-  }
-}
-
-function isMobileSectionOpen(linkTo) {
-  return !!mobileOpenSections.value[linkTo]
-}
-
 watch(
   () => route.path,
   () => {
     openDropdown.value = null
     mobileMenuOpen.value = false
-
-    const nextSections = {}
-    for (const link of navLinks.value) {
-      if (link.children && route.path.startsWith(link.to)) {
-        nextSections[link.to] = true
-      }
-    }
-    mobileOpenSections.value = nextSections
-  },
-  { immediate: true }
+  }
 )
 </script>
 
@@ -178,15 +163,25 @@ watch(
             <span class="text-sm font-medium">Settings</span>
           </span>
 
-          <!-- Mobile settings shortcut -->
-          <router-link
-            v-if="route.path !== '/settings'"
-            to="/settings"
-            class="md:hidden text-tv-muted hover:text-tv-text transition-colors p-2"
-            aria-label="Settings"
+          <!-- Theme toggle (desktop) -->
+          <button
+            type="button"
+            class="hidden md:flex border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
+            :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+            @click="toggleTheme"
           >
-            <i class="fas fa-cog text-base"></i>
-          </router-link>
+            <i :class="isDark ? 'fas fa-sun text-sm' : 'fas fa-moon text-sm'"></i>
+          </button>
+
+          <!-- Theme toggle (mobile) -->
+          <button
+            type="button"
+            class="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg text-tv-muted hover:text-tv-text hover:bg-tv-border/30 transition-colors"
+            :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+            @click="toggleTheme"
+          >
+            <i :class="isDark ? 'fas fa-sun text-base' : 'fas fa-moon text-base'"></i>
+          </button>
 
           <!-- Mobile menu button -->
           <button
@@ -209,40 +204,23 @@ watch(
       class="md:hidden border-t border-tv-border px-4 py-3 space-y-2 bg-tv-panel"
     >
       <template v-for="link in navLinks" :key="link.to">
-        <!-- Mobile section with children -->
-        <div v-if="link.children" class="rounded-lg overflow-hidden border border-tv-border/70">
-          <button
-            type="button"
-            class="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors"
-            :class="isActiveParent(link)
-              ? 'text-tv-text bg-tv-blue/10'
-              : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20'"
-            @click="toggleMobileSection(link.to)"
+        <!-- Flatten links with children directly -->
+        <template v-if="link.children">
+          <router-link
+            v-for="child in link.children"
+            :key="child.to"
+            :to="child.to"
+            class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+            :class="route.path === child.to
+              ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
+              : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
+            @click="closeMobileMenu"
           >
-            <span>{{ link.label }}</span>
-            <i
-              class="fas fa-chevron-down text-[11px] transition-transform"
-              :class="isMobileSectionOpen(link.to) ? 'rotate-180' : ''"
-            ></i>
-          </button>
+            {{ child.label }}
+          </router-link>
+        </template>
 
-          <div v-show="isMobileSectionOpen(link.to)" class="border-t border-tv-border/70 bg-tv-panel">
-            <router-link
-              v-for="child in link.children"
-              :key="child.to"
-              :to="child.to"
-              class="block px-5 py-3 text-sm transition-colors"
-              :class="route.path === child.to
-                ? 'text-tv-blue bg-tv-blue/10'
-                : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20'"
-              @click="closeMobileMenu"
-            >
-              {{ child.label }}
-            </router-link>
-          </div>
-        </div>
-
-        <!-- Mobile simple link -->
+        <!-- Simple link -->
         <router-link
           v-else
           :to="link.to"
@@ -255,6 +233,18 @@ watch(
           {{ link.label }}
         </router-link>
       </template>
+
+      <!-- Settings -->
+      <router-link
+        to="/settings"
+        class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+        :class="route.path === '/settings'
+          ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
+          : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
+        @click="closeMobileMenu"
+      >
+        Settings
+      </router-link>
 
       <div
         v-if="authStore.authEnabled && authStore.userEmail"
