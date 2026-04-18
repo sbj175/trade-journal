@@ -2,6 +2,7 @@
 import { formatNumber, formatDate, formatExpirationShort } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import { LEDGER_COLS_CLASS } from '@/lib/ledgerDesktopCols'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 defineProps({
   group: Object,
@@ -23,8 +24,7 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
          @click="$emit('toggle-expanded', group.group_id)">
 
       <!-- Chevron -->
-      <i class="fas fa-chevron-right text-tv-muted transition-transform duration-200"
-         :class="group.expanded ? 'rotate-90' : ''"></i>
+      <BaseIcon name="chevron-right" class="text-tv-muted transition-transform duration-200" :class="group.expanded ? 'rotate-90' : ''" />
 
       <!-- Logo spacer -->
       <div></div>
@@ -51,9 +51,9 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
                     title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>
             </span>
             <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
-              <i class="fas fa-pencil-alt text-xs text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
+              <BaseIcon name="pencil-alt" size="xs" class="text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                  @click.stop="group._editingStrategy = true"
-                 title="Edit strategy label"></i>
+                 title="Edit strategy label" />
             </span>
           </span>
         </template>
@@ -103,7 +103,7 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
             <button v-if="tagsState.tagSearch.value.trim() && !tagsState.filteredTagSuggestions.value.find(t => t.name.toLowerCase() === tagsState.tagSearch.value.trim().toLowerCase())"
                     @click="tagsState.addTagToGroup(group, tagsState.tagSearch.value.trim()); tagsState.closeTagPopover()"
                     class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-blue hover:bg-tv-panel rounded">
-              <i class="fas fa-plus text-[8px]"></i>
+              <BaseIcon name="plus" class="text-[8px]" />
               <span>Create "{{ tagsState.tagSearch.value.trim() }}"</span>
             </button>
           </div>
@@ -138,9 +138,7 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
 
       <!-- Notes indicator -->
       <div class="flex items-center justify-center">
-        <i v-if="notesState.getGroupNote(group)"
-           class="fas fa-sticky-note text-tv-amber text-sm"
-           title="Has notes"></i>
+        <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" size="sm" class="text-tv-amber" title="Has notes" />
       </div>
 
       <!-- Initial Premium -->

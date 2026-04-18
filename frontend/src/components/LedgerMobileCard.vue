@@ -1,6 +1,7 @@
 <script setup>
 import { formatNumber, formatDate, formatExpirationShort, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 defineProps({
   group: Object,
@@ -29,15 +30,10 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
               :class="group.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
           {{ group.status }}
         </span>
-        <i v-if="group.has_roll_chain"
-           @click.stop="$emit('open-roll-chain', group.group_id)"
-           class="fas fa-link text-tv-blue text-[11px] cursor-pointer shrink-0"
-           title="Roll chain"></i>
-        <i v-if="notesState.getGroupNote(group)"
-           class="fas fa-sticky-note text-tv-amber text-[11px] shrink-0"
-           title="Has notes"></i>
-        <i class="fas fa-chevron-right text-tv-muted text-[11px] ml-auto shrink-0 transition-transform duration-150"
-           :class="{ 'rotate-90': group.expanded }"></i>
+        <BaseIcon v-if="group.has_roll_chain" name="link" class="text-tv-blue text-[11px] cursor-pointer shrink-0"
+           @click.stop="$emit('open-roll-chain', group.group_id)" title="Roll chain" />
+        <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" class="text-tv-amber text-[11px] shrink-0" title="Has notes" />
+        <BaseIcon name="chevron-right" class="text-tv-muted text-[11px] ml-auto shrink-0 transition-transform duration-150" :class="{ 'rotate-90': group.expanded }" />
       </div>
 
       <!-- Strategy + tags -->

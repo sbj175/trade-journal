@@ -2,6 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -96,7 +98,7 @@ watch(
                     : 'text-tv-muted border-transparent hover:text-tv-text'"
                 >
                   {{ link.label }}
-                  <i class="fas fa-chevron-down text-[9px] ml-1.5 opacity-50"></i>
+                  <BaseIcon name="chevron-down" class="text-[9px] ml-1.5 opacity-50" />
                 </span>
 
                 <div
@@ -145,13 +147,7 @@ watch(
             >
               {{ authStore.userEmail }}
             </span>
-            <button
-              @click="authStore.signOut()"
-              class="text-tv-muted hover:text-tv-red transition-colors"
-              title="Sign out"
-            >
-              <i class="fas fa-sign-out-alt text-xs"></i>
-            </button>
+            <BaseButton variant="ghost" size="sm" icon="sign-out-alt" @click="authStore.signOut()" title="Sign out" class="hover:text-tv-red" />
           </div>
 
           <router-link
@@ -159,14 +155,14 @@ watch(
             to="/settings"
             class="hidden md:flex border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
           >
-            <i class="fas fa-cog text-sm"></i>
+            <BaseIcon name="cog" size="sm" />
           </router-link>
 
           <span
             v-else
             class="hidden md:flex border-l border-tv-border pl-5 text-tv-blue items-center gap-1.5"
           >
-            <i class="fas fa-cog text-sm"></i>
+            <BaseIcon name="cog" size="sm" />
             <span class="text-sm font-medium">Settings</span>
           </span>
 
@@ -177,7 +173,7 @@ watch(
             :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
-            <i :class="isDark ? 'fas fa-sun text-sm' : 'fas fa-moon text-sm'"></i>
+            <BaseIcon :name="isDark ? 'sun' : 'moon'" size="sm" />
           </button>
 
           <!-- Theme toggle (mobile) -->
@@ -187,7 +183,7 @@ watch(
             :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
-            <i :class="isDark ? 'fas fa-sun text-base' : 'fas fa-moon text-base'"></i>
+            <BaseIcon :name="isDark ? 'sun' : 'moon'" size="md" />
           </button>
 
           <!-- Mobile menu button -->
@@ -198,8 +194,7 @@ watch(
             aria-label="Toggle navigation menu"
             @click="toggleMobileMenu"
           >
-            <i v-if="!mobileMenuOpen" class="fas fa-bars text-base"></i>
-            <i v-else class="fas fa-times text-base"></i>
+            <BaseIcon :name="mobileMenuOpen ? 'times' : 'bars'" size="md" />
           </button>
         </div>
       </div>
@@ -262,13 +257,10 @@ watch(
           <div class="text-sm text-tv-text break-all">{{ authStore.userEmail }}</div>
         </div>
 
-        <button
-          @click="authStore.signOut()"
-          class="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-tv-muted hover:text-tv-red hover:bg-tv-border/20 transition-colors border border-tv-border/70"
-        >
-          <i class="fas fa-sign-out-alt text-xs"></i>
-          <span>Sign out</span>
-        </button>
+        <BaseButton variant="ghost" @click="authStore.signOut()" class="w-full justify-center hover:text-tv-red border border-tv-border/70 min-h-[44px]">
+          <template #icon><BaseIcon name="sign-out-alt" size="xs" /></template>
+          Sign out
+        </BaseButton>
       </div>
     </div>
   </nav>

@@ -1,4 +1,6 @@
 <script setup>
+import BaseIcon from '@/components/BaseIcon.vue'
+
 defineProps({ state: Object })
 </script>
 
@@ -6,7 +8,7 @@ defineProps({ state: Object })
   <div>
     <div class="mb-6">
       <h2 class="text-xl font-semibold text-tv-text mb-1">
-        <i class="fas fa-bell mr-2 text-tv-amber"></i>Roll Suggestion Alerts
+        <BaseIcon name="bell" class="mr-2 text-tv-amber" />Roll Suggestion Alerts
       </h2>
       <p class="text-tv-muted text-sm">Configure which roll/close suggestions appear on the Positions page for debit spreads</p>
     </div>

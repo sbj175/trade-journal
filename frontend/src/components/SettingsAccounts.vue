@@ -1,4 +1,7 @@
 <script setup>
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
+
 defineProps({ state: Object, onboarding: Object })
 defineEmits(['go-to-import'])
 </script>
@@ -7,14 +10,14 @@ defineEmits(['go-to-import'])
   <div>
     <div class="mb-6">
       <h2 class="text-xl font-semibold text-tv-text mb-1">
-        <i class="fas fa-university mr-2 text-tv-blue"></i>Accounts
+        <BaseIcon name="university" class="mr-2 text-tv-blue" />Accounts
       </h2>
       <p class="text-tv-muted text-sm">Choose which Tastytrade accounts to sync. Disabled accounts will not be imported during sync.</p>
     </div>
 
     <div v-if="onboarding.value" class="bg-tv-green/10 border border-tv-green/30 rounded p-4 mb-5">
       <div class="flex items-start gap-3">
-        <i class="fas fa-check-circle text-tv-green text-lg mt-0.5"></i>
+        <BaseIcon name="check-circle" class="text-tv-green text-lg mt-0.5" />
         <div>
           <p class="text-tv-text font-medium">Your Tastytrade account is connected!</p>
           <p class="text-tv-muted text-sm mt-1">We found the accounts below. Toggle off any you don't want to sync, then continue to import your trades.</p>
@@ -22,8 +25,8 @@ defineEmits(['go-to-import'])
       </div>
     </div>
 
-    <div v-if="state.allAccounts.value.length === 0" class="text-tv-muted text-sm py-8 text-center">
-      <i class="fas fa-info-circle mr-1"></i>No accounts found. Connect to Tastytrade first.
+    <div v-if="state.allAccounts.value.length === 0" class="text-tv-muted text-sm py-8 text-center inline-flex items-center gap-1">
+      <BaseIcon name="info-circle" />No accounts found. Connect to Tastytrade first.
     </div>
 
     <div v-else class="space-y-2">
@@ -40,8 +43,8 @@ defineEmits(['go-to-import'])
           </div>
         </div>
         <div class="flex items-center gap-3">
-          <span v-if="state.syncingAccount.value === acct.account_number" class="text-tv-blue text-xs">
-            <i class="fas fa-sync-alt animate-spin mr-1"></i>Importing...
+          <span v-if="state.syncingAccount.value === acct.account_number" class="text-tv-blue text-xs inline-flex items-center gap-1">
+            <BaseIcon name="sync-alt" :spin="true" />Importing...
           </span>
           <label class="relative inline-flex items-center cursor-pointer" @click.prevent="state.toggleAccount(acct)">
             <span class="w-10 h-5 rounded-full transition-colors"
@@ -55,10 +58,9 @@ defineEmits(['go-to-import'])
       </div>
 
       <div v-if="onboarding.value" class="pt-4">
-        <button @click="$emit('go-to-import')"
-                class="bg-tv-blue hover:bg-tv-blue/80 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors">
-          Continue to Import <i class="fas fa-arrow-right ml-2"></i>
-        </button>
+        <BaseButton variant="primary" size="md" @click="$emit('go-to-import')">
+          Continue to Import <BaseIcon name="arrow-right" class="ml-1" />
+        </BaseButton>
       </div>
     </div>
   </div>

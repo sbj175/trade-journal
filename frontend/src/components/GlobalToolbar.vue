@@ -7,6 +7,8 @@ import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
 import { useMarketStore } from '@/stores/market'
 import { useBalancesStore } from '@/stores/balances'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 const route = useRoute()
 const accountsStore = useAccountsStore()
 const syncStore = useSyncStore()
@@ -103,12 +105,10 @@ onUnmounted(() => {
       <!-- Row 1: Sync + icon buttons -->
       <div class="flex items-center gap-1.5 relative">
         <template v-if="showToolbarExtras">
-          <button @click="syncStore.performSync()"
-                  :disabled="syncStore.isSyncing"
-                  class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-3 py-2 text-xs disabled:opacity-50 transition-colors rounded shrink-0 min-h-[44px]">
-            <i class="fas fa-sync-alt" :class="{'animate-spin': syncStore.isSyncing}" style="margin-right: 0.3rem"></i>
+          <BaseButton variant="success" size="sm" @click="syncStore.performSync()" :disabled="syncStore.isSyncing" class="shrink-0 min-h-[44px]">
+            <template #icon><BaseIcon name="sync-alt" :spin="syncStore.isSyncing" /></template>
             Sync
-          </button>
+          </BaseButton>
         </template>
 
         <div class="flex items-center gap-1.5 ml-auto">
@@ -170,14 +170,14 @@ onUnmounted(() => {
                     class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
                     :class="showBalances ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
                     title="Toggle account overview">
-              <i class="fas fa-dollar-sign text-[11px]"></i>
+              <BaseIcon name="dollar-sign" class="text-[11px]" />
             </button>
             <!-- Filters -->
             <button @click="toggleFilters()"
                     class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
                     :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
                     title="Toggle filters">
-              <i class="fas fa-filter text-[11px]"></i>
+              <BaseIcon name="filter" class="text-[11px]" />
             </button>
             <!-- Sort (page-provided via Teleport) -->
             <div id="page-sort" class="relative"></div>
@@ -192,7 +192,7 @@ onUnmounted(() => {
                   class="w-full bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-2 rounded min-h-[44px] flex items-center gap-2">
             <span v-if="selectedDotColor()" class="text-xl leading-none" :style="{ color: selectedDotColor() }">●</span>
             <span class="flex-1 text-left truncate">{{ selectedAccountLabel() }}</span>
-            <i class="fas fa-chevron-down text-[10px] text-tv-muted transition-transform" :class="acctDropdownMobile ? 'rotate-180' : ''"></i>
+            <BaseIcon name="chevron-down" class="text-[10px] text-tv-muted transition-transform" :class="acctDropdownMobile ? 'rotate-180' : ''" />
           </button>
           <div v-show="acctDropdownMobile" class="absolute top-full left-0 right-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-xl py-1">
             <div v-if="accountsStore.accounts.length > 1" @click="selectAccount('', 'mobile')"
@@ -216,12 +216,10 @@ onUnmounted(() => {
       <div class="flex items-center gap-4">
         <!-- Sync Button -->
         <template v-if="showToolbarExtras">
-          <button @click="syncStore.performSync()"
-                  :disabled="syncStore.isSyncing"
-                  class="bg-tv-green/20 hover:bg-tv-green/30 text-tv-green border border-tv-green/30 px-4 py-1.5 text-sm disabled:opacity-50 transition-colors">
-            <i class="fas fa-sync-alt" :class="{'animate-spin': syncStore.isSyncing}" style="margin-right: 0.5rem"></i>
-            <span>Sync</span>
-          </button>
+          <BaseButton variant="success" size="md" @click="syncStore.performSync()" :disabled="syncStore.isSyncing">
+            <template #icon><BaseIcon name="sync-alt" :spin="syncStore.isSyncing" /></template>
+            Sync
+          </BaseButton>
         </template>
 
         <!-- Market Status -->
@@ -232,8 +230,7 @@ onUnmounted(() => {
               <span class="inline-flex items-center gap-1.5">
                 <span class="pulse-dot" :class="marketStore.dotColor"></span>
                 <span :class="marketStore.statusColor" class="font-medium">{{ marketStore.statusLabel }}</span>
-                <i class="fas fa-chevron-down text-[8px] text-tv-muted transition-transform"
-                   :class="{ 'rotate-180': marketStore.marketExpanded }"></i>
+                <BaseIcon name="chevron-down" class="text-[8px] text-tv-muted transition-transform" :class="{ 'rotate-180': marketStore.marketExpanded }" />
               </span>
             </button>
 
@@ -290,7 +287,7 @@ onUnmounted(() => {
                     class="bg-tv-bg border border-tv-border text-tv-text text-sm px-3 py-1.5 rounded flex items-center gap-2 min-w-[180px]">
               <span v-if="selectedDotColor()" class="text-xl leading-none" :style="{ color: selectedDotColor() }">●</span>
               <span class="flex-1 text-left truncate">{{ selectedAccountLabel() }}</span>
-              <i class="fas fa-chevron-down text-[10px] text-tv-muted transition-transform" :class="acctDropdownDesktop ? 'rotate-180' : ''"></i>
+              <BaseIcon name="chevron-down" class="text-[10px] text-tv-muted transition-transform" :class="acctDropdownDesktop ? 'rotate-180' : ''" />
             </button>
             <div v-show="acctDropdownDesktop" class="absolute top-full right-0 mt-1 z-50 bg-tv-panel border border-tv-border rounded shadow-xl py-1 min-w-full">
               <div v-if="accountsStore.accounts.length > 1" @click="selectAccount('', 'desktop')"
@@ -316,13 +313,13 @@ onUnmounted(() => {
                     class="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
                     :class="showBalances ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border hover:bg-tv-border/30'"
                     title="Toggle account overview">
-              <i class="fas fa-dollar-sign text-[10px] mr-1"></i>Overview
+              <BaseIcon name="dollar-sign" class="text-[10px] mr-1" />Overview
             </button>
             <button @click="toggleFilters()"
                     class="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
                     :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border hover:bg-tv-border/30'"
                     title="Toggle filters">
-              <i class="fas fa-filter text-[10px] mr-1"></i>Filters
+              <BaseIcon name="filter" class="text-[10px] mr-1" />Filters
             </button>
           </div>
         </template>
@@ -395,12 +392,10 @@ onUnmounted(() => {
   <div v-if="syncStore.syncSummary && !syncStore.isSyncing" class="mx-2 mt-2">
     <div class="px-4 py-2 rounded text-sm flex items-center justify-between bg-tv-blue/10 border border-tv-blue/30 text-tv-blue">
       <span>
-        <i class="fas fa-sync-alt mr-1"></i>
+        <BaseIcon name="sync-alt" class="mr-1" />
         {{ syncStore.syncSummary }}
       </span>
-      <button @click="syncStore.dismissSummary()" class="text-tv-muted hover:text-tv-text text-xs ml-4">
-        <i class="fas fa-times"></i>
-      </button>
+      <BaseButton variant="ghost" size="sm" icon="times" @click="syncStore.dismissSummary()" class="ml-4" />
     </div>
   </div>
 

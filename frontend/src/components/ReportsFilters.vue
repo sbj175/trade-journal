@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
 import DateFilter from '@/components/DateFilter.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 const props = defineProps({
   filterState: Object,
@@ -82,7 +83,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
                 <span>Strategy</span>
                 <span v-if="f.filterStrategies.value.length" class="bg-tv-blue text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ f.filterStrategies.value.length }}</span>
               </span>
-              <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+              <BaseIcon name="chevron-down" class="text-[10px] ml-0.5" />
             </button>
             <div v-if="f.strategyDropdownOpen.value"
                  class="mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 w-full max-h-64 overflow-y-auto">
@@ -94,7 +95,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
               <button v-for="s in allStrategyNames" :key="s"
                       @click="h.toggleStrategyPick(s)"
                       class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
-                <i class="fas text-[10px]" :class="f.filterStrategies.value.includes(s) ? 'fa-check-square text-tv-blue' : 'fa-square text-tv-muted'"></i>
+                <BaseIcon :name="f.filterStrategies.value.includes(s) ? 'check-square' : 'square'" class="text-[10px]" :class="f.filterStrategies.value.includes(s) ? 'text-tv-blue' : 'text-tv-muted'" />
                 <span :class="f.filterStrategies.value.includes(s) ? 'text-tv-text' : 'text-tv-muted'">{{ s }}</span>
               </button>
             </div>
@@ -162,7 +163,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
                   :class="f.filterStrategies.value.length ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
             Strategy
             <span v-if="f.filterStrategies.value.length" class="bg-tv-blue text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ f.filterStrategies.value.length }}</span>
-            <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+            <BaseIcon name="chevron-down" class="text-[10px] ml-0.5" />
           </button>
           <div v-if="f.strategyDropdownOpen.value"
                class="fixed mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 min-w-[200px] max-h-64 overflow-y-auto">
@@ -174,7 +175,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
             <button v-for="s in allStrategyNames" :key="s"
                     @click="h.toggleStrategyPick(s)"
                     class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
-              <i class="fas text-[10px]" :class="f.filterStrategies.value.includes(s) ? 'fa-check-square text-tv-blue' : 'fa-square text-tv-muted'"></i>
+              <BaseIcon :name="f.filterStrategies.value.includes(s) ? 'check-square' : 'square'" class="text-[10px]" :class="f.filterStrategies.value.includes(s) ? 'text-tv-blue' : 'text-tv-muted'" />
               <span :class="f.filterStrategies.value.includes(s) ? 'text-tv-text' : 'text-tv-muted'">{{ s }}</span>
             </button>
           </div>

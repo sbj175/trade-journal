@@ -3,6 +3,7 @@ import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import { EQUITIES_COLS_CLASS } from '@/lib/equitiesDesktopCols'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 defineProps({
   item: Object,
@@ -23,9 +24,7 @@ defineEmits(['toggle-expanded'])
 
       <!-- Chevron -->
       <div>
-        <i v-if="item.equityLegs.length > 1"
-           class="fas fa-chevron-right text-tv-muted text-xs transition-transform duration-150"
-           :class="{ 'rotate-90': expandedRows[item.groupId] }"></i>
+        <BaseIcon v-if="item.equityLegs.length > 1" name="chevron-right" size="xs" class="text-tv-muted transition-transform duration-150" :class="{ 'rotate-90': expandedRows[item.groupId] }" />
       </div>
 
       <!-- Symbol + badges -->

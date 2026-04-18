@@ -1,4 +1,7 @@
 <script setup>
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
+
 defineProps({ state: Object })
 </script>
 
@@ -6,13 +9,13 @@ defineProps({ state: Object })
   <div>
     <div class="mb-6">
       <h2 class="text-xl font-semibold text-tv-text mb-1">
-        <i class="fas fa-tags mr-2 text-tv-blue"></i>Tags
+        <BaseIcon name="tags" class="mr-2 text-tv-blue" />Tags
       </h2>
       <p class="text-tv-muted text-sm">Manage tags used to organize your position groups</p>
     </div>
 
-    <div class="bg-tv-bg border border-tv-border rounded p-3 text-sm text-tv-muted mb-5">
-      <i class="fas fa-info-circle mr-1 text-tv-blue"></i>
+    <div class="bg-tv-bg border border-tv-border rounded p-3 text-sm text-tv-muted mb-5 inline-flex items-start gap-1 w-full">
+      <BaseIcon name="info-circle" class="text-tv-blue mt-0.5 shrink-0" />
       Tags are created from the Ledger or Positions page. Use this section to rename, recolor, or delete existing tags.
     </div>
 
@@ -26,14 +29,10 @@ defineProps({ state: Object })
           <span class="text-tv-muted text-xs bg-tv-bg border border-tv-border rounded px-2 py-0.5">
             {{ tag.group_count }} {{ tag.group_count === 1 ? 'position' : 'positions' }}
           </span>
-          <button @click="state.startEditTag(tag)"
-                  class="text-tv-muted hover:text-tv-blue text-sm p-1" title="Edit tag">
-            <i class="fas fa-pen"></i>
-          </button>
-          <button @click="state.deleteTag(tag)" :disabled="state.deletingTagId.value === tag.id"
-                  class="text-tv-muted hover:text-tv-red text-sm p-1 disabled:opacity-50" title="Delete tag">
-            <i :class="state.deletingTagId.value === tag.id ? 'fas fa-spinner fa-spin' : 'fas fa-trash-alt'"></i>
-          </button>
+          <BaseButton variant="ghost" size="sm" icon="pen" @click="state.startEditTag(tag)" title="Edit tag" class="hover:text-tv-blue" />
+          <BaseButton variant="ghost" size="sm" @click="state.deleteTag(tag)" :disabled="state.deletingTagId.value === tag.id" :loading="state.deletingTagId.value === tag.id" title="Delete tag" class="hover:text-tv-red">
+            <template #icon><BaseIcon name="trash-alt" /></template>
+          </BaseButton>
         </template>
         <template v-else>
           <input type="color" v-model="state.editColor.value"
@@ -42,20 +41,14 @@ defineProps({ state: Object })
           <input type="text" v-model="state.editName.value"
                  class="flex-1 bg-tv-bg border border-tv-border text-tv-text px-3 py-1.5 rounded text-sm focus:outline-none focus:border-tv-blue"
                  @keyup.enter="state.saveTag()" @keyup.escape="state.cancelEditTag()">
-          <button @click="state.saveTag()"
-                  class="bg-tv-blue hover:bg-tv-blue/80 text-white px-3 py-1.5 rounded text-sm">
-            <i class="fas fa-check mr-1"></i>Save
-          </button>
-          <button @click="state.cancelEditTag()"
-                  class="text-tv-muted hover:text-tv-text border border-tv-border px-3 py-1.5 rounded text-sm">
-            Cancel
-          </button>
+          <BaseButton variant="primary" size="sm" icon="check" @click="state.saveTag()">Save</BaseButton>
+          <BaseButton variant="secondary" size="sm" @click="state.cancelEditTag()">Cancel</BaseButton>
         </template>
       </div>
     </div>
 
     <div v-else class="bg-tv-panel border border-tv-border rounded p-8 text-center">
-      <i class="fas fa-tags text-tv-muted text-3xl mb-3"></i>
+      <BaseIcon name="tags" class="text-tv-muted text-3xl mb-3 block" />
       <p class="text-tv-muted text-sm">No tags yet. Create tags from the Ledger or Positions page.</p>
     </div>
   </div>

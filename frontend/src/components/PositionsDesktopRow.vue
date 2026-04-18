@@ -4,6 +4,8 @@ import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constan
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import PositionsExpandedPanel from '@/components/PositionsExpandedPanel.vue'
 import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 const props = defineProps({
   group: Object,
@@ -31,8 +33,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
 
         <!-- Chevron -->
         <div>
-          <i class="fas fa-chevron-right text-tv-muted transition-transform duration-200"
-             :class="{ 'rotate-90': expandedRows.has(group.groupKey) }"></i>
+          <BaseIcon name="chevron-right" class="text-tv-muted transition-transform duration-200" :class="{ 'rotate-90': expandedRows.has(group.groupKey) }" />
         </div>
 
         <!-- Symbol -->
@@ -65,7 +66,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
              @click.stop
              class="inline-flex items-center justify-center w-5 h-5 text-tv-muted hover:text-tv-blue transition-colors"
              title="View in Ledger">
-            <i class="fas fa-book text-[11px]"></i>
+            <BaseIcon name="book" class="text-[11px]" />
           </a>
         </div>
 
@@ -111,8 +112,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
 
         <!-- Note indicator -->
         <div class="flex items-center justify-center">
-          <i class="fas fa-sticky-note text-tv-amber text-sm"
-             v-show="notesState.getPositionComment(group)" title="Has notes"></i>
+          <BaseIcon name="sticky-note" size="sm" class="text-tv-amber" v-show="notesState.getPositionComment(group)" title="Has notes" />
         </div>
 
         <!-- Tags / Roll badges -->
@@ -161,7 +161,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
               <button v-if="tagsState.tagSearch.value.trim() && !tagsState.filteredTagSuggestions.value.find(t => t.name.toLowerCase() === tagsState.tagSearch.value.trim().toLowerCase())"
                       @click="tagsState.addTagToGroup(group, tagsState.tagSearch.value.trim()); tagsState.closeTagPopover()"
                       class="flex items-center gap-1.5 w-full text-left px-2 py-1 text-xs text-tv-blue hover:bg-tv-panel rounded">
-                <i class="fas fa-plus text-[8px]"></i>
+                <BaseIcon name="plus" class="text-[8px]" />
                 <span>Create "{{ tagsState.tagSearch.value.trim() }}"</span>
               </button>
             </div>
@@ -186,7 +186,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
         <button @click.stop="$emit('open-roll-chain', group)"
                 class="text-[11px] px-2.5 py-1 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-4 font-medium transition-colors"
                 title="Rolls detected — click to see the full chain">
-          <i class="fas fa-link text-[9px] mr-0.5"></i>{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
+          <BaseIcon name="link" class="text-[9px] mr-0.5" />{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
         </button>
       </div>
     </div>

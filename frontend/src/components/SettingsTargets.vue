@@ -1,4 +1,7 @@
 <script setup>
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
+
 defineProps({ state: Object })
 </script>
 
@@ -7,27 +10,26 @@ defineProps({ state: Object })
     <div class="mb-6 flex items-start justify-between">
       <div>
         <h2 class="text-xl font-semibold text-tv-text mb-1">
-          <i class="fas fa-bullseye mr-2 text-tv-blue"></i>Strategy Targets
+          <BaseIcon name="bullseye" class="mr-2 text-tv-blue" />Strategy Targets
         </h2>
         <p class="text-tv-muted text-sm">Configure profit and loss targets for each strategy type</p>
       </div>
-      <button @click="state.resetToDefaults()"
-              class="bg-tv-bg hover:bg-tv-border text-tv-muted hover:text-tv-text border border-tv-border px-4 py-2 text-sm rounded">
-        <i class="fas fa-rotate-left mr-1"></i>Reset to Defaults
-      </button>
+      <BaseButton variant="secondary" size="md" icon="rotate-left" @click="state.resetToDefaults()">
+        Reset to Defaults
+      </BaseButton>
     </div>
 
     <template v-for="category in [
-      { key: 'credit', label: 'Credit Strategies', desc: 'Strategies where you collect premium upfront', icon: 'fa-arrow-down', color: 'text-tv-green', items: state.creditStrategies.value },
-      { key: 'debit', label: 'Debit Strategies', desc: 'Strategies where you pay premium upfront', icon: 'fa-arrow-up', color: 'text-tv-blue', items: state.debitStrategies.value },
-      { key: 'mixed', label: 'Mixed Strategies', desc: 'Strategies combining credit and debit components', icon: 'fa-exchange-alt', color: 'text-tv-muted', items: state.mixedStrategies.value },
-      { key: 'equity', label: 'Equity', desc: 'Stock/share positions', icon: 'fa-chart-bar', color: 'text-tv-muted', items: state.equityStrategies.value },
+      { key: 'credit', label: 'Credit Strategies', desc: 'Strategies where you collect premium upfront', icon: 'arrow-down', color: 'text-tv-green', items: state.creditStrategies.value },
+      { key: 'debit', label: 'Debit Strategies', desc: 'Strategies where you pay premium upfront', icon: 'arrow-up', color: 'text-tv-blue', items: state.debitStrategies.value },
+      { key: 'mixed', label: 'Mixed Strategies', desc: 'Strategies combining credit and debit components', icon: 'exchange-alt', color: 'text-tv-muted', items: state.mixedStrategies.value },
+      { key: 'equity', label: 'Equity', desc: 'Stock/share positions', icon: 'chart-bar', color: 'text-tv-muted', items: state.equityStrategies.value },
     ]" :key="category.key">
       <div v-if="category.items.length > 0"
            class="bg-tv-panel border border-tv-border rounded mb-5" @input="state.debouncedSaveTargets()">
         <div class="px-4 py-3 border-b border-tv-border">
           <h3 class="text-sm font-semibold text-tv-text">
-            <i class="fas mr-2" :class="[category.icon, category.color]"></i>{{ category.label }}
+            <BaseIcon :name="category.icon" class="mr-2" :class="category.color" />{{ category.label }}
           </h3>
           <p class="text-tv-muted text-xs mt-0.5">{{ category.desc }}</p>
         </div>
@@ -58,7 +60,7 @@ defineProps({ state: Object })
     </template>
 
     <div class="bg-tv-panel border border-tv-border rounded p-4 text-sm text-tv-muted">
-      <p class="font-medium text-tv-text mb-2"><i class="fas fa-info-circle mr-1 text-tv-blue"></i>How targets work</p>
+      <p class="font-medium text-tv-text mb-2 inline-flex items-center gap-1"><BaseIcon name="info-circle" class="text-tv-blue" />How targets work</p>
       <ul class="list-disc list-inside space-y-1">
         <li><strong class="text-tv-green">Profit Target %</strong> — Percentage of max profit at which to consider closing for a win</li>
         <li><strong class="text-tv-red">Loss Limit %</strong> — Percentage of max loss at which to consider closing to limit damage</li>

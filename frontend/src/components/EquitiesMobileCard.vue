@@ -2,6 +2,7 @@
 import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 defineProps({
   item: Object,
@@ -35,9 +36,7 @@ defineEmits(['toggle-expanded'])
         <span class="ml-auto text-sm">
           <StreamingPrice :quote="item.underlyingQuote" />
         </span>
-        <i v-if="item.equityLegs.length > 1"
-           class="fas fa-chevron-right text-tv-muted text-[11px] transition-transform duration-150"
-           :class="{ 'rotate-90': expandedRows[item.groupId] }"></i>
+        <BaseIcon v-if="item.equityLegs.length > 1" name="chevron-right" class="text-tv-muted text-[11px] transition-transform duration-150" :class="{ 'rotate-90': expandedRows[item.groupId] }" />
       </div>
 
       <!-- Shares + P&L row -->

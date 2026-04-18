@@ -6,6 +6,8 @@ import {
   sortedLegs,
 } from '@/composables/usePositionsDisplay'
 import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 defineProps({
   group: Object,
@@ -81,8 +83,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded'])
             IVR {{ group.ivr }}
           </span>
         </div>
-        <i class="fas fa-chevron-right text-tv-muted/30 text-xs transition-transform duration-200"
-           :class="{ 'rotate-90': expandedRows.has(group.groupKey) }"></i>
+        <BaseIcon name="chevron-right" size="xs" class="text-tv-muted/30 transition-transform duration-200" :class="{ 'rotate-90': expandedRows.has(group.groupKey) }" />
       </div>
 
       <!-- Row 3: Cost / Net Liq -->
@@ -111,7 +112,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded'])
         </span>
         <button @click.stop="$emit('open-roll-chain', group)"
                 class="text-xs px-2.5 py-1 rounded-full bg-tv-blue text-white active:bg-tv-blue/80 cursor-pointer font-medium min-h-[32px]">
-          <i class="fas fa-link text-[9px] mr-0.5"></i>{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
+          <BaseIcon name="link" class="text-[9px] mr-0.5" />{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
         </button>
       </div>
 
@@ -157,11 +158,11 @@ defineEmits(['open-roll-chain', 'toggle-expanded'])
       </div>
       <div class="flex items-center gap-3 mt-2 text-xs">
         <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
-           class="text-tv-blue hover:underline">
-          <i class="fas fa-book mr-1"></i>Ledger
+           class="text-tv-blue hover:underline inline-flex items-center gap-1">
+          <BaseIcon name="book" />Ledger
         </a>
-        <span v-if="notesState.getPositionComment(group)" class="text-tv-amber">
-          <i class="fas fa-sticky-note mr-1"></i>Has notes
+        <span v-if="notesState.getPositionComment(group)" class="text-tv-amber inline-flex items-center gap-1">
+          <BaseIcon name="sticky-note" />Has notes
         </span>
       </div>
     </div>

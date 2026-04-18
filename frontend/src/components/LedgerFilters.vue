@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import DateFilter from '@/components/DateFilter.vue'
 import { DEFAULT_TAG_COLOR } from '@/lib/constants'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 const props = defineProps({
   filterState: Object,
@@ -53,7 +54,7 @@ const h = props.handlers
           <button v-show="f.filterUnderlying.value"
                   @click="h.clearSymbolFilter()"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text">
-            <i class="fas fa-times-circle"></i>
+            <BaseIcon name="times-circle" />
           </button>
         </div>
         <div class="w-full">
@@ -79,7 +80,7 @@ const h = props.handlers
             <button @click="f.filterRollsOnly.value = !f.filterRollsOnly.value; h.applyFilters()"
                     :class="f.filterRollsOnly.value ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                     class="px-3 py-1.5 text-sm border rounded transition-colors flex items-center gap-1.5">
-              <i class="fas fa-link text-xs"></i>
+              <BaseIcon name="link" size="xs" />
               Rolls
             </button>
           </div>
@@ -134,7 +135,7 @@ const h = props.handlers
                 <span>Strategy</span>
                 <span v-if="f.filterStrategy.value.length" class="bg-tv-blue text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ f.filterStrategy.value.length }}</span>
               </span>
-              <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+              <BaseIcon name="chevron-down" class="text-[10px] ml-0.5" />
             </button>
             <div v-if="strategyDropdownOpen"
                  class="mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 w-full max-h-64 overflow-y-auto">
@@ -146,7 +147,7 @@ const h = props.handlers
               <button v-for="s in uniqueStrategies" :key="s"
                       @click="h.toggleStrategyFilter(s)"
                       class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
-                <i class="fas text-[10px]" :class="f.filterStrategy.value.includes(s) ? 'fa-check-square text-tv-blue' : 'fa-square text-tv-muted'"></i>
+                <BaseIcon :name="f.filterStrategy.value.includes(s) ? 'check-square' : 'square'" class="text-[10px]" :class="f.filterStrategy.value.includes(s) ? 'text-tv-blue' : 'text-tv-muted'" />
                 <span :class="f.filterStrategy.value.includes(s) ? 'text-tv-text' : 'text-tv-muted'">{{ s }}</span>
               </button>
               <div v-if="uniqueStrategies.length === 0" class="px-3 py-2 text-sm text-tv-muted">No strategies</div>
@@ -161,7 +162,7 @@ const h = props.handlers
                 <span>Tags</span>
                 <span v-if="f.filterTagIds.value.length" class="bg-tv-purple text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ f.filterTagIds.value.length }}</span>
               </span>
-              <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+              <BaseIcon name="chevron-down" class="text-[10px] ml-0.5" />
             </button>
             <div v-if="tagDropdownOpen"
                  class="mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 w-full max-h-64 overflow-y-auto">
@@ -173,7 +174,7 @@ const h = props.handlers
               <button v-for="tag in availableTags" :key="tag.id"
                       @click="h.toggleTagFilter(tag.id)"
                       class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
-                <i class="fas text-[10px]" :class="f.filterTagIds.value.includes(tag.id) ? 'fa-check-square text-tv-purple' : 'fa-square text-tv-muted'"></i>
+                <BaseIcon :name="f.filterTagIds.value.includes(tag.id) ? 'check-square' : 'square'" class="text-[10px]" :class="f.filterTagIds.value.includes(tag.id) ? 'text-tv-purple' : 'text-tv-muted'" />
                 <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || DEFAULT_TAG_COLOR }"></span>
                 <span :class="f.filterTagIds.value.includes(tag.id) ? 'text-tv-text' : 'text-tv-muted'">{{ tag.name }}</span>
               </button>
@@ -200,7 +201,7 @@ const h = props.handlers
           <button v-show="f.filterUnderlying.value"
                   @click="h.clearSymbolFilter()"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-tv-muted hover:text-tv-text">
-            <i class="fas fa-times-circle"></i>
+            <BaseIcon name="times-circle" />
           </button>
         </div>
         <DateFilter ref="dateFilterRef" storage-key="ledger_dateFilter" default-preset="Last 30 Days" @update="h.onDateFilterUpdate" />
@@ -262,7 +263,7 @@ const h = props.handlers
         <button @click="f.filterRollsOnly.value = !f.filterRollsOnly.value; h.applyFilters()"
                 :class="f.filterRollsOnly.value ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'"
                 class="px-3 py-1.5 text-sm border rounded transition-colors flex items-center gap-1.5">
-          <i class="fas fa-link text-xs"></i>
+          <BaseIcon name="link" size="xs" />
           Rolls
         </button>
 
@@ -274,7 +275,7 @@ const h = props.handlers
                   :class="f.filterStrategy.value.length ? 'bg-tv-blue/20 text-tv-blue border-tv-blue/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
             Strategy
             <span v-if="f.filterStrategy.value.length" class="bg-tv-blue text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ f.filterStrategy.value.length }}</span>
-            <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+            <BaseIcon name="chevron-down" class="text-[10px] ml-0.5" />
           </button>
           <div v-if="strategyDropdownOpen"
                class="fixed mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 min-w-[200px] max-h-64 overflow-y-auto">
@@ -286,7 +287,7 @@ const h = props.handlers
             <button v-for="s in uniqueStrategies" :key="s"
                     @click="h.toggleStrategyFilter(s)"
                     class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
-              <i class="fas text-[10px]" :class="f.filterStrategy.value.includes(s) ? 'fa-check-square text-tv-blue' : 'fa-square text-tv-muted'"></i>
+              <BaseIcon :name="f.filterStrategy.value.includes(s) ? 'check-square' : 'square'" class="text-[10px]" :class="f.filterStrategy.value.includes(s) ? 'text-tv-blue' : 'text-tv-muted'" />
               <span :class="f.filterStrategy.value.includes(s) ? 'text-tv-text' : 'text-tv-muted'">{{ s }}</span>
             </button>
             <div v-if="uniqueStrategies.length === 0" class="px-3 py-2 text-sm text-tv-muted">No strategies</div>
@@ -299,7 +300,7 @@ const h = props.handlers
                   :class="f.filterTagIds.value.length ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50' : 'bg-tv-bg text-tv-muted border-tv-border hover:text-tv-text'">
             Tags
             <span v-if="f.filterTagIds.value.length" class="bg-tv-purple text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ f.filterTagIds.value.length }}</span>
-            <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
+            <BaseIcon name="chevron-down" class="text-[10px] ml-0.5" />
           </button>
           <div v-if="tagDropdownOpen"
                class="fixed mt-1 bg-tv-panel border border-tv-border rounded shadow-lg z-[9999] py-1 min-w-[180px] max-h-64 overflow-y-auto">
@@ -311,7 +312,7 @@ const h = props.handlers
             <button v-for="tag in availableTags" :key="tag.id"
                     @click="h.toggleTagFilter(tag.id)"
                     class="w-full text-left px-3 py-1.5 text-sm hover:bg-tv-bg flex items-center gap-2">
-              <i class="fas text-[10px]" :class="f.filterTagIds.value.includes(tag.id) ? 'fa-check-square text-tv-purple' : 'fa-square text-tv-muted'"></i>
+              <BaseIcon :name="f.filterTagIds.value.includes(tag.id) ? 'check-square' : 'square'" class="text-[10px]" :class="f.filterTagIds.value.includes(tag.id) ? 'text-tv-purple' : 'text-tv-muted'" />
               <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: tag.color || DEFAULT_TAG_COLOR }"></span>
               <span :class="f.filterTagIds.value.includes(tag.id) ? 'text-tv-text' : 'text-tv-muted'">{{ tag.name }}</span>
             </button>
