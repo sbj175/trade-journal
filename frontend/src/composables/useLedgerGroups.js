@@ -3,7 +3,8 @@
  */
 import { ref, computed, nextTick } from 'vue'
 import { STRATEGY_CATEGORIES, accountSortOrder } from '@/lib/constants'
-import { groupInitialPremium } from '@/composables/useLedgerLots'
+import { groupInitialPremium, groupedOptionLegs, openEquityLots, equityAggregate } from '@/composables/useLedgerLots'
+import { gcd } from '@/lib/math'
 
 export function useLedgerGroups(Auth, state) {
   const {
@@ -180,6 +181,35 @@ export function useLedgerGroups(Auth, state) {
     })
 
     filteredGroups.value = filtered
+
+    for (const group of filteredGroups.value) {
+      group.initialPremium = groupInitialPremium(group)
+      const basis = Math.abs(group.initialPremium || 0)
+      group.returnPercent = basis > 0 ? ((group.realized_pnl || 0) / basis) * 100 : null
+      group.optionLegs = groupedOptionLegs(group)
+      group.equityAgg = equityAggregate(group)
+      group.hasEquityLots = openEquityLots(group).length > 0
+
+      const strikeLegs = group.optionLegs.filter(l => l.strike != null && l.instrument_type !== 'EQUITY')
+      if (strikeLegs.length > 0) {
+        const unique = [...new Set(strikeLegs.map(l => Number(l.strike)).filter(n => Number.isFinite(n)))]
+        unique.sort((a, b) => a - b)
+        group.strikes = unique.map(n => String(n)).join('/')
+      } else {
+        group.strikes = null
+      }
+
+      const optLegs = group.optionLegs.filter(l => l.instrument_type !== 'EQUITY')
+      if (optLegs.length > 0) {
+        const openOpts = optLegs.filter(l => l.status === 'OPEN')
+        const src = openOpts.length > 0 ? openOpts : optLegs
+        const quantities = src.map(l => Math.abs(l.totalQuantity)).filter(q => q > 0)
+        group.contractCount = quantities.length > 0 ? quantities.reduce((a, b) => gcd(a, b)) : null
+      } else {
+        group.contractCount = null
+      }
+    }
+
     computeStats()
   }
 
