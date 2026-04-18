@@ -29,8 +29,6 @@ const showMobileToolbar = ref(localStorage.getItem('toolbar_showMobileToolbar') 
   ? localStorage.getItem('toolbar_showMobileToolbar') === 'true'
   : getDefaultMobileToolbarOpen())
 const showBalances = ref(getDefaultCollapsedState('toolbar_showBalances'))
-const showFilters = ref(getDefaultCollapsedState('toolbar_showFilters'))
-
 function toggleMobileToolbar() {
   showMobileToolbar.value = !showMobileToolbar.value
   localStorage.setItem('toolbar_showMobileToolbar', showMobileToolbar.value)
@@ -39,11 +37,6 @@ function toggleMobileToolbar() {
 function toggleBalances() {
   showBalances.value = !showBalances.value
   localStorage.setItem('toolbar_showBalances', showBalances.value)
-}
-
-function toggleFilters() {
-  showFilters.value = !showFilters.value
-  localStorage.setItem('toolbar_showFilters', showFilters.value)
 }
 
 // Hide toolbar extras on settings/privacy/components
@@ -171,13 +164,6 @@ onUnmounted(() => {
                     :class="showBalances ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
                     title="Toggle account overview">
               <i class="fas fa-dollar-sign text-[11px]"></i>
-            </button>
-            <!-- Filters -->
-            <button @click="toggleFilters()"
-                    class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
-                    :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
-                    title="Toggle filters">
-              <i class="fas fa-filter text-[11px]"></i>
             </button>
             <!-- Sort (page-provided via Teleport) -->
             <div id="page-sort" class="relative"></div>
@@ -318,12 +304,6 @@ onUnmounted(() => {
                     title="Toggle account overview">
               <i class="fas fa-dollar-sign text-[10px] mr-1"></i>Overview
             </button>
-            <button @click="toggleFilters()"
-                    class="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
-                    :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border hover:bg-tv-border/30'"
-                    title="Toggle filters">
-              <i class="fas fa-filter text-[10px] mr-1"></i>Filters
-            </button>
           </div>
         </template>
       </div>
@@ -430,11 +410,6 @@ onUnmounted(() => {
     </div>
   </div>
 
-            <!-- Section 3: Page-specific filters (collapsible, animated, via Teleport target) -->
-          <div class="grid transition-[grid-template-rows] duration-200 ease-in-out"
-               :class="showFilters ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
-            <div class="overflow-hidden">
-              <div id="page-filters"></div>
-            </div>
-          </div>
+            <!-- Section 3: Page-specific filters (via Teleport target) -->
+          <div id="page-filters"></div>
 </template>
