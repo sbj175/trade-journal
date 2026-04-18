@@ -19,7 +19,8 @@ export const useSyncStore = defineStore('sync', () => {
         const n = data.new_transactions || 0
         const syms = data.symbols || []
         if (n > 0) {
-          syncSummary.value = `Imported ${n} transaction${n === 1 ? '' : 's'} on ${syms.join(', ')}`
+          const base = `Imported ${n} transaction${n === 1 ? '' : 's'}`
+          syncSummary.value = syms.length > 0 ? `${base} on ${syms.join(', ')}` : base
         } else {
           syncSummary.value = 'No new transactions'
         }
