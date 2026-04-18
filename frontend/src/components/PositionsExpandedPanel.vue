@@ -16,7 +16,7 @@ defineEmits(['toggle-roll-analysis-mode', 'open-roll-chain'])
 </script>
 
 <template>
-  <div class="bg-tv-bg border-t border-tv-border">
+  <div class="bg-tv-bg border-t border-tv-border pb-2">
     <div class="mx-4 my-3 p-3 bg-tv-panel rounded border border-tv-border font-mono">
       <div class="flex gap-4">
         <div class="flex-shrink-0 space-y-1">
