@@ -217,8 +217,8 @@ onMounted(async () => {
       <span class="text-tv-muted whitespace-nowrap">
         Closed: <span class="text-tv-text">{{ stats.closedCount }}</span>
       </span>
-      <span class="basis-full h-0 md:hidden"></span>
-      <span class="text-tv-muted whitespace-nowrap">
+      
+      <span class="text-tv-muted whitespace-nowrap md:relative md:bottom-[-2px]">
         Realized:
         <span :class="totalRealized > 0 ? 'text-tv-green' : totalRealized < 0 ? 'text-tv-red' : 'text-tv-text'">
           ${{ formatNumber(totalRealized) }}
@@ -227,7 +227,7 @@ onMounted(async () => {
           Sum of realized P&amp;L across every group in the current filter — including partial closes and rolls on still-open groups.
         </InfoPopover>
       </span>
-      <span class="text-tv-muted whitespace-nowrap">
+      <span class="text-tv-muted whitespace-nowrap md:relative md:bottom-[-2px]">
         Win:
         <span class="text-tv-text">{{ winRatePct != null ? formatNumber(winRatePct) + '%' : '\u2014' }}</span>
         <span v-if="winRatePct != null" class="text-tv-muted">({{ closedFilteredGroups.length }})</span>
@@ -235,7 +235,7 @@ onMounted(async () => {
           Percent of <strong>closed</strong> groups in the current filter with realized P&amp;L &gt; 0. The number in parentheses is how many closed groups went into the calculation.
         </InfoPopover>
       </span>
-      <span class="text-tv-muted whitespace-nowrap">
+      <span class="text-tv-muted whitespace-nowrap md:relative md:bottom-[-2px]">
         Wtd %:
         <span :class="weightedReturnPct > 0 ? 'text-tv-green' : weightedReturnPct < 0 ? 'text-tv-red' : 'text-tv-text'">
           {{ weightedReturnPct != null ? formatNumber(weightedReturnPct) + '%' : '\u2014' }}
