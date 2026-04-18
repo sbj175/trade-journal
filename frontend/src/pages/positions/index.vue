@@ -17,6 +17,8 @@ import PositionsDesktopHeader from '@/components/PositionsDesktopHeader.vue'
 import { formatDollar, dollarSizeClass } from '@/composables/usePositionsDisplay'
 import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
 
+const isActive = ref(true)
+
 function debounce(fn, ms) {
   let t
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms) }
@@ -179,6 +181,7 @@ onMounted(async () => {
 })
 
 onActivated(async () => {
+  isActive.value = true
   initializeWebSocket()
   requestLiveQuotes()
   const stale = Date.now() - lastPositionsFetchAt > 10_000
@@ -190,6 +193,7 @@ onActivated(async () => {
 })
 
 onDeactivated(() => {
+  isActive.value = false
   cleanupWebSocket()
   document.removeEventListener('click', onDocumentClick)
   document.removeEventListener('click', closeSortMenu)
@@ -204,7 +208,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to="#page-filters">
+  <Teleport v-if="isActive" to="#page-filters">
     <div class="bg-tv-panel border-b border-tv-border px-4 py-2.5 flex items-center gap-4 ">
       <!-- Symbol Filter -->
       <div class="relative w-full">
@@ -228,8 +232,7 @@ onUnmounted(() => {
     </div>
   </Teleport>
 
-  <!-- Mobile sort button + dropdown teleported next to the filter button -->
-  <Teleport to="#page-sort">
+  <Teleport v-if="isActive" to="#page-sort">
     <button @click="toggleSortMenu($event)"
             class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px] md:hidden"
             :class="showSortMenu ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
