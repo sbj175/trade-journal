@@ -456,7 +456,7 @@ export function usePositionsData(Auth) {
   }
 
   // --- Subtotals ---
-  function insertSubtotals(sorted) {
+  function insertSubtotals(enriched) {
     const result = []
     let currentKey = null
     let currentGroup = []
@@ -482,17 +482,17 @@ export function usePositionsData(Auth) {
         _childCount: currentGroup.length,
       }
       currentGroup.forEach(item => {
-        subtotal._subtotalCostBasis += getGroupCostBasis(item)
-        subtotal._subtotalNetLiq += getGroupNetLiqWithLiveQuotes(item)
-        subtotal._subtotalOpenPnL += getGroupOpenPnL(item)
-        subtotal._subtotalRealizedPnL += getGroupRealizedPnL(item)
-        subtotal._subtotalTotalPnL += getGroupTotalPnL(item)
+        subtotal._subtotalCostBasis += item.costBasis
+        subtotal._subtotalNetLiq += item.netLiq
+        subtotal._subtotalOpenPnL += item.openPnL
+        subtotal._subtotalRealizedPnL += item.realized_pnl || 0
+        subtotal._subtotalTotalPnL += (item.realized_pnl || 0) + item.openPnL
       })
       result.push(subtotal)
       result.push(...currentGroup)
     }
 
-    for (const item of sorted) {
+    for (const item of enriched) {
       const key = `${item.accountNumber}|${item.underlying}`
       if (key !== currentKey) {
         if (currentGroup.length > 0) flushGroup()
@@ -519,83 +519,80 @@ export function usePositionsData(Auth) {
   }
 
   // --- Computed ---
+  const _sortedGroups = computed(() => {
+    if (isLoading.value || !filteredItems.value || filteredItems.value.length === 0) return []
+    quoteUpdateCounter.value
+    return [...filteredItems.value].sort((a, b) => {
+      let aVal, bVal
+      switch (sortColumn.value) {
+        case 'underlying':
+          aVal = a.underlying.toLowerCase()
+          bVal = b.underlying.toLowerCase()
+          break
+        case 'ivr':
+          aVal = getUnderlyingIVR(a.underlying) ?? -1
+          bVal = getUnderlyingIVR(b.underlying) ?? -1
+          break
+        case 'price': {
+          const aQuote = underlyingQuotes.value[a.underlying]
+          const bQuote = underlyingQuotes.value[b.underlying]
+          aVal = aQuote?.price || 0
+          bVal = bQuote?.price || 0
+          break
+        }
+        case 'cost_basis':
+          aVal = getGroupCostBasis(a)
+          bVal = getGroupCostBasis(b)
+          break
+        case 'net_liq':
+          aVal = getGroupNetLiqWithLiveQuotes(a)
+          bVal = getGroupNetLiqWithLiveQuotes(b)
+          break
+        case 'pnl':
+        case 'total_pnl':
+          aVal = getGroupTotalPnL(a)
+          bVal = getGroupTotalPnL(b)
+          break
+        case 'realized_pnl':
+          aVal = a.realized_pnl || 0
+          bVal = b.realized_pnl || 0
+          break
+        case 'open_pnl':
+          aVal = getGroupOpenPnL(a)
+          bVal = getGroupOpenPnL(b)
+          break
+        case 'pnl_percent':
+          aVal = parseFloat(getGroupPnLPercent(a)) || 0
+          bVal = parseFloat(getGroupPnLPercent(b)) || 0
+          break
+        case 'days':
+          aVal = getGroupDaysOpen(a) || 0
+          bVal = getGroupDaysOpen(b) || 0
+          break
+        case 'dte':
+          aVal = getMinDTE(a) ?? 9999
+          bVal = getMinDTE(b) ?? 9999
+          break
+        case 'strategy':
+          aVal = getGroupStrategyLabel(a).toLowerCase()
+          bVal = getGroupStrategyLabel(b).toLowerCase()
+          break
+        default:
+          aVal = a.underlying.toLowerCase()
+          bVal = b.underlying.toLowerCase()
+      }
+      if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
+      return 0
+    })
+  })
+
   const groupedPositions = computed(() => {
     try {
-      if (isLoading.value || !filteredItems.value || filteredItems.value.length === 0) return []
+      const sorted = _sortedGroups.value
+      if (sorted.length === 0) return []
 
-      // Touch counter to ensure recompute on quote changes
-      quoteUpdateCounter.value
-
-      const sorted = [...filteredItems.value].sort((a, b) => {
-        let aVal, bVal
-
-        switch (sortColumn.value) {
-          case 'underlying':
-            aVal = a.underlying.toLowerCase()
-            bVal = b.underlying.toLowerCase()
-            break
-          case 'ivr':
-            aVal = getUnderlyingIVR(a.underlying) ?? -1
-            bVal = getUnderlyingIVR(b.underlying) ?? -1
-            break
-          case 'price': {
-            const aQuote = underlyingQuotes.value[a.underlying]
-            const bQuote = underlyingQuotes.value[b.underlying]
-            aVal = aQuote?.price || 0
-            bVal = bQuote?.price || 0
-            break
-          }
-          case 'cost_basis':
-            aVal = getGroupCostBasis(a)
-            bVal = getGroupCostBasis(b)
-            break
-          case 'net_liq':
-            aVal = getGroupNetLiqWithLiveQuotes(a)
-            bVal = getGroupNetLiqWithLiveQuotes(b)
-            break
-          case 'pnl':
-          case 'total_pnl':
-            aVal = getGroupTotalPnL(a)
-            bVal = getGroupTotalPnL(b)
-            break
-          case 'realized_pnl':
-            aVal = a.realized_pnl || 0
-            bVal = b.realized_pnl || 0
-            break
-          case 'open_pnl':
-            aVal = getGroupOpenPnL(a)
-            bVal = getGroupOpenPnL(b)
-            break
-          case 'pnl_percent':
-            aVal = parseFloat(getGroupPnLPercent(a)) || 0
-            bVal = parseFloat(getGroupPnLPercent(b)) || 0
-            break
-          case 'days':
-            aVal = getGroupDaysOpen(a) || 0
-            bVal = getGroupDaysOpen(b) || 0
-            break
-          case 'dte':
-            aVal = getMinDTE(a) ?? 9999
-            bVal = getMinDTE(b) ?? 9999
-            break
-          case 'strategy':
-            aVal = getGroupStrategyLabel(a).toLowerCase()
-            bVal = getGroupStrategyLabel(b).toLowerCase()
-            break
-          default:
-            aVal = a.underlying.toLowerCase()
-            bVal = b.underlying.toLowerCase()
-        }
-
-        if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
-        if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
-        return 0
-      })
-
-      // Pre-compute per-group display properties so templates read properties
-      // instead of calling the same functions multiple times per render cycle.
       sorted.forEach(group => {
-        if (group._isSubtotal) return
         group.strategyLabel = getGroupStrategyLabel(group)
         group.strikes = getGroupStrikes(group)
         group.positionCount = getPositionCount(group)
@@ -616,11 +613,7 @@ export function usePositionsData(Auth) {
         })
       })
 
-      // Insert subtotal rows when sorted by underlying
-      if (sortColumn.value === 'underlying') {
-        return insertSubtotals(sorted)
-      }
-      return sorted
+      return sortColumn.value === 'underlying' ? insertSubtotals(sorted) : sorted
     } catch (err) {
       console.error('groupedPositions failed:', err)
       return []
