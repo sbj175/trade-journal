@@ -59,6 +59,17 @@
   font-family: theme('fontFamily.sans');
 }
 
+/* Theme transition — only active during toggle (class added/removed by NavBar).
+   Scoped to the switch moment so normal hover/focus transitions are unaffected. */
+:root.theme-transitioning *,
+:root.theme-transitioning *::before,
+:root.theme-transitioning *::after {
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.12s ease !important;
+}
+
 body {
   background: theme('colors.tv.bg');
   color: theme('colors.tv.text');

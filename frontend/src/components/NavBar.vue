@@ -27,6 +27,7 @@ const mobileMenuOpen = ref(false)
 const isDark = ref(!document.documentElement.classList.contains('light'))
 
 function toggleTheme() {
+  document.documentElement.classList.add('theme-transitioning')
   isDark.value = !isDark.value
   if (isDark.value) {
     document.documentElement.classList.remove('light')
@@ -34,6 +35,7 @@ function toggleTheme() {
     document.documentElement.classList.add('light')
   }
   localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+  setTimeout(() => document.documentElement.classList.remove('theme-transitioning'), 200)
 }
 
 function isActiveParent(link) {
