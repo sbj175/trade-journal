@@ -5,31 +5,31 @@
  *   - tailwind.config.js  → generates utility classes (bg-tv-*, text-tv-*, etc.)
  *   - risk/App.vue        → ApexCharts configs (needs raw hex strings)
  *   - main.css            → via Tailwind theme() function
+ *
+ * Colors use CSS custom properties so dark/light themes work via class on <html>.
+ * The <alpha-value> placeholder enables Tailwind opacity modifiers (bg-tv-blue/50 etc).
+ * CSS vars are defined in styles/main.css as space-separated RGB channels.
  */
 
 // ---------------------------------------------------------------------------
-// Palette — "Deep Finance"
-// Deeper backgrounds for bolder contrast; vivid accents that pop.
+// Palette — CSS variable references (dark/light switched via :root.light)
 // ---------------------------------------------------------------------------
 
 export const colors = {
-  // Neutrals — deep layered dark with cool undertone
-  bg:       '#0b0f19',
-  panel:    '#141926',
-  row:      '#000000',   // data row background (positions, ledger, reports)
-  border:   '#1e2536',
-  hover:    '#283148',
-  text:     '#e6e9f0',
-  muted:    '#bfc5cd',
-
-  // Accents — bold and unmistakable
-  green:    '#00dc82',   // profit, positive values, long positions
-  red:      '#ff4757',   // loss, negative values, short positions
-  blue:     '#3b82f6',   // brand, interactive, links
-  amber:    '#f59e0b',   // warnings, DTE, gamma, expiration, order types
-  orange:   '#f97316',   // assignments, derived positions, severe warnings
-  cyan:     '#06b6d4',   // credit filter, informational highlights
-  purple:   '#9d7aff',   // vega, exercise, account badges, shares filter
+  bg:     'rgb(var(--tv-bg) / <alpha-value>)',
+  panel:  'rgb(var(--tv-panel) / <alpha-value>)',
+  row:    'rgb(var(--tv-row) / <alpha-value>)',
+  border: 'rgb(var(--tv-border) / <alpha-value>)',
+  hover:  'rgb(var(--tv-hover) / <alpha-value>)',
+  text:   'rgb(var(--tv-text) / <alpha-value>)',
+  muted:  'rgb(var(--tv-muted) / <alpha-value>)',
+  green:  'rgb(var(--tv-green) / <alpha-value>)',
+  red:    'rgb(var(--tv-red) / <alpha-value>)',
+  blue:   'rgb(var(--tv-blue) / <alpha-value>)',
+  amber:  'rgb(var(--tv-amber) / <alpha-value>)',
+  orange: 'rgb(var(--tv-orange) / <alpha-value>)',
+  cyan:   'rgb(var(--tv-cyan) / <alpha-value>)',
+  purple: 'rgb(var(--tv-purple) / <alpha-value>)',
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ export const fonts = {
 
 // ---------------------------------------------------------------------------
 // Chart-specific palette (ApexCharts needs raw hex, can't use CSS vars)
+// Dark theme values — charts are always dark-on-dark panel.
 // ---------------------------------------------------------------------------
 
 export const chart = {

@@ -24,11 +24,16 @@ const navLinks = computed(() => allNavLinks.filter(l => !l.enabled || l.enabled(
 
 const openDropdown = ref(null)
 const mobileMenuOpen = ref(false)
-const isDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
+const isDark = ref(!document.documentElement.classList.contains('light'))
 
 function toggleTheme() {
   isDark.value = !isDark.value
-  console.log('[theme] mode:', isDark.value ? 'dark' : 'light')
+  if (isDark.value) {
+    document.documentElement.classList.remove('light')
+  } else {
+    document.documentElement.classList.add('light')
+  }
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
 }
 
 function isActiveParent(link) {
@@ -67,7 +72,7 @@ watch(
             class="flex items-center min-w-0 gap-2.5"
             @click="closeMobileMenu"
           >
-            <img :src="'/static/logos/logo_mark_mono_transparent.png'" alt="OptionLedger" class="w-9 h-9 shrink-0" />
+            <img :src="'/static/logos/logo_mark_mono_transparent.png'" alt="OptionLedger" class="logo-mark w-9 h-9 shrink-0" />
             <span class="text-base sm:text-lg font-bold tracking-tight truncate">
               Option<span class="text-tv-blue">Ledger</span>
             </span>
