@@ -165,13 +165,6 @@ onUnmounted(() => {
                     title="Toggle account overview">
               <BaseIcon name="dollar-sign" class="text-[11px]" />
             </button>
-            <!-- Filters -->
-            <button @click="toggleFilters()"
-                    class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
-                    :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
-                    title="Toggle filters">
-              <BaseIcon name="filter" class="text-[11px]" />
-            </button>
             <!-- Sort (page-provided via Teleport) -->
             <div id="page-sort" class="relative"></div>
           </template>
@@ -307,12 +300,6 @@ onUnmounted(() => {
                     :class="showBalances ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border hover:bg-tv-border/30'"
                     title="Toggle account overview">
               <BaseIcon name="dollar-sign" class="text-[10px] mr-1" />Overview
-            </button>
-            <button @click="toggleFilters()"
-                    class="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
-                    :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border hover:bg-tv-border/30'"
-                    title="Toggle filters">
-              <BaseIcon name="filter" class="text-[10px] mr-1" />Filters
             </button>
           </div>
         </template>
