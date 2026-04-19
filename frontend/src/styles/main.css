@@ -7,11 +7,67 @@
 @tailwind utilities;
 
 /* =================================================================
+   Theme: CSS Custom Properties
+   Values are space-separated RGB channels so Tailwind opacity
+   modifiers (bg-tv-blue/50 etc.) compose correctly.
+   Dark is the default (:root); light overrides via :root.light.
+   ================================================================= */
+
+:root {
+  /* Neutrals */
+  --tv-bg:     11 15 25;        /* #0b0f19 */
+  --tv-panel:  20 25 38;        /* #141926 */
+  --tv-row:    0 0 0;           /* #000000 */
+  --tv-border: 30 37 54;        /* #1e2536 */
+  --tv-hover:  40 49 72;        /* #283148 */
+  --tv-text:   230 233 240;     /* #e6e9f0 */
+  --tv-muted:  191 197 205;     /* #bfc5cd */
+  /* Accents */
+  --tv-green:  0 220 130;       /* #00dc82 */
+  --tv-red:    255 71 87;       /* #ff4757 */
+  --tv-blue:   59 130 246;      /* #3b82f6 */
+  --tv-amber:  245 158 11;      /* #f59e0b */
+  --tv-orange: 249 115 22;      /* #f97316 */
+  --tv-cyan:   6 182 212;       /* #06b6d4 */
+  --tv-purple: 157 122 255;     /* #9d7aff */
+}
+
+:root.light {
+  /* Neutrals — warm linen layers */
+  --tv-bg:     245 239 232;     /* #f5efe8 — warm linen page */
+  --tv-panel:  253 250 246;     /* #fdfaf6 — warm white cards */
+  --tv-row:    240 233 224;     /* #f0e9e0 — warm near-linen table containers */
+  --tv-border: 221 211 196;     /* #ddd3c4 — warm tan borders */
+  --tv-hover:  232 221 208;     /* #e8ddd0 — warm hover surfaces */
+  --tv-text:   28 24 20;        /* #1c1814 — dark espresso */
+  --tv-muted:  122 112 104;     /* #7a7068 — warm gray-brown */
+  /* Accents — desaturated, warm-shifted, WCAG AA on #fdfaf6 */
+  --tv-green:  93 122 95;       /* #5d7a5f — dusty sage */
+  --tv-red:    158 80 80;       /* #9e5050 — muted terracotta */
+  --tv-blue:   74 104 152;      /* #4a6898 — slate blue */
+  --tv-amber:  158 112 48;      /* #9e7030 — warm ochre */
+  --tv-orange: 168 88 56;       /* #a85838 — burnt sienna */
+  --tv-cyan:   58 120 120;      /* #3a7878 — dusty teal */
+  --tv-purple: 112 80 160;      /* #7050a0 — dusty mauve */
+}
+
+/* =================================================================
    Base
    ================================================================= */
 
 * {
   font-family: theme('fontFamily.sans');
+}
+
+/* Theme transition — only active during toggle (class added/removed by NavBar).
+   Scoped to the switch moment so normal hover/focus transitions are unaffected. */
+:root.theme-transitioning *,
+:root.theme-transitioning *::before,
+:root.theme-transitioning *::after {
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.12s ease !important;
 }
 
 body {
@@ -90,6 +146,11 @@ input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
     cursor: pointer;
   }
 
+  /* Light mode: warm-muted chevron (#7a7068) */
+  :root.light select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7068' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
+
   /* --- Focus states for all form controls ----------------------- */
   select:focus,
   input:focus,
@@ -120,5 +181,10 @@ input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
   @keyframes pulse-glow {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
+  }
+
+  /* --- Logo mark: invert white→black in light mode -------------- */
+  :root.light .logo-mark {
+    filter: invert(1);
   }
 }

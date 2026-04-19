@@ -44,6 +44,12 @@ export function formatExpirationShort(expiration) {
   return `${months[date.getMonth()]} ${date.getDate()}`
 }
 
+export function pnlColorClass(value) {
+  if (value > 0) return 'text-tv-green'
+  if (value < 0) return 'text-tv-red'
+  return 'text-tv-muted'
+}
+
 export function calculateDTE(expiration) {
   if (!expiration) return 0
   const expDate = new Date(expiration + 'T00:00:00')

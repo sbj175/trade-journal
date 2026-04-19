@@ -2,11 +2,11 @@
 import { onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber } from '@/lib/formatters'
-import { formatDelta, shortNumber, getAccountSymbol as _getAccountSymbol } from './riskCalculations'
+import { formatDelta, shortNumber, getAccountSymbol as _getAccountSymbol } from '@/lib/riskCalculations'
 import { useAccountsStore } from '@/stores/accounts'
 import { useSyncStore } from '@/stores/sync'
-import { useRiskData } from './useRiskData'
-import { useRiskCharts } from './useRiskCharts'
+import { useRiskData } from '@/composables/useRiskData'
+import { useRiskCharts } from '@/composables/useRiskCharts'
 
 const Auth = useAuth()
 const accountsStore = useAccountsStore()
@@ -55,7 +55,7 @@ watch(() => syncStore.lastSyncTime, async (val) => {
 
 // ==================== LIFECYCLE ====================
 onMounted(async () => {
-  try { await ensureApexCharts() } catch (e) { console.warn('ApexCharts failed to load:', e) }
+  try { await ensureApexCharts() } catch (e) { }
   await fetchData()
   selectedAccount.value = accountsStore.selectedAccount
   connectWebSocket()

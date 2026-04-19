@@ -44,7 +44,6 @@ export const useAccountsStore = defineStore('accounts', () => {
       })
       loaded.value = true
     } catch (error) {
-      console.error('Error loading accounts:', error)
     }
   }
 

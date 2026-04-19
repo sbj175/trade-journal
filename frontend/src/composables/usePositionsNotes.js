@@ -34,7 +34,6 @@ export function usePositionsNotes(Auth, { allItems }) {
         positionComments.value = {}
       }
     } catch (err) {
-      console.error('Error loading position notes:', err)
       positionComments.value = {}
     }
     // One-time migration from localStorage
@@ -50,12 +49,11 @@ export function usePositionsNotes(Auth, { allItems }) {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ note: value })
-            }).catch(err => console.error('Migration save error:', err))
+            }).catch(() => {})
             migrated = true
           }
         }
         localStorage.removeItem('positionComments')
-        if (migrated) console.log('Migrated position notes from localStorage to DB')
       }
     } catch (e) { /* ignore migration errors */ }
   }
@@ -77,7 +75,7 @@ export function usePositionsNotes(Auth, { allItems }) {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ note: positionComments.value[oldChainKey] })
-          }).catch(err => console.error('Comment key migration error:', err))
+          }).catch(() => {})
         }
         if (positionComments.value[oldChainKey]) {
           delete positionComments.value[oldChainKey]
@@ -85,7 +83,7 @@ export function usePositionsNotes(Auth, { allItems }) {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ note: '' })
-          }).catch(err => console.error('Old key cleanup error:', err))
+          }).catch(() => {})
         }
       }
     } catch (e) { /* ignore migration errors */ }
@@ -116,7 +114,7 @@ export function usePositionsNotes(Auth, { allItems }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: value })
-      }).catch(err => console.error('Error saving position note:', err))
+      }).catch(() => {})
       delete _noteSaveTimers[key]
     }, 500)
   }
@@ -130,7 +128,7 @@ export function usePositionsNotes(Auth, { allItems }) {
     try {
       const resp = await Auth.authFetch('/api/tags')
       availableTags.value = await resp.json()
-    } catch (e) { console.error('Error loading tags:', e) }
+    } catch (e) { }
   }
 
   function openTagPopover(groupId, event) {
@@ -168,7 +166,7 @@ export function usePositionsNotes(Auth, { allItems }) {
       }
       await loadAvailableTags()
       tagSearch.value = ''
-    } catch (e) { console.error('Error adding tag:', e) }
+    } catch (e) { }
   }
 
   async function removeTagFromGroup(group, tagId, event) {
@@ -178,7 +176,7 @@ export function usePositionsNotes(Auth, { allItems }) {
         method: 'DELETE',
       })
       group.tags = (group.tags || []).filter(t => t.id !== tagId)
-    } catch (e) { console.error('Error removing tag:', e) }
+    } catch (e) { }
   }
 
   function handleTagInput(event, group) {

@@ -3,6 +3,8 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBackDismiss } from '@/composables/useBackDismiss'
 import { formatNumber, formatDate } from '@/lib/formatters'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIcon from '@/components/BaseIcon.vue'
 
 const Auth = useAuth()
 
@@ -79,21 +81,19 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
         <!-- Header -->
         <div class="px-5 py-4 flex items-center justify-between border-b border-tv-border/50">
           <span class="flex items-center gap-3">
-            <i class="fas fa-link text-tv-blue"></i>
+            <BaseIcon name="link" class="text-tv-blue" />
             <span class="text-tv-text font-semibold text-lg">Roll Chain</span>
             <span v-if="underlying" class="text-tv-muted text-base">&mdash; {{ underlying }}</span>
             <span v-if="chain && chain.chain.length" class="text-tv-muted text-base">
               {{ chain.chain[0].strategy_label || '' }}
             </span>
           </span>
-          <button @click="$emit('close')" class="text-tv-muted hover:text-tv-text text-lg w-8 h-8 flex items-center justify-center rounded hover:bg-tv-border/30 transition-colors">
-            <i class="fas fa-times"></i>
-          </button>
+          <BaseButton variant="ghost" size="md" icon="times" @click="$emit('close')" class="w-8 h-8 justify-center" />
         </div>
         <!-- Body -->
         <div class="overflow-y-auto flex-1">
           <div v-if="loading" class="px-5 py-8 text-tv-muted text-sm text-center">
-            <div class="spinner mx-auto mb-3" style="width: 24px; height: 24px; border-width: 2px;"></div>
+            <div class="spinner mx-auto mb-3 w-6 h-6 border-2"></div>
             Loading roll chain...
           </div>
           <div v-else-if="error" class="px-5 py-8 text-tv-red text-sm text-center">
@@ -158,8 +158,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
           <!-- Learn More -->
           <div class="border-t border-tv-border/30 mt-2 pt-2">
             <button @click="showLearnMore = !showLearnMore"
-                    class="text-xs text-tv-blue hover:text-tv-blue/80 transition-colors cursor-pointer">
-              <i class="fas fa-info-circle mr-1"></i>{{ showLearnMore ? 'Hide' : 'Learn more about roll detection' }}
+                    class="text-xs text-tv-blue hover:text-tv-blue/80 transition-colors cursor-pointer inline-flex items-center gap-1">
+              <BaseIcon name="info-circle" />{{ showLearnMore ? 'Hide' : 'Learn more about roll detection' }}
             </button>
             <div v-if="showLearnMore" class="mt-2 text-xs text-tv-muted leading-relaxed">
               <p>A <span class="text-tv-text font-medium">roll</span> is automatically detected when a position is closed and a new one is opened matching on:</p>

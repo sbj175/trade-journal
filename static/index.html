@@ -1,9 +1,22 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OptionLedger</title>
+
+    <!-- Theme init: must run before any rendering to prevent flash.
+         Dark is default (:root CSS vars); light applied via .light class. -->
+    <script>
+      (function() {
+        var saved = localStorage.getItem('theme');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (saved === 'light' || (!saved && !prefersDark)) {
+          document.documentElement.classList.add('light');
+        }
+      })();
+    </script>
+
     <link rel="icon" type="image/png" sizes="32x32" href="/static/logos/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/logos/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/logos/favicon-180.png">
@@ -19,7 +32,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/static/js/auth.js"></script>
 </head>
-<body class="min-h-screen tv-scrollbar" style="background:#0b0f19">
+<body class="min-h-screen tv-scrollbar">
     <div id="app"></div>
     <script type="module" src="/static/dist/app.js"></script>
 </body>

@@ -2,8 +2,9 @@
  * Group filtering, sorting, CRUD operations, notes, and tags.
  */
 import { ref, computed, nextTick } from 'vue'
-import { STRATEGY_CATEGORIES } from '@/lib/constants'
-import { groupInitialPremium } from './useLedgerLots'
+import { STRATEGY_CATEGORIES, accountSortOrder } from '@/lib/constants'
+import { groupInitialPremium, groupedOptionLegs, openEquityLots, equityAggregate } from '@/composables/useLedgerLots'
+import { gcd } from '@/lib/math'
 
 export function useLedgerGroups(Auth, state) {
   const {
@@ -45,19 +46,11 @@ export function useLedgerGroups(Auth, state) {
       const response = await Auth.authFetch('/api/accounts')
       const data = await response.json()
       const list = data.accounts || []
-      list.sort((a, b) => {
-        const getOrder = (name) => {
-          const n = (name || '').toUpperCase()
-          if (n.includes('ROTH')) return 1
-          if (n.includes('INDIVIDUAL')) return 2
-          if (n.includes('TRADITIONAL')) return 3
-          return 4
-        }
-        return getOrder(a.account_name) - getOrder(b.account_name)
-      })
+      list.sort((a, b) =>
+        accountSortOrder(a.account_name) - accountSortOrder(b.account_name)
+      )
       accounts.value = list
     } catch (error) {
-      console.error('Error loading accounts:', error)
     }
   }
 
@@ -72,7 +65,6 @@ export function useLedgerGroups(Auth, state) {
       groups.value = data.map(g => ({ ...g, expanded: false, _editingStrategy: false }))
       applyFilters()
     } catch (error) {
-      console.error('Error fetching ledger:', error)
     } finally {
       loading.value = false
     }
@@ -189,6 +181,35 @@ export function useLedgerGroups(Auth, state) {
     })
 
     filteredGroups.value = filtered
+
+    for (const group of filteredGroups.value) {
+      group.initialPremium = groupInitialPremium(group)
+      const basis = Math.abs(group.initialPremium || 0)
+      group.returnPercent = basis > 0 ? ((group.realized_pnl || 0) / basis) * 100 : null
+      group.optionLegs = groupedOptionLegs(group)
+      group.equityAgg = equityAggregate(group)
+      group.hasEquityLots = openEquityLots(group).length > 0
+
+      const strikeLegs = group.optionLegs.filter(l => l.strike != null && l.instrument_type !== 'EQUITY')
+      if (strikeLegs.length > 0) {
+        const unique = [...new Set(strikeLegs.map(l => Number(l.strike)).filter(n => Number.isFinite(n)))]
+        unique.sort((a, b) => a - b)
+        group.strikes = unique.map(n => String(n)).join('/')
+      } else {
+        group.strikes = null
+      }
+
+      const optLegs = group.optionLegs.filter(l => l.instrument_type !== 'EQUITY')
+      if (optLegs.length > 0) {
+        const openOpts = optLegs.filter(l => l.status === 'OPEN')
+        const src = openOpts.length > 0 ? openOpts : optLegs
+        const quantities = src.map(l => Math.abs(l.totalQuantity)).filter(q => q > 0)
+        group.contractCount = quantities.length > 0 ? quantities.reduce((a, b) => gcd(a, b)) : null
+      } else {
+        group.contractCount = null
+      }
+    }
+
     computeStats()
   }
 
@@ -306,7 +327,6 @@ export function useLedgerGroups(Auth, state) {
       })
       group.strategy_label = value
     } catch (error) {
-      console.error('Error updating strategy:', error)
     }
   }
 
@@ -350,7 +370,6 @@ export function useLedgerGroups(Auth, state) {
         groupNotes.value = data.notes || {}
       }
     } catch (error) {
-      console.error('Error loading notes:', error)
     }
   }
 
@@ -367,9 +386,7 @@ export function useLedgerGroups(Auth, state) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: value }),
-      }).then(res => {
-        if (!res.ok) console.error(`Failed to save group note (HTTP ${res.status})`)
-      }).catch(err => console.error('Error saving group note:', err))
+      }).catch(() => {})
       delete noteSaveTimers[key]
     }, 500)
   }
@@ -379,7 +396,7 @@ export function useLedgerGroups(Auth, state) {
     try {
       const resp = await Auth.authFetch('/api/tags')
       availableTags.value = await resp.json()
-    } catch (e) { console.error('Error loading tags:', e) }
+    } catch (e) { }
   }
 
   function openTagPopover(groupId, event) {
@@ -415,7 +432,7 @@ export function useLedgerGroups(Auth, state) {
       if (!group.tags.find(t => t.id === tag.id)) group.tags.push(tag)
       await loadAvailableTags()
       tagSearch.value = ''
-    } catch (e) { console.error('Error adding tag:', e) }
+    } catch (e) { }
   }
 
   async function removeTagFromGroup(group, tagId, event) {
@@ -423,7 +440,7 @@ export function useLedgerGroups(Auth, state) {
     try {
       await Auth.authFetch(`/api/ledger/groups/${group.group_id}/tags/${tagId}`, { method: 'DELETE' })
       group.tags = (group.tags || []).filter(t => t.id !== tagId)
-    } catch (e) { console.error('Error removing tag:', e) }
+    } catch (e) { }
   }
 
   function handleTagInput(event, group) {

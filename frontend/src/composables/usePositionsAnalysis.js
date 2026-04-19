@@ -4,7 +4,7 @@
  */
 import { formatNumber } from '@/lib/formatters'
 import { evaluateRules } from '@/lib/rules'
-import { getGroupStrategyLabel } from './usePositionsDisplay'
+import { getGroupStrategyLabel } from '@/composables/usePositionsDisplay'
 
 export function normalCDF(x) {
   const t = 1 / (1 + 0.2316419 * Math.abs(x))
@@ -204,7 +204,7 @@ export function getRollAnalysis(group, {
   const proximityToShort = ((Math.abs(underlyingPrice - shortStrike) / underlyingPrice) * 100).toFixed(1)
 
   // Strategy targets
-  const targets = strategyTargets[strategy] || {}
+  const targets = strategyTargets?.[strategy] || {}
   const profitTarget = targets.profit_target_pct || 50
   const lossLimit = targets.loss_target_pct || 100
 

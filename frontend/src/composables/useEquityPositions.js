@@ -5,7 +5,7 @@
 import { ref, computed } from 'vue'
 
 export function useEquityPositions(Auth, quoteAccessors) {
-  const { getQuotePrice, getMarketValue, getUnrealizedPnL, getPnLPercent, quoteUpdateCounter } = quoteAccessors
+  const { getQuote, getQuotePrice, getMarketValue, getUnrealizedPnL, getPnLPercent, getLotMarketValue, getLotPnL, quoteUpdateCounter } = quoteAccessors
 
   // --- State ---
   const allItems = ref([])
@@ -32,49 +32,45 @@ export function useEquityPositions(Auth, quoteAccessors) {
     return items
   })
 
-  const groupedPositions = computed(() => {
-    // eslint-disable-next-line no-unused-vars
-    const _ = quoteUpdateCounter.value
-
-    const sorted = [...filteredItems.value]
-    sorted.sort((a, b) => {
+  const _sortedGroups = computed(() => {
+    quoteUpdateCounter.value
+    return [...filteredItems.value].sort((a, b) => {
       let aVal, bVal
       switch (sortColumn.value) {
         case 'quantity':
-          aVal = a.quantity || 0
-          bVal = b.quantity || 0
-          break
+          aVal = a.quantity || 0; bVal = b.quantity || 0; break
         case 'avg_price':
-          aVal = a.avgPrice || 0
-          bVal = b.avgPrice || 0
-          break
+          aVal = a.avgPrice || 0; bVal = b.avgPrice || 0; break
         case 'cost_basis':
-          aVal = a.costBasis || 0
-          bVal = b.costBasis || 0
-          break
+          aVal = a.costBasis || 0; bVal = b.costBasis || 0; break
         case 'market_value':
-          aVal = getMarketValue(a)
-          bVal = getMarketValue(b)
-          break
+          aVal = getMarketValue(a); bVal = getMarketValue(b); break
         case 'pnl':
-          aVal = getUnrealizedPnL(a)
-          bVal = getUnrealizedPnL(b)
-          break
+          aVal = getUnrealizedPnL(a); bVal = getUnrealizedPnL(b); break
         case 'pnl_percent':
-          aVal = getPnLPercent(a)
-          bVal = getPnLPercent(b)
-          break
+          aVal = getPnLPercent(a); bVal = getPnLPercent(b); break
         case 'price':
-          aVal = getQuotePrice(a.underlying) || 0
-          bVal = getQuotePrice(b.underlying) || 0
-          break
+          aVal = getQuotePrice(a.underlying) || 0; bVal = getQuotePrice(b.underlying) || 0; break
         default:
-          aVal = (a.underlying || '').toLowerCase()
-          bVal = (b.underlying || '').toLowerCase()
+          aVal = (a.underlying || '').toLowerCase(); bVal = (b.underlying || '').toLowerCase()
       }
       if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
       if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
       return 0
+    })
+  })
+
+  const groupedPositions = computed(() => {
+    const sorted = _sortedGroups.value
+    sorted.forEach(item => {
+      item.marketValue = getMarketValue(item)
+      item.unrealizedPnL = getUnrealizedPnL(item)
+      item.pnlPercent = getPnLPercent(item)
+      item.underlyingQuote = getQuote(item.underlying)
+      item.equityLegs.forEach(leg => {
+        leg.lotMarketValue = getLotMarketValue(item, leg)
+        leg.lotPnL = getLotPnL(item, leg)
+      })
     })
     return sorted
   })
@@ -110,7 +106,7 @@ export function useEquityPositions(Auth, quoteAccessors) {
         }
         return getOrder(a.account_name) - getOrder(b.account_name)
       })
-    } catch (err) { console.error('Failed to load accounts:', err) }
+    } catch (err) { }
   }
 
   async function syncAndLoad() {
@@ -130,7 +126,6 @@ export function useEquityPositions(Auth, quoteAccessors) {
         }
       }
     } catch (err) {
-      console.error('Sync failed:', err)
     }
     await loadPositions()
   }
@@ -168,7 +163,6 @@ export function useEquityPositions(Auth, quoteAccessors) {
       }
       allItems.value = items
     } catch (err) {
-      console.error('Failed to load positions:', err)
       error.value = 'Failed to load positions'
     } finally {
       isLoading.value = false

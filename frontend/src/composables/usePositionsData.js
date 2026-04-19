@@ -3,10 +3,14 @@
  * Composable that manages the core reactive state for the Positions page.
  */
 import { ref, computed } from 'vue'
-import { buildOptionStratUrl, getGroupStrategyLabel } from './usePositionsDisplay'
-import { getRollAnalysis } from './usePositionsAnalysis'
+import { buildOptionStratUrl, getGroupStrategyLabel, getGroupStrikes, getPositionCount } from '@/composables/usePositionsDisplay'
+import { getRollAnalysis } from '@/composables/usePositionsAnalysis'
+import { accountSortOrder } from '@/lib/constants'
+import { useTargetsStore } from '@/stores/targets'
 
 export function usePositionsData(Auth) {
+  const targetsStore = useTargetsStore()
+
   // --- State ---
   const allChains = ref([])
   const allItems = ref([])
@@ -22,7 +26,6 @@ export function usePositionsData(Auth) {
   const liveQuotesActive = ref(false)
   const lastQuoteUpdate = ref(null)
   const syncSummary = ref(null)
-  const strategyTargets = ref({})
   const rollAlertSettings = ref({ enabled: true, profitTarget: true, lossLimit: true, lateStage: true, deltaSaturation: true, lowRewardToRisk: true })
   const rollAnalysisMode = ref(localStorage.getItem('rollAnalysisMode') || 'chain')
 
@@ -58,17 +61,10 @@ export function usePositionsData(Auth) {
     try {
       const response = await Auth.authFetch('/api/accounts')
       const data = await response.json()
-      accounts.value = (data.accounts || []).sort((a, b) => {
-        const getOrder = (name) => {
-          const n = (name || '').toUpperCase()
-          if (n.includes('ROTH')) return 1
-          if (n.includes('INDIVIDUAL')) return 2
-          if (n.includes('TRADITIONAL')) return 3
-          return 4
-        }
-        return getOrder(a.account_name) - getOrder(b.account_name)
-      })
-    } catch (err) { console.error('Failed to load accounts:', err) }
+      accounts.value = (data.accounts || []).sort((a, b) =>
+        accountSortOrder(a.account_name) - accountSortOrder(b.account_name)
+      )
+    } catch (err) { }
   }
 
   async function fetchPositions(includeSync = false, { migrateCommentKeysFn, loadCommentsFn } = {}) {
@@ -123,7 +119,6 @@ export function usePositionsData(Auth) {
       if (loadCommentsFn) await loadCommentsFn()
       applyFilters()
     } catch (err) {
-      console.error('Failed to load positions:', err)
       error.value = 'Failed to load positions'
     } finally {
       isLoading.value = false
@@ -152,7 +147,7 @@ export function usePositionsData(Auth) {
         lastQuoteUpdate.value = new Date().toLocaleTimeString()
         quoteUpdateCounter.value++
       }
-    } catch (err) { console.error('Error loading cached quotes:', err) }
+    } catch (err) { }
   }
 
   function collectSymbols() {
@@ -216,7 +211,7 @@ export function usePositionsData(Auth) {
         document.addEventListener('visibilitychange', handleVisibilityChange)
         visibilityListenerActive = true
       }
-    } catch (err) { console.error('WebSocket error:', err) }
+    } catch (err) { }
   }
 
   function requestLiveQuotes() {
@@ -461,7 +456,7 @@ export function usePositionsData(Auth) {
   }
 
   // --- Subtotals ---
-  function insertSubtotals(sorted) {
+  function insertSubtotals(enriched) {
     const result = []
     let currentKey = null
     let currentGroup = []
@@ -487,17 +482,17 @@ export function usePositionsData(Auth) {
         _childCount: currentGroup.length,
       }
       currentGroup.forEach(item => {
-        subtotal._subtotalCostBasis += getGroupCostBasis(item)
-        subtotal._subtotalNetLiq += getGroupNetLiqWithLiveQuotes(item)
-        subtotal._subtotalOpenPnL += getGroupOpenPnL(item)
-        subtotal._subtotalRealizedPnL += getGroupRealizedPnL(item)
-        subtotal._subtotalTotalPnL += getGroupTotalPnL(item)
+        subtotal._subtotalCostBasis += item.costBasis
+        subtotal._subtotalNetLiq += item.netLiq
+        subtotal._subtotalOpenPnL += item.openPnL
+        subtotal._subtotalRealizedPnL += item.realized_pnl || 0
+        subtotal._subtotalTotalPnL += (item.realized_pnl || 0) + item.openPnL
       })
       result.push(subtotal)
       result.push(...currentGroup)
     }
 
-    for (const item of sorted) {
+    for (const item of enriched) {
       const key = `${item.accountNumber}|${item.underlying}`
       if (key !== currentKey) {
         if (currentGroup.length > 0) flushGroup()
@@ -513,16 +508,7 @@ export function usePositionsData(Auth) {
 
   // --- Strategy Targets ---
   async function loadStrategyTargets() {
-    try {
-      const response = await Auth.authFetch('/api/settings/targets')
-      if (response.ok) {
-        const data = await response.json()
-        const list = Array.isArray(data) ? data : (data.targets || [])
-        const mapped = {}
-        list.forEach(t => { if (t.strategy_name) mapped[t.strategy_name] = t })
-        strategyTargets.value = mapped
-      }
-    } catch (err) { console.error('Failed to load strategy targets:', err) }
+    await targetsStore.load()
   }
 
   function loadRollAlertSettings() {
@@ -533,98 +519,103 @@ export function usePositionsData(Auth) {
   }
 
   // --- Computed ---
+  const _sortedGroups = computed(() => {
+    if (isLoading.value || !filteredItems.value || filteredItems.value.length === 0) return []
+    quoteUpdateCounter.value
+    return [...filteredItems.value].sort((a, b) => {
+      let aVal, bVal
+      switch (sortColumn.value) {
+        case 'underlying':
+          aVal = a.underlying.toLowerCase()
+          bVal = b.underlying.toLowerCase()
+          break
+        case 'ivr':
+          aVal = getUnderlyingIVR(a.underlying) ?? -1
+          bVal = getUnderlyingIVR(b.underlying) ?? -1
+          break
+        case 'price': {
+          const aQuote = underlyingQuotes.value[a.underlying]
+          const bQuote = underlyingQuotes.value[b.underlying]
+          aVal = aQuote?.price || 0
+          bVal = bQuote?.price || 0
+          break
+        }
+        case 'cost_basis':
+          aVal = getGroupCostBasis(a)
+          bVal = getGroupCostBasis(b)
+          break
+        case 'net_liq':
+          aVal = getGroupNetLiqWithLiveQuotes(a)
+          bVal = getGroupNetLiqWithLiveQuotes(b)
+          break
+        case 'pnl':
+        case 'total_pnl':
+          aVal = getGroupTotalPnL(a)
+          bVal = getGroupTotalPnL(b)
+          break
+        case 'realized_pnl':
+          aVal = a.realized_pnl || 0
+          bVal = b.realized_pnl || 0
+          break
+        case 'open_pnl':
+          aVal = getGroupOpenPnL(a)
+          bVal = getGroupOpenPnL(b)
+          break
+        case 'pnl_percent':
+          aVal = parseFloat(getGroupPnLPercent(a)) || 0
+          bVal = parseFloat(getGroupPnLPercent(b)) || 0
+          break
+        case 'days':
+          aVal = getGroupDaysOpen(a) || 0
+          bVal = getGroupDaysOpen(b) || 0
+          break
+        case 'dte':
+          aVal = getMinDTE(a) ?? 9999
+          bVal = getMinDTE(b) ?? 9999
+          break
+        case 'strategy':
+          aVal = getGroupStrategyLabel(a).toLowerCase()
+          bVal = getGroupStrategyLabel(b).toLowerCase()
+          break
+        default:
+          aVal = a.underlying.toLowerCase()
+          bVal = b.underlying.toLowerCase()
+      }
+      if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
+      return 0
+    })
+  })
+
   const groupedPositions = computed(() => {
     try {
-      if (isLoading.value || !filteredItems.value || filteredItems.value.length === 0) return []
+      const sorted = _sortedGroups.value
+      if (sorted.length === 0) return []
 
-      // Touch counter to ensure recompute on quote changes
-      quoteUpdateCounter.value
-
-      const sorted = [...filteredItems.value].sort((a, b) => {
-        let aVal, bVal
-
-        switch (sortColumn.value) {
-          case 'underlying':
-            aVal = a.underlying.toLowerCase()
-            bVal = b.underlying.toLowerCase()
-            break
-          case 'ivr':
-            aVal = getUnderlyingIVR(a.underlying) ?? -1
-            bVal = getUnderlyingIVR(b.underlying) ?? -1
-            break
-          case 'price': {
-            const aQuote = underlyingQuotes.value[a.underlying]
-            const bQuote = underlyingQuotes.value[b.underlying]
-            aVal = aQuote?.price || 0
-            bVal = bQuote?.price || 0
-            break
-          }
-          case 'cost_basis':
-            aVal = getGroupCostBasis(a)
-            bVal = getGroupCostBasis(b)
-            break
-          case 'net_liq':
-            aVal = getGroupNetLiqWithLiveQuotes(a)
-            bVal = getGroupNetLiqWithLiveQuotes(b)
-            break
-          case 'pnl':
-          case 'total_pnl':
-            aVal = getGroupTotalPnL(a)
-            bVal = getGroupTotalPnL(b)
-            break
-          case 'realized_pnl':
-            aVal = a.realized_pnl || 0
-            bVal = b.realized_pnl || 0
-            break
-          case 'open_pnl':
-            aVal = getGroupOpenPnL(a)
-            bVal = getGroupOpenPnL(b)
-            break
-          case 'pnl_percent':
-            aVal = parseFloat(getGroupPnLPercent(a)) || 0
-            bVal = parseFloat(getGroupPnLPercent(b)) || 0
-            break
-          case 'days':
-            aVal = getGroupDaysOpen(a) || 0
-            bVal = getGroupDaysOpen(b) || 0
-            break
-          case 'dte':
-            aVal = getMinDTE(a) ?? 9999
-            bVal = getMinDTE(b) ?? 9999
-            break
-          case 'strategy':
-            aVal = getGroupStrategyLabel(a).toLowerCase()
-            bVal = getGroupStrategyLabel(b).toLowerCase()
-            break
-          default:
-            aVal = a.underlying.toLowerCase()
-            bVal = b.underlying.toLowerCase()
-        }
-
-        if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
-        if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
-        return 0
-      })
-
-      // Attach roll analysis to each group for reactive badge display
       sorted.forEach(group => {
+        group.strategyLabel = getGroupStrategyLabel(group)
+        group.strikes = getGroupStrikes(group)
+        group.positionCount = getPositionCount(group)
+        group.costBasis = getGroupCostBasis(group)
+        group.minDTE = getMinDTE(group)
+        group.openPnL = getGroupOpenPnL(group)
+        group.pnlPercent = getGroupPnLPercent(group)
+        group.netLiq = getGroupNetLiqWithLiveQuotes(group)
+        group.ivr = getUnderlyingIVR(group.underlying)
+        group.underlyingQuote = getUnderlyingQuote(group.underlying)
         group.rollAnalysis = getRollAnalysis(group, {
           underlyingQuotes: underlyingQuotes.value,
           rollAlertSettings: rollAlertSettings.value,
           rollAnalysisMode: rollAnalysisMode.value,
-          strategyTargets: strategyTargets.value,
+          strategyTargets: targetsStore.targetsMap.value,
           getGroupOpenPnLFn: getGroupOpenPnL,
           getMinDTEFn: getMinDTE,
         })
       })
 
-      // Insert subtotal rows when sorted by underlying
-      if (sortColumn.value === 'underlying') {
-        return insertSubtotals(sorted)
-      }
-      return sorted
+      return sortColumn.value === 'underlying' ? insertSubtotals(sorted) : sorted
     } catch (err) {
-      console.error('Error in groupedPositions:', err)
+      console.error('groupedPositions failed:', err)
       return []
     }
   })
@@ -639,7 +630,7 @@ export function usePositionsData(Auth) {
     underlyingQuotes, quoteUpdateCounter,
     selectedAccount, selectedUnderlying,
     isLoading, isSyncing, error, liveQuotesActive, lastQuoteUpdate, syncSummary,
-    strategyTargets, rollAlertSettings, rollAnalysisMode,
+    strategyTargets: targetsStore.targetsMap, rollAlertSettings, rollAnalysisMode,
     sortColumn, sortDirection, expandedRows,
 
     // Computed

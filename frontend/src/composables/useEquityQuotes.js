@@ -81,7 +81,7 @@ export function useEquityQuotes(Auth, filteredItems) {
         lastQuoteUpdate.value = new Date().toLocaleTimeString()
         quoteUpdateCounter.value++
       }
-    } catch (err) { console.error('Error loading cached quotes:', err) }
+    } catch (err) { }
   }
 
   // --- WebSocket ---
@@ -123,7 +123,7 @@ export function useEquityQuotes(Auth, filteredItems) {
         }
       }
       ws.onerror = () => { liveQuotesActive.value = false }
-    } catch (err) { console.error('WebSocket error:', err) }
+    } catch (err) { }
   }
 
   function requestLiveQuotes() {

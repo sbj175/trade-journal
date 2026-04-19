@@ -27,7 +27,6 @@ export const useSyncStore = defineStore('sync', () => {
       }
       lastSyncTime.value = Date.now()
     } catch (err) {
-      console.error('Sync failed:', err)
       syncSummary.value = 'Sync failed'
     } finally {
       isSyncing.value = false

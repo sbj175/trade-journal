@@ -62,7 +62,7 @@ useBackDismiss(open, close)
     <button @click="toggle" type="button"
             class="text-tv-muted hover:text-tv-blue active:text-tv-blue inline-flex items-center justify-center w-4 h-4 leading-none"
             aria-label="More info">
-      <i class="fas fa-info-circle text-[11px]"></i>
+      <i class="fas fa-info-circle text-[11px] ml-1 relative bottom-4"></i>
     </button>
     <Teleport to="body">
       <div v-if="open"
