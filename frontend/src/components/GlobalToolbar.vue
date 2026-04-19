@@ -31,6 +31,8 @@ const showMobileToolbar = ref(localStorage.getItem('toolbar_showMobileToolbar') 
   ? localStorage.getItem('toolbar_showMobileToolbar') === 'true'
   : getDefaultMobileToolbarOpen())
 const showBalances = ref(getDefaultCollapsedState('toolbar_showBalances'))
+const showFilters = ref(getDefaultCollapsedState('toolbar_showFilters'))
+
 function toggleMobileToolbar() {
   showMobileToolbar.value = !showMobileToolbar.value
   localStorage.setItem('toolbar_showMobileToolbar', showMobileToolbar.value)
@@ -41,11 +43,21 @@ function toggleBalances() {
   localStorage.setItem('toolbar_showBalances', showBalances.value)
 }
 
+function toggleFilters() {
+  showFilters.value = !showFilters.value
+  localStorage.setItem('toolbar_showFilters', showFilters.value)
+}
+
 // Hide toolbar extras on settings/privacy/components
 const showToolbarExtras = computed(() => {
   const name = route.name
   return !['settings', 'privacy', 'components', 'position-detail'].includes(name)
 })
+
+// Positions pages render filters inline (always visible); other pages use the toggle.
+const isPositionsPage = computed(() =>
+  ['positions-options', 'positions-equities', 'position-detail'].includes(route.name)
+)
 
 // Account selector dropdown
 const acctDropdownMobile = ref(false)
@@ -164,6 +176,13 @@ onUnmounted(() => {
                     :class="showBalances ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
                     title="Toggle account overview">
               <BaseIcon name="dollar-sign" class="text-[11px]" />
+            </button>
+            <!-- Filters -->
+            <button v-if="!isPositionsPage" @click="toggleFilters()"
+                    class="text-xs px-3 py-2 rounded border font-medium transition-colors min-h-[44px] min-w-[44px]"
+                    :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border active:bg-tv-border/30'"
+                    title="Toggle filters">
+              <BaseIcon name="filter" class="text-[11px]" />
             </button>
             <!-- Sort (page-provided via Teleport) -->
             <div id="page-sort" class="relative"></div>
@@ -301,6 +320,12 @@ onUnmounted(() => {
                     title="Toggle account overview">
               <BaseIcon name="dollar-sign" class="text-[10px] mr-1" />Overview
             </button>
+            <button v-if="!isPositionsPage" @click="toggleFilters()"
+                    class="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
+                    :class="showFilters ? 'text-white bg-tv-blue border-tv-blue' : 'text-tv-text bg-tv-bg border-tv-border hover:bg-tv-border/30'"
+                    title="Toggle filters">
+              <BaseIcon name="filter" class="text-[10px] mr-1" />Filters
+            </button>
           </div>
         </template>
       </div>
@@ -406,5 +431,11 @@ onUnmounted(() => {
   </div>
 
             <!-- Section 3: Page-specific filters (via Teleport target) -->
-          <div id="page-filters"></div>
+          <!-- Section 3: Page-specific filters — always open on Positions, collapsible elsewhere -->
+          <div class="grid transition-[grid-template-rows] duration-200 ease-in-out"
+               :class="(isPositionsPage || showFilters) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+            <div class="overflow-hidden">
+              <div id="page-filters"></div>
+            </div>
+          </div>
 </template>
