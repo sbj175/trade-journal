@@ -67,7 +67,6 @@ const acctDropdownDesktopEl = ref(null)
 
 function selectAccount(accountNumber, dropdown) {
   accountsStore.selectedAccount = accountNumber
-  accountsStore.persistSelection()
   if (dropdown === 'mobile') acctDropdownMobile.value = false
   else acctDropdownDesktop.value = false
 }
