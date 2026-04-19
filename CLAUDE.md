@@ -10,7 +10,7 @@ A web application for options traders using Tastytrade. It imports, organizes, a
 
 **Data flow**:
 ```
-Tastytrade API → Import → Pipeline (7 stages) → Database → Web Interface
+Tastytrade API → Import → Pipeline (8 stages) → Database → Web Interface
 Live Market Data → WebSocket → Real-time Position Updates → Dashboard
 ```
 
@@ -23,11 +23,13 @@ docker compose up -d  # app (8000), admin (8002), postgres, redis
 Default route `/` redirects to `/positions/options`.
 
 ### Alembic Migrations
+
+The entrypoint runs migrations automatically on container start. To run them manually inside the running app container:
+
 ```bash
-venv/bin/alembic upgrade head                    # SQLite
-DATABASE_URL=postgresql://... venv/bin/alembic upgrade head  # PostgreSQL
-# For fresh DB created by create_all(), stamp baseline first:
-venv/bin/alembic stamp 880552b12e57 && venv/bin/alembic upgrade head
+docker compose exec app alembic upgrade head
+# Fresh DB path (the entrypoint falls back to this automatically if upgrade fails):
+docker compose exec app alembic stamp head
 ```
 
 ## Architecture
@@ -40,13 +42,14 @@ src/
 ├── schemas.py               # Pydantic schemas
 ├── sync_trades.py           # Legacy sync entrypoint
 ├── api/
-│   └── tastytrade_client.py # OAuth2 auth, async methods, quote caching (30s TTL)
+│   ├── tastytrade_client.py # OAuth2 auth, async methods, quote caching (30s TTL)
+│   └── tiingo_client.py     # Historical price + volatility data
 ├── auth/
 │   ├── jwt_validator.py     # Supabase JWT validation (HS256)
 │   └── user_provisioning.py # Auto-create User rows on first login
 ├── database/
 │   ├── engine.py            # init_engine(), dialect_insert(), dual-dialect support
-│   ├── models.py            # 22 SQLAlchemy models
+│   ├── models.py            # 24 SQLAlchemy models
 │   ├── db_manager.py        # DatabaseManager, get_session()
 │   └── tenant.py            # Multi-tenant filtering (user_id scoping, ContextVar)
 ├── models/
@@ -56,11 +59,13 @@ src/
 │   ├── pnl_calculator.py    # PnLCalculator — P&L with roll chain handling
 │   └── strategy_detector.py # StrategyDetector — option strategy identification
 ├── pipeline/
-│   ├── orchestrator.py      # 7-stage pipeline orchestration
+│   ├── orchestrator.py      # 8-stage pipeline orchestration
 │   ├── order_assembler.py   # Stage: assemble orders from transactions
+│   ├── roll_splitter.py     # Stage: split orders that mix opens and closes
 │   ├── position_ledger.py   # Stage: build position lots
-│   ├── pnl_events.py        # Stage: populate pnl_events fact table
 │   ├── group_manager.py     # Stage: create/update position groups
+│   ├── pnl_events.py        # Stage: populate pnl_events fact table
+│   ├── roll_chain_summary.py # Stage: populate roll_chain_summaries
 │   └── strategy_engine/     # Pattern-based strategy recognition
 │       ├── recognizer.py    # Main recognizer entry point
 │       ├── adapters.py      # Data adapters
@@ -84,29 +89,34 @@ src/
 ├── services/
 │   ├── ledger_service.py    # Ledger business logic
 │   ├── report_service.py    # Report/dashboard queries
-│   └── sync_service.py      # Sync orchestration
+│   ├── sync_service.py      # Sync orchestration
+│   ├── price_service.py     # Historical price fetch/cache
+│   └── volatility_service.py # IV/realized-vol computation
 └── utils/
     ├── auth_manager.py      # ConnectionManager singleton (per-user pool, LRU, 60-min TTL)
-    └── credential_encryption.py  # Fernet encrypt/decrypt
+    ├── credential_encryption.py  # Fernet encrypt/decrypt
+    └── premium.py           # Option premium helpers
 ```
 
-### Pipeline (7 stages)
+### Pipeline (8 stages)
 
 The sync pipeline (`src/pipeline/orchestrator.py`) processes data in order:
-1. **Fetch** — pull transactions from Tastytrade API
-2. **Save** — persist raw transactions to database
-3. **Detect strategies** — identify multi-leg strategies via `strategy_engine/`
-4. **Process orders** — group transactions into order chains
-5. **Create lots** — build position lots from orders (`LotManager`)
-6. **Process groups** — create/update position groups (`GroupManager`)
-7. **Populate pnl_events** — denormalized fact table for time-based P&L reporting
+1. **Fetch + save** — pull transactions from Tastytrade API and persist raw rows
+2. **Assemble orders** — group raw transactions into `Order` objects (`order_assembler.py`)
+3. **Split rolling orders** — orders that mix opens and closes get split (`roll_splitter.py`)
+4. **Lot processing** — build position lots from orders (`LotManager`, `position_ledger.py`); strategy detection runs here via `strategy_engine/`
+5. **Equity netting** — close out equity lot sides
+6. **Process groups** — create/update position groups (`GroupManager`, `group_manager.py`)
+7. **Populate pnl_events** — denormalized fact table for time-based P&L reporting (`pnl_events.py`)
+8. **Populate roll_chain_summaries** — per-chain aggregates (`roll_chain_summary.py`)
 
-### Database Models (22 tables)
+### Database Models (24 tables)
 
 **Core data**: Account, AccountBalance, Position, RawTransaction, SyncMetadata, QuoteCache (no user_id)
-**Order system**: OrderChain, OrderChainCache, OrderComment
+**Order system**: OrderChain, OrderChainCache, OrderComment, RollChainSummary
 **Position model**: PositionLot, LotClosing, PositionGroup, PositionGroupLot
 **P&L**: PnlEvent (denormalized fact table)
+**Market data**: HistoricalPrice, SymbolVolatilityMetric
 **User/auth**: User, UserCredential, WaitlistEntry
 **Config**: StrategyTarget, Tag, PositionGroupTag, PositionNote
 
@@ -116,31 +126,46 @@ Vue 3 SPA with Vue Router, Pinia stores, `<script setup>` composition API. Vite 
 
 ```
 frontend/src/
-├── main.js, App.vue          # SPA entry + root component
-├── router/index.js           # Routes + auth/tastytrade navigation guards
-├── stores/
-│   ├── accounts.js           # Selected account, account list (localStorage)
-│   └── auth.js               # Auth state, user email, feature flags
-├── composables/
-│   └── useAuth.js            # Auth client wrapper
-├── components/               # Shared components
-│   ├── NavBar.vue, AccountSelect.vue, DateFilter.vue
-│   ├── PositionsToolbar.vue, RollChainModal.vue, StreamingPrice.vue
-├── layouts/DefaultLayout.vue # Shared nav + <router-view>
-├── lib/                      # Shared utilities
-│   ├── constants.js, design-tokens.js, formatters.js, rules.js
-└── pages/                    # Each page has App.vue + composables
-    ├── positions/            # /positions/options — options with live quotes, WebSocket
-    ├── positions-equities/   # /positions/equities — equity positions
-    ├── ledger/               # /ledger — position groups, lots, group management
-    ├── reports/              # /reports — strategy breakdown, performance (pnl_events)
-    ├── risk/                 # /risk — portfolio Greeks, Black-Scholes, ApexCharts
-    ├── settings/             # /settings — OAuth, connection, tags, targets, preferences
-    ├── privacy/              # /privacy — privacy policy (no auth)
-    └── components/           # /components — design system showcase (no auth)
+├── main.js, App.vue           # SPA entry + root component
+├── router/index.js            # Routes + auth/tastytrade navigation guards
+├── stores/                    # Pinia stores
+│   ├── accounts.js            # Selected account, account list (localStorage)
+│   ├── auth.js                # Auth state, user email, feature flags
+│   ├── balances.js            # Account balance snapshots
+│   ├── market.js              # Market status, expanded popover
+│   ├── quotes.js              # Live option quote cache
+│   ├── sync.js                # Sync progress, toast summary
+│   └── targets.js             # Strategy targets (moved out of local state)
+├── composables/               # ~20 use*.js composables (useLedgerGroups, usePositionsData, useReportsFilters, etc.)
+├── components/                # Shared components
+│   ├── NavBar.vue             # Top nav, mobile drawer, theme toggle
+│   ├── GlobalToolbar.vue      # Sync, market, account selector, filter/overview toggles
+│   ├── BaseButton.vue, BaseIcon.vue  # Primitives
+│   ├── Detail.vue             # Position detail page component
+│   ├── RollChainModal.vue, StreamingPrice.vue, DateFilter.vue, InfoPopover.vue, ConfirmModal.vue
+│   ├── PositionsDesktopHeader/Row.vue, PositionsMobileCard.vue, PositionsExpandedPanel.vue, PositionsRollAnalysis.vue
+│   ├── EquitiesDesktopHeader/Row.vue, EquitiesMobileCard.vue
+│   ├── LedgerDesktopHeader/Row.vue, LedgerMobileCard.vue, LedgerFilters.vue
+│   ├── ReportsSummaryCards.vue, ReportsBreakdownTable.vue, ReportsFilters.vue
+│   └── Settings{Accounts,Alerts,Connection,Import,Privacy,Tags,Targets}.vue
+├── layouts/DefaultLayout.vue  # Shared nav + <router-view>
+├── lib/                       # Shared utilities
+│   ├── constants.js, design-tokens.js, formatters.js, rules.js, math.js
+│   ├── blackScholes.js, riskCalculations.js
+│   └── {positions,equities,ledger}DesktopCols.js  # CSS Grid column definitions
+├── styles/main.css            # Tailwind + theme CSS custom properties (dark default, :root.light override)
+└── pages/                     # Each page has index.vue + per-page logic
+    ├── positions/             # /positions/options — options with live quotes, WebSocket
+    ├── positions-equities/    # /positions/equities — equity positions
+    ├── ledger/                # /ledger — position groups, lots, group management
+    ├── reports/               # /reports — strategy breakdown, performance (pnl_events)
+    ├── risk/                  # /risk — portfolio Greeks, Black-Scholes, ApexCharts
+    ├── settings/              # /settings — OAuth, connection, tags, targets, preferences
+    ├── privacy/               # /privacy — privacy policy (no auth)
+    └── components/            # /components — design system showcase (no auth)
 ```
 
-**Per-page composables** extract logic from page components (e.g., `usePositionsData.js`, `useLedgerGroups.js`, `useReportsFilters.js`, `useRiskCharts.js`, `useSettingsConnection.js`).
+Page `index.vue` files are thin — they wire up composables, stores, and sub-components. Composables under `composables/` hold the data/logic (`usePositionsData`, `useLedgerGroups`, `useReportsFilters`, `useRiskCharts`, `useSettingsConnection`, etc.).
 
 **Standalone page**: Login (`static/login.html`) — Supabase auth via Alpine.js (only when auth enabled).
 
@@ -162,7 +187,7 @@ frontend/src/
 - **app** — FastAPI on port 8000
 - **admin** — admin_app.py on port 8002
 - **postgres** — PostgreSQL 16 with healthcheck
-- **redis** — Redis 7 with healthcheck
+- **redis** — Redis 7 with healthcheck (provisioned but not yet wired into code)
 
 ## Multi-Tenancy (user_id Scoping)
 
