@@ -14,8 +14,6 @@ import { getAccountSymbol as getAccountSymbolPure } from '@/composables/usePosit
 import PositionsMobileCard from '@/components/PositionsMobileCard.vue'
 import PositionsDesktopRow from '@/components/PositionsDesktopRow.vue'
 import PositionsDesktopHeader from '@/components/PositionsDesktopHeader.vue'
-import { formatDollar, dollarSizeClass } from '@/composables/usePositionsDisplay'
-import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
 
 const isActive = ref(true)
 
@@ -305,30 +303,7 @@ onUnmounted(() => {
     <!-- Position Groups -->
     <div class="divide-y divide-tv-border">
       <template v-for="group in groupedPositions" :key="group.groupKey">
-        <!-- Subtotal Row -->
-        <div v-if="group._isSubtotal"
-             :class="DESKTOP_COLS_CLASS"
-             class="h-12 bg-tv-blue/10 border-l-2 border-tv-blue">
-          <div></div>
-          <div class="font-bold text-base text-tv-text">{{ group.displayKey }}</div>
-          <div class="text-xs text-tv-muted">{{ group._childCount }} positions</div>
-          <div></div>
-          <div class="text-right font-medium"
-               :class="(group._subtotalCostBasis >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalCostBasis)">
-            <span v-show="group._subtotalCostBasis < 0">-</span>${{ formatDollar(group._subtotalCostBasis) }}
-          </div>
-          <div class="text-right font-medium"
-               :class="(group._subtotalNetLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalNetLiq)">
-            <span v-show="group._subtotalNetLiq < 0">-</span>${{ formatDollar(group._subtotalNetLiq) }}
-          </div>
-          <div class="text-right font-medium"
-               :class="(group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group._subtotalOpenPnL)">
-            <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
-          </div>
-        </div>
-        <!-- Regular Row -->
         <PositionsDesktopRow
-          v-else
           :group="group"
           :selected-account="selectedAccount"
           :accounts="accounts"

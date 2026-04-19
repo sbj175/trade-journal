@@ -321,7 +321,6 @@ export function usePositionsData(Auth) {
 
   // --- P&L Calculations ---
   function getGroupCostBasis(group) {
-    if (group._isSubtotal) return group._subtotalCostBasis
     const optionTotal = (group.positions || []).reduce((s, l) => s + (l.cost_basis || 0), 0)
     const equityTotal = (group.equityLegs || []).reduce((s, l) => s + (l.cost_basis || 0), 0)
     return optionTotal + equityTotal
@@ -370,7 +369,6 @@ export function usePositionsData(Auth) {
 
   function getGroupOpenPnL(group) {
     quoteUpdateCounter.value
-    if (group._isSubtotal) return group._subtotalOpenPnL
     const optionPnL = (group.positions || []).reduce((sum, leg) => sum + calculateLegPnL(leg), 0)
     const eqLegs = group.equityLegs || []
     if (eqLegs.length === 0) return optionPnL
@@ -380,18 +378,15 @@ export function usePositionsData(Auth) {
   }
 
   function getGroupRealizedPnL(group) {
-    if (group._isSubtotal) return group._subtotalRealizedPnL
     return group.realized_pnl || 0
   }
 
   function getGroupTotalPnL(group) {
-    if (group._isSubtotal) return group._subtotalTotalPnL
     return getGroupRealizedPnL(group) + getGroupOpenPnL(group)
   }
 
   function getGroupNetLiqWithLiveQuotes(group) {
     quoteUpdateCounter.value
-    if (group._isSubtotal) return group._subtotalNetLiq
     const optionMV = (group.positions || []).reduce((sum, leg) => sum + calculateLegMarketValue(leg), 0)
     const equityMV = calculateEquityMarketValue(group)
     return optionMV + equityMV
@@ -405,7 +400,6 @@ export function usePositionsData(Auth) {
   }
 
   function getGroupDaysOpen(group) {
-    if (group._isSubtotal) return null
     const openDate = group.opening_date
     if (!openDate) return null
     const d = new Date(openDate + 'T00:00:00')
@@ -415,7 +409,6 @@ export function usePositionsData(Auth) {
   }
 
   function getMinDTE(group) {
-    if (group._isSubtotal) return null
     const legs = group.positions || []
     let minDTE = null
     for (const leg of legs) {
@@ -453,57 +446,6 @@ export function usePositionsData(Auth) {
       isShort: l.quantity_direction === 'Short',
     }))
     return buildOptionStratUrl(group.strategy_type, group.underlying, legs)
-  }
-
-  // --- Subtotals ---
-  function insertSubtotals(enriched) {
-    const result = []
-    let currentKey = null
-    let currentGroup = []
-
-    const flushGroup = () => {
-      if (currentGroup.length <= 1) {
-        result.push(...currentGroup)
-        return
-      }
-      const underlying = currentGroup[0].underlying
-      const acct = currentGroup[0].accountNumber
-      const subtotal = {
-        _isSubtotal: true,
-        groupKey: `subtotal_${acct}_${underlying}`,
-        displayKey: underlying,
-        underlying: underlying,
-        accountNumber: acct,
-        _subtotalCostBasis: 0,
-        _subtotalNetLiq: 0,
-        _subtotalOpenPnL: 0,
-        _subtotalRealizedPnL: 0,
-        _subtotalTotalPnL: 0,
-        _childCount: currentGroup.length,
-      }
-      currentGroup.forEach(item => {
-        subtotal._subtotalCostBasis += item.costBasis
-        subtotal._subtotalNetLiq += item.netLiq
-        subtotal._subtotalOpenPnL += item.openPnL
-        subtotal._subtotalRealizedPnL += item.realized_pnl || 0
-        subtotal._subtotalTotalPnL += (item.realized_pnl || 0) + item.openPnL
-      })
-      result.push(subtotal)
-      result.push(...currentGroup)
-    }
-
-    for (const item of enriched) {
-      const key = `${item.accountNumber}|${item.underlying}`
-      if (key !== currentKey) {
-        if (currentGroup.length > 0) flushGroup()
-        currentKey = key
-        currentGroup = [item]
-      } else {
-        currentGroup.push(item)
-      }
-    }
-    if (currentGroup.length > 0) flushGroup()
-    return result
   }
 
   // --- Strategy Targets ---
@@ -613,7 +555,7 @@ export function usePositionsData(Auth) {
         })
       })
 
-      return sortColumn.value === 'underlying' ? insertSubtotals(sorted) : sorted
+      return sorted
     } catch (err) {
       console.error('groupedPositions failed:', err)
       return []

@@ -62,7 +62,6 @@ export function usePositionsNotes(Auth, { allItems }) {
     // Legacy migration from chain_* to group_* comment keys.
     try {
       for (const item of allItems.value) {
-        if (item._isSubtotal) continue
         const groupId = item.group_id || item.chain_id
         if (!groupId) continue
 
@@ -90,7 +89,6 @@ export function usePositionsNotes(Auth, { allItems }) {
   }
 
   function getCommentKey(group) {
-    if (group._isSubtotal) return null
     const groupId = group.group_id || group.chain_id || group.chainId
     if (groupId) return `group_${groupId}`
     return `pos_${group.underlying}_${group.accountNumber || 'default'}`

@@ -24,22 +24,7 @@ defineEmits(['open-roll-chain', 'toggle-expanded'])
 </script>
 
 <template>
-  <!-- Subtotal row -->
-  <div v-if="group._isSubtotal"
-       class="bg-tv-blue/10 border-l-2 border-tv-blue rounded px-3 py-2 flex items-center justify-between">
-    <span class="font-bold text-tv-text">{{ group.displayKey }}</span>
-    <div class="text-right">
-      <span class="text-xs text-tv-muted mr-2">{{ group._childCount }} pos</span>
-      <span class="font-medium"
-            :class="group._subtotalOpenPnL >= 0 ? 'text-tv-green' : 'text-tv-red'">
-        <span v-show="group._subtotalOpenPnL < 0">-</span>${{ formatDollar(group._subtotalOpenPnL) }}
-      </span>
-    </div>
-  </div>
-
-  <!-- Position card -->
-  <div v-else
-       class="bg-tv-row border border-tv-border rounded-lg overflow-hidden"
+  <div class="bg-tv-row border border-tv-border rounded-lg overflow-hidden"
        :class="group.rollAnalysis?.borderColor === 'green' ? 'border-l-2 border-l-tv-green/40' : group.rollAnalysis?.borderColor === 'red' ? 'border-l-2 border-l-tv-red/40' : ''">
 
     <!-- Card header — tap to navigate to detail -->

@@ -78,7 +78,6 @@ export function getDTE(leg) {
 }
 
 export function getGroupStrategyLabel(group) {
-  if (group._isSubtotal) return ''
   if (group.strategy_type && group.strategy_type !== 'Unknown') return group.strategy_type
   return 'Unknown'
 }
