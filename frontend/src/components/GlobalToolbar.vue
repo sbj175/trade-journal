@@ -31,8 +31,6 @@ const showMobileToolbar = ref(localStorage.getItem('toolbar_showMobileToolbar') 
   ? localStorage.getItem('toolbar_showMobileToolbar') === 'true'
   : getDefaultMobileToolbarOpen())
 const showBalances = ref(getDefaultCollapsedState('toolbar_showBalances'))
-const showFilters = ref(getDefaultCollapsedState('toolbar_showFilters'))
-
 function toggleMobileToolbar() {
   showMobileToolbar.value = !showMobileToolbar.value
   localStorage.setItem('toolbar_showMobileToolbar', showMobileToolbar.value)
@@ -41,11 +39,6 @@ function toggleMobileToolbar() {
 function toggleBalances() {
   showBalances.value = !showBalances.value
   localStorage.setItem('toolbar_showBalances', showBalances.value)
-}
-
-function toggleFilters() {
-  showFilters.value = !showFilters.value
-  localStorage.setItem('toolbar_showFilters', showFilters.value)
 }
 
 // Hide toolbar extras on settings/privacy/components
@@ -425,11 +418,6 @@ onUnmounted(() => {
     </div>
   </div>
 
-            <!-- Section 3: Page-specific filters (collapsible, animated, via Teleport target) -->
-          <div class="grid transition-[grid-template-rows] duration-200 ease-in-out"
-               :class="showFilters ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
-            <div class="overflow-hidden">
-              <div id="page-filters"></div>
-            </div>
-          </div>
+            <!-- Section 3: Page-specific filters (via Teleport target) -->
+          <div id="page-filters"></div>
 </template>

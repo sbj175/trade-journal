@@ -19,6 +19,19 @@ from src.pipeline.orchestrator import reprocess
 router = APIRouter()
 
 
+def _is_processable_txn(t: dict) -> bool:
+    """Return True if this raw transaction is one the pipeline will process.
+
+    Excludes cash movements, futures, crypto, and any other instrument types
+    the downstream pipeline ignores, so sync counts match what ends up in
+    positions/ledger.
+    """
+    if not t.get('symbol'):
+        return False
+    it = str(t.get('instrument_type') or '').upper()
+    return 'EQUITY' in it or 'OPTION' in it
+
+
 @router.post("/api/sync")
 async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_client), db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Unified sync endpoint with smart date range calculation"""
@@ -66,6 +79,15 @@ async def sync_unified(tastytrade: TastytradeClient = Depends(get_tastytrade_cli
         transactions = await tastytrade.get_transactions(days_back=days_back)
         transactions = [t for t in transactions if t.get('account_number') in active_accounts]
         logger.info(f"Fetched {len(transactions)} transactions")
+
+        # Filter out transactions that the pipeline will subsequently ignore
+        # (cash movements, futures, crypto, etc.) so counts/reporting match
+        # what the user actually sees in positions/ledger.
+        before_count = len(transactions)
+        transactions = [t for t in transactions if _is_processable_txn(t)]
+        skipped = before_count - len(transactions)
+        if skipped:
+            logger.info(f"Skipped {skipped} non-processable transactions (cash/futures/etc.)")
 
         logger.info("Saving raw transactions...")
         raw_saved, new_symbols = db.save_raw_transactions(transactions)
@@ -353,6 +375,12 @@ async def sync_account(
             days_back=days_back, account_number=account_number,
         )
         logger.info(f"Fetched {len(transactions)} transactions for account {account_number}")
+
+        before_count = len(transactions)
+        transactions = [t for t in transactions if _is_processable_txn(t)]
+        skipped = before_count - len(transactions)
+        if skipped:
+            logger.info(f"Skipped {skipped} non-processable transactions (cash/futures/etc.)")
 
         raw_saved, new_symbols = db.save_raw_transactions(transactions)
         logger.info(f"Saved {raw_saved} new transactions")
