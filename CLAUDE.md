@@ -17,9 +17,7 @@ Live Market Data → WebSocket → Real-time Position Updates → Dashboard
 ## Running the Application
 
 ```bash
-./start.sh          # Activates venv, builds frontend (vite build), runs python3 app.py
-python app.py       # Direct start (http://localhost:8000)
-docker compose up -d  # PostgreSQL + Redis (app, admin, postgres, redis services)
+docker compose up -d  # app (8000), admin (8002), postgres, redis
 ```
 
 Default route `/` redirects to `/positions/options`.

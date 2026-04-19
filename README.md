@@ -52,14 +52,7 @@ cp .env.example .env
 Start the application:
 
 ```bash
-# Linux/Mac
-./start.sh
-
-# Windows
-start.bat
-
-# Or manually
-python app.py
+docker compose up -d
 ```
 
 Open your browser to: http://localhost:8000
