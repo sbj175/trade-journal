@@ -80,7 +80,6 @@ Users can also connect Tastytrade interactively via the Settings page (`/setting
 | `/positions/equities` | Equity positions |
 | `/ledger` | Position groups (historical + active), lots, tags, notes |
 | `/reports` | Time-filtered P&L reporting by strategy |
-| `/risk` | Portfolio Greeks, P&L curves, exposure charts |
 | `/settings` | Tastytrade connection, tags, strategy targets, preferences |
 
 ## Database Migrations
