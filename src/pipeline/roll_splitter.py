@@ -16,12 +16,21 @@ Pure function — no DB access.
 """
 
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import List
 
 from src.models.order_processor import Order, OrderType
 
 logger = logging.getLogger(__name__)
+
+
+def _signature(tx) -> tuple:
+    """(option_type, direction) key for pairing closes with opens.
+
+    BTO/STC touch long positions; STO/BTC touch short. `is_short` on the
+    Position object reflects the affected side regardless of action verb.
+    """
+    return (tx.option_type, "short" if tx.is_short else "long")
 
 
 def split_rolling_orders(orders: List[Order]) -> List[Order]:
@@ -30,6 +39,10 @@ def split_rolling_orders(orders: List[Order]) -> List[Order]:
     A standard roll has one closing symbol and one opening symbol.
     A compound roll has one closing symbol and multiple opening symbols —
     one is the roll target (closest strike), the rest are new positions.
+
+    A multi-leg roll (e.g. rolling a put spread in one order) has N closes
+    and N opens that mirror each other by (option_type, direction). In that
+    case the whole order IS the roll — no split.
     """
     result = []
 
@@ -48,6 +61,14 @@ def split_rolling_orders(orders: List[Order]) -> List[Order]:
 
         # No split needed if there's only one opening symbol
         if len(opening_by_symbol) <= 1:
+            result.append(order)
+            continue
+
+        # Multi-leg roll: closes and opens mirror each other by (type, direction).
+        # e.g. put-spread roll closes 1 long-put + 1 short-put and opens 1 long-put
+        # + 1 short-put at new strikes. Treat as a single rolling order; each new
+        # lot will pair with its direction-matched close during lot processing.
+        if Counter(_signature(tx) for tx in closing_txns) == Counter(_signature(tx) for tx in opening_txns):
             result.append(order)
             continue
 
