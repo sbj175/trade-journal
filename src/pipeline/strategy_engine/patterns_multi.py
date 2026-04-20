@@ -1,4 +1,4 @@
-"""Multi-leg patterns: Iron Condor, Iron Butterfly, Strangles, Straddles."""
+"""Multi-leg patterns: Iron Condor, Iron Butterfly, same-type Butterflies, Strangles, Straddles."""
 
 from typing import List, Optional
 
@@ -23,10 +23,56 @@ def match_multi(legs: List[Leg]) -> Optional[str]:
 
     if len(legs) == 4:
         return _match_four_leg(legs)
+    if len(legs) == 3:
+        return _match_three_leg(legs)
     if len(legs) == 2:
         return _match_two_leg(legs)
 
     return None
+
+
+def _match_three_leg(legs: List[Leg]) -> Optional[str]:
+    """Match 3-leg same-type butterflies (1:2:1 quantity ratio).
+
+    Naming follows the OptionStrat taxonomy:
+      long wings + short body, symmetric  → Long Call/Put Butterfly
+      long wings + short body, asymmetric → Call/Put Broken Wing
+      short wings + long body, symmetric  → Short Call/Put Butterfly
+      short wings + long body, asymmetric → Inverse Call/Put Broken Wing
+    """
+    option_types = {l.option_type for l in legs}
+    if len(option_types) != 1:
+        return None
+    option_type = next(iter(option_types))
+
+    low, mid, high = sorted(legs, key=lambda l: l.strike)
+
+    # Three distinct strikes required
+    if low.strike == mid.strike or mid.strike == high.strike:
+        return None
+
+    # Quantity ratio 1:2:1 — wings equal, body exactly twice
+    if low.quantity != high.quantity:
+        return None
+    if mid.quantity != 2 * low.quantity:
+        return None
+
+    wings_long = (low.direction == "long" and high.direction == "long"
+                  and mid.direction == "short")
+    wings_short = (low.direction == "short" and high.direction == "short"
+                   and mid.direction == "long")
+    if not (wings_long or wings_short):
+        return None
+
+    symmetric = (mid.strike - low.strike) == (high.strike - mid.strike)
+    type_name = "Call" if option_type == "C" else "Put"
+
+    if symmetric:
+        direction = "Long" if wings_long else "Short"
+        return f"{direction} {type_name} Butterfly"
+    else:
+        prefix = "" if wings_long else "Inverse "
+        return f"{prefix}{type_name} Broken Wing"
 
 
 def _match_four_leg(legs: List[Leg]) -> Optional[str]:
