@@ -27,10 +27,20 @@ logger = logging.getLogger(__name__)
 def _signature(tx) -> tuple:
     """(option_type, direction) key for pairing closes with opens.
 
-    BTO/STC touch long positions; STO/BTC touch short. `is_short` on the
-    Position object reflects the affected side regardless of action verb.
+    The affected side is determined by the action verb:
+      - BTO / STC touch the long side (BTO opens long; STC closes long)
+      - STO / BTC touch the short side (STO opens short; BTC closes short)
     """
-    return (tx.option_type, "short" if tx.is_short else "long")
+    action = (tx.action or "").upper()
+    # BUY_TO_OPEN / SELL_TO_CLOSE touch the long side
+    # SELL_TO_OPEN / BUY_TO_CLOSE touch the short side
+    if action in ("BUY_TO_OPEN", "SELL_TO_CLOSE"):
+        direction = "long"
+    elif action in ("SELL_TO_OPEN", "BUY_TO_CLOSE"):
+        direction = "short"
+    else:
+        direction = "unknown"
+    return (tx.option_type, direction)
 
 
 def split_rolling_orders(orders: List[Order]) -> List[Order]:
