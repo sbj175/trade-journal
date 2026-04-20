@@ -34,8 +34,11 @@ def match_multi(legs: List[Leg]) -> Optional[str]:
 def _match_three_leg(legs: List[Leg]) -> Optional[str]:
     """Match 3-leg same-type butterflies (1:2:1 quantity ratio).
 
-    Long Butterfly: long wings + short body (net debit).
-    Short Butterfly: short wings + long body (net credit).
+    Naming follows the OptionStrat taxonomy:
+      long wings + short body, symmetric  → Long Call/Put Butterfly
+      long wings + short body, asymmetric → Call/Put Broken Wing
+      short wings + long body, symmetric  → Short Call/Put Butterfly
+      short wings + long body, asymmetric → Inverse Call/Put Broken Wing
     """
     option_types = {l.option_type for l in legs}
     if len(option_types) != 1:
@@ -61,9 +64,15 @@ def _match_three_leg(legs: List[Leg]) -> Optional[str]:
     if not (wings_long or wings_short):
         return None
 
-    direction = "Long" if wings_long else "Short"
-    type_name = "Call Butterfly" if option_type == "C" else "Put Butterfly"
-    return f"{direction} {type_name}"
+    symmetric = (mid.strike - low.strike) == (high.strike - mid.strike)
+    type_name = "Call" if option_type == "C" else "Put"
+
+    if symmetric:
+        direction = "Long" if wings_long else "Short"
+        return f"{direction} {type_name} Butterfly"
+    else:
+        prefix = "" if wings_long else "Inverse "
+        return f"{prefix}{type_name} Broken Wing"
 
 
 def _match_four_leg(legs: List[Leg]) -> Optional[str]:
