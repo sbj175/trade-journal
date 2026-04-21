@@ -176,10 +176,16 @@ class DatabaseManager:
                     # Handles TT SDK variants: "Equity", "Equity Option", "EQUITY", "EQUITY_OPTION"
                     raw_instrument_type = str(txn.get('instrument_type') or '').upper().replace(' ', '_')
 
+                    # Normalize transaction_type and transaction_sub_type the same way
+                    # (OPT-265: TT SDK returns Title Case with spaces; downstream consumers
+                    # expect uppercase underscore form for dispatch matching)
+                    raw_txn_type = str(txn.get('transaction_type') or '').upper().replace(' ', '_')
+                    raw_sub_type = str(txn.get('transaction_sub_type') or '').upper().replace(' ', '_')
+
                     stmt = dialect_insert(RawTransaction).values(
                         id=txn.get('id'), account_number=txn.get('account_number'),
-                        order_id=txn.get('order_id'), transaction_type=txn.get('transaction_type'),
-                        transaction_sub_type=txn.get('transaction_sub_type'),
+                        order_id=txn.get('order_id'), transaction_type=raw_txn_type,
+                        transaction_sub_type=raw_sub_type,
                         description=txn.get('description'), executed_at=txn.get('executed_at'),
                         transaction_date=txn.get('transaction_date'), action=raw_action,
                         symbol=txn.get('symbol'), instrument_type=raw_instrument_type,
