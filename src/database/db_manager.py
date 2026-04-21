@@ -172,13 +172,17 @@ class DatabaseManager:
                     if raw_action and raw_action not in _EXPECTED_ACTIONS:
                         logger.warning(f"Unexpected action format after normalization: '{raw_action}' (original: '{txn.get('action')}') for txn {txn.get('id')}")
 
+                    # Normalize instrument_type to uppercase underscore format
+                    # Handles TT SDK variants: "Equity", "Equity Option", "EQUITY", "EQUITY_OPTION"
+                    raw_instrument_type = str(txn.get('instrument_type') or '').upper().replace(' ', '_')
+
                     stmt = dialect_insert(RawTransaction).values(
                         id=txn.get('id'), account_number=txn.get('account_number'),
                         order_id=txn.get('order_id'), transaction_type=txn.get('transaction_type'),
                         transaction_sub_type=txn.get('transaction_sub_type'),
                         description=txn.get('description'), executed_at=txn.get('executed_at'),
                         transaction_date=txn.get('transaction_date'), action=raw_action,
-                        symbol=txn.get('symbol'), instrument_type=txn.get('instrument_type'),
+                        symbol=txn.get('symbol'), instrument_type=raw_instrument_type,
                         underlying_symbol=txn.get('underlying_symbol'),
                         quantity=txn.get('quantity'), price=txn.get('price'),
                         value=txn.get('value'), regulatory_fees=txn.get('regulatory_fees'),
