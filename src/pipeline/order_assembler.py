@@ -57,7 +57,7 @@ def preprocess_transactions(
     sym_change_txs = [
         tx
         for tx in raw_transactions
-        if tx.get("transaction_sub_type") == "Symbol Change"
+        if tx.get("transaction_sub_type") == "SYMBOL_CHANGE"
     ]
     if sym_change_txs:
         sc_groups: Dict[Tuple, List[Dict]] = defaultdict(list)
