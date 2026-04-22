@@ -16,6 +16,7 @@ from src.utils.premium import group_premium_from_lots
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
 from src.schemas import LedgerGroupUpdate, LedgerMoveLots, LedgerCreateGroup, GroupTagAdd
 from src.services.ledger_service import seed_position_groups, _refresh_group_status
+from src.services.roll_timeline import compute_roll_timeline
 
 router = APIRouter()
 
@@ -182,6 +183,9 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                           if lot.remaining_quantity != 0 and lot.opening_order_id}
         partially_rolled = len(lot_chain_ids) == 1 and len(open_order_ids) > 1
 
+        # OPT-263: walk-and-balance roll detection for same-exp rolls within this group
+        roll_timeline = compute_roll_timeline(lots_data)
+
         result.append({
             'group_id': gid,
             'underlying': g['underlying'],
@@ -202,6 +206,9 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'partially_rolled': partially_rolled,
             'lots': lots_data,
             'tags': tags_by_group.get(gid, []),
+            'current_strike_label': roll_timeline['current_strike_label'],
+            'roll_count': roll_timeline['roll_count'],
+            'roll_timeline': roll_timeline,
         })
 
     return result
