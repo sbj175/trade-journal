@@ -55,8 +55,11 @@ def compute_roll_timeline(lots: List[dict]) -> dict:
 def _build_transaction_stream(option_lots):
     txs = []
     for lot in option_lots:
-        orig_qty = lot.get('original_quantity') or lot.get('quantity') or 0
-        sign = 1 if orig_qty > 0 else -1
+        # `quantity` is the signed field (+ long, - short).
+        # `original_quantity` is the absolute magnitude at lot creation.
+        signed_qty = lot.get('quantity') or 0
+        sign = 1 if signed_qty > 0 else -1
+        mag = lot.get('original_quantity') or abs(signed_qty) or 0
         opt_type = (lot.get('option_type') or '').upper()
         opt_initial = opt_type[0] if opt_type else ''
 
@@ -69,7 +72,7 @@ def _build_transaction_stream(option_lots):
             'option_type': opt_initial,
             'strike': lot.get('strike'),
             'expiration': lot.get('expiration'),
-            'quantity_abs': abs(orig_qty),
+            'quantity_abs': abs(mag),
             'price': lot.get('entry_price') or 0,
             'fees': lot.get('opening_fees') or 0,
         })

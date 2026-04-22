@@ -268,6 +268,35 @@ class TestLeggedInRoll:
         assert tl['roll_count'] == 2
 
 
+class TestSignDerivation:
+    def test_sign_comes_from_quantity_not_original_quantity(self):
+        """DB stores `quantity` signed (+ long, - short) but `original_quantity`
+        as absolute magnitude. Walk-and-balance must use `quantity` for sign."""
+        # Short put: quantity=-1 but original_quantity=+1 (as real DB stores it)
+        short_put = {
+            'lot_id': 1, 'option_type': 'P', 'strike': 545,
+            'expiration': '2025-07-17',
+            'quantity': -1, 'original_quantity': 1,
+            'remaining_quantity': -1, 'status': 'OPEN',
+            'entry_date': '2025-05-22', 'entry_price': 0.78,
+            'opening_fees': 0.16, 'leg_index': 0, 'closings': [],
+        }
+        # Long put: quantity=+1, original_quantity=+1
+        long_put = {
+            'lot_id': 2, 'option_type': 'P', 'strike': 530,
+            'expiration': '2025-07-17',
+            'quantity': 1, 'original_quantity': 1,
+            'remaining_quantity': 1, 'status': 'OPEN',
+            'entry_date': '2025-05-22', 'entry_price': 0.42,
+            'opening_fees': 0.16, 'leg_index': 1, 'closings': [],
+        }
+        tl = compute_roll_timeline([short_put, long_put])
+        legs = tl['opening']['legs']
+        by_strike = {l['strike']: l for l in legs}
+        assert by_strike[545]['sign'] == -1  # short
+        assert by_strike[530]['sign'] == 1   # long
+
+
 class TestCurrentStrikeLabel:
     def test_open_group_uses_open_lots(self):
         lots = [
