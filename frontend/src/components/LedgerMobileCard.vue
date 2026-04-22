@@ -1,9 +1,11 @@
 <script setup>
-import { formatNumber, formatDate, formatExpirationShort, pnlColorClass } from '@/lib/formatters'
+import { computed } from 'vue'
+import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import BaseIcon from '@/components/BaseIcon.vue'
+import LedgerRollTimeline from '@/components/LedgerRollTimeline.vue'
 
-defineProps({
+const props = defineProps({
   group: Object,
   selectedAccount: String,
   accounts: Array,
@@ -11,6 +13,9 @@ defineProps({
   getAccountSymbol: Function,
 })
 defineEmits(['toggle-expanded', 'open-roll-chain'])
+
+const strikeLabel = computed(() => props.group.current_strike_label || props.group.strikes || '')
+const rollCount = computed(() => Number(props.group.roll_count || 0))
 </script>
 
 <template>
@@ -30,8 +35,11 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
               :class="group.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
           {{ group.status }}
         </span>
+        <span v-if="rollCount > 0"
+              class="text-[10px] px-1 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono shrink-0 leading-none"
+              :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">R{{ rollCount }}</span>
         <BaseIcon v-if="group.has_roll_chain" name="link" class="text-tv-blue text-[11px] cursor-pointer shrink-0"
-           @click.stop="$emit('open-roll-chain', group.group_id)" title="Roll chain" />
+           @click.stop="$emit('open-roll-chain', group.group_id)" title="Different-expiration roll chain" />
         <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" class="text-tv-amber text-[11px] shrink-0" title="Has notes" />
         <BaseIcon name="chevron-right" class="text-tv-muted text-[11px] ml-auto shrink-0 transition-transform duration-150" :class="{ 'rotate-90': group.expanded }" />
       </div>
@@ -40,7 +48,7 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
       <div class="flex flex-wrap items-center gap-1.5 mb-2 text-xs min-w-0">
         <span class="text-tv-muted truncate flex-1 min-w-0 basis-full sm:basis-auto">
           {{ group.strategy_label || '—' }}
-          <span v-if="group.strikes" class="text-tv-text ml-1">{{ group.strikes }}</span>
+          <span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span>
           <span v-if="group.contractCount" class="text-tv-text ml-1">({{ group.contractCount }})</span>
           <span v-if="group.partially_rolled" class="text-tv-cyan ml-0.5" title="Partially rolled">&#9432;</span>
         </span>
@@ -107,31 +115,8 @@ defineEmits(['toggle-expanded', 'open-roll-chain'])
         </div>
       </div>
 
-      <!-- Option legs -->
-      <div v-for="leg in group.optionLegs" :key="'m-leg-' + leg.key"
-           class="flex items-center justify-between text-xs py-1.5 border-t border-tv-border/30">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <span class="font-medium w-8 text-right shrink-0"
-                :class="leg.totalQuantity > 0 ? 'text-tv-green' : leg.totalQuantity < 0 ? 'text-tv-red' : 'text-tv-muted'">
-            {{ leg.totalQuantity }}
-          </span>
-          <span v-if="leg.expiration" class="text-tv-text">{{ formatExpirationShort(leg.expiration) }}</span>
-          <span v-if="leg.strike" class="text-tv-text">{{ leg.strike }}</span>
-          <span v-if="leg.option_type" class="text-tv-muted">{{ leg.option_type.toUpperCase().startsWith('C') ? 'C' : 'P' }}</span>
-          <span v-if="!leg.expiration && leg.instrument_type === 'EQUITY'" class="text-tv-muted">Shares</span>
-        </div>
-        <div class="flex items-center gap-1.5 shrink-0">
-          <span class="text-[9px] px-1 py-0.5 rounded border"
-                :class="leg.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green border-tv-green/50'
-                  : leg.expired ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
-                  : leg.exercised ? 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'
-                  : leg.assigned ? 'bg-tv-purple/20 text-tv-purple border-tv-purple/50'
-                  : 'bg-tv-muted/20 text-tv-muted border-tv-muted/50'">
-            {{ leg.expired ? 'EXP' : leg.exercised ? 'EX' : leg.assigned ? 'ASN' : leg.status }}
-          </span>
-          <span class="text-tv-muted">${{ formatNumber(leg.avgEntryPrice) }}</span>
-        </div>
-      </div>
+      <!-- Option roll timeline -->
+      <LedgerRollTimeline v-if="group.roll_timeline" :timeline="group.roll_timeline" />
     </div>
   </div>
 </template>
