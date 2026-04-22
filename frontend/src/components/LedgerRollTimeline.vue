@@ -78,64 +78,68 @@ function optionTypeLabel(t) {
       <!-- Section divider (not before first) -->
       <div v-if="idx > 0" class="border-t border-tv-border/40 my-3"></div>
 
-      <!-- Section header -->
-      <div class="flex items-center justify-between px-2 py-2">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold uppercase tracking-wide"
-                :class="section.kind === 'ROLL' ? 'text-tv-cyan'
-                       : section.kind === 'OPENING' ? 'text-tv-green'
-                       : 'text-tv-muted'">
-            {{ sectionTitle(section.kind) }}
-          </span>
-          <span class="text-tv-muted text-sm">{{ section.date ? formatDate(section.date) : '—' }}</span>
-        </div>
-        <span class="text-sm font-mono" :class="amountClass(section.net_credit_debit)">
-          {{ signedAmount(section.net_credit_debit) }}
-        </span>
-      </div>
-
-      <!-- ROLL section body: ROLLED X → Y summary + expand-for-details -->
+      <!-- ROLL section: clickable header + summary (toggles per-leg details) -->
       <template v-if="section.kind === 'ROLL'">
-        <div class="px-4 pb-2">
-          <div class="flex items-center justify-between">
+        <div class="cursor-pointer hover:bg-tv-border/15 rounded transition-colors"
+             @click="toggle(sectionKey(section, idx))">
+          <div class="flex items-center justify-between px-2 py-2">
+            <div class="flex items-center gap-2">
+              <BaseIcon name="chevron-right" size="xs"
+                        class="text-tv-muted transition-transform"
+                        :class="expandedKeys.has(sectionKey(section, idx)) ? 'rotate-90' : ''" />
+              <span class="text-sm font-semibold uppercase tracking-wide text-tv-cyan">
+                {{ sectionTitle(section.kind) }}
+              </span>
+              <span class="text-tv-muted text-sm">{{ section.date ? formatDate(section.date) : '—' }}</span>
+            </div>
+            <span class="text-sm font-mono" :class="amountClass(section.net_credit_debit)">
+              {{ signedAmount(section.net_credit_debit) }}
+            </span>
+          </div>
+          <div class="px-4 pb-2">
             <div class="font-mono text-sm">
               <span class="uppercase tracking-wider text-tv-muted text-xs mr-2">Rolled</span>
               <span class="text-tv-text">{{ section.closed_strikes_label || '—' }}</span>
               <span class="text-tv-muted mx-2">→</span>
               <span class="text-tv-text">{{ section.opened_strikes_label || '—' }}</span>
             </div>
-            <button class="text-xs text-tv-muted hover:text-tv-blue flex items-center gap-1"
-                    @click="toggle(sectionKey(section, idx))">
-              <BaseIcon name="chevron-right" size="xs"
-                        :class="expandedKeys.has(sectionKey(section, idx)) ? 'rotate-90' : ''"
-                        class="transition-transform" />
-              <span>{{ expandedKeys.has(sectionKey(section, idx)) ? 'Hide legs' : 'Show legs' }}</span>
-            </button>
           </div>
-          <!-- Per-leg pair rows -->
-          <div v-if="expandedKeys.has(sectionKey(section, idx))" class="mt-2 space-y-1">
-            <div v-for="(p, pi) in section.pairs" :key="'pair-' + pi"
-                 class="font-mono text-xs text-tv-muted flex items-center flex-wrap gap-x-2 gap-y-0.5">
-              <span class="w-10 text-right" :class="p.sign > 0 ? 'text-tv-green' : 'text-tv-red'">
-                {{ (p.sign > 0 ? '+' : '-') + p.quantity }}
-              </span>
-              <span class="text-tv-text">{{ p.expiration ? formatExpirationShort(p.expiration) : '—' }}</span>
-              <span class="text-tv-text">{{ optionTypeLabel(p.option_type) }}</span>
-              <span>{{ p.closed.strike }}</span>
-              <span class="text-tv-muted">@{{ formatNumber(p.closed.price) }}</span>
-              <span class="text-tv-muted">→</span>
-              <span>{{ p.opened.strike }}</span>
-              <span class="text-tv-muted">@{{ formatNumber(p.opened.price) }}</span>
-              <span v-if="(p.closed.fees || p.opened.fees)" class="text-tv-muted ml-2">
-                fees ${{ formatNumber(Math.abs((p.closed.fees || 0) + (p.opened.fees || 0))) }}
-              </span>
-            </div>
+        </div>
+        <!-- Per-leg pair rows (indented to match the summary) -->
+        <div v-if="expandedKeys.has(sectionKey(section, idx))" class="px-4 pb-2 mt-1 space-y-1">
+          <div v-for="(p, pi) in section.pairs" :key="'pair-' + pi"
+               class="font-mono text-xs text-tv-muted flex items-center flex-wrap gap-x-2 gap-y-0.5">
+            <span class="w-10 text-right" :class="p.sign > 0 ? 'text-tv-green' : 'text-tv-red'">
+              {{ (p.sign > 0 ? '+' : '-') + p.quantity }}
+            </span>
+            <span class="text-tv-text">{{ p.expiration ? formatExpirationShort(p.expiration) : '—' }}</span>
+            <span class="text-tv-text">{{ optionTypeLabel(p.option_type) }}</span>
+            <span>{{ p.closed.strike }}</span>
+            <span class="text-tv-muted">@{{ formatNumber(p.closed.price) }}</span>
+            <span class="text-tv-muted">→</span>
+            <span>{{ p.opened.strike }}</span>
+            <span class="text-tv-muted">@{{ formatNumber(p.opened.price) }}</span>
+            <span v-if="(p.closed.fees || p.opened.fees)" class="text-tv-muted ml-2">
+              fees ${{ formatNumber(Math.abs((p.closed.fees || 0) + (p.opened.fees || 0))) }}
+            </span>
           </div>
         </div>
       </template>
 
-      <!-- OPENING / CLOSING section body: per-leg rows -->
+      <!-- OPENING / CLOSING sections: static header + leg rows -->
       <template v-else>
+        <div class="flex items-center justify-between px-2 py-2">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold uppercase tracking-wide"
+                  :class="section.kind === 'OPENING' ? 'text-tv-green' : 'text-tv-muted'">
+              {{ sectionTitle(section.kind) }}
+            </span>
+            <span class="text-tv-muted text-sm">{{ section.date ? formatDate(section.date) : '—' }}</span>
+          </div>
+          <span class="text-sm font-mono" :class="amountClass(section.net_credit_debit)">
+            {{ signedAmount(section.net_credit_debit) }}
+          </span>
+        </div>
         <div class="px-4 pb-2 space-y-0.5">
           <div v-for="(leg, li) in section.legs" :key="'leg-' + idx + '-' + li"
                class="font-mono text-xs flex items-center flex-wrap gap-x-2">
