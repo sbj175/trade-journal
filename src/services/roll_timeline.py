@@ -165,9 +165,11 @@ def _make_open_close_event(kind, txs):
     date = _normalize_date(max((str(t['timestamp']) for t in txs), default=''))
     net = sum(_cash_flow(t, is_open=(t['kind'] == 'OPEN')) for t in txs)
 
+    # Sort by strike ascending for a natural price-ladder read
+    # (e.g., an Iron Condor shows P low → P high → C low → C high).
     legs = [_leg_detail(t) for t in sorted(
         txs,
-        key=lambda x: ((x['option_type'] or ''), x['strike'] or 0, str(x['timestamp'] or '')),
+        key=lambda x: (x['strike'] or 0, x['option_type'] or '', str(x['timestamp'] or '')),
     )]
 
     return {
