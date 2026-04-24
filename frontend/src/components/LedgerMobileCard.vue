@@ -36,15 +36,15 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           {{ group.status }}
         </span>
         <span v-if="rollCount > 0"
-              class="text-[10px] px-1 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono shrink-0 leading-none inline-flex items-center gap-0.5"
+              class="text-[10px] px-2 py-0.5 rounded-full bg-tv-cyan text-tv-bg font-medium shrink-0 leading-4 inline-flex items-center gap-0.5"
               :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">
-          <i class="fas fa-rotate"></i>{{ rollCount }}
+          <i class="fas fa-rotate text-[9px]"></i>{{ rollCount }}
         </span>
         <button v-if="group.has_roll_chain"
-                class="text-[10px] px-1 py-0.5 rounded bg-tv-blue/15 text-tv-blue border border-tv-blue/40 font-mono shrink-0 leading-none inline-flex items-center gap-0.5 hover:bg-tv-blue/25 transition-colors"
+                class="text-[10px] px-2 py-0.5 rounded-full bg-tv-blue text-white font-medium shrink-0 leading-4 inline-flex items-center gap-0.5 hover:bg-tv-blue/80 transition-colors"
                 @click.stop="$emit('open-roll-chain', group.group_id)"
                 title="Different-expiration roll chain">
-          <i class="fas fa-link"></i>
+          <i class="fas fa-link text-[9px]"></i>
         </button>
         <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" class="text-tv-amber text-[11px] shrink-0" title="Has notes" />
         <BaseIcon name="chevron-right" class="text-tv-muted text-[11px] ml-auto shrink-0 transition-transform duration-150" :class="{ 'rotate-90': group.expanded }" />
