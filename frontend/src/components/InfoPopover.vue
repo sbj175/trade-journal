@@ -58,7 +58,7 @@ useBackDismiss(open, close)
 </script>
 
 <template>
-  <span ref="wrapperRef" class="inline-block align-middle">
+  <div ref="wrapperRef" class="inline-block align-middle">
     <button @click="toggle" type="button"
             class="text-tv-muted hover:text-tv-blue active:text-tv-blue inline-flex items-center justify-center w-4 h-4 leading-none"
             aria-label="More info">
@@ -68,9 +68,9 @@ useBackDismiss(open, close)
       <div v-if="open"
            @click.stop
            :style="popoverStyle"
-           class="z-[9999] bg-tv-panel border border-tv-border rounded-lg shadow-xl p-3 text-xs text-tv-text leading-snug normal-case tracking-normal font-normal whitespace-normal">
+           class="z-[9999] bg-tv-panel border border-tv-blue/60 rounded-lg shadow-[0_4px_24px_rgb(var(--tv-blue)/0.18)] p-3 text-xs text-tv-text leading-snug normal-case tracking-normal font-normal whitespace-normal">
         <slot />
       </div>
     </Teleport>
-  </span>
+  </div>
 </template>
