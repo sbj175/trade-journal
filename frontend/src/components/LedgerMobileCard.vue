@@ -42,6 +42,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           :has-chain="!!group.has_roll_chain"
           :chain-roll-count="group.roll_chain ? group.roll_chain.roll_count : null"
           size="sm"
+          compact
           class="shrink-0"
           @click="$emit('open-roll-chain', group.group_id)" />
         <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" class="text-tv-amber text-[11px] shrink-0" title="Has notes" />

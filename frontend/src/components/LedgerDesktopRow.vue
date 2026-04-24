@@ -141,6 +141,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
         <RollChainButton
           :has-chain="hasDifferentExpChain"
           :chain-roll-count="group.roll_chain ? group.roll_chain.roll_count : null"
+          compact
           @click="$emit('open-roll-chain', group.group_id)" />
       </div>
 
