@@ -9,14 +9,8 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const allNavLinks = [
-  {
-    to: '/positions',
-    label: 'Positions',
-    children: [
-      { to: '/positions/options', label: 'Options' },
-      { to: '/positions/equities', label: 'Equities' },
-    ],
-  },
+  { to: '/positions/options', label: 'Options' },
+  { to: '/positions/equities', label: 'Equities' },
   { to: '/ledger', label: 'Ledger' },
   { to: '/reports', label: 'Reports' },
   { to: '/risk', label: 'Risk', enabled: () => authStore.riskPageEnabled },
@@ -103,6 +97,22 @@ watch(
 
           <!-- Desktop nav -->
           <div class="hidden md:flex items-center h-full gap-1">
+            <router-link
+              v-for="link in navLinks"
+              :key="link.to"
+              :to="link.to"
+              class="h-full flex items-center px-3.5 text-sm font-semibold tracking-wide border-b-2 transition-colors"
+              :class="isActiveParent(link)
+                ? 'text-tv-text border-tv-blue'
+                : 'text-tv-muted border-transparent hover:text-tv-text'"
+            >
+              {{ link.label }}
+            </router-link>
+          </div>
+
+          <!--
+          DROPDOWN NAV (reserved for future use):
+          <div class="hidden md:flex items-center h-full gap-1">
             <template v-for="link in navLinks" :key="link.to">
               <div
                 v-if="link.children"
@@ -119,7 +129,6 @@ watch(
                   {{ link.label }}
                   <BaseIcon name="chevron-down" class="text-[9px] ml-1.5 opacity-50" />
                 </span>
-
                 <div
                   v-show="openDropdown === link.to"
                   class="absolute top-full left-0 mt-0 bg-tv-panel border border-tv-border rounded shadow-lg py-1 min-w-[140px] z-50"
@@ -138,7 +147,6 @@ watch(
                   </router-link>
                 </div>
               </div>
-
               <router-link
                 v-else
                 :to="link.to"
@@ -151,6 +159,7 @@ watch(
               </router-link>
             </template>
           </div>
+          -->
         </div>
 
         <!-- Right -->
