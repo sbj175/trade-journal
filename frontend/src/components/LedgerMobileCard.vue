@@ -50,7 +50,6 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           {{ group.strategy_label || '—' }}
           <span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span>
           <span v-if="group.contractCount" class="text-tv-text ml-1">({{ group.contractCount }})</span>
-          <span v-if="group.partially_rolled" class="text-tv-cyan ml-0.5" title="Partially rolled">&#9432;</span>
         </span>
         <span v-for="tag in (group.tags || [])" :key="tag.id"
               class="text-[9px] px-1 py-0.5 rounded-full border shrink-0 leading-none"

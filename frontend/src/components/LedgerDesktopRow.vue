@@ -57,9 +57,6 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
               {{ group.strategy_label || '—' }}
               <span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span>
               <span v-if="group.contractCount" class="text-tv-text ml-1">({{ group.contractCount }})</span>
-              <span v-if="group.partially_rolled"
-                    class="text-tv-cyan cursor-help ml-0.5"
-                    title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>
             </span>
             <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
               <BaseIcon name="pencil-alt" size="xs" class="text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
