@@ -90,11 +90,11 @@ function optionTypeLabel(t) {
       <!-- Section divider (not before first) -->
       <div v-if="idx > 0" class="border-t border-tv-border/40 my-3"></div>
 
-      <!-- ROLL section: one-line clickable header (date + strike transition) -->
+      <!-- ROLL section: one-line on desktop; date/amount row + strike transition row on mobile -->
       <template v-if="section.kind === 'ROLL'">
-        <div class="cursor-pointer hover:bg-tv-border/15 rounded transition-colors"
+        <div class="cursor-pointer hover:bg-tv-border/15 rounded transition-colors px-2 py-2"
              @click="toggle(sectionKey(section, idx))">
-          <div class="flex items-center justify-between px-2 py-2 gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-2 min-w-0">
               <BaseIcon name="chevron-right" size="xs"
                         class="text-tv-muted transition-transform"
@@ -102,8 +102,8 @@ function optionTypeLabel(t) {
               <span class="text-sm font-semibold uppercase tracking-wide text-tv-cyan">
                 {{ sectionTitle(section.kind) }}
               </span>
-              <span class="text-tv-muted text-sm">{{ section.date ? formatDate(section.date) : '—' }}</span>
-              <span class="font-mono text-sm ml-2 truncate">
+              <span class="text-tv-muted text-sm whitespace-nowrap">{{ section.date ? formatDate(section.date) : '—' }}</span>
+              <span class="hidden sm:inline font-mono text-sm ml-2 truncate">
                 <span class="text-tv-text">{{ section.closed_strikes_label || '—' }}</span>
                 <span class="text-tv-muted mx-1.5">→</span>
                 <span class="text-tv-text">{{ section.opened_strikes_label || '—' }}</span>
@@ -112,6 +112,12 @@ function optionTypeLabel(t) {
             <span class="text-sm font-mono shrink-0" :class="amountClass(section.net_credit_debit)">
               {{ signedAmount(section.net_credit_debit) }}
             </span>
+          </div>
+          <!-- Strike transition wraps to its own row below on mobile -->
+          <div class="sm:hidden font-mono text-sm ml-6 mt-0.5">
+            <span class="text-tv-text">{{ section.closed_strikes_label || '—' }}</span>
+            <span class="text-tv-muted mx-1.5">→</span>
+            <span class="text-tv-text">{{ section.opened_strikes_label || '—' }}</span>
           </div>
         </div>
         <!-- Per-leg pair rows (indented to match the summary) -->
