@@ -5,6 +5,7 @@ import {
   sortedLegs,
 } from '@/composables/usePositionsDisplay'
 import PositionsRollAnalysis from '@/components/PositionsRollAnalysis.vue'
+import RollTimeline from '@/components/RollTimeline.vue'
 
 const props = defineProps({
   group: Object,
@@ -99,7 +100,6 @@ defineEmits(['toggle-roll-analysis-mode', 'open-roll-chain'])
           <!-- Chain summary -->
           <div class="flex items-center text-xs text-tv-muted mt-2 pt-1 border-t border-tv-border/30 gap-4">
             <span>Opened: {{ formatDate(group.roll_chain ? group.roll_chain.first_opened : group.opening_date) || 'N/A' }}</span>
-            <span>Orders: {{ group.order_count || 1 }}</span>
             <span v-if="group.roll_chain" class="text-tv-blue cursor-pointer hover:underline"
                   @click.stop="$emit('open-roll-chain', group)">
               Rolls: {{ group.roll_chain.roll_count }}
@@ -137,6 +137,12 @@ defineEmits(['toggle-roll-analysis-mode', 'open-roll-chain'])
                     placeholder="Add notes..."></textarea>
         </div>
       </div>
+    </div>
+
+    <!-- Same-expiration roll history (OPT-268) — below the live open-leg view -->
+    <div v-if="group.roll_count > 0 && group.roll_timeline"
+         class="mx-4 mb-3 p-3 bg-tv-panel rounded border border-tv-border">
+      <RollTimeline :timeline="group.roll_timeline" :show="['roll', 'opening']" />
     </div>
 
     <!-- Roll Analysis -->

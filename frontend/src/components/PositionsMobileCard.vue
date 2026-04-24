@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { formatNumber } from '@/lib/formatters'
 import { formatDollar } from '@/composables/usePositionsDisplay'
 import {
@@ -9,7 +10,7 @@ import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constan
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIcon from '@/components/BaseIcon.vue'
 
-defineProps({
+const props = defineProps({
   group: Object,
   selectedAccount: String,
   accounts: Array,
@@ -21,6 +22,9 @@ defineProps({
   getAccountSymbol: Function,
 })
 defineEmits(['open-roll-chain', 'toggle-expanded'])
+
+const strikeLabel = computed(() => props.group.current_strike_label || props.group.strikes || '')
+const rollCount = computed(() => Number(props.group.roll_count || 0))
 </script>
 
 <template>
@@ -39,7 +43,10 @@ defineEmits(['open-roll-chain', 'toggle-expanded'])
                 :title="getAccountTooltip(accounts, group.accountNumber)">●</span>
           <span v-show="hasEquity(group) && (group.positions || []).length > 0"
                 class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
-          <span class="text-sm text-tv-muted">{{ group.strategyLabel }}<span v-if="group.strikes" class="text-tv-text ml-1">{{ group.strikes }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span></span>
+          <span class="text-sm text-tv-muted">{{ group.strategyLabel }}<span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span></span>
+          <span v-if="rollCount > 0"
+                class="text-[10px] px-1 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono leading-none"
+                :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">R{{ rollCount }}</span>
         </div>
         <div class="text-right shrink-0">
           <div class="font-semibold text-base leading-tight"

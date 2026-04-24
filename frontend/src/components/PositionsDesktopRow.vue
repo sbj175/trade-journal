@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { formatDollar, dollarSizeClass } from '@/composables/usePositionsDisplay'
 import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
 import StreamingPrice from '@/components/StreamingPrice.vue'
@@ -20,6 +21,11 @@ const props = defineProps({
   getAccountSymbol: Function,
 })
 defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
+
+// Prefer backend-computed current_strike_label (walk-and-balance authoritative);
+// fall back to the client-side union of open-leg strikes.
+const strikeLabel = computed(() => props.group.current_strike_label || props.group.strikes || '')
+const rollCount = computed(() => Number(props.group.roll_count || 0))
 </script>
 
 <template>
@@ -73,10 +79,10 @@ defineEmits(['open-roll-chain', 'toggle-expanded', 'toggle-roll-analysis-mode'])
         <!-- Strategy -->
         <div class="min-w-0">
           <div class="text-sm text-tv-muted truncate">
-            {{ group.strategyLabel }}<span v-if="group.strikes" class="text-tv-text ml-1">{{ group.strikes }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span>
-            <span v-if="group.partially_rolled"
-                  class="text-tv-cyan cursor-help ml-0.5"
-                  title="Partially rolled — some legs have been rolled to different strikes or expirations">&#9432;</span>
+            {{ group.strategyLabel }}<span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span>
+            <span v-if="rollCount > 0"
+                  class="text-[10px] px-1.5 py-0.5 ml-1.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono"
+                  :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'} — expand to see details`">{{ rollCount }}</span>
           </div>
         </div>
 

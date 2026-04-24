@@ -4,7 +4,7 @@ import { formatNumber, formatDate } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import { LEDGER_COLS_CLASS } from '@/lib/ledgerDesktopCols'
 import BaseIcon from '@/components/BaseIcon.vue'
-import LedgerRollTimeline from '@/components/LedgerRollTimeline.vue'
+import RollTimeline from '@/components/RollTimeline.vue'
 
 const props = defineProps({
   group: Object,
@@ -199,7 +199,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
       </div>
 
       <!-- Option roll timeline: Closing / Roll / Opening sections in descending order -->
-      <LedgerRollTimeline v-if="group.roll_timeline" :timeline="group.roll_timeline" />
+      <RollTimeline v-if="group.roll_timeline" :timeline="group.roll_timeline" />
     </div>
   </div>
 </template>

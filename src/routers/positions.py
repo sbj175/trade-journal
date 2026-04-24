@@ -14,6 +14,7 @@ from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
 from src.services.ledger_service import seed_position_groups
+from src.services.roll_timeline import compute_roll_timeline
 
 router = APIRouter()
 
@@ -129,18 +130,15 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                     all_lot_ids.append(lot.id)
             closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
 
-            # Batch-load order data from cache for roll_count/order_count
+            # Batch-load order data from cache (order_data used for richer group context elsewhere)
             all_order_ids = set()
-            group_order_ids: Dict[str, set] = {gid: set() for gid in group_ids}
             for gid, lots in lots_by_group.items():
                 for lot in lots:
                     if lot.opening_order_id:
                         all_order_ids.add(lot.opening_order_id)
-                        group_order_ids[gid].add(lot.opening_order_id)
                     for closing in closings_by_lot.get(lot.id, []):
                         if closing.closing_order_id:
                             all_order_ids.add(closing.closing_order_id)
-                            group_order_ids[gid].add(closing.closing_order_id)
 
             order_cache: Dict[str, Dict] = {}
             if all_order_ids:
@@ -279,11 +277,37 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                     c['lot_id'] = c['symbol']
                 open_option_legs = list(consolidated.values())
 
-                order_ids = group_order_ids.get(gid, set())
-
-                # Roll chain summary (from materialized table)
+                # Roll chain summary (different-expiration roll chain from materialized table)
                 rc = roll_chain_by_group.get(gid)
-                roll_count = rc["roll_count"] if rc else 0
+
+                # OPT-263/OPT-268: walk-and-balance same-expiration roll detection.
+                # Build a lots_data list in the shape compute_roll_timeline expects.
+                lots_data = []
+                for lot in lots:
+                    lot_closings_local = closings_by_lot.get(lot.id, [])
+                    lots_data.append({
+                        'lot_id': lot.id,
+                        'option_type': lot.option_type,
+                        'strike': lot.strike,
+                        'expiration': str(lot.expiration) if lot.expiration else None,
+                        'quantity': lot.quantity,
+                        'original_quantity': lot.original_quantity,
+                        'remaining_quantity': lot.remaining_quantity,
+                        'status': lot.status,
+                        'entry_date': str(lot.entry_date) if lot.entry_date else None,
+                        'entry_price': lot.entry_price,
+                        'opening_fees': 0,
+                        'leg_index': lot.leg_index,
+                        'closings': [{
+                            'closing_id': c.closing_id,
+                            'closing_date': str(c.closing_date) if c.closing_date else None,
+                            'closing_price': c.closing_price,
+                            'quantity_closed': c.quantity_closed,
+                            'closing_type': c.closing_type,
+                            'fees': 0,
+                        } for c in lot_closings_local],
+                    })
+                roll_timeline = compute_roll_timeline(lots_data)
 
                 equity_summary = None
                 if open_equity_legs:
@@ -302,13 +326,6 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                 if not open_option_legs and open_equity_legs:
                     strategy_type = "Shares"
 
-                # Detect partial roll: open lots from multiple opening orders on
-                # the same chain — some legs were rolled while others remain
-                lot_chain_ids = {lot.chain_id for lot in lots if lot.chain_id}
-                open_order_ids = {lot.opening_order_id for lot in lots
-                                  if lot.remaining_quantity != 0 and lot.opening_order_id}
-                partially_rolled = len(lot_chain_ids) == 1 and len(open_order_ids) > 1
-
                 group_obj = {
                     "chain_id": gid,
                     "group_id": gid,
@@ -319,10 +336,10 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                     "chain_status": g['status'],
                     "realized_pnl": realized_pnl,
                     "cost_basis_total": cost_basis_total,
-                    "roll_count": roll_count,
-                    "order_count": len(order_ids),
+                    "roll_count": roll_timeline['roll_count'],
+                    "current_strike_label": roll_timeline['current_strike_label'],
+                    "roll_timeline": roll_timeline,
                     "has_assignment": has_assignment,
-                    "partially_rolled": partially_rolled,
                     "open_legs": open_option_legs,
                     "equity_legs": open_equity_legs,
                     "equity_summary": equity_summary,
