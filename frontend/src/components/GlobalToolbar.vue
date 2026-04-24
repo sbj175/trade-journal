@@ -434,7 +434,7 @@ onUnmounted(() => {
           <div class="grid transition-[grid-template-rows] duration-200 ease-in-out"
                :class="(isPositionsPage || showFilters) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
             <div class="overflow-hidden">
-              <div id="page-filters"></div>
+              <div id="page-filters" class="empty:hidden"></div>
             </div>
           </div>
 </template>
