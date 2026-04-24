@@ -120,23 +120,35 @@ function optionTypeLabel(t) {
             <span class="text-tv-text">{{ section.opened_strikes_label || '—' }}</span>
           </div>
         </div>
-        <!-- Per-leg pair rows (indented to match the summary) -->
-        <div v-if="expandedKeys.has(sectionKey(section, idx))" class="px-4 pb-2 mt-1 space-y-1">
+        <!-- Per-leg pair rows (indented to match the summary)
+             Mobile: qty+exp+type on row 1; strike transition + prices on row 2.
+             Desktop: single inline row. -->
+        <div v-if="expandedKeys.has(sectionKey(section, idx))" class="px-4 pb-2 mt-1 space-y-2 sm:space-y-1">
           <div v-for="(p, pi) in section.pairs" :key="'pair-' + pi"
-               class="font-mono text-xs text-tv-muted flex items-center flex-wrap gap-x-2 gap-y-0.5">
-            <span class="w-10 text-right" :class="p.sign > 0 ? 'text-tv-green' : 'text-tv-red'">
-              {{ (p.sign > 0 ? '+' : '-') + p.quantity }}
-            </span>
-            <span class="text-tv-text">{{ p.expiration ? formatExpirationShort(p.expiration) : '—' }}</span>
-            <span class="text-tv-text">{{ optionTypeLabel(p.option_type) }}</span>
-            <span>{{ p.closed.strike }}</span>
-            <span class="text-tv-muted">@{{ formatNumber(p.closed.price) }}</span>
-            <span class="text-tv-muted">→</span>
-            <span>{{ p.opened.strike }}</span>
-            <span class="text-tv-muted">@{{ formatNumber(p.opened.price) }}</span>
-            <span v-if="(p.closed.fees || p.opened.fees)" class="text-tv-muted ml-2">
-              fees ${{ formatNumber(Math.abs((p.closed.fees || 0) + (p.opened.fees || 0))) }}
-            </span>
+               class="font-mono text-xs text-tv-muted">
+            <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5 sm:flex-nowrap">
+              <span class="w-10 text-right" :class="p.sign > 0 ? 'text-tv-green' : 'text-tv-red'">
+                {{ (p.sign > 0 ? '+' : '-') + p.quantity }}
+              </span>
+              <span class="text-tv-text">{{ p.expiration ? formatExpirationShort(p.expiration) : '—' }}</span>
+              <span class="text-tv-text">{{ optionTypeLabel(p.option_type) }}</span>
+              <span class="hidden sm:inline">{{ p.closed.strike }}</span>
+              <span class="hidden sm:inline text-tv-muted">@{{ formatNumber(p.closed.price) }}</span>
+              <span class="hidden sm:inline text-tv-muted">→</span>
+              <span class="hidden sm:inline">{{ p.opened.strike }}</span>
+              <span class="hidden sm:inline text-tv-muted">@{{ formatNumber(p.opened.price) }}</span>
+              <span v-if="(p.closed.fees || p.opened.fees)" class="hidden sm:inline text-tv-muted ml-2">
+                fees ${{ formatNumber(Math.abs((p.closed.fees || 0) + (p.opened.fees || 0))) }}
+              </span>
+            </div>
+            <!-- Mobile: strike transition + prices on own indented row -->
+            <div class="sm:hidden ml-12 mt-0.5 flex items-center gap-1.5">
+              <span class="text-tv-text">{{ p.closed.strike }}</span>
+              <span class="text-tv-muted">@{{ formatNumber(p.closed.price) }}</span>
+              <span class="text-tv-muted">→</span>
+              <span class="text-tv-text">{{ p.opened.strike }}</span>
+              <span class="text-tv-muted">@{{ formatNumber(p.opened.price) }}</span>
+            </div>
           </div>
         </div>
       </template>
@@ -157,7 +169,7 @@ function optionTypeLabel(t) {
         </div>
         <div class="px-4 pb-2 space-y-0.5">
           <div v-for="(leg, li) in section.legs" :key="'leg-' + idx + '-' + li"
-               class="font-mono text-xs flex items-center flex-wrap gap-x-2">
+               class="font-mono text-xs flex items-center gap-x-2 flex-wrap sm:flex-nowrap">
             <span class="w-10 text-right font-medium"
                   :class="leg.sign > 0 ? 'text-tv-green' : 'text-tv-red'">
               {{ legQtyDisplay(leg) }}
@@ -166,7 +178,7 @@ function optionTypeLabel(t) {
             <span class="text-tv-text w-14">{{ leg.strike }}{{ (leg.option_type || '').toUpperCase()[0] }}</span>
             <span class="text-tv-muted uppercase tracking-wider w-10">{{ legActionLabel(leg) }}</span>
             <span class="text-tv-muted">@{{ formatNumber(leg.price) }}</span>
-            <span v-if="leg.fees" class="text-tv-muted ml-2">fees ${{ formatNumber(Math.abs(leg.fees)) }}</span>
+            <span v-if="leg.fees" class="text-tv-muted ml-2 hidden sm:inline">fees ${{ formatNumber(Math.abs(leg.fees)) }}</span>
           </div>
         </div>
       </template>
