@@ -104,7 +104,7 @@ onUnmounted(() => {
 
 <template>
   <!-- Section 1: Always visible — Sync, Market, Account, Quotes -->
-  <div class="bg-tv-panel border-b border-tv-border">
+  <div class="bg-tv-panel border-b border-tv-border empty:hidden" v-if="showToolbarExtras">
     <div class="p-4 flex flex-col gap-2 md:hidden">
       <!-- Row 1: Sync + icon buttons -->
       <div class="flex items-center gap-1.5 relative pl-[2px]">
@@ -115,7 +115,7 @@ onUnmounted(() => {
           </BaseButton>
         </template>
 
-        <div class="flex items-center gap-1.5 ml-auto">
+        <div class="flex items-center gap-1.5 ml-auto empty:hidden">
           <!-- Market Status icon -->
           <template v-if="showToolbarExtras">
             <button @click="marketStore.toggleExpanded($event)"
