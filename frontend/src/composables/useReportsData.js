@@ -28,9 +28,9 @@ export function useReportsData(Auth, { getActiveStrategies }) {
   // Sortable columns config
   const columns = [
     { key: 'strategy', label: 'Strategy', width: 'w-48', align: '' },
-    { key: 'totalTrades', label: 'Trades', width: 'w-28', align: 'text-center justify-center' },
-    { key: 'winRate', label: 'Win Rate', width: 'w-24', align: 'text-right justify-end' },
     { key: 'totalPnl', label: 'Total P&L', width: 'w-32', align: 'text-right justify-end' },
+    { key: 'winRate', label: 'Win Rate', width: 'w-24', align: 'text-right justify-end' },
+    { key: 'totalTrades', label: 'Trades', width: 'w-28', align: 'text-center justify-center' },
     { key: 'avgPnl', label: 'Avg P&L', width: 'w-28', align: 'text-right justify-end' },
     { key: 'avgWin', label: 'Avg Win', width: 'w-28', align: 'text-right justify-end' },
     { key: 'avgLoss', label: 'Avg Loss', width: 'w-28', align: 'text-right justify-end' },

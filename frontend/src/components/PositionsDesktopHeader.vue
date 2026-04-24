@@ -21,22 +21,6 @@ defineEmits(['sort'])
       <span v-show="sortColumn === 'underlying'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </div>
 
-    <!-- IVR -->
-    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
-         @click="$emit('sort', 'ivr')">
-      IVR
-      <span v-show="sortColumn === 'ivr'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </div>
-
-    <!-- Price -->
-    <div class="cursor-pointer hover:text-tv-text flex items-center gap-1"
-         @click="$emit('sort', 'price')">
-      Price
-      <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </div>
-
-    <!-- <div></div> Ledger spacer (hidden) -->
-
     <!-- Strategy -->
     <div class="cursor-pointer hover:text-tv-text flex items-center gap-1"
          @click="$emit('sort', 'strategy')">
@@ -49,20 +33,6 @@ defineEmits(['sort'])
          @click="$emit('sort', 'dte')">
       DTE
       <span v-show="sortColumn === 'dte'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </div>
-
-    <!-- Cost Basis -->
-    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
-         @click="$emit('sort', 'cost_basis')">
-      Cost Basis
-      <span v-show="sortColumn === 'cost_basis'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </div>
-
-    <!-- Net Liq -->
-    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
-         @click="$emit('sort', 'net_liq')">
-      Net Liq
-      <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </div>
 
     <!-- Open P&L -->
@@ -78,6 +48,34 @@ defineEmits(['sort'])
          title="Return on capital: Total P&L ÷ Cost Basis. Measures how much you've made or lost relative to what you put in.">
       % Rtn
       <span v-show="sortColumn === 'pnl_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </div>
+
+    <!-- IVR -->
+    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
+         @click="$emit('sort', 'ivr')">
+      IVR
+      <span v-show="sortColumn === 'ivr'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </div>
+
+    <!-- Price -->
+    <div class="cursor-pointer hover:text-tv-text flex items-center gap-1"
+         @click="$emit('sort', 'price')">
+      Price
+      <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </div>
+
+    <!-- Net Liq -->
+    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
+         @click="$emit('sort', 'net_liq')">
+      Net Liq
+      <span v-show="sortColumn === 'net_liq'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </div>
+
+    <!-- Cost Basis -->
+    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
+         @click="$emit('sort', 'cost_basis')">
+      Cost Basis
+      <span v-show="sortColumn === 'cost_basis'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </div>
 
     <!-- Notes spacer -->

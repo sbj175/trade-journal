@@ -31,17 +31,17 @@ defineEmits(['sort'])
       <div v-for="row in strategyBreakdown" :key="row.strategy"
            class="flex items-center px-4 h-12 hover:bg-tv-border/20 transition-colors">
         <span class="w-48 font-medium text-tv-text">{{ row.strategy }}</span>
+        <span class="w-32 text-right font-medium" :class="row.totalPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+          <span v-if="row.totalPnl < 0">-</span>${{ formatNumber(Math.abs(row.totalPnl), 0) }}
+        </span>
+        <span class="w-24 text-right" :class="row.winRate >= 50 ? 'text-tv-green' : 'text-tv-red'">
+          {{ formatPercent(row.winRate) }}%
+        </span>
         <span class="w-28 text-center">
           {{ row.totalTrades }}
           <span class="text-tv-muted text-sm">
             (<span class="text-tv-green">{{ row.wins }}</span>/<span class="text-tv-red">{{ row.losses }}</span>)
           </span>
-        </span>
-        <span class="w-24 text-right" :class="row.winRate >= 50 ? 'text-tv-green' : 'text-tv-red'">
-          {{ formatPercent(row.winRate) }}%
-        </span>
-        <span class="w-32 text-right font-medium" :class="row.totalPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
-          <span v-if="row.totalPnl < 0">-</span>${{ formatNumber(Math.abs(row.totalPnl), 0) }}
         </span>
         <span class="w-28 text-right" :class="row.avgPnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
           <span v-if="row.avgPnl < 0">-</span>${{ formatNumber(Math.abs(row.avgPnl), 0) }}

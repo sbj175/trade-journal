@@ -122,6 +122,18 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
         </div>
       </div>
 
+      <!-- Realized P&L -->
+      <div class="text-right text-base font-medium"
+           :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
+        {{ group.realized_pnl ? '$' + formatNumber(group.realized_pnl) : '' }}
+      </div>
+
+      <!-- % Return -->
+      <div class="text-right text-base"
+           :class="group.returnPercent > 0 ? 'text-tv-green' : group.returnPercent < 0 ? 'text-tv-red' : 'text-tv-muted'">
+        {{ group.returnPercent != null ? formatNumber(group.returnPercent) + '%' : '' }}
+      </div>
+
       <!-- Status -->
       <div>
         <span class="text-sm px-2 py-0.5 rounded"
@@ -135,6 +147,12 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
 
       <!-- Closed -->
       <div class="text-tv-muted text-base">{{ group.closing_date ? formatDate(group.closing_date) : '—' }}</div>
+
+      <!-- Initial Premium -->
+      <div class="text-right text-base"
+           :class="group.initialPremium > 0 ? 'text-tv-green' : group.initialPremium < 0 ? 'text-tv-red' : 'text-tv-muted'">
+        {{ group.initialPremium ? '$' + formatNumber(group.initialPremium) : '' }}
+      </div>
 
       <!-- Rolls column: count badge for same-exp rolls (inline details below);
            toggle for different-exp roll chains (opens RollChainModal) -->
@@ -150,24 +168,6 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
       <!-- Notes indicator -->
       <div class="flex items-center justify-center">
         <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" size="sm" class="text-tv-amber" title="Has notes" />
-      </div>
-
-      <!-- Initial Premium -->
-      <div class="text-right text-base"
-           :class="group.initialPremium > 0 ? 'text-tv-green' : group.initialPremium < 0 ? 'text-tv-red' : 'text-tv-muted'">
-        {{ group.initialPremium ? '$' + formatNumber(group.initialPremium) : '' }}
-      </div>
-
-      <!-- Realized P&L -->
-      <div class="text-right text-base font-medium"
-           :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
-        {{ group.realized_pnl ? '$' + formatNumber(group.realized_pnl) : '' }}
-      </div>
-
-      <!-- % Return -->
-      <div class="text-right text-base"
-           :class="group.returnPercent > 0 ? 'text-tv-green' : group.returnPercent < 0 ? 'text-tv-red' : 'text-tv-muted'">
-        {{ group.returnPercent != null ? formatNumber(group.returnPercent) + '%' : '' }}
       </div>
     </div>
 

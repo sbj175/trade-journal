@@ -43,27 +43,10 @@ defineEmits(['toggle-expanded'])
         </span>
       </div>
 
-      <!-- Price -->
-      <div>
-        <StreamingPrice :quote="item.underlyingQuote" />
-      </div>
-
       <!-- Shares -->
       <div class="text-right text-base font-medium"
            :class="item.quantity > 0 ? 'text-tv-green' : 'text-tv-red'">
         {{ item.quantity }}
-      </div>
-
-      <!-- Avg Price -->
-      <div class="text-right text-tv-muted text-base">${{ formatNumber(item.avgPrice) }}</div>
-
-      <!-- Cost Basis -->
-      <div class="text-right text-tv-muted text-base">${{ formatNumber(item.costBasis) }}</div>
-
-      <!-- Market Value -->
-      <div class="text-right text-base"
-           :class="item.marketValue ? 'text-tv-text' : 'text-tv-muted'">
-        {{ item.marketValue ? '$' + formatNumber(item.marketValue) : '—' }}
       </div>
 
       <!-- Unrealized P&L -->
@@ -77,6 +60,23 @@ defineEmits(['toggle-expanded'])
            :class="item.pnlPercent > 0 ? 'text-tv-green' : item.pnlPercent < 0 ? 'text-tv-red' : 'text-tv-muted'">
         {{ item.marketValue ? formatNumber(item.pnlPercent) + '%' : '' }}
       </div>
+
+      <!-- Price -->
+      <div>
+        <StreamingPrice :quote="item.underlyingQuote" />
+      </div>
+
+      <!-- Market Value -->
+      <div class="text-right text-base"
+           :class="item.marketValue ? 'text-tv-text' : 'text-tv-muted'">
+        {{ item.marketValue ? '$' + formatNumber(item.marketValue) : '—' }}
+      </div>
+
+      <!-- Avg Price -->
+      <div class="text-right text-tv-muted text-base">${{ formatNumber(item.avgPrice) }}</div>
+
+      <!-- Cost Basis -->
+      <div class="text-right text-tv-muted text-base">${{ formatNumber(item.costBasis) }}</div>
     </div>
 
     <!-- Expanded lots -->
@@ -97,28 +97,13 @@ defineEmits(['toggle-expanded'])
           </span>
         </div>
 
-        <!-- Price spacer -->
-        <div></div>
-
-        <!-- Signed quantity -->
+        <!-- Signed quantity (Shares col) -->
         <div class="text-right font-medium"
              :class="leg.quantity_direction === 'Long' ? 'text-tv-green' : 'text-tv-red'">
           {{ leg.quantity_direction === 'Short' ? -leg.quantity : leg.quantity }}
         </div>
 
-        <!-- Entry price -->
-        <div class="text-right text-tv-muted">${{ formatNumber(leg.entry_price) }}</div>
-
-        <!-- Cost basis -->
-        <div class="text-right text-tv-muted">${{ formatNumber(Math.abs(leg.cost_basis)) }}</div>
-
-        <!-- Lot market value -->
-        <div class="text-right"
-             :class="leg.lotMarketValue ? 'text-tv-text' : 'text-tv-muted'">
-          {{ leg.lotMarketValue ? '$' + formatNumber(leg.lotMarketValue) : '—' }}
-        </div>
-
-        <!-- Lot P&L -->
+        <!-- Lot P&L (P&L col) -->
         <div class="text-right font-medium"
              :class="leg.lotPnL > 0 ? 'text-tv-green' : leg.lotPnL < 0 ? 'text-tv-red' : 'text-tv-muted'">
           {{ leg.lotMarketValue ? '$' + formatNumber(leg.lotPnL) : '' }}
@@ -126,6 +111,21 @@ defineEmits(['toggle-expanded'])
 
         <!-- P&L % spacer -->
         <div></div>
+
+        <!-- Price spacer (live price is symbol-level, not per-lot) -->
+        <div></div>
+
+        <!-- Lot market value (Mkt Value col) -->
+        <div class="text-right"
+             :class="leg.lotMarketValue ? 'text-tv-text' : 'text-tv-muted'">
+          {{ leg.lotMarketValue ? '$' + formatNumber(leg.lotMarketValue) : '—' }}
+        </div>
+
+        <!-- Entry price (Avg Price col) -->
+        <div class="text-right text-tv-muted">${{ formatNumber(leg.entry_price) }}</div>
+
+        <!-- Cost basis (Cost Basis col) -->
+        <div class="text-right text-tv-muted">${{ formatNumber(Math.abs(leg.cost_basis)) }}</div>
       </div>
     </div>
   </div>

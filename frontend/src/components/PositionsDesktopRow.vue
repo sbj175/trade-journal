@@ -57,25 +57,6 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           </div>
         </div>
 
-        <!-- IVR -->
-        <div class="text-right"
-             :class="group.ivr >= 50 ? 'font-bold text-tv-amber' : 'text-tv-muted'">
-          {{ group.ivr !== null ? group.ivr : '' }}
-        </div>
-
-        <!-- Price -->
-        <div class="flex items-center gap-2 min-w-0">
-          <StreamingPrice :quote="group.underlyingQuote" />
-        </div>
-
-        <!--
-        <div class="flex items-center justify-center">
-          <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
-             @click.stop class="inline-flex items-center justify-center w-5 h-5 text-tv-muted hover:text-tv-blue transition-colors"
-             title="View in Ledger"><BaseIcon name="book" class="text-[11px]" /></a>
-        </div>
-        Ledger link (hidden) -->
-
         <!-- Strategy -->
         <div class="min-w-0">
           <div class="text-sm text-tv-muted truncate">
@@ -90,18 +71,6 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           {{ group.minDTE !== null ? group.minDTE + 'd' : '' }}
         </div>
 
-        <!-- Cost Basis -->
-        <div class="text-right"
-             :class="(group.costBasis >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group.costBasis)">
-          <span v-show="group.costBasis < 0">-</span>${{ formatDollar(group.costBasis) }}
-        </div>
-
-        <!-- Net Liq -->
-        <div class="text-right font-medium"
-             :class="(group.netLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group.netLiq)">
-          <span v-show="group.netLiq < 0">-</span>${{ formatDollar(group.netLiq) }}
-        </div>
-
         <!-- Open P/L -->
         <div class="text-right font-medium"
              :class="(group.openPnL >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group.openPnL)">
@@ -114,10 +83,42 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           {{ group.pnlPercent !== null ? group.pnlPercent + '%' : '' }}
         </div>
 
+        <!-- IVR -->
+        <div class="text-right"
+             :class="group.ivr >= 50 ? 'font-bold text-tv-amber' : 'text-tv-muted'">
+          {{ group.ivr !== null ? group.ivr : '' }}
+        </div>
+
+        <!-- Price -->
+        <div class="flex items-center gap-2 min-w-0">
+          <StreamingPrice :quote="group.underlyingQuote" />
+        </div>
+
+        <!-- Net Liq -->
+        <div class="text-right font-medium"
+             :class="(group.netLiq >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group.netLiq)">
+          <span v-show="group.netLiq < 0">-</span>${{ formatDollar(group.netLiq) }}
+        </div>
+
+        <!-- Cost Basis -->
+        <div class="text-right"
+             :class="(group.costBasis >= 0 ? 'text-tv-green' : 'text-tv-red') + ' ' + dollarSizeClass(group.costBasis)">
+          <span v-show="group.costBasis < 0">-</span>${{ formatDollar(group.costBasis) }}
+        </div>
+
         <!-- Note indicator -->
         <div class="flex items-center justify-center">
           <BaseIcon name="sticky-note" size="sm" class="text-tv-amber" v-show="notesState.getPositionComment(group)" title="Has notes" />
         </div>
+
+        <!--
+        Ledger link (hidden):
+        <div class="flex items-center justify-center">
+          <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
+             @click.stop class="inline-flex items-center justify-center w-5 h-5 text-tv-muted hover:text-tv-blue transition-colors"
+             title="View in Ledger"><BaseIcon name="book" class="text-[11px]" /></a>
+        </div>
+        -->
 
         <!-- Tags / Roll badges -->
         <div class="relative flex flex-nowrap items-center justify-end gap-2 min-w-0" data-tag-popover @click.stop>
