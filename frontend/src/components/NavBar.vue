@@ -53,6 +53,19 @@ function closeMobileMenu() {
   mobileMenuOpen.value = false
 }
 
+const currentPageLabel = computed(() => {
+  for (const link of allNavLinks) {
+    if (link.children) {
+      const child = link.children.find(c => route.path === c.to)
+      if (child) return child.label
+    } else if (route.path === link.to || route.path.startsWith(link.to + '/')) {
+      return link.label
+    }
+  }
+  if (route.path === '/settings') return 'Settings'
+  return route.meta.title ?? ''
+})
+
 watch(
   () => route.path,
   () => {
@@ -81,6 +94,12 @@ watch(
               Option<span class="text-tv-blue">Ledger</span>
             </span>
           </router-link>
+
+          <!-- Mobile page title -->
+          <span
+            v-if="currentPageLabel"
+            class="md:hidden border-l border-tv-border pl-3 text-sm font-medium text-tv-muted truncate"
+          >{{ currentPageLabel }}</span>
 
           <!-- Desktop nav -->
           <div class="hidden md:flex items-center h-full gap-1">
