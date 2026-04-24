@@ -197,9 +197,13 @@ onMounted(async () => {
         <div class="space-y-3">
           <div v-for="leg in sortedLegs(group.positions)" :key="leg.lot_id || leg.symbol"
                class="py-2 border-b border-tv-border/20 last:border-0">
-            <!-- Row 1: Strike + Type + P&L -->
+            <!-- Row 1: Qty + Strike + Type + P&L -->
             <div class="flex items-baseline justify-between mb-1">
               <div class="flex items-baseline gap-2">
+                <span class="text-base font-semibold font-mono"
+                      :class="getSignedQuantity(leg) > 0 ? 'text-tv-green' : 'text-tv-red'">
+                  {{ getSignedQuantity(leg) > 0 ? '+' + getSignedQuantity(leg) : getSignedQuantity(leg) }}
+                </span>
                 <span class="text-white text-base font-semibold">{{ getStrikePrice(leg) }}</span>
                 <span :class="getOptionType(leg) === 'C' ? 'text-tv-green' : 'text-tv-red'" class="text-sm font-medium">
                   {{ getOptionType(leg) === 'C' ? 'Call' : 'Put' }}
