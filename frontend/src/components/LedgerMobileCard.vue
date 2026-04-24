@@ -4,6 +4,8 @@ import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import BaseIcon from '@/components/BaseIcon.vue'
 import RollTimeline from '@/components/RollTimeline.vue'
+import RollCountBadge from '@/components/RollCountBadge.vue'
+import RollChainButton from '@/components/RollChainButton.vue'
 
 const props = defineProps({
   group: Object,
@@ -35,17 +37,13 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
               :class="group.status === 'OPEN' ? 'bg-tv-green/20 text-tv-green' : 'bg-tv-muted/20 text-tv-muted'">
           {{ group.status }}
         </span>
-        <span v-if="rollCount > 0"
-              class="text-[10px] px-2 py-0.5 rounded-full bg-tv-cyan text-tv-bg font-medium shrink-0 leading-4 inline-flex items-center gap-0.5"
-              :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">
-          <i class="fas fa-rotate text-[9px]"></i>{{ rollCount }}
-        </span>
-        <button v-if="group.has_roll_chain"
-                class="text-[10px] px-2 py-0.5 rounded-full bg-tv-blue text-white font-medium shrink-0 leading-4 inline-flex items-center gap-0.5 hover:bg-tv-blue/80 transition-colors"
-                @click.stop="$emit('open-roll-chain', group.group_id)"
-                title="Different-expiration roll chain">
-          <i class="fas fa-link text-[9px]"></i>
-        </button>
+        <RollCountBadge :count="rollCount" size="sm" class="shrink-0" />
+        <RollChainButton
+          :has-chain="!!group.has_roll_chain"
+          :chain-roll-count="group.roll_chain ? group.roll_chain.roll_count : null"
+          size="sm"
+          class="shrink-0"
+          @click="$emit('open-roll-chain', group.group_id)" />
         <BaseIcon v-if="notesState.getGroupNote(group)" name="sticky-note" class="text-tv-amber text-[11px] shrink-0" title="Has notes" />
         <BaseIcon name="chevron-right" class="text-tv-muted text-[11px] ml-auto shrink-0 transition-transform duration-150" :class="{ 'rotate-90': group.expanded }" />
       </div>

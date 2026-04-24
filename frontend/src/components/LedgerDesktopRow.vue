@@ -5,6 +5,8 @@ import { accountDotColor, getAccountTooltip } from '@/lib/constants'
 import { LEDGER_COLS_CLASS } from '@/lib/ledgerDesktopCols'
 import BaseIcon from '@/components/BaseIcon.vue'
 import RollTimeline from '@/components/RollTimeline.vue'
+import RollCountBadge from '@/components/RollCountBadge.vue'
+import RollChainButton from '@/components/RollChainButton.vue'
 
 const props = defineProps({
   group: Object,
@@ -135,17 +137,11 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
       <!-- Rolls column: count badge for same-exp rolls (inline details below);
            toggle for different-exp roll chains (opens RollChainModal) -->
       <div class="flex items-center justify-center gap-1">
-        <span v-if="rollCount > 0"
-              class="text-[11px] px-2.5 py-1 rounded-full bg-tv-cyan text-tv-bg leading-4 font-medium inline-flex items-center gap-1"
-              :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'} — expand to see details`">
-          <i class="fas fa-rotate text-[9px]"></i>{{ rollCount }}
-        </span>
-        <button v-if="hasDifferentExpChain"
-                class="text-[11px] px-2.5 py-1 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-4 font-medium transition-colors inline-flex items-center gap-1"
-                @click.stop="$emit('open-roll-chain', group.group_id)"
-                title="Different-expiration roll chain — click for details">
-          <i class="fas fa-link text-[9px]"></i>
-        </button>
+        <RollCountBadge :count="rollCount" />
+        <RollChainButton
+          :has-chain="hasDifferentExpChain"
+          :chain-roll-count="group.roll_chain ? group.roll_chain.roll_count : null"
+          @click="$emit('open-roll-chain', group.group_id)" />
       </div>
 
       <!-- Notes indicator -->

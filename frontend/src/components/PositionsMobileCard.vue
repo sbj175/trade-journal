@@ -9,6 +9,8 @@ import {
 import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIcon from '@/components/BaseIcon.vue'
+import RollCountBadge from '@/components/RollCountBadge.vue'
+import RollChainButton from '@/components/RollChainButton.vue'
 
 const props = defineProps({
   group: Object,
@@ -44,11 +46,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           <span v-show="hasEquity(group) && (group.positions || []).length > 0"
                 class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
           <span class="text-sm text-tv-muted">{{ group.strategyLabel }}<span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span></span>
-          <span v-if="rollCount > 0"
-                class="text-[10px] px-2 py-0.5 rounded-full bg-tv-cyan text-tv-bg font-medium leading-4 inline-flex items-center gap-0.5"
-                :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">
-            <i class="fas fa-rotate text-[9px]"></i>{{ rollCount }}
-          </span>
+          <RollCountBadge :count="rollCount" size="sm" />
         </div>
         <div class="text-right shrink-0">
           <div class="font-semibold text-base leading-tight"
@@ -104,10 +102,11 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
             <span v-show="(group.roll_chain.cumulative_realized_pnl + group.openPnL) < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl + group.openPnL) }}
           </span>
         </span>
-        <button @click.stop="$emit('open-roll-chain', group)"
-                class="text-xs px-2.5 py-1 rounded-full bg-tv-blue text-white active:bg-tv-blue/80 cursor-pointer font-medium min-h-[32px]">
-          <BaseIcon name="link" class="text-[9px] mr-0.5" />{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
-        </button>
+        <RollChainButton
+          :has-chain="true"
+          :chain-roll-count="group.roll_chain.roll_count"
+          class="min-h-[32px]"
+          @click="$emit('open-roll-chain', group)" />
       </div>
 
       <!-- Badges -->

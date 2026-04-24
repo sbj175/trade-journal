@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from sqlalchemy import func
 
-from src.database.models import PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RawTransaction, Tag
+from src.database.models import PnlEvent, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RawTransaction, RollChainSummary, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.utils.premium import group_premium_from_lots
@@ -49,14 +49,51 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
     group_ids = [g['group_id'] for g in groups_raw]
 
     # Batch-load roll source IDs (groups that have something rolled FROM them)
+    # and parent pointers so we can walk each chain back to its root.
     with db.get_session() as session:
-        roll_source_ids = {
-            row[0] for row in session.query(
-                PositionGroup.rolled_from_group_id,
-            ).filter(
-                PositionGroup.rolled_from_group_id.isnot(None),
-            ).all()
-        }
+        parent_rows = session.query(
+            PositionGroup.group_id,
+            PositionGroup.rolled_from_group_id,
+        ).filter(
+            PositionGroup.rolled_from_group_id.isnot(None),
+        ).all()
+        parent_of: Dict[str, str] = {gid: parent for gid, parent in parent_rows}
+        roll_source_ids = set(parent_of.values())
+
+    # Walk each group back to its chain root so we can look up the
+    # chain summary (keyed by root_group_id) regardless of where in the
+    # chain this particular group sits.
+    def _chain_root(gid: str) -> str:
+        seen = set()
+        while gid in parent_of and gid not in seen:
+            seen.add(gid)
+            gid = parent_of[gid]
+        return gid
+
+    group_root = {gid: _chain_root(gid) for gid in group_ids}
+    root_ids = list({r for r in group_root.values() if r})
+
+    roll_chain_by_group: Dict[str, dict] = {}
+    if root_ids:
+        with db.get_session() as session:
+            # Materialize inside the session — the instances are detached
+            # once we exit the `with` block.
+            rc_by_root = {
+                rc.root_group_id: {
+                    'root_group_id': rc.root_group_id,
+                    'chain_length': rc.chain_length,
+                    'roll_count': rc.roll_count,
+                    'first_opened': rc.first_opened,
+                    'last_rolled': rc.last_rolled,
+                }
+                for rc in session.query(RollChainSummary).filter(
+                    RollChainSummary.root_group_id.in_(root_ids),
+                ).all()
+            }
+        for gid, root in group_root.items():
+            summary = rc_by_root.get(root)
+            if summary:
+                roll_chain_by_group[gid] = summary
 
     # Batch-load tags for all groups
     tags_by_group: Dict[str, list] = {gid: [] for gid in group_ids}
@@ -202,6 +239,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             'current_strike_label': roll_timeline['current_strike_label'],
             'roll_count': roll_timeline['roll_count'],
             'roll_timeline': roll_timeline,
+            'roll_chain': roll_chain_by_group.get(gid),
         })
 
     return result

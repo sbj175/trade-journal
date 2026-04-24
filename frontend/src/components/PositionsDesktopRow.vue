@@ -7,6 +7,8 @@ import PositionsExpandedPanel from '@/components/PositionsExpandedPanel.vue'
 import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIcon from '@/components/BaseIcon.vue'
+import RollCountBadge from '@/components/RollCountBadge.vue'
+import RollChainButton from '@/components/RollChainButton.vue'
 
 const props = defineProps({
   group: Object,
@@ -80,11 +82,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
         <div class="min-w-0">
           <div class="text-sm text-tv-muted truncate">
             {{ group.strategyLabel }}<span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span>
-            <span v-if="rollCount > 0"
-                  class="text-[11px] px-2.5 py-1 ml-1.5 rounded-full bg-tv-cyan text-tv-bg leading-4 font-medium inline-flex items-center gap-1"
-                  :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'} — expand to see details`">
-              <i class="fas fa-rotate text-[9px]"></i>{{ rollCount }}
-            </span>
+            <RollCountBadge :count="rollCount" class="ml-1.5" />
           </div>
         </div>
 
@@ -191,11 +189,10 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
             <span v-show="(group.roll_chain.cumulative_realized_pnl + group.openPnL) < 0">-</span>${{ formatDollar(group.roll_chain.cumulative_realized_pnl + group.openPnL) }}
           </span>
         </span>
-        <button @click.stop="$emit('open-roll-chain', group)"
-                class="text-[11px] px-2.5 py-1 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-4 font-medium transition-colors"
-                title="Rolls detected — click to see the full chain">
-          <BaseIcon name="link" class="text-[9px] mr-0.5" />{{ group.roll_chain.roll_count }} roll{{ group.roll_chain.roll_count > 1 ? 's' : '' }}
-        </button>
+        <RollChainButton
+          :has-chain="true"
+          :chain-roll-count="group.roll_chain.roll_count"
+          @click="$emit('open-roll-chain', group)" />
       </div>
     </div>
 
