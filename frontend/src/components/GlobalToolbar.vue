@@ -105,9 +105,9 @@ onUnmounted(() => {
 <template>
   <!-- Section 1: Always visible — Sync, Market, Account, Quotes -->
   <div class="bg-tv-panel border-b border-tv-border">
-    <div class="px-3 py-2 flex flex-col gap-2 md:hidden">
+    <div class="p-4 flex flex-col gap-2 md:hidden">
       <!-- Row 1: Sync + icon buttons -->
-      <div class="flex items-center gap-1.5 relative">
+      <div class="flex items-center gap-1.5 relative pl-[2px]">
         <template v-if="showToolbarExtras">
           <BaseButton variant="success" size="sm" @click="syncStore.performSync()" :disabled="syncStore.isSyncing" class="shrink-0 min-h-[44px]">
             <template #icon><BaseIcon name="sync-alt" :spin="syncStore.isSyncing" /></template>
@@ -184,7 +184,7 @@ onUnmounted(() => {
               <BaseIcon name="filter" class="text-[11px]" />
             </button>
             <!-- Sort (page-provided via Teleport) -->
-            <div id="page-sort" class="relative"></div>
+            <div id="page-sort" class="relative empty:hidden"></div>
           </template>
         </div>
       </div>
