@@ -68,15 +68,13 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           <StreamingPrice :quote="group.underlyingQuote" />
         </div>
 
-        <!-- Ledger Link -->
+        <!--
         <div class="flex items-center justify-center">
           <a :href="'/ledger?underlying=' + encodeURIComponent(group.underlying) + '&group=' + encodeURIComponent(group.group_id)"
-             @click.stop
-             class="inline-flex items-center justify-center w-5 h-5 text-tv-muted hover:text-tv-blue transition-colors"
-             title="View in Ledger">
-            <BaseIcon name="book" class="text-[11px]" />
-          </a>
+             @click.stop class="inline-flex items-center justify-center w-5 h-5 text-tv-muted hover:text-tv-blue transition-colors"
+             title="View in Ledger"><BaseIcon name="book" class="text-[11px]" /></a>
         </div>
+        Ledger link (hidden) -->
 
         <!-- Strategy -->
         <div class="min-w-0">
@@ -142,9 +140,11 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
                     class="hover:opacity-70 leading-none">&times;</button>
           </span>
 
+          <!-- + Tag button hidden
           <button @click="tagsState.openTagPopover(group.group_id, $event)"
                   class="text-[11px] px-2.5 py-1 rounded-full bg-tv-blue text-white hover:bg-tv-blue/80 cursor-pointer leading-4 font-medium transition-colors text-nowrap flex-none"
                   title="Add tag">+ Tag</button>
+          -->
 
           <!-- Tag popover -->
           <div v-if="tagsState.tagPopoverGroup.value === group.group_id"

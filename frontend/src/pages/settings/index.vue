@@ -30,7 +30,7 @@ const tabs = [
   { id: 'privacy', icon: 'fa-eye-slash', label: 'Privacy' },
   { id: 'targets', icon: 'fa-bullseye', label: 'Strategy Targets' },
   { id: 'alerts', icon: 'fa-bell', label: 'Roll Alerts' },
-  { id: 'tags', icon: 'fa-tags', label: 'Tags' },
+  // { id: 'tags', icon: 'fa-tags', label: 'Tags' },
 ]
 
 const notification = ref(null)

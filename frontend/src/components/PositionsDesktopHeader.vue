@@ -35,8 +35,7 @@ defineEmits(['sort'])
       <span v-show="sortColumn === 'price'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </div>
 
-    <!-- Ledger spacer -->
-    <div></div>
+    <!-- <div></div> Ledger spacer (hidden) -->
 
     <!-- Strategy -->
     <div class="cursor-pointer hover:text-tv-text flex items-center gap-1"

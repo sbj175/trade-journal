@@ -60,11 +60,13 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
               <span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span>
               <span v-if="group.contractCount" class="text-tv-text ml-1">({{ group.contractCount }})</span>
             </span>
+            <!-- pencil edit hidden
             <span class="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
               <BaseIcon name="pencil-alt" size="xs" class="text-tv-muted/40 group-hover/strat:text-tv-muted hover:!text-tv-blue cursor-pointer transition-colors"
                  @click.stop="group._editingStrategy = true"
                  title="Edit strategy label" />
             </span>
+            -->
           </span>
         </template>
         <template v-else>
@@ -80,7 +82,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
         </template>
 
         <!-- Tag chips -->
-        <div class="flex flex-wrap gap-1 mt-0.5 items-center">
+        <!-- <div class="flex flex-wrap gap-1 mt-0.5 items-center">
           <span v-for="tag in (group.tags || [])" :key="tag.id"
                 class="text-[10px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-0.5 leading-3"
                 :style="`background: ${tag.color}20; color: ${tag.color}; border-color: ${tag.color}50`">
@@ -91,7 +93,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           <button @click.stop="tagsState.openTagPopover(group.group_id, $event)"
                   class="text-[10px] w-4 h-4 rounded-full border border-tv-border/50 text-tv-muted hover:text-tv-blue hover:border-tv-blue/50 flex items-center justify-center leading-none"
                   title="Add tag">+</button>
-        </div>
+        </div> -->
 
         <!-- Tag popover -->
         <div v-if="tagsState.tagPopoverGroup.value === group.group_id"
