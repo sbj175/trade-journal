@@ -69,6 +69,48 @@ Mobile-first polish pass and desktop navigation restructure. No backend changes.
 
 ---
 
+---
+
+## InfoPopover (`components/InfoPopover.vue`)
+
+- Teleported popover panel now uses `border-tv-blue/60` border and a blue-tinted drop shadow (`shadow-[0_4px_24px_rgb(var(--tv-blue)/0.18)]`) when open, replacing the flat `border-tv-border` style.
+- Increases visual prominence so users notice the popover content.
+
+---
+
+## RollChainModal (`components/RollChainModal.vue`)
+
+### Mobile layout
+- Table replaced with card-per-row layout on screens below `md` breakpoint.
+- Each card: date range (`Opened → Closed`) on the left, premium + realized P&L values on the right.
+- Totals block (Chain Realized / Unrealized / Chain Total) rendered as labeled rows below the cards.
+- Modal height increased to `max-h-[90vh]` on mobile (was `80vh` on all sizes).
+
+### Header
+- Title and metadata (underlying · strategy label) stack vertically on mobile; inline on desktop.
+- Close button gets `shrink-0` to prevent compression on narrow viewports.
+
+### Desktop
+- Table layout unchanged. Number column no longer hidden on `md+` (was `hidden md:table-cell`).
+
+---
+
+## Light Mode Accessibility — Contrast (`styles/main.css`)
+
+Five accent colors failed WCAG AA (4.5:1) when rendered on `--tv-bg` or `--tv-row` surfaces. The existing comment said "WCAG AA on #fdfaf6" — that was panel only; bg and row are measurably darker.
+
+| Variable | Old | New | Worst-case ratio |
+|---|---|---|---|
+| `--tv-muted` | `#7a7068` | `#706860` | 4.60:1 (row) |
+| `--tv-green` | `#5d7a5f` | `#507252` | 4.56:1 (row) |
+| `--tv-amber` | `#9e7030` | `#8a6028` | 4.66:1 (row) |
+| `--tv-orange` | `#a85838` | `#a05434` | 4.65:1 (row) |
+| `--tv-cyan` | `#3a7878` | `#387070` | 4.75:1 (row) |
+
+Red, blue, purple already passed on all surfaces — unchanged.
+
+---
+
 ## Files Changed
 
 | File | Change |
@@ -79,4 +121,7 @@ Mobile-first polish pass and desktop navigation restructure. No backend changes.
 | `components/PositionsDesktopHeader.vue` | Commented out ledger spacer |
 | `components/PositionsDesktopRow.vue` | Commented out ledger link + tag button |
 | `components/LedgerDesktopRow.vue` | Commented out pencil edit button |
+| `components/InfoPopover.vue` | Blue border + glow shadow when popover open |
+| `components/RollChainModal.vue` | Mobile card layout, stacked header, taller modal |
+| `styles/main.css` | Light mode contrast fixes for 5 accent colors |
 | Various mobile card components | Left/right alignment and layout refinements |
