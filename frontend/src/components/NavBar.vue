@@ -155,26 +155,23 @@ watch(
 
         <!-- Right -->
         <div class="flex items-center shrink-0 gap-2 sm:gap-5 text-sm">
-          <!-- Desktop auth/settings -->
-          <div
-            v-if="authStore.authEnabled && authStore.userEmail"
-            class="hidden md:flex items-center gap-3 pl-5"
+          <!-- Theme toggle (desktop) -->
+          <button
+            type="button"
+            class="hidden md:flex text-tv-muted hover:text-tv-text transition-colors"
+            :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+            @click="toggleTheme"
           >
-            <span
-              class="text-tv-muted text-xs truncate max-w-[150px]"
-              :title="authStore.userEmail"
-            >
-              {{ authStore.userEmail }}
-            </span>
-            <BaseButton variant="ghost" size="sm" icon="sign-out-alt" @click="authStore.signOut()" title="Sign out" class="hover:text-tv-red" />
-          </div>
+            <BaseIcon :name="isDark ? 'sun' : 'moon'" size="sm" />
+          </button>
 
+          <!-- Settings (desktop) -->
           <router-link
             v-if="route.path !== '/settings'"
             to="/settings"
-            class="hidden md:flex border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
+            class="hidden md:flex gap-1.5 items-center border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
           >
-            <BaseIcon name="cog" size="sm" />
+            <BaseIcon name="cog" size="sm" /> Settings
           </router-link>
 
           <span
@@ -185,15 +182,19 @@ watch(
             <span class="text-sm font-medium">Settings</span>
           </span>
 
-          <!-- Theme toggle (desktop) -->
-          <button
-            type="button"
-            class="hidden md:flex border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
-            :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-            @click="toggleTheme"
+          <!-- User + logout (desktop) -->
+          <div
+            v-if="authStore.authEnabled && authStore.userEmail"
+            class="hidden md:flex items-center gap-3 border-l border-tv-border pl-5"
           >
-            <BaseIcon :name="isDark ? 'sun' : 'moon'" size="sm" />
-          </button>
+            <span
+              class="text-tv-muted text-xs truncate max-w-[150px]"
+              :title="authStore.userEmail"
+            >
+              {{ authStore.userEmail }}
+            </span>
+            <BaseButton variant="ghost" size="sm" icon="sign-out-alt" @click="authStore.signOut()" title="Sign out" class="hover:text-tv-red" />
+          </div>
 
           <!-- Theme toggle (mobile) -->
           <button
