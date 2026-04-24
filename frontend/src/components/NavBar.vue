@@ -158,7 +158,7 @@ watch(
           <!-- Desktop auth/settings -->
           <div
             v-if="authStore.authEnabled && authStore.userEmail"
-            class="hidden md:flex items-center gap-3 border-l border-tv-border pl-5"
+            class="hidden md:flex items-center gap-3 pl-5"
           >
             <span
               class="text-tv-muted text-xs truncate max-w-[150px]"
