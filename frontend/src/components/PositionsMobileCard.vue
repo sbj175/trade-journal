@@ -34,7 +34,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
        :class="group.rollAnalysis?.borderColor === 'green' ? 'border-l-2 border-l-tv-green/40' : group.rollAnalysis?.borderColor === 'red' ? 'border-l-2 border-l-tv-red/40' : ''">
 
     <!-- Card header — tap to navigate to detail -->
-    <div class="px-3 py-3 active:bg-tv-border/20" @click="$router.push('/positions/options/' + group.group_id)">
+    <div class="p-4 active:bg-tv-border/20" @click="$router.push('/positions/options/' + group.group_id)">
       <!-- Row 1: Symbol + P&L -->
       <div class="flex items-start justify-between gap-2">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 flex-1">

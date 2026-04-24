@@ -193,7 +193,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Mobile Card List -->
-    <div class="md:hidden px-2 py-2 space-y-2">
+    <div class="md:hidden p-4 space-y-2">
       <EquitiesMobileCard
         v-for="item in groupedPositions"
         :key="'m-' + item.groupId"

@@ -207,7 +207,7 @@ onMounted(async () => {
 
   <div class="overflow-x-clip md:overflow-visible">
     <!-- Stats Bar -->
-    <div class="bg-tv-panel border-b border-tv-border px-4 py-2 flex items-center flex-wrap gap-x-4 gap-y-1 md:gap-x-6 text-xs md:text-base">
+    <div class="bg-tv-panel border-b border-tv-border px-5 py-2 flex items-center flex-wrap gap-x-4 gap-y-1 md:gap-x-6 text-xs md:text-base">
       <span class="text-tv-muted whitespace-nowrap">
         Groups: <span class="text-tv-text">{{ filteredGroups.length }}</span>
       </span>
@@ -313,7 +313,7 @@ onMounted(async () => {
       </Teleport>
 
       <!-- Mobile Card List -->
-      <div class="md:hidden px-2 py-2 space-y-2 overflow-x-hidden">
+      <div class="md:hidden p-4 space-y-2 overflow-x-hidden">
         <LedgerMobileCard
           v-for="group in filteredGroups"
           :key="'m-' + group.group_id"

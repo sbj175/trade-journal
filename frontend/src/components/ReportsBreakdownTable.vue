@@ -70,7 +70,7 @@ defineEmits(['sort'])
   <!-- Mobile Cards -->
   <div class="md:hidden space-y-2">
     <div v-for="row in strategyBreakdown" :key="'m-' + row.strategy"
-         class="bg-tv-panel border border-tv-border rounded-lg px-3 py-3">
+         class="bg-tv-panel border border-tv-border rounded-lg p-4">
       <!-- Strategy name -->
       <div class="text-sm font-semibold text-tv-text mb-2">{{ row.strategy }}</div>
 
