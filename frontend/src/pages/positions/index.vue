@@ -275,7 +275,7 @@ onUnmounted(() => {
 
   <!-- Mobile Card View -->
   <div v-show="!isLoading && !error && filteredItems.length > 0 && allItems.length > 0"
-       class="md:hidden px-2 py-2 space-y-2 overflow-x-hidden">
+       class="md:hidden p-4 space-y-2 overflow-x-hidden">
     <PositionsMobileCard
       v-for="group in groupedPositions"
       :key="'m-' + group.groupKey"

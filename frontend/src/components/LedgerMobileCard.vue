@@ -25,7 +25,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
        class="bg-tv-row border border-tv-border rounded-lg overflow-hidden min-w-0 max-w-full">
     <!-- Summary header (tap to expand) -->
     <div @click="$emit('toggle-expanded', group.group_id)"
-         class="px-3 py-3 cursor-pointer active:bg-tv-border/20 transition-colors min-w-0">
+         class="p-4 cursor-pointer active:bg-tv-border/20 transition-colors min-w-0">
       <!-- Top row: symbol, status, indicators, chevron -->
       <div class="flex items-center gap-2 mb-1.5 min-w-0">
         <span class="text-lg font-semibold text-tv-text truncate min-w-0">{{ group.underlying }}</span>

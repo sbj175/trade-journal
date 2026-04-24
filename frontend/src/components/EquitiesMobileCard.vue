@@ -18,7 +18,7 @@ defineEmits(['toggle-expanded'])
   <div class="bg-tv-row border border-tv-border rounded-lg overflow-hidden active:bg-tv-border/20 transition-colors"
        :class="item.equityLegs.length > 1 ? 'cursor-pointer' : ''"
        @click="item.equityLegs.length > 1 && $emit('toggle-expanded', item.groupId)">
-    <div class="px-3 py-3">
+    <div class="p-4">
       <!-- Top row: symbol, live price, expand chevron -->
       <div class="flex items-center gap-2 mb-2">
         <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
