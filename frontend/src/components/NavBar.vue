@@ -20,6 +20,7 @@ const navLinks = computed(() => allNavLinks.filter(l => !l.enabled || l.enabled(
 
 const openDropdown = ref(null)
 const mobileMenuOpen = ref(false)
+const userDropdownOpen = ref(false)
 const isDark = ref(!document.documentElement.classList.contains('light'))
 
 function toggleTheme() {
@@ -174,36 +175,57 @@ watch(
             <BaseIcon :name="isDark ? 'sun' : 'moon'" size="sm" />
           </button>
 
-          <!-- Settings (desktop) -->
-          <router-link
-            v-if="route.path !== '/settings'"
-            to="/settings"
-            class="hidden md:flex gap-1.5 items-center border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
-          >
-            <BaseIcon name="cog" size="sm" /> Settings
-          </router-link>
-
-          <span
-            v-else
-            class="hidden md:flex border-l border-tv-border pl-5 text-tv-blue items-center gap-1.5"
-          >
-            <BaseIcon name="cog" size="sm" />
-            <span class="text-sm font-medium">Settings</span>
-          </span>
-
-          <!-- User + logout (desktop) -->
+          <!-- User dropdown (desktop, auth enabled) -->
           <div
             v-if="authStore.authEnabled && authStore.userEmail"
-            class="hidden md:flex items-center gap-3 border-l border-tv-border pl-5"
+            class="hidden md:relative md:flex items-center border-l border-tv-border pl-5"
+            @mouseenter="userDropdownOpen = true"
+            @mouseleave="userDropdownOpen = false"
           >
-            <span
-              class="text-tv-muted text-xs truncate max-w-[150px]"
-              :title="authStore.userEmail"
-            >
-              {{ authStore.userEmail }}
-            </span>
-            <BaseButton variant="ghost" size="sm" icon="sign-out-alt" @click="authStore.signOut()" title="Sign out" class="hover:text-tv-red" />
+            <button class="flex items-center gap-1.5 text-tv-muted hover:text-tv-text transition-colors text-xs">
+              <BaseIcon name="user-circle" size="sm" class="shrink-0" />
+              <span class="truncate max-w-[150px]" :title="authStore.userEmail">{{ authStore.userEmail }}</span>
+              <BaseIcon name="chevron-down" class="text-[9px] opacity-50 transition-transform duration-150" :class="userDropdownOpen ? 'rotate-180' : ''" />
+            </button>
+
+            <div v-if="userDropdownOpen" class="absolute top-full right-0 pt-1.5 z-50 min-w-[160px]">
+              <div class="bg-tv-panel border border-tv-border rounded shadow-lg py-1">
+                <router-link
+                  to="/settings"
+                  class="flex items-center justify-between px-4 py-2 text-sm transition-colors"
+                  :class="route.path === '/settings' ? 'text-tv-blue bg-tv-blue/10' : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20'"
+                >
+                  Settings
+                  <BaseIcon name="cog" size="xs" class="ml-3" />
+                </router-link>
+                <button
+                  @click="authStore.signOut()"
+                  class="w-full flex items-center justify-between px-4 py-2 text-sm text-tv-muted hover:text-tv-red hover:bg-tv-border/20 transition-colors text-left"
+                >
+                  Sign out
+                  <BaseIcon name="sign-out-alt" size="xs" class="ml-3" />
+                </button>
+              </div>
+            </div>
           </div>
+
+          <!-- Settings standalone (desktop, no auth) -->
+          <template v-else>
+            <router-link
+              v-if="route.path !== '/settings'"
+              to="/settings"
+              class="hidden md:flex gap-1.5 items-center border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
+            >
+              <BaseIcon name="cog" size="sm" /> Settings
+            </router-link>
+            <span
+              v-else
+              class="hidden md:flex border-l border-tv-border pl-5 text-tv-blue items-center gap-1.5"
+            >
+              <BaseIcon name="cog" size="sm" />
+              <span class="text-sm font-medium">Settings</span>
+            </span>
+          </template>
 
           <!-- Theme toggle (mobile) -->
           <button
