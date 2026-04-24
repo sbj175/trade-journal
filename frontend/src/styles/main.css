@@ -40,14 +40,14 @@
   --tv-border: 221 211 196;     /* #ddd3c4 — warm tan borders */
   --tv-hover:  232 221 208;     /* #e8ddd0 — warm hover surfaces */
   --tv-text:   28 24 20;        /* #1c1814 — dark espresso */
-  --tv-muted:  122 112 104;     /* #7a7068 — warm gray-brown */
-  /* Accents — desaturated, warm-shifted, WCAG AA on #fdfaf6 */
-  --tv-green:  93 122 95;       /* #5d7a5f — dusty sage */
+  --tv-muted:  112 104 96;      /* #706860 — warm gray-brown (4.60:1 on row) */
+  /* Accents — desaturated, warm-shifted, WCAG AA on all surfaces (panel/bg/row) */
+  --tv-green:  80 114 82;       /* #507252 — dusty sage (4.56:1 on row) */
   --tv-red:    158 80 80;       /* #9e5050 — muted terracotta */
   --tv-blue:   74 104 152;      /* #4a6898 — slate blue */
-  --tv-amber:  158 112 48;      /* #9e7030 — warm ochre */
-  --tv-orange: 168 88 56;       /* #a85838 — burnt sienna */
-  --tv-cyan:   58 120 120;      /* #3a7878 — dusty teal */
+  --tv-amber:  138 96 40;       /* #8a6028 — warm ochre (4.66:1 on row) */
+  --tv-orange: 160 84 52;       /* #a05434 — burnt sienna (4.65:1 on row) */
+  --tv-cyan:   56 112 112;      /* #387070 — dusty teal (4.75:1 on row) */
   --tv-purple: 112 80 160;      /* #7050a0 — dusty mauve */
 }
 
