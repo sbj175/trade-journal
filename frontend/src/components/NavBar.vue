@@ -213,7 +213,32 @@ watch(
             aria-label="Toggle navigation menu"
             @click="toggleMobileMenu"
           >
-            <BaseIcon :name="mobileMenuOpen ? 'times' : 'bars'" size="md" />
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line
+                x1="2" y1="4" x2="16" y2="4"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                class="transition-all duration-300 ease-in-out"
+                :style="mobileMenuOpen
+                  ? { transformBox: 'fill-box', transformOrigin: 'center', transform: 'translateY(5px) rotate(45deg)' }
+                  : { transformBox: 'fill-box', transformOrigin: 'center' }"
+              />
+              <line
+                x1="2" y1="9" x2="16" y2="9"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                class="transition-all duration-300 ease-in-out"
+                :style="mobileMenuOpen
+                  ? { opacity: 0, transformBox: 'fill-box', transformOrigin: 'center', transform: 'scaleX(0)' }
+                  : { opacity: 1, transformBox: 'fill-box', transformOrigin: 'center' }"
+              />
+              <line
+                x1="2" y1="14" x2="16" y2="14"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                class="transition-all duration-300 ease-in-out"
+                :style="mobileMenuOpen
+                  ? { transformBox: 'fill-box', transformOrigin: 'center', transform: 'translateY(-5px) rotate(-45deg)' }
+                  : { transformBox: 'fill-box', transformOrigin: 'center' }"
+              />
+            </svg>
           </button>
         </div>
       </div>
@@ -231,13 +256,14 @@ watch(
             v-for="child in link.children"
             :key="child.to"
             :to="child.to"
-            class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+            class="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
             :class="route.path === child.to
               ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
               : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
             @click="closeMobileMenu"
           >
             {{ child.label }}
+            <span v-if="route.path === child.to" class="w-1.5 h-1.5 rounded-full bg-tv-blue shrink-0"></span>
           </router-link>
         </template>
 
@@ -245,26 +271,28 @@ watch(
         <router-link
           v-else
           :to="link.to"
-          class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+          class="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
           :class="isActiveParent(link)
             ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
             : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
           @click="closeMobileMenu"
         >
           {{ link.label }}
+          <span v-if="isActiveParent(link)" class="w-1.5 h-1.5 rounded-full bg-tv-blue shrink-0"></span>
         </router-link>
       </template>
 
       <!-- Settings -->
       <router-link
         to="/settings"
-        class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+        class="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
         :class="route.path === '/settings'
           ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
           : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
         @click="closeMobileMenu"
       >
         Settings
+        <span v-if="route.path === '/settings'" class="w-1.5 h-1.5 rounded-full bg-tv-blue shrink-0"></span>
       </router-link>
 
       <div
