@@ -5,17 +5,29 @@ import BaseIcon from '@/components/BaseIcon.vue'
 
 const props = defineProps({
   timeline: Object,
+  // Which section kinds to render and in what order.
+  // Ledger uses the default (all three); Positions passes ['roll', 'opening'].
+  show: {
+    type: Array,
+    default: () => ['closing', 'roll', 'opening'],
+  },
 })
 
-// Sections in descending chronological order (closing first, opening last)
+// Sections assembled per the `show` prop. Within the 'roll' slot, events
+// render in descending chronology (newest first).
 const sections = computed(() => {
   if (!props.timeline) return []
   const out = []
-  if (props.timeline.closing) out.push(props.timeline.closing)
-  // Roll events are in chronological ASC order from backend; reverse for DESC display
-  const rolls = [...(props.timeline.roll_events || [])].reverse()
-  out.push(...rolls)
-  if (props.timeline.opening) out.push(props.timeline.opening)
+  for (const kind of props.show) {
+    if (kind === 'closing' && props.timeline.closing) {
+      out.push(props.timeline.closing)
+    } else if (kind === 'roll') {
+      const rolls = [...(props.timeline.roll_events || [])].reverse()
+      out.push(...rolls)
+    } else if (kind === 'opening' && props.timeline.opening) {
+      out.push(props.timeline.opening)
+    }
+  }
   return out
 })
 
