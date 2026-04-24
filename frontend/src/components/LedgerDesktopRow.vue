@@ -136,18 +136,16 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
            toggle for different-exp roll chains (opens RollChainModal) -->
       <div class="flex items-center justify-center gap-1">
         <span v-if="rollCount > 0"
-              class="text-xs px-1.5 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono"
+              class="text-xs px-1.5 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono inline-flex items-center gap-1"
               :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'} — expand to see details`">
-          {{ rollCount }}
+          <i class="fas fa-rotate"></i>{{ rollCount }}
         </span>
-        <label v-if="hasDifferentExpChain"
-               class="relative inline-flex items-center cursor-pointer"
-               @click.stop="$emit('open-roll-chain', group.group_id)"
-               title="Different-expiration roll chain">
-          <span class="w-8 h-4 rounded-full transition-colors bg-tv-border">
-            <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"></span>
-          </span>
-        </label>
+        <button v-if="hasDifferentExpChain"
+                class="text-xs px-1.5 py-0.5 rounded bg-tv-blue/15 text-tv-blue border border-tv-blue/40 font-mono inline-flex items-center gap-1 hover:bg-tv-blue/25 transition-colors"
+                @click.stop="$emit('open-roll-chain', group.group_id)"
+                title="Different-expiration roll chain — click for details">
+          <i class="fas fa-link"></i>
+        </button>
       </div>
 
       <!-- Notes indicator -->

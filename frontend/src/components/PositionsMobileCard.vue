@@ -45,8 +45,10 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
                 class="text-[11px] text-tv-muted bg-tv-border/50 px-1 rounded">+stk</span>
           <span class="text-sm text-tv-muted">{{ group.strategyLabel }}<span v-if="strikeLabel" class="text-tv-text ml-1">{{ strikeLabel }}</span><span v-if="group.positionCount"> ({{ group.positionCount }})</span></span>
           <span v-if="rollCount > 0"
-                class="text-[10px] px-1 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono leading-none"
-                :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">R{{ rollCount }}</span>
+                class="text-[10px] px-1 py-0.5 rounded bg-tv-cyan/15 text-tv-cyan border border-tv-cyan/40 font-mono leading-none inline-flex items-center gap-0.5"
+                :title="`${rollCount} same-expiration roll${rollCount === 1 ? '' : 's'}`">
+            <i class="fas fa-rotate"></i>{{ rollCount }}
+          </span>
         </div>
         <div class="text-right shrink-0">
           <div class="font-semibold text-base leading-tight"
