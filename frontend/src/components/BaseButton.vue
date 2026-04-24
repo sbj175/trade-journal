@@ -22,7 +22,7 @@ const variants = {
   secondary: 'bg-tv-bg border border-tv-border text-tv-text hover:bg-tv-border/30',
   ghost:     'text-tv-muted hover:text-tv-text border border-transparent',
   danger:    'bg-tv-red/20 text-tv-red border border-tv-red/30 hover:bg-tv-red/30',
-  success:   'bg-tv-green/20 text-tv-green border border-tv-green/30 hover:bg-tv-green/30',
+  success:   'bg-tv-green hover:bg-tv-green/80 text-tv-bg border border-tv-green font-bold',
 }
 </script>
 
