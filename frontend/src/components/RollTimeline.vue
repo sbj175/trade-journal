@@ -90,12 +90,12 @@ function optionTypeLabel(t) {
       <!-- Section divider (not before first) -->
       <div v-if="idx > 0" class="border-t border-tv-border/40 my-3"></div>
 
-      <!-- ROLL section: clickable header + summary (toggles per-leg details) -->
+      <!-- ROLL section: one-line clickable header (date + strike transition) -->
       <template v-if="section.kind === 'ROLL'">
         <div class="cursor-pointer hover:bg-tv-border/15 rounded transition-colors"
              @click="toggle(sectionKey(section, idx))">
-          <div class="flex items-center justify-between px-2 py-2">
-            <div class="flex items-center gap-2">
+          <div class="flex items-center justify-between px-2 py-2 gap-3">
+            <div class="flex items-center gap-2 min-w-0">
               <BaseIcon name="chevron-right" size="xs"
                         class="text-tv-muted transition-transform"
                         :class="expandedKeys.has(sectionKey(section, idx)) ? 'rotate-90' : ''" />
@@ -103,18 +103,15 @@ function optionTypeLabel(t) {
                 {{ sectionTitle(section.kind) }}
               </span>
               <span class="text-tv-muted text-sm">{{ section.date ? formatDate(section.date) : '—' }}</span>
+              <span class="font-mono text-sm ml-2 truncate">
+                <span class="text-tv-text">{{ section.closed_strikes_label || '—' }}</span>
+                <span class="text-tv-muted mx-1.5">→</span>
+                <span class="text-tv-text">{{ section.opened_strikes_label || '—' }}</span>
+              </span>
             </div>
-            <span class="text-sm font-mono" :class="amountClass(section.net_credit_debit)">
+            <span class="text-sm font-mono shrink-0" :class="amountClass(section.net_credit_debit)">
               {{ signedAmount(section.net_credit_debit) }}
             </span>
-          </div>
-          <div class="px-4 pb-2">
-            <div class="font-mono text-sm">
-              <span class="uppercase tracking-wider text-tv-muted text-xs mr-2">Rolled</span>
-              <span class="text-tv-text">{{ section.closed_strikes_label || '—' }}</span>
-              <span class="text-tv-muted mx-2">→</span>
-              <span class="text-tv-text">{{ section.opened_strikes_label || '—' }}</span>
-            </div>
           </div>
         </div>
         <!-- Per-leg pair rows (indented to match the summary) -->
