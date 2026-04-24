@@ -341,10 +341,14 @@ def _current_strike_label(option_lots):
     if not max_close:
         return _strikes_from_lots(option_lots)
 
+    # Final cohort = lots whose last teardown happened on the same calendar
+    # day as the group's final close. Same-day tolerance handles positions
+    # where long and short sides filled a couple minutes apart.
+    max_close_day = str(max_close)[:10]
     final_cohort = []
     for lot in option_lots:
         for c in lot.get('closings') or []:
-            if str(c.get('closing_date')) == str(max_close):
+            if str(c.get('closing_date'))[:10] == max_close_day:
                 final_cohort.append(lot)
                 break
     return _strikes_from_lots(final_cohort or option_lots)
