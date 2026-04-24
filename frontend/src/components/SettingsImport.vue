@@ -27,14 +27,14 @@ defineProps({ state: Object, onboarding: Object })
     <div class="space-y-4">
       <div class="bg-tv-panel border border-tv-border rounded">
         <div class="p-5">
-          <div class="flex items-start justify-between">
+          <div class="flex items-start justify-between flex-col md:flex-row gap-4">
             <div>
               <h3 class="text-tv-text font-medium mb-1">
                 <BaseIcon name="database" class="mr-2 text-tv-muted" />Import Transactions
               </h3>
               <p class="text-tv-muted text-sm">Clears the existing database and rebuilds it from scratch. Imports your full account history automatically.</p>
             </div>
-            <BaseButton :variant="onboarding.value ? 'primary' : 'danger'" size="lg" @click="state.initialSync()" :disabled="state.initialSyncing.value" :loading="state.initialSyncing.value" class="flex-shrink-0 ml-6 whitespace-nowrap">
+            <BaseButton :variant="onboarding.value ? 'primary' : 'danger'" size="lg" @click="state.initialSync()" :disabled="state.initialSyncing.value" :loading="state.initialSyncing.value" class="flex-shrink-0 md:ml-6 whitespace-nowrap">
               <template #icon><BaseIcon name="database" /></template>
               Import Transactions
             </BaseButton>
