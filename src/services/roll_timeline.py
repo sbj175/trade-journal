@@ -46,7 +46,7 @@ def compute_roll_timeline(lots: List[dict]) -> dict:
         'roll_events': roll_events,
         'closing': _make_open_close_event('CLOSING', closing_txs) if closing_txs else None,
         'roll_count': len(roll_events),
-        'current_strike_label': _current_strike_label(option_lots),
+        'current_strike_label': _current_strike_label(option_lots, roll_events),
     }
 
 
@@ -322,7 +322,7 @@ def _fmt_strike(s):
         return str(s)
 
 
-def _current_strike_label(option_lots):
+def _current_strike_label(option_lots, roll_events=None):
     open_lots = [
         l for l in option_lots
         if (l.get('remaining_quantity') or 0) != 0 and l.get('status') != 'CLOSED'
@@ -330,27 +330,20 @@ def _current_strike_label(option_lots):
     if open_lots:
         return _strikes_from_lots(open_lots)
 
-    # Fully closed — use the cohort closed at the latest close date
-    max_close = None
-    for lot in option_lots:
-        for c in lot.get('closings') or []:
-            cd = c.get('closing_date')
-            if cd and (max_close is None or str(cd) > str(max_close)):
-                max_close = cd
-
-    if not max_close:
-        return _strikes_from_lots(option_lots)
-
-    # Final cohort = lots whose last teardown happened on the same calendar
-    # day as the group's final close. Same-day tolerance handles positions
-    # where long and short sides filled a couple minutes apart.
-    max_close_day = str(max_close)[:10]
-    final_cohort = []
-    for lot in option_lots:
-        for c in lot.get('closings') or []:
-            if str(c.get('closing_date'))[:10] == max_close_day:
-                final_cohort.append(lot)
-                break
+    # Fully closed: exclude lots that were rolled out (their close was paired
+    # with a new open on the same day, captured as a roll_event). What remains
+    # is the position's final structure — the strikes that were held until
+    # exit, even if individual legs were closed on different days.
+    rolled_out_lot_ids = {
+        pair['closed']['lot_id']
+        for evt in (roll_events or [])
+        for pair in evt.get('pairs') or []
+        if pair.get('closed') and pair['closed'].get('lot_id') is not None
+    }
+    final_cohort = [
+        l for l in option_lots
+        if l.get('lot_id') not in rolled_out_lot_ids
+    ]
     return _strikes_from_lots(final_cohort or option_lots)
 
 

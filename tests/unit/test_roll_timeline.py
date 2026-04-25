@@ -201,6 +201,30 @@ class TestFullyClosedGroup:
         # current_strike_label = final open cohort = the 4 legs closed Jul 15
         assert tl['current_strike_label'] == '585/600/615/630'
 
+    def test_iron_condor_wings_closed_on_different_days(self):
+        """A 4-leg Iron Condor whose put wing was closed on one day and call wing on a later day (no rolls in between) should still have a strike label that lists all 4 legs — the position was held in full until exit, just unwound wing-by-wing."""
+        lots = [
+            # Put wing — closed first
+            _lot(1, 'P', 200, 1, '2025-04-15', 6.74,
+                 closings=[_close(101, '2025-05-09', 0.48, 1)]),
+            _lot(2, 'P', 210, -1, '2025-04-15', 8.66,
+                 closings=[_close(102, '2025-05-09', 0.61, 1)]),
+            # Call wing — closed four days later
+            _lot(3, 'C', 310, -1, '2025-04-15', 6.40,
+                 closings=[_close(103, '2025-05-13', 22.50, 1)]),
+            _lot(4, 'C', 320, 1, '2025-04-15', 4.92,
+                 closings=[_close(104, '2025-05-13', 17.02, 1)]),
+        ]
+        tl = compute_roll_timeline(lots)
+        # No rolls — both legs of the put close are paired only with each
+        # other (wing close), and the call close is paired with itself.
+        assert tl['roll_count'] == 0
+        # Group's effective close date is the latest leg close.
+        assert tl['closing'] is not None
+        # All four strikes must appear; the put wing should not be dropped
+        # just because it closed on an earlier calendar day than the calls.
+        assert tl['current_strike_label'] == '200/210/310/320'
+
 
 class TestOrphans:
     def test_orphan_closes_become_closing(self):
