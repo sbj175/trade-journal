@@ -44,6 +44,42 @@ class GroupSpec:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
+    """True if `new_lot` matches some open lot in `existing_lots` on
+    (option_type, strike, direction).
+
+    Two lots are "structural duplicates" if they represent the same
+    option contract on the same side. Used by Rule 1 to keep parallel
+    same-strike positions from being merged into one group, while still
+    letting structurally complementary cross-order legs (e.g., an Iron
+    Condor's call wing joining the put wing) merge correctly.
+
+    Direction is taken from the sign of `quantity`: positive = long,
+    negative = short. Stock-only lots and lots without an option_type
+    are not considered duplicates here (Rule 2 handles equity).
+    """
+    if not getattr(new_lot, "option_type", None):
+        return False
+    new_sign = 1 if new_lot.quantity > 0 else -1
+    for existing in existing_lots:
+        if not getattr(existing, "option_type", None):
+            continue
+        if existing.remaining_quantity == 0:
+            continue
+        existing_sign = 1 if existing.quantity > 0 else -1
+        if (
+            existing.option_type == new_lot.option_type
+            and existing.strike == new_lot.strike
+            and existing_sign == new_sign
+        ):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Pure grouping function
 # ---------------------------------------------------------------------------
 
@@ -113,15 +149,20 @@ def assign_lots_to_groups(
                 assigned = True
 
         # Rule 1: option lots group by (account, underlying, expiration).
-        # The candidate group must still be open — otherwise a closed lot's
-        # stale expiration anchor would pull an unrelated new open lot in
-        # (e.g., May-1 43C closed today doesn't get to claim a new May-1 41C
-        # from a different chain).
+        # The candidate group must still be open AND the new lot must not
+        # be a structural duplicate of any open lot already in the group
+        # (same option_type + strike + direction). Without the duplicate
+        # check, two independent same-strike positions (e.g., parallel
+        # covered-call ladder rungs each opened in their own broker order)
+        # would merge into one group. With it, complementary legs added
+        # cross-order (an Iron Condor's call wing joining the existing
+        # put wing) still merge correctly because they differ in
+        # option_type or strike or direction.
         if not assigned and lot.expiration:
             aue_key = (lot.account_number, lot.underlying, lot.expiration)
             if aue_key in aue_to_group:
                 gk = aue_to_group[aue_key]
-                if _is_group_open(gk):
+                if _is_group_open(gk) and not _is_duplicate_open_lot(lot, groups[gk]):
                     _add_lot_to_group(lot, gk)
                     assigned = True
 
@@ -689,14 +730,16 @@ class GroupPersister:
                         assigned = True
 
                 # Rule 1: option lots group by (account, underlying, expiration).
-                # The candidate group must still be open — otherwise a closed
-                # lot's stale expiration anchor would pull an unrelated new
-                # open lot from a different chain into it.
+                # The candidate group must still be open AND the new lot
+                # must not be a structural duplicate of any open lot in the
+                # group (same option_type + strike + direction). This keeps
+                # parallel same-strike positions in separate groups while
+                # still letting complementary cross-order legs merge.
                 if not assigned and lot.expiration:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
                         gk = aue_to_group[aue_key]
-                        if _is_group_open(gk):
+                        if _is_group_open(gk) and not _is_duplicate_open_lot(lot, group_lots[gk]):
                             _add_new_lot(lot, gk)
                             assigned = True
 

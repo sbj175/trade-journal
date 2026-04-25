@@ -880,17 +880,6 @@ class TestRollMechanics:
             "New group must link back to predecessor via rolled_from_group_id"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Known gap in OPT-270's fix: when two open positions exist at "
-            "the same (account, underlying, expiration) but on different "
-            "chain_ids, Rule 1 still merges them into one group because the "
-            "candidate group is open. The fix should additionally require "
-            "that at least one OPEN lot in the candidate group share the "
-            "new lot's chain_id. Tracked under OPT-272 (Tier 2 backfill)."
-        ),
-    )
     def test_separate_opens_at_same_strike_and_expiration_create_separate_groups(self, db, lot_manager):
         """Two independent short calls opened by separate broker orders at the same strike and expiration should land in two distinct groups with two distinct chain ids — they are independent positions, not one fused position. This pins the OPT-270 fix that prevents stale-expiration anchors from merging unrelated chains."""
         sym = "AAPL  250321C00100000"
