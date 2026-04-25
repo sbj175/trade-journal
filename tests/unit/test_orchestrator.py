@@ -466,3 +466,111 @@ class TestDerivedLots:
             assert closings[0].closing_type == 'EXERCISE'
             # P&L: (45 - 50) * 300 = -1500
             assert closings[0].realized_pnl == -1500.0
+
+
+# =====================================================================
+# Multi-chain rolling order — parallel ladder rung preservation
+# =====================================================================
+
+class TestParallelLadderRollPreservation:
+    """When one ROLLING order rolls multiple parallel positions (e.g. a
+    covered-call ladder where several rungs at the same strike are rolled
+    in a single broker order), each new opening lot must inherit its
+    own predecessor's chain_id.
+
+    Regression for the same-direction multi-leg pairing gap left by
+    OPT-262: when all closes share an (option_type, direction) signature
+    with all opens, the splitter keeps the order intact, but
+    position_ledger then collapses every new lot onto whichever chain
+    it pulls first from `affected_chains` — silently merging parallel
+    ladder rungs into a single chain.
+    """
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Known: position_ledger.py uses next(iter(affected_chains)) for "
+            "ROLLING orders, collapsing parallel chains onto one arbitrary "
+            "chain_id. Will pass once the chain-pairing fix lands. Tracked "
+            "under OPT-272 (Tier 1 coverage backfill)."
+        ),
+    )
+    def test_three_parallel_rungs_roll_preserves_three_chains(self, db, lot_manager):
+        SYM_OLD = "AAPL  250321C00170000"
+        SYM_NEW = "AAPL  250418C00175000"
+
+        # Day 1: open three parallel rungs, each with its own order_id
+        # (so position_ledger assigns three distinct chain_ids).
+        opens = [
+            make_option_transaction(
+                id=f"tx-open-{rung}", order_id=f"OPEN_{rung}",
+                action="SELL_TO_OPEN", quantity=1, price=2.50,
+                symbol=SYM_OLD, option_type="Call", strike=170.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            )
+            for rung in ("A", "B", "C")
+        ]
+
+        # Day 2: roll all three rungs in a SINGLE broker order. Three BTC
+        # transactions (one per rung) and three STO transactions at the new
+        # strike, all sharing one order_id — the parallel-ladder roll shape.
+        # Slight price differences across fills mirror real broker data and
+        # prevent normalize_transactions() from aggregating same-price fills.
+        ROLL_ORDER_ID = "ROLL_3X"
+        close_prices = [1.00, 1.01, 1.02]
+        open_prices = [3.00, 3.01, 3.02]
+        roll = []
+        for i, rung in enumerate(("A", "B", "C")):
+            roll.append(make_option_transaction(
+                id=f"tx-btc-{rung}", order_id=ROLL_ORDER_ID,
+                action="BUY_TO_CLOSE", quantity=1, price=close_prices[i],
+                symbol=SYM_OLD, option_type="Call", strike=170.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ))
+            roll.append(make_option_transaction(
+                id=f"tx-sto-{rung}", order_id=ROLL_ORDER_ID,
+                action="SELL_TO_OPEN", quantity=1, price=open_prices[i],
+                symbol=SYM_NEW, option_type="Call", strike=175.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ))
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            opening_chains = {
+                row.chain_id for row in session.query(PositionLot).filter(
+                    PositionLot.symbol == SYM_OLD,
+                ).all()
+            }
+            new_chains = [
+                row.chain_id for row in session.query(PositionLot).filter(
+                    PositionLot.symbol == SYM_NEW,
+                ).all()
+            ]
+
+        # Three distinct chains were opened on Day 1.
+        assert len(opening_chains) == 3, (
+            f"Expected 3 distinct opening chains, got {opening_chains}"
+        )
+
+        # Three new lots were opened by the roll.
+        assert len(new_chains) == 3, (
+            f"Expected 3 new lots from the rolling order, got {len(new_chains)}"
+        )
+
+        # Each new lot must inherit one of the three original chains, and
+        # all three originals must be represented exactly once. This is the
+        # invariant that fails today: position_ledger picks
+        # `next(iter(affected_chains))` and assigns the same chain to every
+        # new lot, collapsing the ladder.
+        assert set(new_chains) == opening_chains, (
+            f"Parallel ladder chains collapsed during roll. "
+            f"Expected new lots on chains {opening_chains}, got {set(new_chains)}"
+        )
+        assert len(set(new_chains)) == 3, (
+            f"Expected each new lot on a distinct chain, "
+            f"got duplicates: {new_chains}"
+        )
