@@ -40,6 +40,7 @@ def _equity(direction="long", quantity=100):
 
 class TestSingleLeg:
     def test_long_call(self):
+        """A single long call should be recognized as a bullish 'Long Call' strategy paid for as a debit."""
         r = recognize([_opt("C", 100, "long")])
         assert r.name == "Long Call"
         assert r.direction == "bullish"
@@ -47,29 +48,34 @@ class TestSingleLeg:
         assert r.confidence == 1.0
 
     def test_short_call(self):
+        """A single short call should be recognized as a bearish 'Short Call' strategy."""
         r = recognize([_opt("C", 100, "short")])
         assert r.name == "Short Call"
         assert r.direction == "bearish"
 
     def test_long_put(self):
+        """A single long put should be recognized as a bearish 'Long Put' strategy paid for as a debit."""
         r = recognize([_opt("P", 50, "long")])
         assert r.name == "Long Put"
         assert r.direction == "bearish"
         assert r.credit_debit == "debit"
 
     def test_short_put(self):
+        """A single short put should be recognized as a bullish 'Short Put' strategy collected as a credit."""
         r = recognize([_opt("P", 50, "short")])
         assert r.name == "Short Put"
         assert r.direction == "bullish"
         assert r.credit_debit == "credit"
 
     def test_shares_long(self):
+        """A long-only stock holding should be recognized simply as 'Shares'."""
         r = recognize([_equity("long")])
         assert r.name == "Shares"
         assert r.direction is None
         assert r.confidence == 1.0
 
     def test_shares_short(self):
+        """A short stock position should also be recognized as 'Shares'."""
         r = recognize([_equity("short")])
         assert r.name == "Shares"
 
@@ -80,6 +86,7 @@ class TestSingleLeg:
 
 class TestVerticals:
     def test_bull_put_spread(self):
+        """Selling a higher-strike put and buying a lower-strike put together should be recognized as a bullish credit-style 'Bull Put Spread'."""
         legs = [
             _opt("P", 100, "short"),  # short higher put
             _opt("P", 95, "long"),    # long lower put
@@ -90,6 +97,7 @@ class TestVerticals:
         assert r.credit_debit == "credit"
 
     def test_bear_call_spread(self):
+        """Selling a lower-strike call and buying a higher-strike call together should be recognized as a bearish credit-style 'Bear Call Spread'."""
         legs = [
             _opt("C", 100, "short"),  # short lower call
             _opt("C", 105, "long"),   # long higher call
@@ -100,6 +108,7 @@ class TestVerticals:
         assert r.credit_debit == "credit"
 
     def test_bull_call_spread(self):
+        """Buying a lower-strike call and selling a higher-strike call together should be recognized as a bullish debit-style 'Bull Call Spread'."""
         legs = [
             _opt("C", 100, "long"),   # long lower call
             _opt("C", 105, "short"),  # short higher call
@@ -110,6 +119,7 @@ class TestVerticals:
         assert r.credit_debit == "debit"
 
     def test_bear_put_spread(self):
+        """Buying a higher-strike put and selling a lower-strike put together should be recognized as a bearish debit-style 'Bear Put Spread'."""
         legs = [
             _opt("P", 100, "long"),   # long higher put
             _opt("P", 95, "short"),   # short lower put
@@ -120,6 +130,7 @@ class TestVerticals:
         assert r.credit_debit == "debit"
 
     def test_vertical_requires_different_strikes(self):
+        """Two puts at the same strike but opposite directions should not be labelled as a vertical spread (spreads require different strikes)."""
         legs = [
             _opt("P", 100, "short"),
             _opt("P", 100, "long"),
@@ -135,6 +146,7 @@ class TestVerticals:
 
 class TestMultiLeg:
     def test_iron_condor(self):
+        """A four-leg position made of a short put spread and a short call spread should be recognized as a neutral 'Iron Condor'."""
         legs = [
             _opt("P", 90, "long"),    # long put wing
             _opt("P", 95, "short"),   # short put
@@ -149,6 +161,7 @@ class TestMultiLeg:
         assert r.confidence == 1.0
 
     def test_iron_butterfly(self):
+        """An iron condor whose short put and short call share the same strike should be recognized as an 'Iron Butterfly'."""
         legs = [
             _opt("P", 90, "long"),
             _opt("P", 100, "short"),
@@ -160,6 +173,7 @@ class TestMultiLeg:
         assert r.direction == "neutral"
 
     def test_short_strangle(self):
+        """A short put combined with a short call at a higher strike should be recognized as a 'Short Strangle'."""
         legs = [
             _opt("P", 95, "short"),
             _opt("C", 105, "short"),
@@ -170,6 +184,7 @@ class TestMultiLeg:
         assert r.credit_debit == "credit"
 
     def test_long_strangle(self):
+        """A long put combined with a long call at a higher strike should be recognized as a 'Long Strangle'."""
         legs = [
             _opt("P", 95, "long"),
             _opt("C", 105, "long"),
@@ -179,6 +194,7 @@ class TestMultiLeg:
         assert r.credit_debit == "debit"
 
     def test_short_straddle(self):
+        """A short put plus a short call at the same strike should be recognized as a 'Short Straddle'."""
         legs = [
             _opt("P", 100, "short"),
             _opt("C", 100, "short"),
@@ -187,6 +203,7 @@ class TestMultiLeg:
         assert r.name == "Short Straddle"
 
     def test_long_straddle(self):
+        """A long put plus a long call at the same strike should be recognized as a 'Long Straddle'."""
         legs = [
             _opt("P", 100, "long"),
             _opt("C", 100, "long"),
@@ -195,7 +212,7 @@ class TestMultiLeg:
         assert r.name == "Long Straddle"
 
     def test_iron_condor_cross_order_assembly(self):
-        """IC built from two separate vertical orders — different quantities."""
+        """An Iron Condor should still be recognized when its put and call wings are entered as separate spreads with matching multi-contract sizes."""
         legs = [
             _opt("P", 90, "long", quantity=2),
             _opt("P", 95, "short", quantity=2),
@@ -212,6 +229,7 @@ class TestMultiLeg:
 
 class TestCalendar:
     def test_calendar_spread(self):
+        """A short near-term call and a long longer-dated call at the same strike should be recognized as a 'Calendar Spread'."""
         legs = [
             _opt("C", 100, "short", exp=date(2026, 3, 21)),
             _opt("C", 100, "long", exp=date(2026, 4, 17)),
@@ -222,6 +240,7 @@ class TestCalendar:
         assert r.credit_debit == "debit"
 
     def test_diagonal_spread(self):
+        """A short near-term put and a long longer-dated put at a different strike should be recognized as a 'Diagonal Spread'."""
         legs = [
             _opt("P", 95, "short", exp=date(2026, 3, 21)),
             _opt("P", 90, "long", exp=date(2026, 4, 17)),
@@ -230,7 +249,7 @@ class TestCalendar:
         assert r.name == "Diagonal Spread"
 
     def test_pmcc(self):
-        """Poor Man's Covered Call: long far call (lower strike) + short near call (higher strike)."""
+        """A long far-dated lower-strike call combined with a short near-dated higher-strike call should be recognized as a bullish 'Diagonal Call Spread' (a Poor Man's Covered Call)."""
         legs = [
             _opt("C", 90, "long", exp=date(2026, 6, 19)),    # far, lower strike
             _opt("C", 105, "short", exp=date(2026, 3, 21)),  # near, higher strike
@@ -241,6 +260,7 @@ class TestCalendar:
         assert r.credit_debit == "debit"
 
     def test_calendar_put(self):
+        """A short near-term put and a long longer-dated put at the same strike should also be recognized as a 'Calendar Spread'."""
         legs = [
             _opt("P", 100, "short", exp=date(2026, 3, 21)),
             _opt("P", 100, "long", exp=date(2026, 4, 17)),
@@ -255,6 +275,7 @@ class TestCalendar:
 
 class TestCombos:
     def test_covered_call(self):
+        """100 shares of stock paired with a short call should be recognized as a bullish credit-style 'Covered Call'."""
         legs = [
             _equity("long", 100),
             _opt("C", 105, "short"),
@@ -265,6 +286,7 @@ class TestCombos:
         assert r.credit_debit == "credit"
 
     def test_covered_call_200_shares_2_calls(self):
+        """200 shares paired with two short calls should still be recognized as a 'Covered Call' (the share-to-contract ratio scales)."""
         legs = [
             _equity("long", 200),
             _opt("C", 105, "short", quantity=2),
@@ -273,6 +295,7 @@ class TestCombos:
         assert r.name == "Covered Call"
 
     def test_collar(self):
+        """Long shares plus a short call above the price plus a long put below the price should be recognized as a neutral 'Collar' position."""
         legs = [
             _equity("long", 100),
             _opt("C", 110, "short"),
@@ -284,6 +307,7 @@ class TestCombos:
         assert r.credit_debit == "mixed"
 
     def test_cash_secured_put(self):
+        """A lone short put is reported as 'Short Put' rather than 'Cash Secured Put' because the engine prefers the simpler single-leg label."""
         legs = [_opt("P", 100, "short")]
         r = recognize(legs)
         # Single short put is recognized as Short Put by single-leg first;
@@ -292,6 +316,7 @@ class TestCombos:
         assert r.name == "Short Put"
 
     def test_jade_lizard(self):
+        """A short put combined with a short call spread on the upside should be recognized as a bullish credit-style 'Jade Lizard'."""
         legs = [
             _opt("P", 90, "short"),   # short put
             _opt("C", 100, "short"),  # short call (lower)
@@ -309,12 +334,13 @@ class TestCombos:
 
 class TestEdgeCases:
     def test_empty_list(self):
+        """Recognizing an empty leg list should produce a placeholder 'Custom (0-leg)' result with zero confidence."""
         r = recognize([])
         assert r.name == "Custom (0-leg)"
         assert r.confidence == 0.0
 
     def test_two_leg_partition(self):
-        """Two options that don't form a single strategy are partitioned into singles."""
+        """Two options that do not fit any known two-leg pattern should be reported as the combination of their individual labels."""
         legs = [
             _opt("C", 100, "long", exp=date(2026, 3, 21)),
             _opt("P", 95, "short", exp=date(2026, 4, 17)),
@@ -324,7 +350,7 @@ class TestEdgeCases:
         assert r.confidence == 0.9
 
     def test_three_leg_partition(self):
-        """Three legs that don't form one strategy are partitioned into singles."""
+        """Three legs that do not fit a single strategy should be reported as a combination of their individual labels."""
         legs = [
             _opt("C", 100, "long"),
             _opt("C", 105, "long"),
@@ -337,7 +363,7 @@ class TestEdgeCases:
         assert r.confidence == 0.9
 
     def test_all_strategies_in_registry(self):
-        """Verify every strategy in STRATEGIES has required fields."""
+        """Every entry in the strategy registry should have a name, a category, and a leg count."""
         for name, defn in STRATEGIES.items():
             assert defn.name == name
             assert defn.category in ("single", "vertical", "multi", "calendar", "combo")
@@ -350,7 +376,7 @@ class TestEdgeCases:
 
 class TestPartitionScoring:
     def test_jade_lizard_beats_vertical_plus_single(self):
-        """Jade Lizard (3-leg) should win over Bear Call Spread + Short Put."""
+        """Three legs that can form a Jade Lizard should be labelled as such instead of being split into a Bear Call Spread plus a separate Short Put."""
         legs = [
             _opt("P", 90, "short"),
             _opt("C", 100, "short"),
@@ -361,7 +387,7 @@ class TestPartitionScoring:
         assert r.confidence == 1.0
 
     def test_iron_condor_beats_two_verticals(self):
-        """Iron Condor (4-leg) should win over two vertical spreads."""
+        """Four legs that can form an Iron Condor should be labelled as such instead of being split into two separate vertical spreads."""
         legs = [
             _opt("P", 90, "long"),
             _opt("P", 95, "short"),
@@ -373,7 +399,7 @@ class TestPartitionScoring:
         assert r.confidence == 1.0
 
     def test_three_leg_partition_with_strangle(self):
-        """Three legs that form a strangle + single should partition correctly."""
+        """Three legs that contain a strangle plus an extra option should be reported as a two-leg-plus-one partition with high confidence."""
         legs = [
             _opt("P", 95, "long"),
             _opt("P", 100, "short"),
@@ -386,7 +412,7 @@ class TestPartitionScoring:
         assert "+" in r.name
 
     def test_strangle_plus_extra_leg(self):
-        """Short strangle + an extra long put should partition correctly."""
+        """A short strangle plus an extra long protective put should be reported as a partition of two recognized strategies."""
         legs = [
             _opt("P", 90, "short"),
             _opt("C", 110, "short"),
@@ -399,7 +425,7 @@ class TestPartitionScoring:
         assert "+" in r.name
 
     def test_five_leg_partition(self):
-        """Five legs should partition into best scoring combination."""
+        """Five legs should be split into the highest-scoring combination of recognized strategies that covers every leg."""
         legs = [
             _opt("P", 90, "long"),
             _opt("P", 95, "short"),
@@ -417,7 +443,7 @@ class TestPartitionScoring:
         assert r.leg_count == 5
 
     def test_two_verticals_different_types(self):
-        """Bull put spread + bear call spread (not IC — different widths or context)."""
+        """A bull put spread combined with a bear call spread at the same expiration should still be recognized as a single Iron Condor."""
         legs = [
             _opt("P", 90, "long"),
             _opt("P", 95, "short"),
@@ -429,7 +455,7 @@ class TestPartitionScoring:
         assert r.name == "Iron Condor"
 
     def test_covered_call_with_extra_put(self):
-        """Covered call + protective put = Collar."""
+        """Adding a protective long put to a covered call should be recognized as a 'Collar'."""
         legs = [
             _equity("long", 100),
             _opt("C", 110, "short"),
@@ -446,7 +472,7 @@ class TestPartitionScoring:
 
 class TestLotsToLegs:
     def test_aggregation(self):
-        """Multiple lots with same structural identity are merged."""
+        """Lots with identical option type, strike, expiration, and direction should be merged into a single leg with the combined contract count."""
         from unittest.mock import MagicMock
         from datetime import datetime
 
@@ -481,6 +507,7 @@ class TestLotsToLegs:
         assert put_leg.direction == "long"
 
     def test_closed_lots_excluded(self):
+        """Closed lots should not produce any legs since they no longer represent open exposure."""
         from unittest.mock import MagicMock
 
         lot = MagicMock()
@@ -496,6 +523,7 @@ class TestLotsToLegs:
         assert len(legs) == 0
 
     def test_equity_normalization(self):
+        """Stock lots should be turned into a single equity leg with the right direction and share count."""
         from unittest.mock import MagicMock
 
         lot = MagicMock()

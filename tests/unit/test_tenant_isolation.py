@@ -39,7 +39,7 @@ def tenant_db(tmp_path):
 
 
 def test_user_a_cannot_see_user_b_accounts(tenant_db):
-    """Accounts created by User A should not be visible to User B."""
+    """One user's brokerage accounts should be invisible to another user."""
     # User A creates an account
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(Account(
@@ -68,7 +68,7 @@ def test_user_a_cannot_see_user_b_accounts(tenant_db):
 
 
 def test_before_flush_auto_sets_user_id(tenant_db):
-    """New ORM objects should automatically get user_id from session.info."""
+    """New rows added during a session should automatically be tagged with the current user's id."""
     with tenant_db.get_session(user_id=USER_A) as session:
         acct = Account(
             account_number="AUTO-A", account_name="Auto",
@@ -80,7 +80,7 @@ def test_before_flush_auto_sets_user_id(tenant_db):
 
 
 def test_default_user_sees_default_data(tenant_db):
-    """Default user should see data created with default user_id."""
+    """The default seeded user should see the seeded strategy targets, while other users should see none of them."""
     # initialize_database() seeds default strategy targets with DEFAULT_USER_ID
     with tenant_db.get_session(user_id=DEFAULT_USER_ID) as session:
         targets = session.query(StrategyTarget).all()
@@ -93,7 +93,7 @@ def test_default_user_sees_default_data(tenant_db):
 
 
 def test_quote_cache_is_global(tenant_db):
-    """QuoteCache has no user_id — all users should see the same quotes."""
+    """The shared market-quote cache should be visible to every user since it has no per-user scoping."""
     # Insert a quote (QuoteCache has no user_id, so it bypasses tenant filtering)
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(QuoteCache(symbol="AAPL", mark=150.0, bid=149.9, ask=150.1))
@@ -106,7 +106,7 @@ def test_quote_cache_is_global(tenant_db):
 
 
 def test_sync_metadata_scoped_per_user(tenant_db):
-    """SyncMetadata should be scoped per user — same key, different users."""
+    """Two users storing different values under the same sync-metadata key should each see only their own value."""
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(SyncMetadata(key="last_sync", value="2025-01-01"))
 
@@ -124,7 +124,7 @@ def test_sync_metadata_scoped_per_user(tenant_db):
 
 
 def test_bulk_delete_scoped_to_user(tenant_db):
-    """Bulk delete should only remove the current user's rows."""
+    """A bulk delete run by one user should never wipe out another user's rows."""
     # User A creates 2 accounts
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(Account(account_number="DEL-A1", account_name="A1", account_type="Individual"))
@@ -147,7 +147,7 @@ def test_bulk_delete_scoped_to_user(tenant_db):
 
 
 def test_bulk_update_scoped_to_user(tenant_db):
-    """Bulk update should only modify the current user's rows."""
+    """A bulk update run by one user should never modify another user's rows."""
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(Account(account_number="UPD-A", account_name="Original A", account_type="Individual"))
 
@@ -171,12 +171,7 @@ def test_bulk_update_scoped_to_user(tenant_db):
 
 
 def test_subquery_scoped_to_user(tenant_db):
-    """Subqueries bypass ORM tenant events — explicit user_id filter required.
-
-    Documents that .subquery() results are executed via Core (not ORM),
-    so the do_orm_execute listener does NOT inject a tenant filter.
-    Call sites using subqueries must add .filter(Model.user_id == user_id).
-    """
+    """Subqueries skip the automatic per-user filter, so callers must add an explicit user-id filter to keep one user's data from leaking into another user's results."""
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(SyncMetadata(key="sub_test", value="A-value"))
 
@@ -206,7 +201,7 @@ def test_subquery_scoped_to_user(tenant_db):
 
 
 def test_raw_transactions_isolated(tenant_db):
-    """Raw transactions should be scoped to their user."""
+    """Raw broker transactions should only be visible to the user who imported them."""
     with tenant_db.get_session(user_id=USER_A) as session:
         session.add(Account(account_number="ACCT-A", account_name="A"))
         session.add(RawTransaction(

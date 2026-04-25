@@ -76,6 +76,7 @@ def _make_chain(*legs):
 
 class TestSingleLeg:
     def test_short_put(self, strategy_detector):
+        """A single put sold to open should be labelled 'Short Put'."""
         chain = _make_chain({
             "symbol": "AAPL 250321P00170000", "underlying_symbol": "AAPL",
             "option_type": "Put", "strike": 170.0, "expiration": date(2025, 3, 21),
@@ -84,6 +85,7 @@ class TestSingleLeg:
         assert strategy_detector.detect_chain_strategy(chain) == "Short Put"
 
     def test_short_call(self, strategy_detector):
+        """A single call sold to open should be labelled 'Short Call'."""
         chain = _make_chain({
             "symbol": "AAPL 250321C00170000", "underlying_symbol": "AAPL",
             "option_type": "Call", "strike": 170.0, "expiration": date(2025, 3, 21),
@@ -92,6 +94,7 @@ class TestSingleLeg:
         assert strategy_detector.detect_chain_strategy(chain) == "Short Call"
 
     def test_long_put(self, strategy_detector):
+        """A single put bought to open should be labelled 'Long Put'."""
         chain = _make_chain({
             "symbol": "AAPL 250321P00170000", "underlying_symbol": "AAPL",
             "option_type": "Put", "strike": 170.0, "expiration": date(2025, 3, 21),
@@ -100,6 +103,7 @@ class TestSingleLeg:
         assert strategy_detector.detect_chain_strategy(chain) == "Long Put"
 
     def test_long_call(self, strategy_detector):
+        """A single call bought to open should be labelled 'Long Call'."""
         chain = _make_chain({
             "symbol": "AAPL 250321C00170000", "underlying_symbol": "AAPL",
             "option_type": "Call", "strike": 170.0, "expiration": date(2025, 3, 21),
@@ -114,7 +118,7 @@ class TestSingleLeg:
 
 class TestSpreads:
     def test_put_credit_spread(self, strategy_detector):
-        """STO higher put + BTO lower put → Bull Put Spread"""
+        """Selling a higher-strike put and buying a lower-strike put together should be labelled 'Bull Put Spread'."""
         chain = _make_chain(
             {
                 "symbol": "AAPL 250321P00170000", "underlying_symbol": "AAPL",
@@ -131,7 +135,7 @@ class TestSpreads:
         assert result == "Bull Put Spread"
 
     def test_call_credit_spread(self, strategy_detector):
-        """STO lower call + BTO higher call → Bear Call Spread"""
+        """Selling a lower-strike call and buying a higher-strike call together should be labelled 'Bear Call Spread'."""
         chain = _make_chain(
             {
                 "symbol": "AAPL 250321C00170000", "underlying_symbol": "AAPL",
@@ -148,7 +152,7 @@ class TestSpreads:
         assert result == "Bear Call Spread"
 
     def test_put_debit_spread(self, strategy_detector):
-        """BTO higher put + STO lower put → Bear Put Spread"""
+        """Buying a higher-strike put and selling a lower-strike put together should be labelled 'Bear Put Spread'."""
         chain = _make_chain(
             {
                 "symbol": "AAPL 250321P00180000", "underlying_symbol": "AAPL",
@@ -171,7 +175,7 @@ class TestSpreads:
 
 class TestMultiLeg:
     def test_iron_condor(self, strategy_detector):
-        """4 legs: short put + long put + short call + long call → Iron Condor"""
+        """A four-leg position with a short put spread and a short call spread at the same expiration should be labelled 'Iron Condor'."""
         chain = _make_chain(
             {
                 "symbol": "AAPL 250321P00160000", "underlying_symbol": "AAPL",
@@ -203,7 +207,7 @@ class TestMultiLeg:
 
 class TestStraddleStrangle:
     def test_short_straddle(self, strategy_detector):
-        """Same strike, same expiry, different types, both sold → Short Straddle"""
+        """Selling a put and a call at the same strike and expiration should be labelled 'Short Straddle'."""
         chain = _make_chain(
             {
                 "symbol": "AAPL 250321P00170000", "underlying_symbol": "AAPL",
@@ -219,7 +223,7 @@ class TestStraddleStrangle:
         assert strategy_detector.detect_chain_strategy(chain) == "Short Straddle"
 
     def test_long_straddle(self, strategy_detector):
-        """Same strike, same expiry, different types, both bought → Long Straddle"""
+        """Buying a put and a call at the same strike and expiration should be labelled 'Long Straddle'."""
         chain = _make_chain(
             {
                 "symbol": "AAPL 250321P00170000", "underlying_symbol": "AAPL",
@@ -241,7 +245,7 @@ class TestStraddleStrangle:
 
 class TestCoveredCall:
     def test_covered_call(self, strategy_detector, db):
-        """Short call + stock position in account → Covered Call"""
+        """A short call combined with shares of the same stock in the same account should be labelled 'Covered Call'."""
         from src.database.models import RawTransaction
         # Insert a stock purchase into raw_transactions so coverage check passes
         with db.get_session() as session:

@@ -70,8 +70,7 @@ class TestSeedPositionGroupsUngrouped:
     (created from chain-based seeding) instead of always creating a new 'Shares' group."""
 
     def test_ungrouped_lots_join_existing_open_group(self, db, lot_manager):
-        """During initial seeding, chainless lots should join an existing OPEN group
-        for the same account+underlying rather than creating a duplicate."""
+        """When seeding groups, share lots with no chain should join the existing open group for that stock instead of creating a duplicate Shares group."""
         chain_id = 'chain-cc-002'
         # Use chain_id as group_id (matches seed_position_groups convention)
         cc_group_id = chain_id

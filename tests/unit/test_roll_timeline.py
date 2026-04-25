@@ -45,6 +45,7 @@ def _close(closing_id, date, price, qty, closing_type='MANUAL', fees=0.16):
 
 class TestEmptyOrEquityOnly:
     def test_empty_lots(self):
+        """A timeline computed from no lots should have no opening, no closing, and no rolls."""
         tl = compute_roll_timeline([])
         assert tl['opening'] is None
         assert tl['roll_events'] == []
@@ -53,6 +54,7 @@ class TestEmptyOrEquityOnly:
         assert tl['current_strike_label'] is None
 
     def test_equity_only_lots_ignored(self):
+        """Plain stock lots without options should not show up as rolls or openings on the roll timeline."""
         equity_lot = {
             'lot_id': 1,
             'option_type': None,
@@ -76,6 +78,7 @@ class TestEmptyOrEquityOnly:
 
 class TestOpeningOnly:
     def test_iron_condor_no_rolls_open(self):
+        """A freshly opened Iron Condor with no closes should report one opening event, no rolls, and a strike label that lists all four legs."""
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42),
             _lot(2, 'P', 545, -1, '2025-05-22', 0.78),
@@ -93,6 +96,7 @@ class TestOpeningOnly:
 
 class TestSingleRoll:
     def test_puts_rolled_up(self):
+        """Closing two short puts and opening two new short puts at higher strikes on the same day should be detected as one roll, with each old strike paired to the next new strike in ascending order."""
         # Initial: short 530P + 545P
         # Roll:    close 530P/545P + open 585P/600P
         lots = [
@@ -120,6 +124,7 @@ class TestSingleRoll:
         assert tl['current_strike_label'] == '585/600'
 
     def test_net_credit_debit_is_positive_for_credit_roll(self):
+        """A roll that buys back the old short cheaply and sells the new short for more should net a positive credit."""
         # Close short puts cheap + open new short puts expensive → net credit
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
@@ -137,6 +142,7 @@ class TestSingleRoll:
 
 class TestMixedTypeRoll:
     def test_full_ic_roll_uses_cp_suffix(self):
+        """Rolling an Iron Condor that mixes puts and calls should use C and P suffixes on the strike labels so the two leg types stay readable."""
         # Roll all 4 legs: close 585P/600P/615C/630C, open 590P/605P/610C/625C
         lots = [
             _lot(1, 'P', 585, -1, '2025-05-22', 0.42,
@@ -162,6 +168,7 @@ class TestMixedTypeRoll:
 
 class TestFullyClosedGroup:
     def test_opening_roll_closing_all_present(self):
+        """A position that opens, rolls once, and then fully closes should produce a timeline with an opening, one roll event, and a final closing event."""
         lots = [
             # Original puts, closed in roll
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
@@ -197,6 +204,7 @@ class TestFullyClosedGroup:
 
 class TestOrphans:
     def test_orphan_closes_become_closing(self):
+        """A close that has no matching open on the same day should be reported as a partial closing event rather than a roll."""
         # 2 legs open, 1 close that never gets paired
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
@@ -210,6 +218,7 @@ class TestOrphans:
         assert tl['closing']['legs'][0]['strike'] == 530
 
     def test_orphan_opens_extend_opening(self):
+        """An open that does not match an existing close (different option type or direction) should be appended to the opening instead of being treated as a roll."""
         # Close on existing 530P then open a call at different time — signatures don't match
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
@@ -229,6 +238,7 @@ class TestOrphans:
 
 class TestDeterminism:
     def test_identical_timestamps_stable(self):
+        """Two legs entered at the exact same time should always produce the same timeline output regardless of input order."""
         # Two legs open at exact same timestamp — order by leg_index, lot_id
         lots = [
             _lot(1, 'P', 545, -1, '2025-05-22', 0.78, leg_index=1),
@@ -242,6 +252,7 @@ class TestDeterminism:
         assert tl1['opening']['net_credit_debit'] == tl2['opening']['net_credit_debit']
 
     def test_roll_with_simultaneous_close_open(self):
+        """A close and an open recorded at the exact same timestamp should still be paired together as one roll."""
         # Close and open at same timestamp — closes should sort before opens
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
@@ -254,6 +265,7 @@ class TestDeterminism:
 
 class TestLeggedInRoll:
     def test_two_step_roll_over_counts_per_spec(self):
+        """Legging into a roll one strike at a time on the same day should count as two separate rolls (the spec accepts this over-count)."""
         # Close 530P, open 585P, then close 545P, open 600P — counts as 2 rolls.
         # Per OPT-263: "accept over-count; visual staging makes the reality clear."
         lots = [
@@ -270,8 +282,7 @@ class TestLeggedInRoll:
 
 class TestSignDerivation:
     def test_sign_comes_from_quantity_not_original_quantity(self):
-        """DB stores `quantity` signed (+ long, - short) but `original_quantity`
-        as absolute magnitude. Walk-and-balance must use `quantity` for sign."""
+        """A leg's long-or-short direction should be derived from the signed quantity field, not from the absolute-value original quantity."""
         # Short put: quantity=-1 but original_quantity=+1 (as real DB stores it)
         short_put = {
             'lot_id': 1, 'option_type': 'P', 'strike': 545,
@@ -299,6 +310,7 @@ class TestSignDerivation:
 
 class TestCurrentStrikeLabel:
     def test_open_group_uses_open_lots(self):
+        """For an open position, the displayed strike label should reflect only the lots still open, not the ones that were rolled away."""
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
                  closings=[_close(101, '2025-06-27', 0.15, 1)],
@@ -309,6 +321,7 @@ class TestCurrentStrikeLabel:
         assert tl['current_strike_label'] == '585'
 
     def test_closed_group_uses_final_cohort(self):
+        """For a fully closed position, the displayed strike label should reflect the final set of legs that were closed, not the original openers."""
         lots = [
             _lot(1, 'P', 530, -1, '2025-05-22', 0.42,
                  closings=[_close(101, '2025-06-27', 0.15, 1)],

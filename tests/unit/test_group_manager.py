@@ -107,12 +107,14 @@ def _equity_lot(
 class TestAssignLotsToGroups:
 
     def test_single_lot_creates_group(self):
+        """A single position lot should produce exactly one position group."""
         lots = [_lot()]
         specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert len(specs[0].lot_transaction_ids) == 1
 
     def test_same_expiration_lots_grouped(self):
+        """Two option legs that share an expiration date should land in the same group."""
         lots = [
             _lot(strike=170.0, option_type="Put",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -124,6 +126,7 @@ class TestAssignLotsToGroups:
         assert len(specs[0].lot_transaction_ids) == 2
 
     def test_different_underlying_different_groups(self):
+        """Lots on different underlying stocks should never be combined into one group."""
         lots = [
             _lot(underlying="AAPL",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -136,7 +139,7 @@ class TestAssignLotsToGroups:
         assert underlyings == {"AAPL", "MSFT"}
 
     def test_cross_order_iron_condor(self):
-        """Put spread + call spread same expiration -> 1 group, Iron Condor."""
+        """A put spread and a call spread placed in different orders but sharing an expiration should merge into one Iron Condor group."""
         exp = date(2026, 4, 18)
         lots = [
             # Put spread
@@ -156,7 +159,7 @@ class TestAssignLotsToGroups:
         assert len(specs[0].lot_transaction_ids) == 4
 
     def test_cross_order_different_expiration(self):
-        """Same underlying, different expirations -> 2 groups."""
+        """Lots on the same stock but with different expirations should be split into separate groups."""
         lots = [
             _lot(expiration=date(2026, 3, 21),
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -167,7 +170,7 @@ class TestAssignLotsToGroups:
         assert len(specs) == 2
 
     def test_equity_and_option_separate(self):
-        """Short call + equity lot -> 2 groups (options and equity are always separate)."""
+        """Stock holdings and option positions on the same underlying should always be tracked in separate groups."""
         lots = [
             _lot(option_type="Call", strike=180.0, quantity=-1,
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -178,7 +181,7 @@ class TestAssignLotsToGroups:
         assert len(specs) == 2
 
     def test_closed_equity_group_new_lot_new_group(self):
-        """Existing equity group all CLOSED, new equity lot -> new group."""
+        """After all shares of a stock are sold, buying that stock again should create a brand-new group instead of reopening the closed one."""
         lots = [
             _equity_lot(remaining_quantity=0, status="CLOSED",
                         entry_date=datetime(2026, 1, 10, 10, 0)),
@@ -190,7 +193,7 @@ class TestAssignLotsToGroups:
         assert statuses == {"OPEN", "CLOSED"}
 
     def test_roll_different_expirations_separate_groups(self):
-        """Lots with different expirations -> separate groups (rolls detected post-hoc)."""
+        """Closing one expiration and opening a new one in a later expiration should produce two distinct groups (the roll relationship is detected later)."""
         lots = [
             _lot(expiration=date(2026, 3, 21), remaining_quantity=0,
                  status="CLOSED", entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -202,7 +205,7 @@ class TestAssignLotsToGroups:
         assert len(specs) == 2
 
     def test_multiple_accounts_isolated(self):
-        """Same underlying, different accounts -> 2 groups."""
+        """Identical positions held in two different brokerage accounts should never be merged into one group."""
         lots = [
             _lot(account_number="ACCT1",
                  entry_date=datetime(2026, 1, 15, 10, 0)),
@@ -213,7 +216,7 @@ class TestAssignLotsToGroups:
         assert len(specs) == 2
 
     def test_strategy_label_from_engine(self):
-        """Put spread legs -> 'Bull Put Spread'."""
+        """A short higher-strike put paired with a long lower-strike put should be labelled 'Bull Put Spread'."""
         exp = date(2026, 3, 21)
         lots = [
             _lot(option_type="Put", strike=170.0, quantity=-1,
@@ -226,21 +229,19 @@ class TestAssignLotsToGroups:
         assert specs[0].strategy_label == "Bull Put Spread"
 
     def test_empty_lots_returns_empty(self):
+        """Passing in no lots should return no groups."""
         specs = assign_lots_to_groups([])
         assert specs == []
 
     def test_lots_without_expiration(self):
-        """Orphan equity lot -> creates a group with 'Shares' label."""
+        """A plain stock lot (no expiration) should create a group labelled as 'Shares' or 'Long'."""
         lots = [_equity_lot()]
         specs = assign_lots_to_groups(lots)
         assert len(specs) == 1
         assert "Shares" in specs[0].strategy_label or "Long" in specs[0].strategy_label
 
     def test_exercise_derived_equity_joins_equity_group(self):
-        """Exercise-derived stock lot joins existing equity group.
-
-        All equity lots should end up in ONE group regardless of chain_id.
-        """
+        """Shares received from option exercise should join the same Shares group as ordinary share purchases, regardless of which option chain produced them."""
         eq1 = _equity_lot(
             underlying="IBIT", symbol="IBIT", chain_id="EQ-CHAIN-1",
             quantity=4800, entry_price=53.47,
@@ -298,7 +299,7 @@ class TestAssignLotsToGroups:
         assert derived_eq.transaction_id not in option_groups[0].lot_transaction_ids
 
     def test_chronological_ordering_invariant(self):
-        """Lots in random order -> same result as sorted."""
+        """The grouping result should not depend on the order in which lots are passed in."""
         exp = date(2026, 4, 18)
         lot_a = _lot(option_type="Put", strike=160.0, quantity=-1,
                      expiration=exp, entry_date=datetime(2026, 1, 15, 10, 0))
@@ -326,7 +327,7 @@ class TestEquityGrouping:
     """Verify equity lots group correctly by (account, underlying)."""
 
     def test_equity_same_underlying_one_group(self):
-        """Two equity lots same underlying -> 1 group."""
+        """Two share-buy lots for the same stock should combine into a single Shares group."""
         lots = [
             _equity_lot(entry_date=datetime(2026, 1, 10, 10, 0)),
             _equity_lot(entry_date=datetime(2026, 1, 12, 10, 0)),
@@ -389,7 +390,7 @@ class TestGroupPersister:
         return row
 
     def test_process_groups_persists(self, db, lot_manager):
-        """GroupPersister creates PositionGroup + PositionGroupLot rows."""
+        """Running the group persister should write group rows and link each lot to its group in the database."""
         from src.database.models import PositionGroup, PositionGroupLot
 
         with db.get_session() as session:
@@ -412,7 +413,7 @@ class TestGroupPersister:
             assert "tx-B" in txn_ids
 
     def test_reprocess_preserves_group_ids(self, db, lot_manager):
-        """Reprocessing keeps same group UUIDs."""
+        """Running the persister twice on identical data should keep the same group identifiers."""
         from src.database.models import PositionGroup
 
         with db.get_session() as session:
@@ -431,7 +432,7 @@ class TestGroupPersister:
         assert groups1 == groups2
 
     def test_closing_date_computed(self, db, lot_manager):
-        """CLOSED group gets closing_date from lot_closings."""
+        """A fully closed group should pick up its closing date from the underlying lot-closing records."""
         from src.database.models import PositionGroup
 
         with db.get_session() as session:
@@ -451,7 +452,7 @@ class TestGroupPersister:
             assert "2026-02-20" in str(group.closing_date)
 
     def test_orphan_groups_deleted(self, db, lot_manager):
-        """Group with no remaining lots is deleted on reprocess."""
+        """Groups whose lots no longer exist should be cleaned up when the persister runs again."""
         from src.database.models import PositionGroup, PositionGroupLot
 
         orphan_gid = str(uuid.uuid4())
@@ -483,7 +484,7 @@ class TestGroupPersister:
             assert len(groups) == 1
 
     def test_user_merged_groups_survive_reprocess(self, db, lot_manager):
-        """User-merged groups should survive when lots are cleared and recreated."""
+        """Groups that the user manually merged should not be torn apart when lots are wiped and rebuilt."""
         from src.database.models import PositionGroup, PositionGroupLot
 
         merged_group_id = "merged-group-1"

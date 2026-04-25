@@ -178,7 +178,7 @@ class TestCrossOrderStrategyEvolution:
     """End-to-end: strategy label evolves as orders are added/closed."""
 
     def test_bull_put_spread_detected(self, _mock_net, db, lot_manager):
-        """Single order with short put + long put → Bull Put Spread."""
+        """Opening a short put combined with a long put at a lower strike should be detected as a single 'Bull Put Spread' group."""
         txs = _bull_put_spread_txns()
         result = reprocess(db, lot_manager, txs, {UNDERLYING})
 
@@ -190,7 +190,7 @@ class TestCrossOrderStrategyEvolution:
         assert status == "OPEN"
 
     def test_iron_condor_after_adding_call_wing(self, _mock_net, db, lot_manager):
-        """Bull Put Spread + Bear Call Spread (same expiry) → Iron Condor."""
+        """Adding a bear call spread to an existing bull put spread at the same expiration should re-label the group as 'Iron Condor'."""
         bps = _bull_put_spread_txns()
 
         # First: just the bull put spread
@@ -208,7 +208,7 @@ class TestCrossOrderStrategyEvolution:
         assert status == "OPEN"
 
     def test_back_to_spread_after_closing_wing(self, _mock_net, db, lot_manager):
-        """Iron Condor → close call wing → Bull Put Spread remains."""
+        """Closing the call wing of an Iron Condor should leave the group re-labelled as a 'Bull Put Spread'."""
         bps = _bull_put_spread_txns()
         bcs = _bear_call_spread_txns()
         close = _close_call_wing_txns()
@@ -228,7 +228,7 @@ class TestCrossOrderStrategyEvolution:
         assert status == "OPEN"
 
     def test_lot_count_progression(self, _mock_net, db, lot_manager):
-        """2 lots (spread) → 4 lots (condor) → 4 lots (2 open + 2 closed)."""
+        """The group's lot count should grow from 2 (spread) to 4 (condor), and after closing one wing it should still hold 4 lots split between open and closed."""
         bps = _bull_put_spread_txns()
         bcs = _bear_call_spread_txns()
         close = _close_call_wing_txns()
@@ -260,13 +260,7 @@ class TestCrossOrderStrategyEvolution:
 
     @pytest.mark.skip(reason="Stale assertion — group splitting on full close changed; expected counts no longer match. Tracked under OPT-272.")
     def test_fully_closed_splits_into_wing_groups(self, _mock_net, db, lot_manager):
-        """Closing all legs from scratch → 2 CLOSED groups (one per wing).
-
-        When all lots are closed, the group manager won't merge into an
-        already-closed group.  Each wing becomes its own CLOSED group with
-        the correct spread label.  (Future: strategy_history will preserve
-        the Iron Condor label for historical reporting.)
-        """
+        """When an Iron Condor is fully closed, each wing should end up as its own closed group rather than being merged into one."""
         bps = _bull_put_spread_txns()
         bcs = _bear_call_spread_txns()
         close_calls = _close_call_wing_txns()

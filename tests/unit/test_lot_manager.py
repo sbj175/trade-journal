@@ -16,7 +16,7 @@ from tests.conftest import make_option_transaction, make_stock_transaction
 
 class TestCreateLot:
     def test_create_lot_long(self, lot_manager):
-        """BTO 5 contracts → quantity=5, remaining=5, status=OPEN"""
+        """Buying 5 contracts to open should record a long lot with all 5 contracts still open."""
         tx = make_option_transaction(
             action="BUY_TO_OPEN", quantity=5, price=2.50,
         )
@@ -30,7 +30,7 @@ class TestCreateLot:
         assert lot.is_long is True
 
     def test_create_lot_short(self, lot_manager):
-        """STO 3 contracts → quantity=-3, remaining=-3"""
+        """Selling 3 contracts to open should record a short lot with a negative quantity of 3."""
         tx = make_option_transaction(
             action="SELL_TO_OPEN", quantity=3, price=1.50,
         )
@@ -43,7 +43,7 @@ class TestCreateLot:
         assert lot.is_short is True
 
     def test_create_lot_parses_option_details(self, lot_manager):
-        """Symbol 'AAPL 250321C00170000' → Call, strike=170.0, exp=2025-03-21"""
+        """The OCC option symbol should be parsed into its call/put type, strike price, and expiration date."""
         tx = make_option_transaction(
             symbol="AAPL 250321C00170000",
             instrument_type="EQUITY_OPTION",
@@ -66,7 +66,7 @@ class TestCreateLot:
 
 class TestCloseLotFifo:
     def test_close_lot_fifo_full(self, lot_manager):
-        """Open 5, close 5 → remaining=0, status=CLOSED"""
+        """Closing every contract in a 5-contract lot should leave the lot fully closed with nothing remaining."""
         tx = make_option_transaction(
             id="tx-open", action="BUY_TO_OPEN", quantity=5, price=2.00,
         )
@@ -88,7 +88,7 @@ class TestCloseLotFifo:
         assert lot_id in affected
 
     def test_close_lot_fifo_partial(self, lot_manager):
-        """Open 5, close 2 → remaining=3, status=PARTIAL"""
+        """Closing only some of the contracts in a lot should leave the rest open and mark the lot as partially closed."""
         tx = make_option_transaction(
             id="tx-open", action="BUY_TO_OPEN", quantity=5, price=2.00,
         )
@@ -109,7 +109,7 @@ class TestCloseLotFifo:
         assert lot.status == "PARTIAL"
 
     def test_close_lot_fifo_multiple_lots(self, lot_manager):
-        """Open 3 + Open 2, close 4 → FIFO: first lot fully closed, second partially."""
+        """When closing across multiple lots, the oldest lot should be fully closed first before the next lot is partially closed."""
         tx1 = make_option_transaction(
             id="tx-1", action="BUY_TO_OPEN", quantity=3, price=2.00,
             executed_at="2025-03-01T10:00:00+00:00",
@@ -148,7 +148,7 @@ class TestCloseLotFifo:
 
 class TestCloseLotPnl:
     def test_close_lot_pnl_long(self, lot_manager):
-        """BTO at $2.50, STC at $3.00, qty=1 → P&L = $50.00"""
+        """Buying a contract for $2.50 and selling it for $3.00 should produce a $50 profit (one option contract = 100 shares)."""
         tx = make_option_transaction(
             id="tx-open", action="BUY_TO_OPEN", quantity=1, price=2.50,
         )
@@ -167,7 +167,7 @@ class TestCloseLotPnl:
         assert total_pnl == pytest.approx(50.00)
 
     def test_close_lot_pnl_short(self, lot_manager):
-        """STO at $1.50, BTC at $1.00, qty=1 → P&L = $50.00"""
+        """Selling a contract for $1.50 and buying it back for $1.00 should produce a $50 profit on the short trade."""
         tx = make_option_transaction(
             id="tx-open", action="SELL_TO_OPEN", quantity=1, price=1.50,
         )
@@ -186,7 +186,7 @@ class TestCloseLotPnl:
         assert total_pnl == pytest.approx(50.00)
 
     def test_close_lot_pnl_stock(self, lot_manager):
-        """Buy 100 shares at $50, sell at $55 → P&L = $500.00 (multiplier=1)."""
+        """Buying 100 shares at $50 and selling them at $55 should produce a $500 profit (no option multiplier applied)."""
         tx = make_stock_transaction(
             id="tx-stock", action="BUY_TO_OPEN", quantity=100, price=50.00,
             symbol="AAPL", instrument_type="EQUITY",
@@ -212,7 +212,7 @@ class TestCloseLotPnl:
 
 class TestDerivedLot:
     def test_create_derived_lot_put_assignment(self, lot_manager):
-        """Short put at $50 strike → assignment → stock lot: qty=+100, entry=50.0"""
+        """When a short put is assigned, the shares received should be recorded as a long stock lot at the strike price."""
         # Create and close the source option lot
         tx = make_option_transaction(
             id="tx-put", action="SELL_TO_OPEN", quantity=1, price=1.50,
@@ -251,7 +251,7 @@ class TestDerivedLot:
         assert derived.derived_from_lot_id == source_lot_id
 
     def test_create_derived_lot_call_assignment(self, lot_manager):
-        """Short call at $60 strike → assignment → stock lot: qty=-100 (sells shares)."""
+        """When a short call is assigned, the shares delivered should be recorded as a short (negative-quantity) stock lot."""
         tx = make_option_transaction(
             id="tx-call", action="SELL_TO_OPEN", quantity=1, price=2.00,
             symbol="AAPL 250321C00060000",
@@ -290,7 +290,7 @@ class TestDerivedLot:
 
 class TestLotQueries:
     def test_get_open_lots_filters(self, lot_manager):
-        """Open lots filtered by chain_id and underlying."""
+        """Querying open lots by chain or underlying should return only the lots that match those filters."""
         tx1 = make_option_transaction(id="tx-a1", action="BUY_TO_OPEN", quantity=1)
         tx2 = make_option_transaction(
             id="tx-a2", action="BUY_TO_OPEN", quantity=1,
@@ -307,7 +307,7 @@ class TestLotQueries:
         assert len(spy_lots) == 1
 
     def test_get_realized_pnl_for_chain(self, lot_manager):
-        """Realized P&L summed across multiple closings in a chain."""
+        """The realized profit and loss for a chain should be the sum of profit and loss from every closing in that chain."""
         tx1 = make_option_transaction(
             id="tx-1", action="SELL_TO_OPEN", quantity=2, price=3.00,
             executed_at="2025-03-01T10:00:00+00:00",
@@ -340,7 +340,7 @@ class TestLotQueries:
         assert realized == pytest.approx(550.00)
 
     def test_clear_all_lots(self, lot_manager):
-        """Clearing by underlying only removes matching lots/closings."""
+        """Clearing lots for a specific underlying should leave lots on other underlyings untouched."""
         tx_aapl = make_option_transaction(id="tx-aapl", action="BUY_TO_OPEN", quantity=1)
         tx_spy = make_option_transaction(
             id="tx-spy", action="BUY_TO_OPEN", quantity=1,
@@ -357,7 +357,7 @@ class TestLotQueries:
         assert len(spy) == 1
 
     def test_close_lot_direction_filter(self, lot_manager):
-        """close_long=True only matches long lots; False only matches short lots."""
+        """The close-direction flag should let the closer target only long lots or only short lots, not both."""
         tx_long = make_option_transaction(
             id="tx-long", action="BUY_TO_OPEN", quantity=2, price=2.00,
             executed_at="2025-03-01T10:00:00+00:00",

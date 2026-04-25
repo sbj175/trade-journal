@@ -88,7 +88,7 @@ class TestFullPipeline:
     """End-to-end tests running transactions through the full orchestrator."""
 
     def test_simple_open(self, db, lot_manager):
-        """Single STO option -> lot created, group created."""
+        """Selling a single option to open should create one position lot and one position group."""
         txs = [
             make_option_transaction(
                 id="tx-001", order_id="ORD-001", action="SELL_TO_OPEN",
@@ -105,7 +105,7 @@ class TestFullPipeline:
         assert _count_lots(db) >= 1
 
     def test_open_close(self, db, lot_manager):
-        """STO + BTC -> lots + closings, group CLOSED."""
+        """Opening then closing the same option should produce a lot, a closing record, and a closed group."""
 
         txs = [
             make_option_transaction(
@@ -132,7 +132,7 @@ class TestFullPipeline:
         assert len(groups) >= 1
 
     def test_iron_condor_cross_order(self, db, lot_manager):
-        """Put spread + call spread as separate orders -> 1 group (Iron Condor)."""
+        """A put spread and a call spread placed as separate orders should be recognized as one Iron Condor group."""
         txs = [
             # Put spread (order 1)
             make_option_transaction(
@@ -174,7 +174,7 @@ class TestFullPipeline:
         assert _count_lots(db) == 4
 
     def test_with_equity(self, db, lot_manager):
-        """Stock BTO -> equity lot and group created."""
+        """Buying shares of a stock should create a stock lot and an associated Shares group."""
         txs = [
             make_stock_transaction(
                 id="tx-stock-001", order_id="ORD-STOCK-001",
@@ -189,7 +189,7 @@ class TestFullPipeline:
         assert _count_lots(db) >= 1
 
     def test_shares_sell_rebuy_separate_groups(self, db, lot_manager):
-        """Buy shares, sell all, buy again -> 2 separate groups (separate trading decisions)."""
+        """Selling all shares and then buying the same stock again later should be recorded as two separate Shares groups."""
         txs = [
             make_stock_transaction(
                 id="tx-buy1", order_id="ORD-BUY1",
@@ -219,7 +219,7 @@ class TestFullPipeline:
         assert statuses == {"OPEN", "CLOSED"}
 
     def test_shares_additional_purchase_same_group(self, db, lot_manager):
-        """Buy shares twice while holding -> 1 group (adding to existing position)."""
+        """Adding more shares of a stock you already hold should be tracked inside the existing Shares group, not a new one."""
         txs = [
             make_stock_transaction(
                 id="tx-buy1", order_id="ORD-BUY1",
@@ -243,7 +243,7 @@ class TestFullPipeline:
         assert len(shares_groups[0]["lot_txn_ids"]) == 2
 
     def test_empty_transactions(self, db, lot_manager):
-        """No transactions -> PipelineResult with zeros."""
+        """Running the pipeline with no transactions should report all-zero counts and not error out."""
         result = reprocess(db, lot_manager, [])
 
         assert result == PipelineResult(
@@ -261,7 +261,7 @@ class TestIncrementalReprocess:
     """Tests for affected_underlyings partial reprocessing."""
 
     def test_incremental_reprocess(self, db, lot_manager):
-        """Full process, then incremental on 1 underlying -> correct counts."""
+        """Reprocessing only one underlying after a full run should still report the correct number of orders assembled."""
         txs_aapl = [
             make_option_transaction(
                 id="tx-aapl", order_id="ORD-AAPL", action="SELL_TO_OPEN",
@@ -302,7 +302,7 @@ class TestIdempotency:
     """Verify that running the pipeline twice produces the same result."""
 
     def test_reprocess_idempotent(self, db, lot_manager):
-        """Run twice on same data -> same DB state."""
+        """Running the pipeline twice on the same input should leave the database in identical state both times."""
         txs = [
             make_option_transaction(
                 id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
@@ -340,7 +340,7 @@ class TestPipelineResultCounts:
     """Verify PipelineResult fields are populated correctly."""
 
     def test_all_fields_populated(self, db, lot_manager):
-        """Multi-order scenario -> all PipelineResult fields > 0."""
+        """A scenario with multiple orders should populate every counter field on the pipeline result."""
         txs = [
             make_option_transaction(
                 id="tx-open", order_id="ORD-OPEN", action="SELL_TO_OPEN",
@@ -362,7 +362,7 @@ class TestPipelineResultCounts:
         assert result.equity_lots_netted >= 0
 
     def test_dataclass_equality(self):
-        """PipelineResult supports equality for test assertions."""
+        """Two PipelineResult values with the same numbers should compare as equal."""
         r1 = PipelineResult(orders_assembled=5, groups_processed=2, equity_lots_netted=1)
         r2 = PipelineResult(orders_assembled=5, groups_processed=2, equity_lots_netted=1)
         assert r1 == r2
@@ -375,12 +375,7 @@ class TestPipelineResultCounts:
 class TestDerivedLots:
 
     def test_exercise_closes_derived_stock_lot(self, db, order_processor, lot_manager):
-        """Put spread fully ITM: assignment + exercise -> derived shares fully closed.
-
-        Short 50P assigned -> stock BTO 300 @ $50 (derived lot created).
-        Long 45P exercised -> stock STC 300 @ $45 (derived lot closed).
-        Net: no open stock lots remain.
-        """
+        """When a put spread is fully exercised at expiration, the shares received from assignment should be cancelled out by the shares delivered through exercise, leaving no open stock."""
         ACCT = "ACCT1"
         UNDERLYING = "IREN"
         SHORT_PUT_SYM = "IREN  241220P00050000"
@@ -496,6 +491,7 @@ class TestParallelLadderRollPreservation:
         ),
     )
     def test_three_parallel_rungs_roll_preserves_three_chains(self, db, lot_manager):
+        """Rolling three parallel covered-call positions in one broker order should keep each rung on its own original chain instead of collapsing them onto one."""
         SYM_OLD = "AAPL  250321C00170000"
         SYM_NEW = "AAPL  250418C00175000"
 

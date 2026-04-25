@@ -29,7 +29,7 @@ class _FakeChain:
 
 class TestChainPnlLots:
     def test_chain_pnl_v3_lots(self, pnl_calculator, lot_manager):
-        """Lot-based chain P&L: realized from closings + unrealized from open lots."""
+        """A chain's total profit and loss should equal realized profit from closings plus unrealized profit from any lots still open."""
         tx_open = make_option_transaction(
             id="tx-o", action="SELL_TO_OPEN", quantity=3, price=2.00,
         )
@@ -56,7 +56,7 @@ class TestChainPnlLots:
         assert result.total_pnl == pytest.approx(350.00)
 
     def test_chain_pnl_multiple_symbols(self, pnl_calculator, lot_manager):
-        """Chain with 2 option legs, each with different current prices."""
+        """A chain made up of two option legs should have its unrealized profit summed across each leg's current market price."""
         tx1 = make_option_transaction(
             id="tx-leg1", action="SELL_TO_OPEN", quantity=1, price=1.50,
             symbol="AAPL 250321P00160000",
@@ -79,7 +79,7 @@ class TestChainPnlLots:
         assert result.unrealized_pnl == pytest.approx(100.00)
 
     def test_pnl_with_no_current_price(self, pnl_calculator, lot_manager):
-        """Falls back to entry price when current_price missing → unrealized = 0."""
+        """When no current market price is available, unrealized profit should fall back to zero rather than crash."""
         tx = make_option_transaction(
             id="tx-no-price", action="BUY_TO_OPEN", quantity=1, price=2.00,
         )
@@ -91,7 +91,7 @@ class TestChainPnlLots:
         assert result.unrealized_pnl == pytest.approx(0.0)
 
     def test_chain_pnl_mixed_realized_unrealized(self, pnl_calculator, lot_manager):
-        """Partially closed chain: some realized, some unrealized."""
+        """A partially closed chain should report both the locked-in realized profit and the unrealized profit on whatever is still open."""
         tx1 = make_option_transaction(
             id="tx-m1", action="SELL_TO_OPEN", quantity=2, price=3.00,
             executed_at="2025-03-01T10:00:00+00:00",
@@ -131,7 +131,7 @@ class TestChainPnlLots:
 
 class TestLotLevelPnl:
     def test_lot_level_pnl_breakdown(self, pnl_calculator, lot_manager):
-        """get_lot_level_pnl() returns per-lot details with closings."""
+        """The lot-level breakdown should include each lot's realized and unrealized profit along with its individual closing records."""
         tx = make_option_transaction(
             id="tx-ll", action="SELL_TO_OPEN", quantity=2, price=2.00,
         )
