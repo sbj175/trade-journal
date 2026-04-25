@@ -56,6 +56,72 @@ def _get_groups(db):
         return session.query(PositionGroup).all()
 
 
+def _build_simple_roll(
+    *, sym_old, sym_new, strike_old, strike_new, exp_old, exp_new,
+    qty=1, option_type="Call", order_prefix="R",
+    open_price=2.50, close_price=1.00, new_open_price=3.00,
+    open_date="2025-03-01T10:00:00+00:00",
+    roll_date="2025-03-15T10:00:00+00:00",
+):
+    """Build the (opens, roll) transaction lists for a single-leg roll
+    from sym_old to sym_new on a fresh chain.
+    """
+    opens = [
+        make_option_transaction(
+            id="tx-open", order_id=f"OPEN_{order_prefix}",
+            action="SELL_TO_OPEN", quantity=qty, price=open_price,
+            symbol=sym_old, option_type=option_type, strike=strike_old,
+            expiration=exp_old, executed_at=open_date,
+        ),
+    ]
+    roll = [
+        make_option_transaction(
+            id="tx-btc", order_id=f"ROLL_{order_prefix}",
+            action="BUY_TO_CLOSE", quantity=qty, price=close_price,
+            symbol=sym_old, option_type=option_type, strike=strike_old,
+            expiration=exp_old, executed_at=roll_date,
+        ),
+        make_option_transaction(
+            id="tx-sto", order_id=f"ROLL_{order_prefix}",
+            action="SELL_TO_OPEN", quantity=qty, price=new_open_price,
+            symbol=sym_new, option_type=option_type, strike=strike_new,
+            expiration=exp_new, executed_at=roll_date,
+        ),
+    ]
+    return opens, roll
+
+
+def _assert_chain_preserved_through_roll(db, sym_old, sym_new):
+    """Assert that a roll from sym_old to sym_new preserved chain_id on
+    the new lot AND set rolled_from_group_id on the new group.
+    """
+    with db.get_session() as session:
+        old_chain = session.query(PositionLot.chain_id).filter(
+            PositionLot.symbol == sym_old,
+        ).scalar()
+        new_chain = session.query(PositionLot.chain_id).filter(
+            PositionLot.symbol == sym_new,
+        ).scalar()
+        old_gid = session.query(PositionGroup.group_id).join(
+            PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+        ).join(
+            PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+        ).filter(PositionLot.symbol == sym_old).scalar()
+        new_rolled_from = session.query(PositionGroup.rolled_from_group_id).join(
+            PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+        ).join(
+            PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+        ).filter(PositionLot.symbol == sym_new).scalar()
+    assert new_chain == old_chain, (
+        f"Roll {sym_old} → {sym_new} should preserve chain_id; "
+        f"got old={old_chain} new={new_chain}"
+    )
+    assert new_rolled_from == old_gid, (
+        f"New group should rolled_from the predecessor; "
+        f"got new_rolled_from={new_rolled_from} old_gid={old_gid}"
+    )
+
+
 def _snapshot_groups(db_manager):
     """Snapshot all groups with their lot membership.
 
@@ -768,117 +834,31 @@ class TestRollMechanics:
         """Rolling a short call out in time at the same strike (calendar roll) should preserve its chain id and link the new group back to the old one via rolled_from."""
         sym_old = "AAPL  250321C00100000"
         sym_new = "AAPL  250418C00100000"
-
-        opens = [
-            make_option_transaction(
-                id="tx-open", order_id="OPEN_CR",
-                action="SELL_TO_OPEN", quantity=1, price=2.50,
-                symbol=sym_old, option_type="Call", strike=100.0,
-                expiration="2025-03-21",
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-        ]
-        roll = [
-            make_option_transaction(
-                id="tx-btc", order_id="ROLL_CR",
-                action="BUY_TO_CLOSE", quantity=1, price=1.00,
-                symbol=sym_old, option_type="Call", strike=100.0,
-                expiration="2025-03-21",
-                executed_at="2025-03-15T10:00:00+00:00",
-            ),
-            make_option_transaction(
-                id="tx-sto", order_id="ROLL_CR",
-                action="SELL_TO_OPEN", quantity=1, price=3.00,
-                symbol=sym_new, option_type="Call", strike=100.0,
-                expiration="2025-04-18",
-                executed_at="2025-03-15T10:00:00+00:00",
-            ),
-        ]
+        opens, roll = _build_simple_roll(
+            sym_old=sym_old, sym_new=sym_new,
+            strike_old=100.0, strike_new=100.0,
+            exp_old="2025-03-21", exp_new="2025-04-18",
+            order_prefix="CR",
+        )
 
         reprocess(db, lot_manager, opens + roll)
 
-        with db.get_session() as session:
-            old_chain = session.query(PositionLot.chain_id).filter(
-                PositionLot.symbol == sym_old,
-            ).scalar()
-            new_chain = session.query(PositionLot.chain_id).filter(
-                PositionLot.symbol == sym_new,
-            ).scalar()
-            old_gid = session.query(PositionGroup.group_id).join(
-                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
-            ).join(
-                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
-            ).filter(PositionLot.symbol == sym_old).scalar()
-            new_rolled_from = session.query(PositionGroup.rolled_from_group_id).join(
-                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
-            ).join(
-                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
-            ).filter(PositionLot.symbol == sym_new).scalar()
-
-        assert new_chain == old_chain, (
-            "Calendar roll must keep the new lot on the predecessor's chain"
-        )
-        assert new_rolled_from == old_gid, (
-            "New group must link back to predecessor via rolled_from_group_id"
-        )
+        _assert_chain_preserved_through_roll(db, sym_old, sym_new)
 
     def test_diagonal_roll_preserves_chain(self, db, lot_manager):
         """Rolling a short call up and out (different strike and different expiration) should still preserve the chain id and set rolled_from on the new group."""
         sym_old = "AAPL  250321C00100000"
         sym_new = "AAPL  250418C00105000"
-
-        opens = [
-            make_option_transaction(
-                id="tx-open", order_id="OPEN_DR",
-                action="SELL_TO_OPEN", quantity=1, price=2.50,
-                symbol=sym_old, option_type="Call", strike=100.0,
-                expiration="2025-03-21",
-                executed_at="2025-03-01T10:00:00+00:00",
-            ),
-        ]
-        roll = [
-            make_option_transaction(
-                id="tx-btc", order_id="ROLL_DR",
-                action="BUY_TO_CLOSE", quantity=1, price=1.00,
-                symbol=sym_old, option_type="Call", strike=100.0,
-                expiration="2025-03-21",
-                executed_at="2025-03-15T10:00:00+00:00",
-            ),
-            make_option_transaction(
-                id="tx-sto", order_id="ROLL_DR",
-                action="SELL_TO_OPEN", quantity=1, price=2.00,
-                symbol=sym_new, option_type="Call", strike=105.0,
-                expiration="2025-04-18",
-                executed_at="2025-03-15T10:00:00+00:00",
-            ),
-        ]
+        opens, roll = _build_simple_roll(
+            sym_old=sym_old, sym_new=sym_new,
+            strike_old=100.0, strike_new=105.0,
+            exp_old="2025-03-21", exp_new="2025-04-18",
+            order_prefix="DR",
+        )
 
         reprocess(db, lot_manager, opens + roll)
 
-        with db.get_session() as session:
-            old_chain = session.query(PositionLot.chain_id).filter(
-                PositionLot.symbol == sym_old,
-            ).scalar()
-            new_chain = session.query(PositionLot.chain_id).filter(
-                PositionLot.symbol == sym_new,
-            ).scalar()
-            old_gid = session.query(PositionGroup.group_id).join(
-                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
-            ).join(
-                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
-            ).filter(PositionLot.symbol == sym_old).scalar()
-            new_rolled_from = session.query(PositionGroup.rolled_from_group_id).join(
-                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
-            ).join(
-                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
-            ).filter(PositionLot.symbol == sym_new).scalar()
-
-        assert new_chain == old_chain, (
-            "Diagonal roll must keep the new lot on the predecessor's chain"
-        )
-        assert new_rolled_from == old_gid, (
-            "New group must link back to predecessor via rolled_from_group_id"
-        )
+        _assert_chain_preserved_through_roll(db, sym_old, sym_new)
 
     def test_multi_fill_same_order_roll_stays_in_one_group(self, db, lot_manager):
         """A roll whose new opening leg fills in two pieces (same order, slight price diff so the assembler doesn't aggregate them) should land both pieces in the same group — not split into a 24-lot and an 8-lot group."""
