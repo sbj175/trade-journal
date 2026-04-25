@@ -481,15 +481,6 @@ class TestParallelLadderRollPreservation:
     ladder rungs into a single chain.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Known: position_ledger.py uses next(iter(affected_chains)) for "
-            "ROLLING orders, collapsing parallel chains onto one arbitrary "
-            "chain_id. Will pass once the chain-pairing fix lands. Tracked "
-            "under OPT-272 (Tier 1 coverage backfill)."
-        ),
-    )
     def test_three_parallel_rungs_roll_preserves_three_chains(self, db, lot_manager):
         """Rolling three parallel covered-call positions in one broker order should keep each rung on its own original chain instead of collapsing them onto one."""
         SYM_OLD = "AAPL  250321C00170000"
@@ -665,6 +656,97 @@ class TestParallelLadderRollPreservation:
         assert day2_chains == day1_chains, (
             f"Put-spread roll orphaned a leg onto a new chain. "
             f"Day 1 chains: {day1_chains}; Day 2 chains: {day2_chains}"
+        )
+
+    def test_mixed_quantity_parallel_roll_pairs_chains_correctly(self, db, lot_manager):
+        """Rolling two parallel positions of different sizes (30 contracts on chain A, 10 contracts on chain B) in one broker order should pair the 30-contract opening lot with chain A and the 10-contract opening lot with chain B (FIFO by quantity), not just slot them into the queue without regard to size."""
+        SYM_OLD = "AAPL  250321C00170000"
+        SYM_NEW = "AAPL  250418C00175000"
+
+        # Day 1: open two parallel positions of different sizes, each with
+        # its own order_id (so distinct chain_ids). Different morning vs.
+        # afternoon entry times so FIFO ordering is deterministic.
+        opens = [
+            make_option_transaction(
+                id="tx-open-A", order_id="OPEN_A",
+                action="SELL_TO_OPEN", quantity=30, price=2.50,
+                symbol=SYM_OLD, option_type="Call", strike=170.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-open-B", order_id="OPEN_B",
+                action="SELL_TO_OPEN", quantity=10, price=2.51,
+                symbol=SYM_OLD, option_type="Call", strike=170.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T14:00:00+00:00",
+            ),
+        ]
+
+        # Day 2: roll both in ONE order. Slight price differences prevent
+        # normalize_transactions() from collapsing the four legs to two.
+        ROLL_ORDER_ID = "ROLL_MIXED"
+        roll = [
+            make_option_transaction(
+                id="tx-btc-30", order_id=ROLL_ORDER_ID,
+                action="BUY_TO_CLOSE", quantity=30, price=1.00,
+                symbol=SYM_OLD, option_type="Call", strike=170.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-btc-10", order_id=ROLL_ORDER_ID,
+                action="BUY_TO_CLOSE", quantity=10, price=1.01,
+                symbol=SYM_OLD, option_type="Call", strike=170.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-30", order_id=ROLL_ORDER_ID,
+                action="SELL_TO_OPEN", quantity=30, price=3.00,
+                symbol=SYM_NEW, option_type="Call", strike=175.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-10", order_id=ROLL_ORDER_ID,
+                action="SELL_TO_OPEN", quantity=10, price=3.01,
+                symbol=SYM_NEW, option_type="Call", strike=175.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            old_lots = session.query(
+                PositionLot.quantity, PositionLot.chain_id,
+            ).filter(PositionLot.symbol == SYM_OLD).all()
+            new_lots = session.query(
+                PositionLot.quantity, PositionLot.chain_id,
+            ).filter(PositionLot.symbol == SYM_NEW).all()
+
+        # Day 1: two distinct chains, qty -30 and -10.
+        chain_by_qty_old = {abs(q): c for q, c in old_lots}
+        assert set(chain_by_qty_old.keys()) == {30, 10}, (
+            f"Expected old lots of size 30 and 10, got {chain_by_qty_old}"
+        )
+        chain_30 = chain_by_qty_old[30]
+        chain_10 = chain_by_qty_old[10]
+        assert chain_30 != chain_10, "Day 1 chains should be distinct"
+
+        # Day 2: each new lot must inherit the chain of the close it was
+        # paired with by quantity — the 30-contract open inherits chain_30,
+        # the 10-contract open inherits chain_10.
+        chain_by_qty_new = {abs(q): c for q, c in new_lots}
+        assert chain_by_qty_new.get(30) == chain_30, (
+            f"30-contract open should inherit chain {chain_30} (chain of the 30-contract close), "
+            f"got {chain_by_qty_new.get(30)}"
+        )
+        assert chain_by_qty_new.get(10) == chain_10, (
+            f"10-contract open should inherit chain {chain_10} (chain of the 10-contract close), "
+            f"got {chain_by_qty_new.get(10)}"
         )
 
 

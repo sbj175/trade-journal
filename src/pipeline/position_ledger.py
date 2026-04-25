@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from src.models.order_processor import Order, OrderType
 
@@ -102,6 +102,11 @@ def process_lots(
 
     for order in orders:
         temp_chain_id = None
+        # tx.id -> chain_id, populated for ROLLING orders. Per-opening-tx
+        # chain assignment so multi-chain rolls (parallel ladder rungs in one
+        # broker order) preserve each rung's chain identity. Falls back to
+        # temp_chain_id below for any opening tx not in this map.
+        opening_chain_for_tx: Dict[str, str] = {}
 
         # Opening orders get a new temporary chain_id
         if order.order_type == OrderType.OPENING:
@@ -115,14 +120,38 @@ def process_lots(
         # For closing/rolling orders, capture affected chains BEFORE closing
         if order.order_type in (OrderType.CLOSING, OrderType.ROLLING):
             affected_chains: Set[str] = set()
+            # Quantity-aware queue of chains the closing side will hit, in
+            # FIFO order. Populated only for ROLLING — CLOSING doesn't need
+            # per-tx chain assignment for new lots (there are none).
+            chain_queue: List[Tuple[str, int]] = []
+            claimed_lot_ids: Set[int] = set()
+
             for tx in order.closing_transactions:
                 open_lots = lot_manager.get_open_lots(
                     account_number=tx.account_number,
                     symbol=tx.symbol,
                 )
-                for lot in open_lots:
-                    if lot.chain_id:
+                if order.order_type == OrderType.ROLLING:
+                    remaining_to_close = abs(int(tx.quantity or 0))
+                    for lot in open_lots:  # FIFO order from get_open_lots
+                        if remaining_to_close <= 0:
+                            break
+                        if lot.id in claimed_lot_ids:
+                            continue
+                        if not lot.chain_id:
+                            continue
+                        lot_remaining = abs(int(lot.remaining_quantity or 0))
+                        if lot_remaining <= 0:
+                            continue
+                        qty_taken = min(remaining_to_close, lot_remaining)
+                        chain_queue.append((lot.chain_id, qty_taken))
+                        claimed_lot_ids.add(lot.id)
                         affected_chains.add(lot.chain_id)
+                        remaining_to_close -= qty_taken
+                else:
+                    for lot in open_lots:
+                        if lot.chain_id:
+                            affected_chains.add(lot.chain_id)
 
             if affected_chains:
                 closing_order_to_chains[order.order_id] = affected_chains
@@ -131,13 +160,46 @@ def process_lots(
                     order.order_id, affected_chains,
                 )
 
-                # Rolling orders: new lots inherit chain from closed lots
+                # Rolling orders: each new opening lot inherits the chain of
+                # the close it was paired with (FIFO by quantity through the
+                # chain_queue built above). This preserves parallel ladder
+                # rungs that are rolled together in a single broker order —
+                # before this, `next(iter(affected_chains))` would broadcast
+                # one arbitrary chain to every new lot, collapsing the rungs.
                 if order.order_type == OrderType.ROLLING:
-                    temp_chain_id = next(iter(affected_chains))
+                    if chain_queue:
+                        queue_idx = 0
+                        queue_remaining = chain_queue[0][1]
+                        for op_tx in order.opening_transactions:
+                            op_qty = abs(int(op_tx.quantity or 0))
+                            if queue_idx < len(chain_queue):
+                                opening_chain_for_tx[op_tx.id] = chain_queue[queue_idx][0]
+                                queue_remaining -= op_qty
+                                while queue_remaining <= 0 and queue_idx + 1 < len(chain_queue):
+                                    queue_idx += 1
+                                    queue_remaining += chain_queue[queue_idx][1]
+                            else:
+                                # More opens than the close-allocation covers —
+                                # asymmetric roll. Fall back to the last chain
+                                # and warn (rare in practice).
+                                opening_chain_for_tx[op_tx.id] = chain_queue[-1][0]
+                                logger.warning(
+                                    "Rolling order %s has opens exceeding close-allocation; "
+                                    "opening tx %s falls back to last chain",
+                                    order.order_id, op_tx.id,
+                                )
+                        temp_chain_id = chain_queue[0][0]
+                    else:
+                        # No quantity could be matched to lots (e.g., closes
+                        # against zero-remaining lots). Fall back to the prior
+                        # broadcast behavior so existing simple-roll cases
+                        # remain unaffected.
+                        temp_chain_id = next(iter(affected_chains))
                     order_to_temp_chain[order.order_id] = temp_chain_id
                     logger.debug(
-                        "Rolling order %s will create new lots in chain: %s",
-                        order.order_id, temp_chain_id,
+                        "Rolling order %s: chain_queue=%s opening_chain_for_tx=%s",
+                        order.order_id, chain_queue,
+                        {k: v for k, v in opening_chain_for_tx.items()},
                     )
 
         # Process each transaction in the order
@@ -160,9 +222,13 @@ def process_lots(
             }
 
             if tx.is_opening:
+                # For ROLLING orders, look up the per-tx chain assignment
+                # (preserves parallel chain identity); fall back to the
+                # order-level temp_chain_id otherwise.
+                chain_for_lot = opening_chain_for_tx.get(tx.id, temp_chain_id)
                 lot_manager.create_lot(
                     transaction=tx_dict,
-                    chain_id=temp_chain_id or "",
+                    chain_id=chain_for_lot or "",
                     leg_index=idx,
                     opening_order_id=order.order_id,
                 )
