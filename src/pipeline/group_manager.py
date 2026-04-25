@@ -48,32 +48,21 @@ class GroupSpec:
 # ---------------------------------------------------------------------------
 
 def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
-    """True if `new_lot` matches some open lot in `existing_lots` on
-    (option_type, strike, direction).
-
-    Two lots are "structural duplicates" if they represent the same
-    option contract on the same side. Used by Rule 1 to keep parallel
-    same-strike positions from being merged into one group, while still
-    letting structurally complementary cross-order legs (e.g., an Iron
-    Condor's call wing joining the put wing) merge correctly.
-
-    Direction is taken from the sign of `quantity`: positive = long,
-    negative = short. Stock-only lots and lots without an option_type
-    are not considered duplicates here (Rule 2 handles equity).
+    """True if any open lot in `existing_lots` matches `new_lot` on
+    (option_type, strike, direction). Equity lots are skipped — Rule 2
+    routes those.
     """
     if not getattr(new_lot, "option_type", None):
         return False
-    new_sign = 1 if new_lot.quantity > 0 else -1
     for existing in existing_lots:
         if not getattr(existing, "option_type", None):
             continue
         if existing.remaining_quantity == 0:
             continue
-        existing_sign = 1 if existing.quantity > 0 else -1
         if (
             existing.option_type == new_lot.option_type
             and existing.strike == new_lot.strike
-            and existing_sign == new_sign
+            and existing.is_long == new_lot.is_long
         ):
             return True
     return False
@@ -510,18 +499,12 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
     Criteria (all must match):
     1. Same account + underlying
     2. Source group's closing_date same calendar day as target group's opening_date
-    3. Target and candidate share at least one lot.chain_id (true roll lineage)
+    3. Target and candidate share at least one lot.chain_id
     4. Target doesn't already have a rolled_from_group_id
     5. Skip Shares groups
 
     Tie-breaking: prefer closest lot count.
     Process sorted by opening_date so serial rolls (A→B→C) link correctly.
-
-    Note: strategy_label is intentionally NOT a matching criterion. The
-    recognizer is a heuristic interpretation layer; lineage is determined
-    by the deterministic chain_id from the lot layer. A label mismatch
-    (e.g., a Covered Call roll temporarily mis-classified as a Diagonal
-    Spread) must not sever the chain.
     """
     from src.database.models import PositionGroup
 
@@ -568,8 +551,6 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
             continue
 
         # Filter: target must share a chain_id with at least one candidate.
-        # chain_id is the structural truth for roll lineage — it's set on the
-        # new lot during ROLLING processing by inheritance from the closed lot.
         target_chains = {lot.chain_id for lot in group_lots.get(g.group_id, []) if lot.chain_id}
         candidates = [
             c for c in candidates
@@ -730,11 +711,7 @@ class GroupPersister:
                         assigned = True
 
                 # Rule 1: option lots group by (account, underlying, expiration).
-                # The candidate group must still be open AND the new lot
-                # must not be a structural duplicate of any open lot in the
-                # group (same option_type + strike + direction). This keeps
-                # parallel same-strike positions in separate groups while
-                # still letting complementary cross-order legs merge.
+                # See assign_lots_to_groups for the full rationale.
                 if not assigned and lot.expiration:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
