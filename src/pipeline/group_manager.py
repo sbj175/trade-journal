@@ -47,6 +47,55 @@ class GroupSpec:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _route_lot_to_group(
+    lot,
+    *,
+    groups_by_key: Dict[str, List["Lot"]],
+    aue_to_group: Dict[Tuple[str, str, date], str],
+    au_to_group: Dict[Tuple[str, str], str],
+    chain_to_group: Dict[str, str],
+) -> Optional[str]:
+    """Decide which existing group_key a lot should join, or None if none fit.
+
+    Pure: reads the index dicts, never mutates them. The caller mints a
+    new group key on None and then adds the lot via its own add helper
+    (which is responsible for updating the indices).
+
+    Rules in priority order:
+      0. chain-aware: same chain_id AND (group open OR same opening_order_id)
+      1. option lot: same (account, underlying, expiration), open, and not a
+         structural duplicate of an existing open lot
+      2. equity lot: same (account, underlying), open
+    """
+    def _is_group_open(gk: str) -> bool:
+        return any(l.remaining_quantity != 0 for l in groups_by_key[gk])
+
+    if lot.chain_id and lot.chain_id in chain_to_group:
+        gk = chain_to_group[lot.chain_id]
+        same_order_present = lot.opening_order_id and any(
+            existing.opening_order_id == lot.opening_order_id
+            for existing in groups_by_key[gk]
+        )
+        if _is_group_open(gk) or same_order_present:
+            return gk
+
+    if lot.expiration:
+        aue_key = (lot.account_number, lot.underlying, lot.expiration)
+        if aue_key in aue_to_group:
+            gk = aue_to_group[aue_key]
+            if _is_group_open(gk) and not _is_duplicate_open_lot(lot, groups_by_key[gk]):
+                return gk
+
+    if not lot.expiration:
+        au_key = (lot.account_number, lot.underlying)
+        if au_key in au_to_group:
+            gk = au_to_group[au_key]
+            if _is_group_open(gk):
+                return gk
+
+    return None
+
+
 def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
     """True if any open lot in `existing_lots` matches `new_lot` on
     (option_type, strike, direction). Equity lots are skipped — Rule 2
@@ -108,10 +157,6 @@ def assign_lots_to_groups(
     # group_key counter
     group_counter = 0
 
-    def _is_group_open(group_key: str) -> bool:
-        """Check if any lot in the group still has remaining quantity."""
-        return any(lot.remaining_quantity != 0 for lot in groups[group_key])
-
     def _new_group_key() -> str:
         nonlocal group_counter
         group_counter += 1
@@ -127,56 +172,19 @@ def assign_lots_to_groups(
             chain_to_group[lot.chain_id] = gk
 
     # --- Step 2: Assign each lot to a group --------------------------------
+    # See _route_lot_to_group for the rule semantics.
     for lot in sorted_lots:
-        assigned = False
-
-        # Rule 0: chain-aware routing — keep partially-rolled positions and
-        # multi-fill same-order opens together. The same-order check covers
-        # the case where two lots share an opening_order_id and chain_id but
-        # both have remaining_quantity=0 in the routing snapshot (e.g. a
-        # multi-fill roll whose later closes have already been applied).
-        if not assigned and lot.chain_id and lot.chain_id in chain_to_group:
-            gk = chain_to_group[lot.chain_id]
-            same_order_present = lot.opening_order_id and any(
-                existing.opening_order_id == lot.opening_order_id
-                for existing in groups[gk]
-            )
-            if _is_group_open(gk) or same_order_present:
-                _add_lot_to_group(lot, gk)
-                assigned = True
-
-        # Rule 1: option lots group by (account, underlying, expiration).
-        # The candidate group must still be open AND the new lot must not
-        # be a structural duplicate of any open lot already in the group
-        # (same option_type + strike + direction). Without the duplicate
-        # check, two independent same-strike positions (e.g., parallel
-        # covered-call ladder rungs each opened in their own broker order)
-        # would merge into one group. With it, complementary legs added
-        # cross-order (an Iron Condor's call wing joining the existing
-        # put wing) still merge correctly because they differ in
-        # option_type or strike or direction.
-        if not assigned and lot.expiration:
-            aue_key = (lot.account_number, lot.underlying, lot.expiration)
-            if aue_key in aue_to_group:
-                gk = aue_to_group[aue_key]
-                if _is_group_open(gk) and not _is_duplicate_open_lot(lot, groups[gk]):
-                    _add_lot_to_group(lot, gk)
-                    assigned = True
-
-        # Rule 2: equity lots group by (account, underlying)
-        if not assigned and not lot.expiration:
-            au_key = (lot.account_number, lot.underlying)
-            if au_key in au_to_group:
-                gk = au_to_group[au_key]
-                if _is_group_open(gk):
-                    _add_lot_to_group(lot, gk)
-                    assigned = True
-
-        # Rule 3: create new group
-        if not assigned:
+        gk = _route_lot_to_group(
+            lot,
+            groups_by_key=groups,
+            aue_to_group=aue_to_group,
+            au_to_group=au_to_group,
+            chain_to_group=chain_to_group,
+        )
+        if gk is None:
             gk = _new_group_key()
             groups[gk] = []
-            _add_lot_to_group(lot, gk)
+        _add_lot_to_group(lot, gk)
 
     # --- Step 3 & 4: Build GroupSpec results with strategy labels ----------
     # May split groups when the recognizer finds multiple strategies.
@@ -694,9 +702,6 @@ class GroupPersister:
             # =================================================================
             new_groups_created = 0
 
-            def _is_group_open(gid: str) -> bool:
-                return any(l.remaining_quantity != 0 for l in group_lots[gid])
-
             def _add_new_lot(lot: Lot, group_id: str) -> None:
                 group_lots[group_id].append(lot)
                 txn_to_group[lot.transaction_id] = group_id
@@ -709,44 +714,18 @@ class GroupPersister:
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
-                assigned = False
-
-                # Rule 0: chain-aware routing — see assign_lots_to_groups for rationale.
-                if not assigned and lot.chain_id and lot.chain_id in chain_to_group:
-                    gk = chain_to_group[lot.chain_id]
-                    same_order_present = lot.opening_order_id and any(
-                        existing.opening_order_id == lot.opening_order_id
-                        for existing in group_lots[gk]
-                    )
-                    if _is_group_open(gk) or same_order_present:
-                        _add_new_lot(lot, gk)
-                        assigned = True
-
-                # Rule 1: option lots group by (account, underlying, expiration).
-                # See assign_lots_to_groups for the full rationale.
-                if not assigned and lot.expiration:
-                    aue_key = (lot.account_number, lot.underlying, lot.expiration)
-                    if aue_key in aue_to_group:
-                        gk = aue_to_group[aue_key]
-                        if _is_group_open(gk) and not _is_duplicate_open_lot(lot, group_lots[gk]):
-                            _add_new_lot(lot, gk)
-                            assigned = True
-
-                # Rule 2: equity lots group by (account, underlying)
-                if not assigned and not lot.expiration:
-                    au_key = (lot.account_number, lot.underlying)
-                    if au_key in au_to_group:
-                        gk = au_to_group[au_key]
-                        if _is_group_open(gk):
-                            _add_new_lot(lot, gk)
-                            assigned = True
-
-                # Rule 3: create new group
-                if not assigned:
-                    new_gid = str(_uuid.uuid4())
-                    group_lots[new_gid] = []
-                    _add_new_lot(lot, new_gid)
+                gk = _route_lot_to_group(
+                    lot,
+                    groups_by_key=group_lots,
+                    aue_to_group=aue_to_group,
+                    au_to_group=au_to_group,
+                    chain_to_group=chain_to_group,
+                )
+                if gk is None:
+                    gk = str(_uuid.uuid4())
+                    group_lots[gk] = []
                     new_groups_created += 1
+                _add_new_lot(lot, gk)
 
             # Persist new group-lot links
             for lot in sorted_new:
