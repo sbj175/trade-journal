@@ -139,6 +139,42 @@ class TestVerticals:
         # Same strike puts with different directions = not a vertical
         assert "Spread" not in r.name
 
+    def test_bull_zebra_calls(self):
+        """Buying two ITM calls at a lower strike and selling one call at a higher strike (a 2:1 ratio) should be recognized as a bullish 'Bull ZEBRA'."""
+        legs = [
+            _opt("C", 100, "long", quantity=2),   # long 2x lower call
+            _opt("C", 105, "short", quantity=1),  # short 1x higher call
+        ]
+        r = recognize(legs)
+        assert r.name == "Bull ZEBRA"
+
+    def test_bear_zebra_calls(self):
+        """Selling two calls at a lower strike and buying one call at a higher strike (a 2:1 ratio) should be recognized as a bearish 'Bear ZEBRA'."""
+        legs = [
+            _opt("C", 100, "short", quantity=2),  # short 2x lower call
+            _opt("C", 105, "long", quantity=1),   # long 1x higher call
+        ]
+        r = recognize(legs)
+        assert r.name == "Bear ZEBRA"
+
+    def test_bear_zebra_puts(self):
+        """Buying two ITM puts at a higher strike and selling one put at a lower strike (a 2:1 ratio) should be recognized as a bearish 'Bear ZEBRA'."""
+        legs = [
+            _opt("P", 105, "long", quantity=2),   # long 2x higher put
+            _opt("P", 100, "short", quantity=1),  # short 1x lower put
+        ]
+        r = recognize(legs)
+        assert r.name == "Bear ZEBRA"
+
+    def test_bull_zebra_puts(self):
+        """Selling two puts at a higher strike and buying one put at a lower strike (a 2:1 ratio) should be recognized as a bullish 'Bull ZEBRA'."""
+        legs = [
+            _opt("P", 105, "short", quantity=2),  # short 2x higher put
+            _opt("P", 100, "long", quantity=1),   # long 1x lower put
+        ]
+        r = recognize(legs)
+        assert r.name == "Bull ZEBRA"
+
 
 # ---------------------------------------------------------------------------
 # Multi-leg strategies

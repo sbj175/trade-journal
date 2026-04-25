@@ -666,3 +666,186 @@ class TestParallelLadderRollPreservation:
             f"Put-spread roll orphaned a leg onto a new chain. "
             f"Day 1 chains: {day1_chains}; Day 2 chains: {day2_chains}"
         )
+
+
+# =====================================================================
+# Tier 1 — roll mechanics (chain inheritance + rolled_from linkage)
+# =====================================================================
+
+class TestRollMechanics:
+    """Strategy-agnostic tests of the pipeline's roll machinery: chain
+    inheritance from closed lot to new lot, and `rolled_from_group_id`
+    linkage from new group to predecessor group.
+
+    Each test uses a simple Short Call as the carrier — chain logic is
+    independent of strategy label, so retesting it for every strategy
+    type is wasted coverage.
+    """
+
+    def test_calendar_roll_preserves_chain(self, db, lot_manager):
+        """Rolling a short call out in time at the same strike (calendar roll) should preserve its chain id and link the new group back to the old one via rolled_from."""
+        sym_old = "AAPL  250321C00100000"
+        sym_new = "AAPL  250418C00100000"
+
+        opens = [
+            make_option_transaction(
+                id="tx-open", order_id="OPEN_CR",
+                action="SELL_TO_OPEN", quantity=1, price=2.50,
+                symbol=sym_old, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+        roll = [
+            make_option_transaction(
+                id="tx-btc", order_id="ROLL_CR",
+                action="BUY_TO_CLOSE", quantity=1, price=1.00,
+                symbol=sym_old, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto", order_id="ROLL_CR",
+                action="SELL_TO_OPEN", quantity=1, price=3.00,
+                symbol=sym_new, option_type="Call", strike=100.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            old_chain = session.query(PositionLot.chain_id).filter(
+                PositionLot.symbol == sym_old,
+            ).scalar()
+            new_chain = session.query(PositionLot.chain_id).filter(
+                PositionLot.symbol == sym_new,
+            ).scalar()
+            old_gid = session.query(PositionGroup.group_id).join(
+                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+            ).join(
+                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(PositionLot.symbol == sym_old).scalar()
+            new_rolled_from = session.query(PositionGroup.rolled_from_group_id).join(
+                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+            ).join(
+                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(PositionLot.symbol == sym_new).scalar()
+
+        assert new_chain == old_chain, (
+            "Calendar roll must keep the new lot on the predecessor's chain"
+        )
+        assert new_rolled_from == old_gid, (
+            "New group must link back to predecessor via rolled_from_group_id"
+        )
+
+    def test_diagonal_roll_preserves_chain(self, db, lot_manager):
+        """Rolling a short call up and out (different strike and different expiration) should still preserve the chain id and set rolled_from on the new group."""
+        sym_old = "AAPL  250321C00100000"
+        sym_new = "AAPL  250418C00105000"
+
+        opens = [
+            make_option_transaction(
+                id="tx-open", order_id="OPEN_DR",
+                action="SELL_TO_OPEN", quantity=1, price=2.50,
+                symbol=sym_old, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+        roll = [
+            make_option_transaction(
+                id="tx-btc", order_id="ROLL_DR",
+                action="BUY_TO_CLOSE", quantity=1, price=1.00,
+                symbol=sym_old, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto", order_id="ROLL_DR",
+                action="SELL_TO_OPEN", quantity=1, price=2.00,
+                symbol=sym_new, option_type="Call", strike=105.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            old_chain = session.query(PositionLot.chain_id).filter(
+                PositionLot.symbol == sym_old,
+            ).scalar()
+            new_chain = session.query(PositionLot.chain_id).filter(
+                PositionLot.symbol == sym_new,
+            ).scalar()
+            old_gid = session.query(PositionGroup.group_id).join(
+                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+            ).join(
+                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(PositionLot.symbol == sym_old).scalar()
+            new_rolled_from = session.query(PositionGroup.rolled_from_group_id).join(
+                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+            ).join(
+                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(PositionLot.symbol == sym_new).scalar()
+
+        assert new_chain == old_chain, (
+            "Diagonal roll must keep the new lot on the predecessor's chain"
+        )
+        assert new_rolled_from == old_gid, (
+            "New group must link back to predecessor via rolled_from_group_id"
+        )
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Known gap in OPT-270's fix: when two open positions exist at "
+            "the same (account, underlying, expiration) but on different "
+            "chain_ids, Rule 1 still merges them into one group because the "
+            "candidate group is open. The fix should additionally require "
+            "that at least one OPEN lot in the candidate group share the "
+            "new lot's chain_id. Tracked under OPT-272 (Tier 2 backfill)."
+        ),
+    )
+    def test_separate_opens_at_same_strike_and_expiration_create_separate_groups(self, db, lot_manager):
+        """Two independent short calls opened by separate broker orders at the same strike and expiration should land in two distinct groups with two distinct chain ids — they are independent positions, not one fused position. This pins the OPT-270 fix that prevents stale-expiration anchors from merging unrelated chains."""
+        sym = "AAPL  250321C00100000"
+
+        opens = [
+            make_option_transaction(
+                id="tx-open-A", order_id="OPEN_A",
+                action="SELL_TO_OPEN", quantity=1, price=2.50,
+                symbol=sym, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-open-B", order_id="OPEN_B",
+                action="SELL_TO_OPEN", quantity=1, price=2.51,
+                symbol=sym, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-02T10:00:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens)
+
+        with db.get_session() as session:
+            chains = {
+                row.chain_id for row in session.query(PositionLot).filter(
+                    PositionLot.symbol == sym,
+                ).all()
+            }
+            group_count = session.query(PositionGroup).filter(
+                PositionGroup.underlying == "AAPL",
+                PositionGroup.status == "OPEN",
+            ).count()
+
+        assert len(chains) == 2, (
+            f"Two separate opens should produce two distinct chain ids, got {chains}"
+        )
+        assert group_count == 2, (
+            f"Two separate opens should produce two distinct groups, got {group_count}"
+        )
