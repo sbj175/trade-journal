@@ -53,7 +53,7 @@ function simulateTableLoad() {
 const tableData = [
   { symbol: 'SPY', strategy: 'Iron Condor', qty: 2, pnl: 342.00, status: 'OPEN' },
   { symbol: 'AAPL', strategy: 'Bull Put Spread', qty: 5, pnl: -128.50, status: 'CLOSED' },
-  { symbol: 'TSLA', strategy: 'Cash Secured Put', qty: 1, pnl: 89.00, status: 'PARTIAL' },
+  { symbol: 'TSLA', strategy: 'Short Put', qty: 1, pnl: 89.00, status: 'PARTIAL' },
   { symbol: 'QQQ', strategy: 'Bear Call Spread', qty: 3, pnl: 567.25, status: 'ASSIGNED' },
   { symbol: 'AMZN', strategy: 'Covered Call', qty: 1, pnl: -45.00, status: 'EXPIRED' },
 ]

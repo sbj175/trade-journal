@@ -342,13 +342,10 @@ class TestCombos:
         assert r.direction == "neutral"
         assert r.credit_debit == "mixed"
 
-    def test_cash_secured_put(self):
-        """A lone short put is reported as 'Short Put' rather than 'Cash Secured Put' because the engine prefers the simpler single-leg label."""
+    def test_lone_short_put_with_no_equity(self):
+        """A lone short put with no equity legs is reported as 'Short Put' — the recognizer no longer distinguishes 'Cash Secured Put' as a separate label since cash-collateralization is an account-config concern, not a structural property of the position."""
         legs = [_opt("P", 100, "short")]
         r = recognize(legs)
-        # Single short put is recognized as Short Put by single-leg first;
-        # Cash Secured Put requires the combo path (option-only combo).
-        # The recognizer tries option_legs path first for single options.
         assert r.name == "Short Put"
 
     def test_jade_lizard(self):

@@ -4,7 +4,7 @@
 import { ref, computed } from 'vue'
 
 const CREDIT_NAMES = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
-  'Cash Secured Put', 'Covered Call', 'Short Put', 'Short Call',
+  'Covered Call', 'Short Put', 'Short Call',
   'Short Strangle', 'Short Straddle', 'Jade Lizard']
 
 const DEBIT_NAMES = ['Bull Call Spread', 'Bear Put Spread', 'Long Call', 'Long Put',

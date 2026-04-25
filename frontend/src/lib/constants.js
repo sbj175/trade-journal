@@ -33,7 +33,6 @@ export const STRATEGY_CATEGORIES = {
   'Bear Call Spread': { direction: 'bearish', type: 'credit' },
   'Iron Condor': { direction: 'neutral', type: 'credit' },
   'Iron Butterfly': { direction: 'neutral', type: 'credit' },
-  'Cash Secured Put': { direction: 'bullish', type: 'credit' },
   'Covered Call': { direction: 'bullish', type: 'credit' },
   'Short Put': { direction: 'bullish', type: 'credit' },
   'Short Call': { direction: 'bearish', type: 'credit' },

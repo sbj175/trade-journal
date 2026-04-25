@@ -4,7 +4,12 @@
       "Bash(*)",
       "mcp__linear__*",
       "WebSearch",
-      "WebFetch(*)"
+      "WebFetch(*)",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_stats"
     ],
     "deny": [
       "mcp__linear__delete*"
@@ -12,11 +17,14 @@
     "ask": []
   },
   "outputStyle": "default",
-
-    "mcpServers": {
+  "mcpServers": {
     "linear": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://mcp.linear.app/sse"]
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.linear.app/sse"
+      ]
     }
   }
 }

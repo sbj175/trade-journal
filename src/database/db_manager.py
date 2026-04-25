@@ -73,7 +73,7 @@ class DatabaseManager:
 
         defaults = [
             ('Bull Put Spread', 50.0, 100.0), ('Bear Call Spread', 50.0, 100.0),
-            ('Iron Condor', 50.0, 100.0), ('Cash Secured Put', 50.0, 100.0),
+            ('Iron Condor', 50.0, 100.0),
             ('Covered Call', 50.0, 100.0), ('Short Put', 50.0, 100.0),
             ('Short Call', 50.0, 100.0), ('Short Strangle', 50.0, 100.0),
             ('Iron Butterfly', 25.0, 100.0), ('Short Straddle', 25.0, 100.0),

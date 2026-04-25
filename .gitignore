@@ -72,3 +72,6 @@ static/dist/
 
 # Supabase CLI scratch — not using CLI workflow
 supabase/
+
+# Local-only design/analysis docs
+*.local.md

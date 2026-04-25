@@ -16,7 +16,6 @@ def match_combo(equity_legs: List[Leg], option_legs: List[Leg]) -> Optional[str]
         Strategy name or None.
     """
     if not equity_legs:
-        # Cash Secured Put: short put with no equity (still a combo conceptually)
         return _match_option_only_combo(option_legs)
 
     if len(equity_legs) != 1:
@@ -38,16 +37,9 @@ def match_combo(equity_legs: List[Leg], option_legs: List[Leg]) -> Optional[str]
 
 
 def _match_option_only_combo(option_legs: List[Leg]) -> Optional[str]:
-    """Match combos that don't require equity: Jade Lizard, Cash Secured Put."""
-    if len(option_legs) == 1:
-        leg = option_legs[0]
-        if leg.option_type == "P" and leg.direction == "short":
-            return "Cash Secured Put"
-        return None
-
+    """Match combos that don't require equity (currently only Jade Lizard)."""
     if len(option_legs) == 3:
         return _match_jade_lizard_no_equity(option_legs)
-
     return None
 
 

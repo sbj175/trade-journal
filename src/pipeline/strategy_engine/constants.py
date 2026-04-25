@@ -14,7 +14,6 @@ STRATEGIES: dict[str, StrategyDef] = {
     "Inverse Put Broken Wing":  StrategyDef("Inverse Put Broken Wing",  "neutral", "mixed", 3, "multi"),
     "Short Strangle":    StrategyDef("Short Strangle",      "neutral",  "credit", 2, "multi"),
     "Short Straddle":    StrategyDef("Short Straddle",      "neutral",  "credit", 2, "multi"),
-    "Cash Secured Put":  StrategyDef("Cash Secured Put",    "bullish",  "credit", 1, "single"),
     "Short Put":         StrategyDef("Short Put",           "bullish",  "credit", 1, "single"),
     "Short Call":        StrategyDef("Short Call",          "bearish",  "credit", 1, "single"),
     "Covered Call":      StrategyDef("Covered Call",        "bullish",  "credit", 2, "combo"),
