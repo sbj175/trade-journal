@@ -25,6 +25,83 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["process_lots"]
 
+
+# ---------------------------------------------------------------------------
+# Pure helpers — quantity-aware chain pairing for ROLLING orders
+# ---------------------------------------------------------------------------
+
+def _build_chain_queue(closing_transactions, get_open_lots):
+    """Build a FIFO queue of chains the closing side will consume.
+
+    Walks each closing tx in order, peeks at FIFO open lots for the tx's
+    symbol, and records (chain_id, qty_taken) entries totaling the tx's
+    quantity. The same lot is never claimed twice across closing tx's
+    in the same order (matters for multi-fill closes on one symbol).
+
+    Returns (chain_queue, affected_chains).
+
+    `get_open_lots` is the LotManager method, passed as a callable so this
+    helper has no DB dependency and can be unit-tested with a stub.
+    """
+    chain_queue = []
+    claimed_lot_ids = set()
+    affected_chains = set()
+
+    for tx in closing_transactions:
+        open_lots = get_open_lots(
+            account_number=tx.account_number,
+            symbol=tx.symbol,
+        )
+        remaining_to_close = abs(int(tx.quantity or 0))
+        for lot in open_lots:  # FIFO from get_open_lots
+            if remaining_to_close <= 0:
+                break
+            if lot.id in claimed_lot_ids:
+                continue
+            if not lot.chain_id:
+                continue
+            lot_remaining = abs(int(lot.remaining_quantity or 0))
+            if lot_remaining <= 0:
+                continue
+            qty_taken = min(remaining_to_close, lot_remaining)
+            chain_queue.append((lot.chain_id, qty_taken))
+            claimed_lot_ids.add(lot.id)
+            affected_chains.add(lot.chain_id)
+            remaining_to_close -= qty_taken
+
+    return chain_queue, affected_chains
+
+
+def _assign_opens_to_chains(opening_transactions, chain_queue):
+    """Pair opening transactions with chains by walking the chain_queue
+    head-to-tail, consuming queue capacity by each opening's quantity.
+
+    Returns a {tx.id: chain_id} map. Opens whose quantity exceeds the
+    queue's remaining capacity (asymmetric roll) inherit the last chain
+    and are logged as a warning.
+    """
+    opening_chain_for_tx = {}
+    if not chain_queue:
+        return opening_chain_for_tx
+
+    queue_idx = 0
+    queue_remaining = chain_queue[0][1]
+    for op_tx in opening_transactions:
+        op_qty = abs(int(op_tx.quantity or 0))
+        if queue_idx < len(chain_queue):
+            opening_chain_for_tx[op_tx.id] = chain_queue[queue_idx][0]
+            queue_remaining -= op_qty
+            while queue_remaining <= 0 and queue_idx + 1 < len(chain_queue):
+                queue_idx += 1
+                queue_remaining += chain_queue[queue_idx][1]
+        else:
+            opening_chain_for_tx[op_tx.id] = chain_queue[-1][0]
+            logger.warning(
+                "Opening tx %s exceeds close-allocation; falls back to last chain",
+                op_tx.id,
+            )
+    return opening_chain_for_tx
+
 # Cash-settled index options — no stock delivery on assignment/exercise
 _CASH_SETTLED = frozenset({
     "SPX", "SPXW", "NDX", "VIX", "RUT", "XSP", "DJX", "OEX", "XEO",
@@ -117,38 +194,9 @@ def process_lots(
 
         # For closing/rolling orders, capture affected chains BEFORE closing
         if order.order_type in (OrderType.CLOSING, OrderType.ROLLING):
-            affected_chains: Set[str] = set()
-            # FIFO queue of (chain_id, qty_taken) the closing side will consume.
-            # Built only for ROLLING; CLOSING doesn't open new lots.
-            chain_queue: List[Tuple[str, int]] = []
-            claimed_lot_ids: Set[int] = set()
-
-            for tx in order.closing_transactions:
-                open_lots = lot_manager.get_open_lots(
-                    account_number=tx.account_number,
-                    symbol=tx.symbol,
-                )
-                if order.order_type == OrderType.ROLLING:
-                    remaining_to_close = abs(int(tx.quantity or 0))
-                    for lot in open_lots:  # FIFO order from get_open_lots
-                        if remaining_to_close <= 0:
-                            break
-                        if lot.id in claimed_lot_ids:
-                            continue
-                        if not lot.chain_id:
-                            continue
-                        lot_remaining = abs(int(lot.remaining_quantity or 0))
-                        if lot_remaining <= 0:
-                            continue
-                        qty_taken = min(remaining_to_close, lot_remaining)
-                        chain_queue.append((lot.chain_id, qty_taken))
-                        claimed_lot_ids.add(lot.id)
-                        affected_chains.add(lot.chain_id)
-                        remaining_to_close -= qty_taken
-                else:
-                    for lot in open_lots:
-                        if lot.chain_id:
-                            affected_chains.add(lot.chain_id)
+            chain_queue, affected_chains = _build_chain_queue(
+                order.closing_transactions, lot_manager.get_open_lots,
+            )
 
             if affected_chains:
                 closing_order_to_chains[order.order_id] = affected_chains
@@ -157,32 +205,14 @@ def process_lots(
                     order.order_id, affected_chains,
                 )
 
-                # Rolling orders: each new opening lot inherits the chain of
-                # the close it was paired with via FIFO walk of chain_queue.
                 if order.order_type == OrderType.ROLLING:
                     if chain_queue:
-                        queue_idx = 0
-                        queue_remaining = chain_queue[0][1]
-                        for op_tx in order.opening_transactions:
-                            op_qty = abs(int(op_tx.quantity or 0))
-                            if queue_idx < len(chain_queue):
-                                opening_chain_for_tx[op_tx.id] = chain_queue[queue_idx][0]
-                                queue_remaining -= op_qty
-                                while queue_remaining <= 0 and queue_idx + 1 < len(chain_queue):
-                                    queue_idx += 1
-                                    queue_remaining += chain_queue[queue_idx][1]
-                            else:
-                                # Asymmetric: more opens than close-allocation covers.
-                                opening_chain_for_tx[op_tx.id] = chain_queue[-1][0]
-                                logger.warning(
-                                    "Rolling order %s has opens exceeding close-allocation; "
-                                    "opening tx %s falls back to last chain",
-                                    order.order_id, op_tx.id,
-                                )
+                        opening_chain_for_tx = _assign_opens_to_chains(
+                            order.opening_transactions, chain_queue,
+                        )
                         temp_chain_id = chain_queue[0][0]
                     else:
-                        # No matchable quantity (closes against zero-remaining lots);
-                        # fall back to the prior broadcast for simple-roll cases.
+                        # No matchable quantity — fall back to broadcast.
                         temp_chain_id = next(iter(affected_chains))
                     order_to_temp_chain[order.order_id] = temp_chain_id
                     logger.debug(
