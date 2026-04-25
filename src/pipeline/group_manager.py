@@ -112,13 +112,18 @@ def assign_lots_to_groups(
                 _add_lot_to_group(lot, gk)
                 assigned = True
 
-        # Rule 1: option lots group by (account, underlying, expiration)
+        # Rule 1: option lots group by (account, underlying, expiration).
+        # The candidate group must still be open — otherwise a closed lot's
+        # stale expiration anchor would pull an unrelated new open lot in
+        # (e.g., May-1 43C closed today doesn't get to claim a new May-1 41C
+        # from a different chain).
         if not assigned and lot.expiration:
             aue_key = (lot.account_number, lot.underlying, lot.expiration)
             if aue_key in aue_to_group:
                 gk = aue_to_group[aue_key]
-                _add_lot_to_group(lot, gk)
-                assigned = True
+                if _is_group_open(gk):
+                    _add_lot_to_group(lot, gk)
+                    assigned = True
 
         # Rule 2: equity lots group by (account, underlying)
         if not assigned and not lot.expiration:
@@ -463,13 +468,19 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
 
     Criteria (all must match):
     1. Same account + underlying
-    2. Same effective strategy label (user override takes precedence)
-    3. Source group's closing_date same calendar day as target group's opening_date
+    2. Source group's closing_date same calendar day as target group's opening_date
+    3. Target and candidate share at least one lot.chain_id (true roll lineage)
     4. Target doesn't already have a rolled_from_group_id
     5. Skip Shares groups
 
     Tie-breaking: prefer closest lot count.
     Process sorted by opening_date so serial rolls (A→B→C) link correctly.
+
+    Note: strategy_label is intentionally NOT a matching criterion. The
+    recognizer is a heuristic interpretation layer; lineage is determined
+    by the deterministic chain_id from the lot layer. A label mismatch
+    (e.g., a Covered Call roll temporarily mis-classified as a Diagonal
+    Spread) must not sever the chain.
     """
     from src.database.models import PositionGroup
 
@@ -484,17 +495,16 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
     # Sort by opening_date ascending for serial roll detection
     sorted_groups = sorted(groups, key=lambda g: g.opening_date or '')
 
-    # Index CLOSED groups by (account, underlying, effective_label, closing_day)
-    closed_by_key: Dict[Tuple[str, str, str, str], List] = defaultdict(list)
+    # Index CLOSED groups by (account, underlying, closing_day)
+    closed_by_key: Dict[Tuple[str, str, str], List] = defaultdict(list)
 
     for g in sorted_groups:
         if g.status != 'CLOSED' or not g.closing_date:
             continue
-        label = g.strategy_label or ''
-        if label == 'Shares':
+        if (g.strategy_label or '') == 'Shares':
             continue
         closing_day = str(g.closing_date)[:10]
-        key = (g.account_number, g.underlying, label, closing_day)
+        key = (g.account_number, g.underlying, closing_day)
         closed_by_key[key].append(g)
 
     links_created = 0
@@ -504,12 +514,11 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
             continue  # already linked
         if not g.opening_date:
             continue
-        label = g.strategy_label or ''
-        if label == 'Shares':
+        if (g.strategy_label or '') == 'Shares':
             continue
 
         opening_day = str(g.opening_date)[:10]
-        key = (g.account_number, g.underlying, label, opening_day)
+        key = (g.account_number, g.underlying, opening_day)
         candidates = closed_by_key.get(key, [])
 
         # Filter: candidate must not be the same group
@@ -518,9 +527,8 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
             continue
 
         # Filter: target must share a chain_id with at least one candidate.
-        # This ensures only groups created from ROLLING orders (which inherit
-        # the chain) are linked as rolls, not independent OPENING orders that
-        # happened to open on the same day.
+        # chain_id is the structural truth for roll lineage — it's set on the
+        # new lot during ROLLING processing by inheritance from the closed lot.
         target_chains = {lot.chain_id for lot in group_lots.get(g.group_id, []) if lot.chain_id}
         candidates = [
             c for c in candidates
@@ -542,7 +550,7 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
         # Register this group as a closed source too (for serial A→B→C)
         if g.status == 'CLOSED' and g.closing_date:
             closing_day = str(g.closing_date)[:10]
-            new_key = (g.account_number, g.underlying, label, closing_day)
+            new_key = (g.account_number, g.underlying, closing_day)
             closed_by_key[new_key].append(g)
 
     if links_created:
@@ -680,13 +688,17 @@ class GroupPersister:
                         _add_new_lot(lot, gk)
                         assigned = True
 
-                # Rule 1: option lots group by (account, underlying, expiration)
+                # Rule 1: option lots group by (account, underlying, expiration).
+                # The candidate group must still be open — otherwise a closed
+                # lot's stale expiration anchor would pull an unrelated new
+                # open lot from a different chain into it.
                 if not assigned and lot.expiration:
                     aue_key = (lot.account_number, lot.underlying, lot.expiration)
                     if aue_key in aue_to_group:
                         gk = aue_to_group[aue_key]
-                        _add_new_lot(lot, gk)
-                        assigned = True
+                        if _is_group_open(gk):
+                            _add_new_lot(lot, gk)
+                            assigned = True
 
                 # Rule 2: equity lots group by (account, underlying)
                 if not assigned and not lot.expiration:
