@@ -880,6 +880,58 @@ class TestRollMechanics:
             "New group must link back to predecessor via rolled_from_group_id"
         )
 
+    def test_multi_fill_same_order_roll_stays_in_one_group(self, db, lot_manager):
+        """A roll whose new opening leg fills in two pieces (same order, slight price diff so the assembler doesn't aggregate them) should land both pieces in the same group — not split into a 24-lot and an 8-lot group."""
+        sym_old = "AAPL  250321C00100000"
+        sym_new = "AAPL  250418C00100000"
+
+        opens = [
+            make_option_transaction(
+                id="tx-open", order_id="OPEN_MF",
+                action="SELL_TO_OPEN", quantity=32, price=2.50,
+                symbol=sym_old, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+        # Day 2: roll with the new opening leg filled in two pieces.
+        roll = [
+            make_option_transaction(
+                id="tx-btc", order_id="ROLL_MF",
+                action="BUY_TO_CLOSE", quantity=32, price=1.00,
+                symbol=sym_old, option_type="Call", strike=100.0,
+                expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-24", order_id="ROLL_MF",
+                action="SELL_TO_OPEN", quantity=24, price=3.02,
+                symbol=sym_new, option_type="Call", strike=100.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-8", order_id="ROLL_MF",
+                action="SELL_TO_OPEN", quantity=8, price=3.01,
+                symbol=sym_new, option_type="Call", strike=100.0,
+                expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            new_groups = session.query(PositionGroup.group_id).join(
+                PositionGroupLot, PositionGroupLot.group_id == PositionGroup.group_id,
+            ).join(
+                PositionLot, PositionLot.transaction_id == PositionGroupLot.transaction_id,
+            ).filter(PositionLot.symbol == sym_new).distinct().all()
+
+        assert len(new_groups) == 1, (
+            f"Multi-fill roll opens should share one group, got {len(new_groups)}"
+        )
+
     def test_separate_opens_at_same_strike_and_expiration_create_separate_groups(self, db, lot_manager):
         """Two independent short calls opened by separate broker orders at the same strike and expiration should land in two distinct groups with two distinct chain ids — they are independent positions, not one fused position. This pins the OPT-270 fix that prevents stale-expiration anchors from merging unrelated chains."""
         sym = "AAPL  250321C00100000"

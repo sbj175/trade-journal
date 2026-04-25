@@ -130,10 +130,18 @@ def assign_lots_to_groups(
     for lot in sorted_lots:
         assigned = False
 
-        # Rule 0: chain-aware routing — keep partially-rolled positions together
+        # Rule 0: chain-aware routing — keep partially-rolled positions and
+        # multi-fill same-order opens together. The same-order check covers
+        # the case where two lots share an opening_order_id and chain_id but
+        # both have remaining_quantity=0 in the routing snapshot (e.g. a
+        # multi-fill roll whose later closes have already been applied).
         if not assigned and lot.chain_id and lot.chain_id in chain_to_group:
             gk = chain_to_group[lot.chain_id]
-            if _is_group_open(gk):
+            same_order_present = lot.opening_order_id and any(
+                existing.opening_order_id == lot.opening_order_id
+                for existing in groups[gk]
+            )
+            if _is_group_open(gk) or same_order_present:
                 _add_lot_to_group(lot, gk)
                 assigned = True
 
@@ -703,10 +711,14 @@ class GroupPersister:
             for lot in sorted_new:
                 assigned = False
 
-                # Rule 0: chain-aware routing — keep partially-rolled positions together
+                # Rule 0: chain-aware routing — see assign_lots_to_groups for rationale.
                 if not assigned and lot.chain_id and lot.chain_id in chain_to_group:
                     gk = chain_to_group[lot.chain_id]
-                    if _is_group_open(gk):
+                    same_order_present = lot.opening_order_id and any(
+                        existing.opening_order_id == lot.opening_order_id
+                        for existing in group_lots[gk]
+                    )
+                    if _is_group_open(gk) or same_order_present:
                         _add_new_lot(lot, gk)
                         assigned = True
 
