@@ -574,3 +574,99 @@ class TestParallelLadderRollPreservation:
             f"Expected each new lot on a distinct chain, "
             f"got duplicates: {new_chains}"
         )
+
+    def test_put_spread_roll_preserves_chain_on_both_legs(self, db, lot_manager):
+        """OPT-262 regression: rolling a put spread in one broker order keeps
+        both legs on the original chain.
+
+        Pre-OPT-262, the splitter assumed every roll had exactly one closing
+        leg — for a 2-leg spread roll it would pair the first close with the
+        closest-strike open and orphan the remaining close+open pair onto a
+        synthetic _split OPENING order with a brand-new chain_id. Half the
+        spread lost its history every time you rolled it.
+
+        OPT-262 fixed this by detecting multi-leg rolls (signatures mirror
+        each other) and keeping the order intact as a single ROLLING order.
+        Both new lots then inherit the original chain.
+
+        This test pins that behavior. Tracked under OPT-272.
+        """
+        # Day 1: open a put spread (long 45P + short 50P) in one order.
+        # Both legs share the same order_id, so they share chain_id.
+        opens = [
+            make_option_transaction(
+                id="tx-bto-45p", order_id="OPEN_PS",
+                action="BUY_TO_OPEN", quantity=1, price=0.50,
+                symbol="AAPL  250321P00045000", option_type="Put",
+                strike=45.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-50p", order_id="OPEN_PS",
+                action="SELL_TO_OPEN", quantity=1, price=2.00,
+                symbol="AAPL  250321P00050000", option_type="Put",
+                strike=50.0, expiration="2025-03-21",
+                executed_at="2025-03-01T10:00:00+00:00",
+            ),
+        ]
+
+        # Day 2: roll the spread to 40/45 in one order.
+        # 2 closes (long 45 + short 50) + 2 opens (long 40 + short 45).
+        roll = [
+            make_option_transaction(
+                id="tx-stc-45p", order_id="ROLL_PS",
+                action="SELL_TO_CLOSE", quantity=1, price=0.30,
+                symbol="AAPL  250321P00045000", option_type="Put",
+                strike=45.0, expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-btc-50p", order_id="ROLL_PS",
+                action="BUY_TO_CLOSE", quantity=1, price=1.50,
+                symbol="AAPL  250321P00050000", option_type="Put",
+                strike=50.0, expiration="2025-03-21",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-bto-40p", order_id="ROLL_PS",
+                action="BUY_TO_OPEN", quantity=1, price=0.40,
+                symbol="AAPL  250418P00040000", option_type="Put",
+                strike=40.0, expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-45p-new", order_id="ROLL_PS",
+                action="SELL_TO_OPEN", quantity=1, price=1.80,
+                symbol="AAPL  250418P00045000", option_type="Put",
+                strike=45.0, expiration="2025-04-18",
+                executed_at="2025-03-15T10:00:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            day1_chains = {
+                row.chain_id for row in session.query(PositionLot).filter(
+                    PositionLot.entry_date < "2025-03-15",
+                ).all()
+            }
+            day2_chains = {
+                row.chain_id for row in session.query(PositionLot).filter(
+                    PositionLot.entry_date >= "2025-03-15",
+                ).all()
+            }
+
+        # Day 1 opened both legs of the spread under one order — they must
+        # share a single chain_id.
+        assert len(day1_chains) == 1, (
+            f"Day 1 spread should have one chain, got {day1_chains}"
+        )
+
+        # Day 2 must produce two new lots, both on Day 1's chain. The
+        # pre-OPT-262 bug was that one leg landed on a fresh "_split" chain
+        # while the other inherited the original.
+        assert day2_chains == day1_chains, (
+            f"Put-spread roll orphaned a leg onto a new chain. "
+            f"Day 1 chains: {day1_chains}; Day 2 chains: {day2_chains}"
+        )
