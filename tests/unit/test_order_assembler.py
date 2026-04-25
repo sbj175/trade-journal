@@ -147,7 +147,6 @@ class TestPreprocessTransactions:
         txs, assign_stocks = preprocess_transactions(raw)
         assert len(txs) == 0
 
-    @pytest.mark.skip(reason="Stale test — symbol-change grouping changed since the test was written. Tracked under OPT-272.")
     def test_symbol_change_grouping(self):
         """When a ticker symbol changes, the close on the old symbol and the open on the new symbol should each get a synthetic order id grouped by date."""
         raw = [
@@ -163,7 +162,7 @@ class TestPreprocessTransactions:
                 "executed_at": "2025-03-15T10:00:00+00:00",
                 "instrument_type": "EQUITY_OPTION",
                 "transaction_type": "Trade",
-                "transaction_sub_type": "Symbol Change",
+                "transaction_sub_type": "SYMBOL_CHANGE",
                 "description": "Symbol change close",
                 "value": 0.0,
                 "net_value": 0.0,
@@ -183,7 +182,7 @@ class TestPreprocessTransactions:
                 "executed_at": "2025-03-15T10:00:00+00:00",
                 "instrument_type": "EQUITY_OPTION",
                 "transaction_type": "Trade",
-                "transaction_sub_type": "Symbol Change",
+                "transaction_sub_type": "SYMBOL_CHANGE",
                 "description": "Symbol change open",
                 "value": 0.0,
                 "net_value": 0.0,
