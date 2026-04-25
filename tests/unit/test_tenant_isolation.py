@@ -15,7 +15,7 @@ from src.database import engine as sa_engine
 from src.database.tenant import DEFAULT_USER_ID
 from src.database.models import (
     User, Account, SyncMetadata, StrategyTarget,
-    QuoteCache, RawTransaction, Order, OrderChain,
+    QuoteCache, RawTransaction, OrderChain,
 )
 
 
