@@ -62,49 +62,59 @@ def _route_lot_to_group(
     (which is responsible for updating the indices).
 
     Rules in priority order:
-      0. chain-aware: same chain_id AND (group open OR same opening_order_id)
+      0. chain-aware: same chain_id AND any existing lot in the group
+         "shares state" with the new lot — open status, opening_order_id,
+         or expiration. Captures rolls (open lot still around), multi-fill
+         opens (same order_id), and same-exp roll continuations (same exp).
       1. option lot: same (account, underlying, expiration), open, and not a
-         structural duplicate of an existing open lot
-      2. equity lot: same (account, underlying), open
+         structural duplicate of an existing open lot.
+      2. equity lot: same (account, underlying), open.
     """
-    def _is_group_open(gk: str) -> bool:
-        return any(l.remaining_quantity != 0 for l in groups_by_key[gk])
-
     if lot.chain_id and lot.chain_id in chain_to_group:
         gk = chain_to_group[lot.chain_id]
-        same_order_present = lot.opening_order_id and any(
-            existing.opening_order_id == lot.opening_order_id
-            for existing in groups_by_key[gk]
-        )
-        # Same-expiration continuation: when a position rolls to a different
-        # strike at the SAME expiration, the recently-closed lots in the
-        # candidate group share an expiration with the new lot. Stay in the
-        # original group so the user sees one group with an incrementing
-        # roll counter rather than a new generation per roll. A different-
-        # expiration roll fails this check, falls through, and creates a
-        # new group + rolled_from link as expected.
-        same_exp_continuation = lot.expiration and any(
-            existing.expiration == lot.expiration
-            for existing in groups_by_key[gk]
-        )
-        if _is_group_open(gk) or same_order_present or same_exp_continuation:
-            return gk
+        for existing in groups_by_key[gk]:
+            if (existing.remaining_quantity != 0
+                or (lot.opening_order_id
+                    and existing.opening_order_id == lot.opening_order_id)
+                or (lot.expiration
+                    and existing.expiration == lot.expiration)):
+                return gk
 
     if lot.expiration:
         aue_key = (lot.account_number, lot.underlying, lot.expiration)
         if aue_key in aue_to_group:
             gk = aue_to_group[aue_key]
-            if _is_group_open(gk) and not _is_duplicate_open_lot(lot, groups_by_key[gk]):
+            existing_lots = groups_by_key[gk]
+            if (any(l.remaining_quantity != 0 for l in existing_lots)
+                and not _is_duplicate_open_lot(lot, existing_lots)):
                 return gk
 
     if not lot.expiration:
         au_key = (lot.account_number, lot.underlying)
         if au_key in au_to_group:
             gk = au_to_group[au_key]
-            if _is_group_open(gk):
+            if any(l.remaining_quantity != 0 for l in groups_by_key[gk]):
                 return gk
 
     return None
+
+
+def _update_routing_indices(
+    lot,
+    gk: str,
+    *,
+    aue_to_group: Dict[Tuple[str, str, date], str],
+    au_to_group: Dict[Tuple[str, str], str],
+    chain_to_group: Dict[str, str],
+) -> None:
+    """Point each routing index at `gk` for whichever facets `lot` exposes:
+    expiration → aue, no expiration → au, chain_id → chain."""
+    if lot.expiration:
+        aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
+    else:
+        au_to_group[(lot.account_number, lot.underlying)] = gk
+    if lot.chain_id:
+        chain_to_group[lot.chain_id] = gk
 
 
 def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
@@ -112,10 +122,10 @@ def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
     (option_type, strike, direction). Equity lots are skipped — Rule 2
     routes those.
     """
-    if not getattr(new_lot, "option_type", None):
+    if not new_lot.option_type:
         return False
     for existing in existing_lots:
-        if not getattr(existing, "option_type", None):
+        if not existing.option_type:
             continue
         if existing.remaining_quantity == 0:
             continue
@@ -175,12 +185,10 @@ def assign_lots_to_groups(
 
     def _add_lot_to_group(lot: Lot, gk: str) -> None:
         groups[gk].append(lot)
-        if lot.expiration:
-            aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
-        if not lot.expiration:
-            au_to_group[(lot.account_number, lot.underlying)] = gk
-        if lot.chain_id:
-            chain_to_group[lot.chain_id] = gk
+        _update_routing_indices(
+            lot, gk,
+            aue_to_group=aue_to_group, au_to_group=au_to_group, chain_to_group=chain_to_group,
+        )
 
     # --- Step 2: Assign each lot to a group --------------------------------
     # See _route_lot_to_group for the rule semantics.
@@ -700,13 +708,10 @@ class GroupPersister:
                 if not lot:
                     continue  # stale link, cleaned up in Phase 5
                 group_lots[group_id].append(lot)
-
-                if lot.expiration:
-                    aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
-                if not lot.expiration:
-                    au_to_group[(lot.account_number, lot.underlying)] = group_id
-                if lot.chain_id:
-                    chain_to_group[lot.chain_id] = group_id
+                _update_routing_indices(
+                    lot, group_id,
+                    aue_to_group=aue_to_group, au_to_group=au_to_group, chain_to_group=chain_to_group,
+                )
 
             # =================================================================
             # Phase 3: Route new lots
@@ -716,12 +721,10 @@ class GroupPersister:
             def _add_new_lot(lot: Lot, group_id: str) -> None:
                 group_lots[group_id].append(lot)
                 txn_to_group[lot.transaction_id] = group_id
-                if lot.expiration:
-                    aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = group_id
-                if not lot.expiration:
-                    au_to_group[(lot.account_number, lot.underlying)] = group_id
-                if lot.chain_id:
-                    chain_to_group[lot.chain_id] = group_id
+                _update_routing_indices(
+                    lot, group_id,
+                    aue_to_group=aue_to_group, au_to_group=au_to_group, chain_to_group=chain_to_group,
+                )
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
