@@ -412,3 +412,147 @@ class TestSignatureMatchFallback:
         })
 
         assert result[target] == chain_match
+
+
+# ---------------------------------------------------------------------------
+# Manual-close filter (spec §2)
+# ---------------------------------------------------------------------------
+
+def _seed_lot_with_closing(session, *, chain_id, opt, qty, closing_day, closing_type):
+    """Create a real PositionLot + LotClosing row so _detect_roll_links
+    sees the source's closing_type. Returns a _Lot stub with .id set so
+    the routing-day index can find it."""
+    from src.database.models import PositionLot, LotClosing
+    lot = PositionLot(
+        transaction_id=str(uuid.uuid4()),
+        account_number="ACCT", symbol=f"X{opt}{qty}",
+        underlying="ACCT", instrument_type="EQUITY_OPTION",
+        option_type=opt, strike=100.0,
+        expiration="2025-04-18", quantity=qty,
+        entry_price=1.0,
+        remaining_quantity=0, original_quantity=abs(qty),
+        chain_id=chain_id, status="CLOSED",
+        entry_date="2025-02-21T10:00:00+00:00",
+    )
+    session.add(lot); session.flush()
+    session.add(LotClosing(
+        lot_id=lot.id, closing_date=closing_day,
+        closing_price=0.0, quantity_closed=abs(qty),
+        closing_type=closing_type, closing_order_id="ORD-X",
+        realized_pnl=0.0,
+    ))
+    stub = _Lot(chain_id=chain_id, option_type=opt, quantity=qty)
+    stub.id = lot.id
+    return stub
+
+
+class TestManualCloseFilter:
+    """Spec §2: a roll requires a manual closing event (BTC/STC).
+    Expiration, assignment, and exercise are mutually exclusive with rolls."""
+
+    def test_expiration_source_does_not_link(self, db):
+        """Source whose only closing on closing_day was EXPIRATION must not link as a roll, even when chain_id and same-day open match."""
+        with db.get_session() as session:
+            source = _seed_group(
+                session, status="CLOSED",
+                opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-21T16:00:00+00:00",
+            )
+            target = _seed_group(
+                session, status="OPEN",
+                opening_date="2025-03-21T16:00:00+00:00",
+            )
+            session.flush()
+            source_stub = _seed_lot_with_closing(
+                session, chain_id="C-EXP", opt="C", qty=-1,
+                closing_day="2025-03-21", closing_type="EXPIRATION",
+            )
+
+        result = _detect(db, {source, target}, {
+            source: [source_stub],
+            target: [_Lot("C-EXP", option_type="C", quantity=-1)],
+        })
+
+        assert result[target] is None, (
+            "Expired source must not be picked as a roll source — the new "
+            "same-day position is a fresh trade per spec §2"
+        )
+
+    def test_assignment_source_does_not_link(self, db):
+        """Source closed by ASSIGNMENT (broker auto-close) must not link as a roll source even when chain and timing align."""
+        with db.get_session() as session:
+            source = _seed_group(
+                session, status="CLOSED",
+                opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-21T16:00:00+00:00",
+            )
+            target = _seed_group(
+                session, status="OPEN",
+                opening_date="2025-03-21T16:00:00+00:00",
+            )
+            session.flush()
+            source_stub = _seed_lot_with_closing(
+                session, chain_id="C-ASN", opt="P", qty=-1,
+                closing_day="2025-03-21", closing_type="ASSIGNMENT",
+            )
+
+        result = _detect(db, {source, target}, {
+            source: [source_stub],
+            target: [_Lot("C-ASN", option_type="P", quantity=-1)],
+        })
+
+        assert result[target] is None
+
+    def test_exercise_source_does_not_link(self, db):
+        """Source closed by EXERCISE must not link as a roll source. Long-side counterpart of the assignment case."""
+        with db.get_session() as session:
+            source = _seed_group(
+                session, status="CLOSED",
+                opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-21T16:00:00+00:00",
+            )
+            target = _seed_group(
+                session, status="OPEN",
+                opening_date="2025-03-21T16:00:00+00:00",
+            )
+            session.flush()
+            source_stub = _seed_lot_with_closing(
+                session, chain_id="C-EX", opt="C", qty=1,
+                closing_day="2025-03-21", closing_type="EXERCISE",
+            )
+
+        result = _detect(db, {source, target}, {
+            source: [source_stub],
+            target: [_Lot("C-EX", option_type="C", quantity=1)],
+        })
+
+        assert result[target] is None
+
+    def test_manual_close_among_mixed_types_still_links(self, db):
+        """A multi-leg source where SOME legs closed MANUAL and others closed via assignment/exercise on the same day still qualifies. The filter only rejects when *all* same-day closings are non-manual — at least one BTC/STC means the trader actively rolled."""
+        with db.get_session() as session:
+            source = _seed_group(
+                session, status="CLOSED",
+                opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-21T16:00:00+00:00",
+            )
+            target = _seed_group(
+                session, status="OPEN",
+                opening_date="2025-03-21T16:00:00+00:00",
+            )
+            session.flush()
+            assigned_leg = _seed_lot_with_closing(
+                session, chain_id="C-MIX", opt="P", qty=-1,
+                closing_day="2025-03-21", closing_type="ASSIGNMENT",
+            )
+            manual_leg = _seed_lot_with_closing(
+                session, chain_id="C-MIX", opt="C", qty=-1,
+                closing_day="2025-03-21", closing_type="MANUAL",
+            )
+
+        result = _detect(db, {source, target}, {
+            source: [assigned_leg, manual_leg],
+            target: [_Lot("C-MIX", option_type="C", quantity=-1)],
+        })
+
+        assert result[target] == source

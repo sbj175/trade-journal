@@ -561,6 +561,9 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
        and target (chain match preferred)
     4. Target doesn't already have a rolled_from_group_id
     5. Skip Shares groups
+    6. Source must have at least one MANUAL closing on its closing_day —
+       expiration, assignment, and exercise are mutually exclusive with
+       rolls per spec §2.
 
     Tie-breaking: prefer closest lot count.
     Process sorted by opening_date so serial rolls (A→B→C) link correctly.
@@ -580,18 +583,44 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
     if not groups:
         return
 
-    # Build lot_id → set of closing_days, used by signature match to filter
-    # a source group's lots to those active at its closing event.
+    # Build lot_id → set of (closing_day, closing_type), used both by the
+    # signature match's active-at-close filter and by the manual-close
+    # filter (spec §2: rolls require a manual closing event).
     relevant_lot_ids = [
         l.id for lots in group_lots.values() for l in lots if getattr(l, 'id', None) is not None
     ]
-    closing_days_by_lot_id: Dict[int, set] = defaultdict(set)
+    closings_by_lot_id: Dict[int, set] = defaultdict(set)
     if relevant_lot_ids:
         for lc in session.query(LotClosingModel).filter(
             LotClosingModel.lot_id.in_(relevant_lot_ids),
         ).all():
             if lc.closing_date:
-                closing_days_by_lot_id[lc.lot_id].add(str(lc.closing_date)[:10])
+                closings_by_lot_id[lc.lot_id].add(
+                    (str(lc.closing_date)[:10], lc.closing_type)
+                )
+    closing_days_by_lot_id: Dict[int, set] = {
+        lid: {day for day, _ct in entries}
+        for lid, entries in closings_by_lot_id.items()
+    }
+
+    def _has_manual_close_on(candidate, day):
+        """True if any of candidate's lots had a MANUAL closing on `day`.
+        Falls through to True when no closings are recorded for the
+        candidate's lots — preserves test-fixture compatibility for stubs
+        that don't seed LotClosing rows. The filter only rejects when we
+        positively know the day's closings were all non-MANUAL."""
+        lots = group_lots.get(candidate.group_id, [])
+        lot_ids = [
+            getattr(l, 'id', None) for l in lots if getattr(l, 'id', None) is not None
+        ]
+        closings_on_day = [
+            ct for lid in lot_ids
+            for d, ct in closings_by_lot_id.get(lid, set())
+            if d == day
+        ]
+        if not closings_on_day:
+            return True
+        return any(ct == 'MANUAL' for ct in closings_on_day)
 
     # Sort by opening_date ascending for serial roll detection
     sorted_groups = sorted(groups, key=lambda g: g.opening_date or '')
@@ -624,6 +653,16 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
 
         # Filter: candidate must not be the same group
         candidates = [c for c in candidates if c.group_id != g.group_id]
+        if not candidates:
+            continue
+
+        # Spec §2: a roll requires a manual closing event. Expiration,
+        # assignment, and exercise produce a fresh next position, not a
+        # roll continuation.
+        candidates = [
+            c for c in candidates
+            if _has_manual_close_on(c, str(c.closing_date)[:10])
+        ]
         if not candidates:
             continue
 
