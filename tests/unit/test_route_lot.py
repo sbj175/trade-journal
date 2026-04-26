@@ -95,6 +95,28 @@ class TestRule0ChainAware:
 
         assert gk is None
 
+    def test_routes_to_closed_group_when_same_expiration_continuation(self):
+        """A same-expiration roll: chain matches and at least one existing lot in the candidate group shares the new lot's expiration. Stay in the original group so the user sees one group with an incrementing roll counter, not a new generation. The lot is allowed to merge even though all existing lots are closed."""
+        existing = _opt(100, qty=-1, remaining=0, exp=date(2026, 3, 20))
+        groups = {"g1": [existing]}
+        chains = {"C1": "g1"}
+        new = _opt(110, chain="C1", order="O2", exp=date(2026, 3, 20))
+
+        gk = _route(new, groups=groups, chains=chains)
+
+        assert gk == "g1"
+
+    def test_diff_expiration_roll_falls_through(self):
+        """A different-expiration roll: chain matches but no existing lot shares the new lot's expiration. Rule 0 falls through and the caller creates a new group (roll across generations), forming a chained position group via rolled_from upstream."""
+        existing = _opt(100, qty=-1, remaining=0, exp=date(2026, 3, 20))
+        groups = {"g1": [existing]}
+        chains = {"C1": "g1"}
+        new = _opt(105, chain="C1", order="O2", exp=date(2026, 4, 17))
+
+        gk = _route(new, groups=groups, chains=chains)
+
+        assert gk is None
+
 
 # ---------------------------------------------------------------------------
 # Rule 1 — option lots by (account, underlying, expiration)

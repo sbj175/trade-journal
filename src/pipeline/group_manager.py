@@ -76,7 +76,18 @@ def _route_lot_to_group(
             existing.opening_order_id == lot.opening_order_id
             for existing in groups_by_key[gk]
         )
-        if _is_group_open(gk) or same_order_present:
+        # Same-expiration continuation: when a position rolls to a different
+        # strike at the SAME expiration, the recently-closed lots in the
+        # candidate group share an expiration with the new lot. Stay in the
+        # original group so the user sees one group with an incrementing
+        # roll counter rather than a new generation per roll. A different-
+        # expiration roll fails this check, falls through, and creates a
+        # new group + rolled_from link as expected.
+        same_exp_continuation = lot.expiration and any(
+            existing.expiration == lot.expiration
+            for existing in groups_by_key[gk]
+        )
+        if _is_group_open(gk) or same_order_present or same_exp_continuation:
             return gk
 
     if lot.expiration:

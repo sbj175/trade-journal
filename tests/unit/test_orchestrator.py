@@ -952,3 +952,66 @@ class TestRollMechanics:
         assert group_count == 2, (
             f"Two separate opens should produce two distinct groups, got {group_count}"
         )
+
+    def test_same_expiration_vertical_roll_stays_in_one_group(self, db, lot_manager):
+        """A Bull Call Spread rolled to a different strike pair at the SAME expiration (e.g., 230/250 → 240/260, both Mar 20) should stay in one position group with the new and old legs both attached. This is a 'roll within the same generation' — the user expects the original group to remain and a roll counter to increment, not a new generation group linked via rolled_from."""
+        # Day 1: open Bull Call Spread 230/250, exp Mar 20
+        opens = [
+            make_option_transaction(
+                id="tx-bto-230", order_id="OPEN_BCS",
+                action="BUY_TO_OPEN", quantity=1, price=4.43,
+                symbol="JNJ   260320C00230000", underlying_symbol="JNJ",
+                option_type="Call", strike=230.0, expiration="2026-03-20",
+                executed_at="2026-01-28T15:00:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-250", order_id="OPEN_BCS",
+                action="SELL_TO_OPEN", quantity=1, price=1.40,
+                symbol="JNJ   260320C00250000", underlying_symbol="JNJ",
+                option_type="Call", strike=250.0, expiration="2026-03-20",
+                executed_at="2026-01-28T15:00:00+00:00",
+            ),
+        ]
+        # Day 2: same-exp roll → 240/260 (still Mar 20) in one ROLLING order
+        roll = [
+            make_option_transaction(
+                id="tx-stc-230", order_id="ROLL_BCS",
+                action="SELL_TO_CLOSE", quantity=1, price=14.81,
+                symbol="JNJ   260320C00230000", underlying_symbol="JNJ",
+                option_type="Call", strike=230.0, expiration="2026-03-20",
+                executed_at="2026-02-17T20:30:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-btc-250", order_id="ROLL_BCS",
+                action="BUY_TO_CLOSE", quantity=1, price=5.00,
+                symbol="JNJ   260320C00250000", underlying_symbol="JNJ",
+                option_type="Call", strike=250.0, expiration="2026-03-20",
+                executed_at="2026-02-17T20:30:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-bto-240", order_id="ROLL_BCS",
+                action="BUY_TO_OPEN", quantity=1, price=2.78,
+                symbol="JNJ   260320C00240000", underlying_symbol="JNJ",
+                option_type="Call", strike=240.0, expiration="2026-03-20",
+                executed_at="2026-02-17T20:30:00+00:00",
+            ),
+            make_option_transaction(
+                id="tx-sto-260", order_id="ROLL_BCS",
+                action="SELL_TO_OPEN", quantity=1, price=1.38,
+                symbol="JNJ   260320C00260000", underlying_symbol="JNJ",
+                option_type="Call", strike=260.0, expiration="2026-03-20",
+                executed_at="2026-02-17T20:30:00+00:00",
+            ),
+        ]
+
+        reprocess(db, lot_manager, opens + roll)
+
+        with db.get_session() as session:
+            jnj_groups = session.query(PositionGroup).filter(
+                PositionGroup.underlying == "JNJ",
+            ).all()
+
+        assert len(jnj_groups) == 1, (
+            f"A same-expiration vertical roll should stay in one group, "
+            f"got {len(jnj_groups)} groups"
+        )
