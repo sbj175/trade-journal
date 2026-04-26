@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
@@ -115,6 +115,23 @@ def _update_routing_indices(
         au_to_group[(lot.account_number, lot.underlying)] = gk
     if lot.chain_id:
         chain_to_group[lot.chain_id] = gk
+
+
+def _leg_signature(lots) -> frozenset:
+    """Multiset of (option_type, sign-of-quantity) over a group's option lots.
+
+    Two groups with equal signatures have the same structural shape
+    (e.g., both 4-leg Iron Condors with 2 longs/2 shorts split across
+    calls and puts). Used by `_detect_roll_links` as a fallback when
+    chain_id overlap doesn't fire — captures the documented "legging
+    out and back in" roll where the close and the open are separate
+    broker orders.
+    """
+    return frozenset(Counter(
+        (l.option_type, "long" if l.quantity > 0 else "short")
+        for l in lots
+        if l.option_type and l.quantity
+    ).items())
 
 
 def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
@@ -585,12 +602,26 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
         if not candidates:
             continue
 
-        # Filter: target must share a chain_id with at least one candidate.
-        target_chains = {lot.chain_id for lot in group_lots.get(g.group_id, []) if lot.chain_id}
-        candidates = [
+        # Prefer chain-overlap candidates (exact roll lineage from a
+        # ROLLING broker order). Fall back to leg-shape signature match
+        # for legged-out-and-back-in rolls where the close and the open
+        # were separate broker orders (no chain inheritance from Stage 3).
+        target_lots = group_lots.get(g.group_id, [])
+        target_chains = {lot.chain_id for lot in target_lots if lot.chain_id}
+        chain_candidates = [
             c for c in candidates
             if target_chains & {lot.chain_id for lot in group_lots.get(c.group_id, []) if lot.chain_id}
         ]
+        if chain_candidates:
+            candidates = chain_candidates
+        else:
+            target_sig = _leg_signature(target_lots)
+            if not target_sig:
+                continue  # no option legs — nothing to signature-match
+            candidates = [
+                c for c in candidates
+                if _leg_signature(group_lots.get(c.group_id, [])) == target_sig
+            ]
         if not candidates:
             continue
 
