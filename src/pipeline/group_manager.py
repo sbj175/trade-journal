@@ -57,6 +57,9 @@ def _route_lot_to_group(
 ) -> Optional[str]:
     """Decide which existing group_key a lot should join, or None if none fit.
 
+    See docs/roll-detection-spec.md §3-§4 for the rule semantics this
+    implements.
+
     Pure: reads the index dicts, never mutates them. The caller mints a
     new group key on None and then adds the lot via its own add helper
     (which is responsible for updating the indices).
@@ -547,6 +550,9 @@ def _persist_group_split(
 
 def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, List[Lot]]) -> None:
     """Phase 4b: auto-detect roll relationships between groups.
+
+    See docs/roll-detection-spec.md for the rule semantics this implements.
+
 
     Criteria (all must match):
     1. Same account + underlying
