@@ -66,9 +66,11 @@ def _route_lot_to_group(
 
     Rules in priority order:
       0. chain-aware: same chain_id AND any existing lot in the group
-         "shares state" with the new lot — open status, opening_order_id,
-         or expiration. Captures rolls (open lot still around), multi-fill
-         opens (same order_id), and same-exp roll continuations (same exp).
+         "shares state" with the new lot — still-open lot or matching
+         opening_order_id. Captures adjustments (open lot still around)
+         and multi-fill opens (same order_id). A fully-closed source
+         falls through here so a same-day reopen mints a new group;
+         _detect_roll_links then sets rolled_from_group_id, per spec §4.
       1. option lot: same (account, underlying, expiration), open, and not a
          structural duplicate of an existing open lot.
       2. equity lot: same (account, underlying), open.
@@ -78,9 +80,7 @@ def _route_lot_to_group(
         for existing in groups_by_key[gk]:
             if (existing.remaining_quantity != 0
                 or (lot.opening_order_id
-                    and existing.opening_order_id == lot.opening_order_id)
-                or (lot.expiration
-                    and existing.expiration == lot.expiration)):
+                    and existing.opening_order_id == lot.opening_order_id)):
                 return gk
 
     if lot.expiration:

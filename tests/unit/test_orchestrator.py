@@ -953,8 +953,8 @@ class TestRollMechanics:
             f"Two separate opens should produce two distinct groups, got {group_count}"
         )
 
-    def test_same_expiration_vertical_roll_stays_in_one_group(self, db, lot_manager):
-        """A Bull Call Spread rolled to a different strike pair at the SAME expiration (e.g., 230/250 → 240/260, both Mar 20) should stay in one position group with the new and old legs both attached. This is a 'roll within the same generation' — the user expects the original group to remain and a roll counter to increment, not a new generation group linked via rolled_from."""
+    def test_same_expiration_full_close_and_reopen_creates_linked_groups(self, db, lot_manager):
+        """A Bull Call Spread fully closed and reopened at different strikes on the SAME expiration (e.g., 230/250 → 240/260, both Mar 20) produces TWO position groups: the original (now CLOSED) and the new (OPEN), linked via rolled_from_group_id. Per spec §4, two simultaneous similar positions on the same expiration are two groups; even sequential same-exp positions are two groups since each is the position at its moment in time. (Reverts OPT-279, which had merged these into one group with a counter.)"""
         # Day 1: open Bull Call Spread 230/250, exp Mar 20
         opens = [
             make_option_transaction(
@@ -1009,9 +1009,17 @@ class TestRollMechanics:
         with db.get_session() as session:
             jnj_groups = session.query(PositionGroup).filter(
                 PositionGroup.underlying == "JNJ",
-            ).all()
+            ).order_by(PositionGroup.opening_date.asc()).all()
 
-        assert len(jnj_groups) == 1, (
-            f"A same-expiration vertical roll should stay in one group, "
-            f"got {len(jnj_groups)} groups"
-        )
+            assert len(jnj_groups) == 2, (
+                f"Same-exp full-close-and-reopen should produce 2 groups per "
+                f"spec §4, got {len(jnj_groups)}"
+            )
+            original, reopened = jnj_groups
+            assert original.status == "CLOSED"
+            assert reopened.status == "OPEN"
+            assert reopened.rolled_from_group_id == original.group_id, (
+                "The reopened group must link back to the original via "
+                "rolled_from_group_id"
+            )
+            assert original.rolled_from_group_id is None
