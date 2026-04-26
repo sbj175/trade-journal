@@ -551,14 +551,20 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
     Criteria (all must match):
     1. Same account + underlying
     2. Source group's closing_date same calendar day as target group's opening_date
-    3. Target and candidate share at least one lot.chain_id
+    3. Either chain-overlap or matching leg-shape signature between candidate
+       and target (chain match preferred)
     4. Target doesn't already have a rolled_from_group_id
     5. Skip Shares groups
 
     Tie-breaking: prefer closest lot count.
     Process sorted by opening_date so serial rolls (A→B→C) link correctly.
+
+    For signature matching, the source's signature is computed only over
+    lots that closed on the source's closing_day — rolled-out legs from
+    earlier mid-life adjustments are excluded so they don't pollute the
+    multiset.
     """
-    from src.database.models import PositionGroup
+    from src.database.models import LotClosing as LotClosingModel, PositionGroup
 
     # Load all groups with their metadata
     groups = session.query(PositionGroup).filter(
@@ -567,6 +573,19 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
 
     if not groups:
         return
+
+    # Build lot_id → set of closing_days, used by signature match to filter
+    # a source group's lots to those active at its closing event.
+    relevant_lot_ids = [
+        l.id for lots in group_lots.values() for l in lots if getattr(l, 'id', None) is not None
+    ]
+    closing_days_by_lot_id: Dict[int, set] = defaultdict(set)
+    if relevant_lot_ids:
+        for lc in session.query(LotClosingModel).filter(
+            LotClosingModel.lot_id.in_(relevant_lot_ids),
+        ).all():
+            if lc.closing_date:
+                closing_days_by_lot_id[lc.lot_id].add(str(lc.closing_date)[:10])
 
     # Sort by opening_date ascending for serial roll detection
     sorted_groups = sorted(groups, key=lambda g: g.opening_date or '')
@@ -618,10 +637,20 @@ def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, L
             target_sig = _leg_signature(target_lots)
             if not target_sig:
                 continue  # no option legs — nothing to signature-match
-            candidates = [
-                c for c in candidates
-                if _leg_signature(group_lots.get(c.group_id, [])) == target_sig
-            ]
+
+            def _candidate_sig(c):
+                day = str(c.closing_date)[:10]
+                lots = group_lots.get(c.group_id, [])
+                # Active-at-close filter: include only lots that closed on
+                # the source's closing_day (excludes rolled-out mid-life
+                # legs that closed earlier).
+                active = [
+                    l for l in lots
+                    if day in closing_days_by_lot_id.get(getattr(l, 'id', None), set())
+                ] or lots  # fall back to all lots when no closings are known (tests)
+                return _leg_signature(active)
+
+            candidates = [c for c in candidates if _candidate_sig(c) == target_sig]
         if not candidates:
             continue
 
