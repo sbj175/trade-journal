@@ -54,41 +54,35 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
 
         group_map: Dict[str, PositionGroup] = {}
         children_map: Dict[str, List[str]] = defaultdict(list)
-        has_parent: Set[str] = set()
 
         for g in groups:
             group_map[g.group_id] = g
             if g.rolled_from_group_id:
                 children_map[g.rolled_from_group_id].append(g.group_id)
-                has_parent.add(g.group_id)
 
-        # Find root groups (groups that are parents but have no parent themselves,
-        # OR groups that have children)
-        root_ids = set()
-        for gid in group_map:
-            if gid not in has_parent and gid in children_map:
-                root_ids.add(gid)
-            elif gid not in has_parent and group_map[gid].rolled_from_group_id:
-                # Orphan reference — treat as root
-                root_ids.add(gid)
-
-        if not root_ids:
-            return 0
-
-        # Build chains from each root
+        # Per spec §5.2 the rolled_from graph is a tree, not a linked list:
+        # a single source can have multiple children (parallel rolls). We
+        # produce one summary row per leaf (group with no children in the
+        # tree), walking back via rolled_from_group_id to construct the
+        # unique root→leaf path. Shared upstream history appears in
+        # multiple chains — that's correct, since each leaf is its own
+        # continuation of the same source.
         chains: List[List[str]] = []
-        for root_id in root_ids:
-            chain = []
-            queue = [root_id]
-            seen = set()
-            while queue:
-                gid = queue.pop(0)
-                if gid in seen:
-                    continue
-                seen.add(gid)
-                chain.append(gid)
-                queue.extend(children_map.get(gid, []))
-            if len(chain) >= 2:  # Only chains with at least one roll
+        for gid, g in group_map.items():
+            if gid in children_map:
+                continue  # not a leaf
+            if not g.rolled_from_group_id:
+                continue  # standalone group, no rolls
+            chain: List[str] = []
+            cur = gid
+            seen: Set[str] = set()
+            while cur and cur not in seen:
+                seen.add(cur)
+                chain.append(cur)
+                parent_g = group_map.get(cur)
+                cur = parent_g.rolled_from_group_id if parent_g else None
+            chain.reverse()  # root → leaf order
+            if len(chain) >= 2:
                 chains.append(chain)
 
         if not chains:
