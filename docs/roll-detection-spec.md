@@ -15,6 +15,42 @@ example or named scenario fixture under `tests/fixtures/`.
 
 ---
 
+## 0. Foundational principles
+
+Two principles sit above the detection rules and override them when
+they conflict.
+
+### 0.1 Broker order/ticket structure is not authoritative
+
+We **do not** treat the broker's `order_id`, ticket structure, or any
+field derived from them (including `lot.chain_id`, which Stage 3
+propagates from a ROLLING broker order) as the structural truth of
+whether something is a roll. Different brokers bundle multi-leg trades
+differently; tastytrade in particular emits a single ROLLING ticket
+when a trader fills a "close + open" net-credit order, even when the
+opens exceed the closes (a roll-plus-add). Trusting the ticket would
+mislabel the add as a roll continuation.
+
+The structural truth is **same-day, lot-level pairing of compatible
+closes and opens** (rule §1 and §6). Chain identity is at most a hint
+that may speed lookup; it cannot be the deciding factor.
+
+### 0.2 A lot is in at most one chain
+
+Every closed lot pairs with at most one newly-opened lot of compatible
+shape on the same day; that pair is a roll. Lots that don't pair are
+new business, not a chain continuation. This guarantees portfolio
+totals are additive across chains: total realized P&L = sum of
+chain P&Ls, with no overlap.
+
+When the trader closes N contracts and opens M of compatible shape on
+the same day, the smaller of (N, M) lots are paired (roll); any
+excess on either side is independent (closes that aren't paired with
+an open are simple closes; opens that aren't paired with a close are
+new positions).
+
+---
+
 ## 1. What a roll is
 
 A **roll** is a deliberate position adjustment a trader makes to either
@@ -37,12 +73,24 @@ Plus a structural condition (one of):
    — i.e., Stage 3 (`position_ledger`) inherited the chain from a
    ROLLING broker order. This captures rolls where a single broker
    action closed the old position and opened the new one.
+
+   ⚠ **Conflicts with §0.1; tracked as OPT-283.** Because `chain_id`
+   derives from the broker ticket, this rule lets a "roll + add"
+   ticket (close 5 + open 5 + open 3 in one ROLLING order) link the
+   add-3 to the closed-5 even though the add has no closing
+   counterpart. The fix is to demote chain overlap to a hint and let
+   §1.5 + §6 do the structural work, with quantity conservation.
 5. **Leg-shape signature match.** When chain overlap doesn't fire (e.g.,
    the trader closed and re-opened in separate broker orders), the
    source's *active-at-close* lots and the target's lots share the same
    multiset of `(option_type, sign-of-quantity)`. Captures the
    documented "legged out and back in" case (`tests/fixtures/non_roll_*`
    and `roll_*` modules will codify this).
+
+   This rule needs to be extended (OPT-283) to **lot-level, quantity-
+   aware pairing** so that opens which exceed the closed quantity of
+   the same shape are correctly classified as new business rather than
+   roll continuations.
 
 If none of (4)/(5) holds, the groups are independent — no link.
 
