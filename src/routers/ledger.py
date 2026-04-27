@@ -1,7 +1,6 @@
 """Ledger routes — position groups CRUD and lot management."""
 
 import uuid as _uuid
-from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List
 
@@ -262,7 +261,15 @@ async def get_group_roll_chain(
         if not start:
             raise HTTPException(status_code=404, detail="Group not found")
 
-        # Walk backward to find the root
+        # The chain returned is the unique lineage of the clicked group:
+        # walk backward via rolled_from_group_id from the clicked group
+        # all the way to root. We deliberately do NOT walk forward through
+        # children — under spec §5.2 the rolled_from graph is a tree, and
+        # walking forward would surface sibling branches that aren't part
+        # of this group's chain (e.g., a 41-strike click would otherwise
+        # also show the 43-strike sibling that branched off the same
+        # ancestor).
+        chain_back: List[str] = [start.group_id]
         current = start
         visited = {current.group_id}
         while current.rolled_from_group_id:
@@ -272,33 +279,9 @@ async def get_group_roll_chain(
             if not parent or parent.group_id in visited:
                 break
             visited.add(parent.group_id)
+            chain_back.append(parent.group_id)
             current = parent
-        root_id = current.group_id
-
-        # Walk forward from root to build the full chain
-        # Build a reverse lookup: rolled_from_group_id -> group_id
-        all_links = session.query(
-            PositionGroup.group_id,
-            PositionGroup.rolled_from_group_id,
-        ).filter(
-            PositionGroup.rolled_from_group_id.isnot(None),
-        ).all()
-        forward_map: Dict[str, List[str]] = defaultdict(list)
-        for gid, rfgid in all_links:
-            forward_map[rfgid].append(gid)
-
-        chain_ids = []
-        queue = [root_id]
-        seen = set()
-        while queue:
-            gid = queue.pop(0)
-            if gid in seen:
-                continue
-            seen.add(gid)
-            chain_ids.append(gid)
-            # Add children sorted by opening_date
-            children = forward_map.get(gid, [])
-            queue.extend(children)
+        chain_ids = list(reversed(chain_back))
 
         # Load groups for the chain — convert to dicts inside session
         chain_groups = session.query(PositionGroup).filter(
