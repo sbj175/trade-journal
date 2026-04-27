@@ -339,11 +339,19 @@ class PositionLot(Base):
     opening_order_id = Column(String)
     derived_from_lot_id = Column(Integer, ForeignKey("position_lots.id"))
     derivation_type = Column(String)
+    parent_lot_id = Column(Integer, ForeignKey("position_lots.id"))
     status = Column(String, default="OPEN")
     created_at = Column(String, server_default=func.now())
 
-    # self-referential relationship
-    derived_from = relationship("PositionLot", remote_side=[id], backref="derived_lots")
+    # self-referential relationships
+    derived_from = relationship(
+        "PositionLot", remote_side=[id], foreign_keys=[derived_from_lot_id],
+        backref="derived_lots",
+    )
+    parent_lot = relationship(
+        "PositionLot", remote_side=[id], foreign_keys=[parent_lot_id],
+        backref="child_lots",
+    )
     closings = relationship("LotClosing", back_populates="lot", foreign_keys="LotClosing.lot_id")
 
     __table_args__ = (
@@ -353,6 +361,7 @@ class PositionLot(Base):
         Index("idx_lots_chain", "chain_id"),
         Index("idx_lots_status", "status"),
         Index("idx_lots_derived", "derived_from_lot_id"),
+        Index("idx_lots_parent", "parent_lot_id"),
         Index("idx_lots_underlying", "underlying"),
     )
 

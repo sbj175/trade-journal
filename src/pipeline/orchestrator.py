@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set
 from src.pipeline.order_assembler import assemble_orders
 from src.pipeline.position_ledger import process_lots
 from src.pipeline.group_manager import GroupPersister
+from src.pipeline.lot_lineage import backfill_parent_lot_ids
 from src.pipeline.pnl_events import populate_pnl_events
 from src.pipeline.roll_chain_summary import populate_roll_chain_summaries
 from src.services.ledger_service import net_opposing_equity_lots
@@ -161,6 +162,13 @@ def reprocess(
     persister = GroupPersister(db_manager, lot_manager)
     groups_processed = persister.process_groups(account_number=account_number)
     logger.info("Stage 5: processed %d groups", groups_processed)
+
+    # ── Step 5b: Lot lineage backfill (OPT-284 Phase 1) ───────────────
+    # Populates position_lots.parent_lot_id from group-level lineage.
+    # Additive metadata in Phase 1; Phase 2 will promote it to the
+    # source of truth for roll detection.
+    lots_paired, _ = backfill_parent_lot_ids(db_manager)
+    logger.info("Stage 5b: paired %d lots into lineage", lots_paired)
 
     # ── Step 6: P&L Events (denormalized fact table) ──────────────────
     pnl_events_count = populate_pnl_events(db_manager)
