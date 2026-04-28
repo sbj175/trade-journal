@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
@@ -70,7 +70,8 @@ def _route_lot_to_group(
          opening_order_id. Captures adjustments (open lot still around)
          and multi-fill opens (same order_id). A fully-closed source
          falls through here so a same-day reopen mints a new group;
-         _detect_roll_links then sets rolled_from_group_id, per spec §4.
+         lot-level lineage detection then derives rolled_from_group_id,
+         per spec §4 (OPT-284 Phase 2).
       1. option lot: same (account, underlying, expiration), open, and not a
          structural duplicate of an existing open lot.
       2. equity lot: same (account, underlying), open.
@@ -118,23 +119,6 @@ def _update_routing_indices(
         au_to_group[(lot.account_number, lot.underlying)] = gk
     if lot.chain_id:
         chain_to_group[lot.chain_id] = gk
-
-
-def _leg_signature(lots) -> frozenset:
-    """Multiset of (option_type, sign-of-quantity) over a group's option lots.
-
-    Two groups with equal signatures have the same structural shape
-    (e.g., both 4-leg Iron Condors with 2 longs/2 shorts split across
-    calls and puts). Used by `_detect_roll_links` as a fallback when
-    chain_id overlap doesn't fire — captures the documented "legging
-    out and back in" roll where the close and the open are separate
-    broker orders.
-    """
-    return frozenset(Counter(
-        (l.option_type, "long" if l.quantity > 0 else "short")
-        for l in lots
-        if l.option_type and l.quantity
-    ).items())
 
 
 def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
@@ -548,177 +532,6 @@ def _persist_group_split(
     session.flush()
 
 
-def _detect_roll_links(session, all_group_ids: Set[str], group_lots: Dict[str, List[Lot]]) -> None:
-    """Phase 4b: auto-detect roll relationships between groups.
-
-    See docs/roll-detection-spec.md for the rule semantics this implements.
-
-
-    Criteria (all must match):
-    1. Same account + underlying
-    2. Source group's closing_date same calendar day as target group's opening_date
-    3. Either chain-overlap or matching leg-shape signature between candidate
-       and target (chain match preferred)
-    4. Target doesn't already have a rolled_from_group_id
-    5. Skip Shares groups
-    6. Source must have at least one MANUAL closing on its closing_day —
-       expiration, assignment, and exercise are mutually exclusive with
-       rolls per spec §2.
-
-    Tie-breaking: prefer closest lot count.
-    Process sorted by opening_date so serial rolls (A→B→C) link correctly.
-
-    For signature matching, the source's signature is computed only over
-    lots that closed on the source's closing_day — rolled-out legs from
-    earlier mid-life adjustments are excluded so they don't pollute the
-    multiset.
-    """
-    from src.database.models import LotClosing as LotClosingModel, PositionGroup
-
-    # Load all groups with their metadata
-    groups = session.query(PositionGroup).filter(
-        PositionGroup.group_id.in_(all_group_ids),
-    ).all()
-
-    if not groups:
-        return
-
-    # Build lot_id → set of (closing_day, closing_type), used both by the
-    # signature match's active-at-close filter and by the manual-close
-    # filter (spec §2: rolls require a manual closing event).
-    relevant_lot_ids = [
-        l.id for lots in group_lots.values() for l in lots if getattr(l, 'id', None) is not None
-    ]
-    closings_by_lot_id: Dict[int, set] = defaultdict(set)
-    if relevant_lot_ids:
-        for lc in session.query(LotClosingModel).filter(
-            LotClosingModel.lot_id.in_(relevant_lot_ids),
-        ).all():
-            if lc.closing_date:
-                closings_by_lot_id[lc.lot_id].add(
-                    (str(lc.closing_date)[:10], lc.closing_type)
-                )
-    closing_days_by_lot_id: Dict[int, set] = {
-        lid: {day for day, _ct in entries}
-        for lid, entries in closings_by_lot_id.items()
-    }
-
-    def _has_manual_close_on(candidate, day):
-        """True if any of candidate's lots had a MANUAL closing on `day`.
-        Falls through to True when no closings are recorded for the
-        candidate's lots — preserves test-fixture compatibility for stubs
-        that don't seed LotClosing rows. The filter only rejects when we
-        positively know the day's closings were all non-MANUAL."""
-        lots = group_lots.get(candidate.group_id, [])
-        lot_ids = [
-            getattr(l, 'id', None) for l in lots if getattr(l, 'id', None) is not None
-        ]
-        closings_on_day = [
-            ct for lid in lot_ids
-            for d, ct in closings_by_lot_id.get(lid, set())
-            if d == day
-        ]
-        if not closings_on_day:
-            return True
-        return any(ct == 'MANUAL' for ct in closings_on_day)
-
-    # Sort by opening_date ascending for serial roll detection
-    sorted_groups = sorted(groups, key=lambda g: g.opening_date or '')
-
-    # Index CLOSED groups by (account, underlying, closing_day)
-    closed_by_key: Dict[Tuple[str, str, str], List] = defaultdict(list)
-
-    for g in sorted_groups:
-        if g.status != 'CLOSED' or not g.closing_date:
-            continue
-        if (g.strategy_label or '') == 'Shares':
-            continue
-        closing_day = str(g.closing_date)[:10]
-        key = (g.account_number, g.underlying, closing_day)
-        closed_by_key[key].append(g)
-
-    links_created = 0
-
-    for g in sorted_groups:
-        if g.rolled_from_group_id:
-            continue  # already linked
-        if not g.opening_date:
-            continue
-        if (g.strategy_label or '') == 'Shares':
-            continue
-
-        opening_day = str(g.opening_date)[:10]
-        key = (g.account_number, g.underlying, opening_day)
-        candidates = closed_by_key.get(key, [])
-
-        # Filter: candidate must not be the same group
-        candidates = [c for c in candidates if c.group_id != g.group_id]
-        if not candidates:
-            continue
-
-        # Spec §2: a roll requires a manual closing event. Expiration,
-        # assignment, and exercise produce a fresh next position, not a
-        # roll continuation.
-        candidates = [
-            c for c in candidates
-            if _has_manual_close_on(c, str(c.closing_date)[:10])
-        ]
-        if not candidates:
-            continue
-
-        # Prefer chain-overlap candidates (exact roll lineage from a
-        # ROLLING broker order). Fall back to leg-shape signature match
-        # for legged-out-and-back-in rolls where the close and the open
-        # were separate broker orders (no chain inheritance from Stage 3).
-        target_lots = group_lots.get(g.group_id, [])
-        target_chains = {lot.chain_id for lot in target_lots if lot.chain_id}
-        chain_candidates = [
-            c for c in candidates
-            if target_chains & {lot.chain_id for lot in group_lots.get(c.group_id, []) if lot.chain_id}
-        ]
-        if chain_candidates:
-            candidates = chain_candidates
-        else:
-            target_sig = _leg_signature(target_lots)
-            if not target_sig:
-                continue  # no option legs — nothing to signature-match
-
-            def _candidate_sig(c):
-                day = str(c.closing_date)[:10]
-                lots = group_lots.get(c.group_id, [])
-                # Active-at-close filter: include only lots that closed on
-                # the source's closing_day (excludes rolled-out mid-life
-                # legs that closed earlier).
-                active = [
-                    l for l in lots
-                    if day in closing_days_by_lot_id.get(getattr(l, 'id', None), set())
-                ] or lots  # fall back to all lots when no closings are known (tests)
-                return _leg_signature(active)
-
-            candidates = [c for c in candidates if _candidate_sig(c) == target_sig]
-        if not candidates:
-            continue
-
-        # Tie-break: prefer closest lot count
-        target_lot_count = len(group_lots.get(g.group_id, []))
-        best = min(
-            candidates,
-            key=lambda c: abs(len(group_lots.get(c.group_id, [])) - target_lot_count),
-        )
-
-        g.rolled_from_group_id = best.group_id
-        links_created += 1
-
-        # Register this group as a closed source too (for serial A→B→C)
-        if g.status == 'CLOSED' and g.closing_date:
-            closing_day = str(g.closing_date)[:10]
-            new_key = (g.account_number, g.underlying, closing_day)
-            closed_by_key[new_key].append(g)
-
-    if links_created:
-        logger.info(f"Phase 4b: detected {links_created} roll links")
-
-
 # ---------------------------------------------------------------------------
 # DB persistence layer
 # ---------------------------------------------------------------------------
@@ -984,9 +797,11 @@ class GroupPersister:
             _upgrade_covered_calls(session, all_group_ids, group_lots)
 
             # =================================================================
-            # Phase 4c: Auto-detect roll links (rolled_from_group_id)
+            # Phase 4c: Roll links are derived from lot-level lineage in a
+            # subsequent orchestrator stage (OPT-284 Phase 2: detect_lot_lineage
+            # then derive_rolled_from_group_id). Group-level chain detection
+            # was retired here.
             # =================================================================
-            _detect_roll_links(session, all_group_ids, group_lots)
 
             # =================================================================
             # Phase 5: Cleanup

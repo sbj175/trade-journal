@@ -16,7 +16,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set
 from src.pipeline.order_assembler import assemble_orders
 from src.pipeline.position_ledger import process_lots
 from src.pipeline.group_manager import GroupPersister
-from src.pipeline.lot_lineage import backfill_parent_lot_ids
+from src.pipeline.lot_lineage import (
+    derive_rolled_from_group_id,
+    detect_lot_lineage,
+)
 from src.pipeline.pnl_events import populate_pnl_events
 from src.pipeline.roll_chain_summary import populate_roll_chain_summaries
 from src.services.ledger_service import net_opposing_equity_lots
@@ -163,12 +166,15 @@ def reprocess(
     groups_processed = persister.process_groups(account_number=account_number)
     logger.info("Stage 5: processed %d groups", groups_processed)
 
-    # ── Step 5b: Lot lineage backfill (OPT-284 Phase 1) ───────────────
-    # Populates position_lots.parent_lot_id from group-level lineage.
-    # Additive metadata in Phase 1; Phase 2 will promote it to the
-    # source of truth for roll detection.
-    lots_paired, _ = backfill_parent_lot_ids(db_manager)
+    # ── Step 5b: Lot-level roll detection (OPT-284 Phase 2) ───────────
+    # Pairs same-day, structurally compatible closes/opens at the lot
+    # level. Sets position_lots.parent_lot_id — the single source of
+    # truth for chain lineage. position_groups.rolled_from_group_id is
+    # then derived from it.
+    lots_paired = detect_lot_lineage(db_manager)
     logger.info("Stage 5b: paired %d lots into lineage", lots_paired)
+    rolled_from_changes = derive_rolled_from_group_id(db_manager)
+    logger.info("Stage 5c: updated rolled_from_group_id on %d groups", rolled_from_changes)
 
     # ── Step 6: P&L Events (denormalized fact table) ──────────────────
     pnl_events_count = populate_pnl_events(db_manager)

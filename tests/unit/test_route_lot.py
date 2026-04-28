@@ -96,7 +96,7 @@ class TestRule0ChainAware:
         assert gk is None
 
     def test_same_expiration_full_close_then_reopen_falls_through(self):
-        """Per spec §4: a full-close-and-same-day-reopen on the same expiration produces TWO groups, not one with a counter. The new lot must NOT route into the closed source — Rule 0 falls through, the caller mints a new group, and _detect_roll_links sets rolled_from_group_id later. (Reverts OPT-279, which had merged these into one group.)"""
+        """Per spec §4: a full-close-and-same-day-reopen on the same expiration produces TWO groups, not one with a counter. The new lot must NOT route into the closed source — Rule 0 falls through, the caller mints a new group, and lot-level lineage detection (OPT-284 Phase 2) later sets rolled_from_group_id. (Reverts OPT-279, which had merged these into one group.)"""
         existing = _opt(100, qty=-1, remaining=0, exp=date(2026, 3, 20))
         groups = {"g1": [existing]}
         chains = {"C1": "g1"}
@@ -107,7 +107,7 @@ class TestRule0ChainAware:
         assert gk is None
 
     def test_diff_expiration_roll_falls_through(self):
-        """A different-expiration roll: chain matches but no existing open lot remains. Rule 0 falls through and the caller creates a new group; _detect_roll_links links the two via rolled_from_group_id."""
+        """A different-expiration roll: chain matches but no existing open lot remains. Rule 0 falls through and the caller creates a new group; lot-level lineage detection (OPT-284 Phase 2) links the two via rolled_from_group_id."""
         existing = _opt(100, qty=-1, remaining=0, exp=date(2026, 3, 20))
         groups = {"g1": [existing]}
         chains = {"C1": "g1"}
