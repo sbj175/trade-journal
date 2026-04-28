@@ -1,9 +1,10 @@
 # Roll Detection Spec
 
 This is the canonical written definition of what counts as a "roll" in
-OptionLedger. The implementation in `src/pipeline/group_manager.py`
-(`_detect_roll_links`, `_route_lot_to_group`) follows this spec; the
-`RollChainModal` "learn more" UI is the user-facing summary of it.
+OptionLedger. The implementation in `src/pipeline/lot_lineage.py`
+(`detect_lot_lineage`, `derive_rolled_from_group_id`) follows this
+spec; the `RollChainModal` "learn more" UI is the user-facing summary
+of it.
 
 When a real-world case doesn't match user intuition, **the first
 question is "where does this case fit in the spec?"** — not "what code
@@ -32,8 +33,8 @@ opens exceed the closes (a roll-plus-add). Trusting the ticket would
 mislabel the add as a roll continuation.
 
 The structural truth is **same-day, lot-level pairing of compatible
-closes and opens** (rule §1 and §6). Chain identity is at most a hint
-that may speed lookup; it cannot be the deciding factor.
+closes and opens** (rule §1). Chain identity is at most a hint that
+may speed lookup; it cannot be the deciding factor.
 
 ### 0.2 A lot is in at most one chain
 
@@ -53,116 +54,142 @@ new positions).
 
 ## 1. What a roll is
 
-A **roll** is a deliberate position adjustment a trader makes to either
-capture more profit or reduce risk, by closing all or part of an
-existing position and opening a similar new position the same day. The
-trade idea persists; only the strikes, expiration, or both change.
+A **roll** is a deliberate position adjustment a trader makes to
+either capture more profit or reduce risk, by closing an existing lot
+and opening a similar new lot the same day. The trade idea persists;
+only the strikes, expiration, or both change.
 
-Three conditions must all be true for two position groups to be linked
-as a roll:
+Rolls live at the **lot level**: each newly-opened lot can have at
+most one parent lot (`position_lots.parent_lot_id`), the closing lot
+it continued from. Group-level chain lineage (`position_groups.
+rolled_from_group_id`) is a derived view of synchronized lot rolls
+(§4).
+
+### 1.1 Lot-level pairing rule
+
+Two lots — a closed source lot and a newly-opened target lot — pair
+as a roll if and only if **all** of:
 
 1. **Same account.** Cross-account links are out of scope.
 2. **Same underlying.** Always.
-3. **Same calendar day.** The source group's `closing_date` must fall on
-   the same calendar day as the target group's `opening_date`. Intra-day
-   timing (hours apart) is fine; cross-day is not.
+3. **Same calendar day.** The source lot's MANUAL closing event falls
+   on the same calendar day as the target lot's `entry_date`.
+   Intra-day timing (hours apart) is fine; cross-day is not.
+4. **Same shape.** Both lots share the same `(option_type,
+   sign-of-quantity)` — e.g., a closed short Call pairs only with a
+   newly-opened short Call.
 
-Plus a structural condition (one of):
+Within a same-day, same-(account, underlying, shape) **bucket**, the
+algorithm pairs greedily by closest strike: at each step, the
+remaining (close, open) pair with the smallest `|close.strike -
+open.strike|` is bound, then both are removed from the pool. A close
+or an open that has no remaining counterpart in its bucket is
+unpaired — that lot is independent (a simple close or a new open).
 
-4. **Chain overlap.** Source and target share at least one `lot.chain_id`
-   — i.e., Stage 3 (`position_ledger`) inherited the chain from a
-   ROLLING broker order. This captures rolls where a single broker
-   action closed the old position and opened the new one.
+Per spec §0.2, each lot pairs at most once. The greedy match is the
+default partition rule; manual link/split (§6) lets the trader
+override at the lot-pair level.
 
-   ⚠ **Conflicts with §0.1; tracked as OPT-283.** Because `chain_id`
-   derives from the broker ticket, this rule lets a "roll + add"
-   ticket (close 5 + open 5 + open 3 in one ROLLING order) link the
-   add-3 to the closed-5 even though the add has no closing
-   counterpart. The fix is to demote chain overlap to a hint and let
-   §1.5 + §6 do the structural work, with quantity conservation.
-5. **Leg-shape signature match.** When chain overlap doesn't fire (e.g.,
-   the trader closed and re-opened in separate broker orders), the
-   source's *active-at-close* lots and the target's lots share the same
-   multiset of `(option_type, sign-of-quantity)`. Captures the
-   documented "legged out and back in" case (`tests/fixtures/non_roll_*`
-   and `roll_*` modules will codify this).
-
-   This rule needs to be extended (OPT-283) to **lot-level, quantity-
-   aware pairing** so that opens which exceed the closed quantity of
-   the same shape are correctly classified as new business rather than
-   roll continuations.
-
-If none of (4)/(5) holds, the groups are independent — no link.
+---
 
 ## 2. What a roll is NOT
 
 The following are **not** rolls, even when same-day, same-account, and
 same-underlying are all true:
 
-- **Cross-direction shifts.** Iron Condor (neutral) → Bull Call Spread
-  (bullish) is a new trade, not a roll. The directional thesis must
-  match. Encoded structurally via the leg-shape signature: a bullish
-  spread has a different multiset than a neutral one.
+- **Cross-direction shifts.** A closed long Put cannot pair with a
+  newly-opened short Put — the shape rule (§1.1.4) keeps the directional
+  thesis intact. Iron Condor (neutral) → Bull Call Spread (bullish) is
+  a new trade, not a roll: the multiset of lot shapes is different,
+  so most lots have no compatible counterparts and stay unpaired.
 
 - **Risk-profile shifts.** Iron Condor → Short Strangle (drops the
   protective wings — defined-risk to undefined-risk) is a new trade.
-  Same direction, but a fundamentally different risk posture.
-  Symmetrically: Short Put → Bull Put Spread (adds protection through a
-  *full close + reopen*) is also a new trade.
+  Same direction overall, but the wing-leg lots have no closes to
+  pair with (or vice versa), so those lots stand alone.
+  Symmetrically: Short Put → Bull Put Spread (adds protection through
+  a *full close + reopen*) is also a new trade — the added long-put
+  leg has no closing counterpart and starts a fresh chain.
 
-- **Closes via expiration, assignment, or exercise.** A roll requires a
-  **manual** closing event (BTC/STC). When the contract finishes itself
-  — expires worthless, gets assigned, or is exercised — and the trader
-  later opens a new position the same day, the new position is a fresh
-  trade, not a roll. *Expiration and roll are mutually exclusive.*
+- **Closes via expiration, assignment, or exercise.** A roll requires
+  a **manual** closing event (BTC/STC). When the contract finishes
+  itself — expires worthless, gets assigned, or is exercised — and
+  the trader later opens a new lot the same day, the new lot has no
+  manual closing to pair against and starts a fresh chain.
+  *Expiration and roll are mutually exclusive.* Encoded directly: the
+  pairing pool only contains closings of `closing_type == 'MANUAL'`.
 
 - **Equity-only positions.** Shares can be sold and re-bought; that's
   not modeled as a "roll" in OptionLedger. Out of scope.
 
+- **Quantity overflow on the open side.** When closes-of-shape-X have
+  fewer lots than opens-of-shape-X on the same day, the greedy match
+  consumes the closes; the leftover opens are new business (the
+  IBIT-class "roll + add" case). Symmetrically, when there are more
+  closes than opens, the leftover closes are simple closes that
+  weren't rolled into anything.
+
 ## 3. Adjustments (a separate concept)
 
 An **adjustment** modifies a still-open position without fully closing
-it. Adjustments are not rolls — they don't produce a new group, and they
-don't increment any roll counter. The position group stays the same; its
-shape evolves.
+it. Adjustments are not rolls — at the *group* level, no new group
+is produced. Individual leg lots may still have lot-level lineage
+(see §4), but the position group itself stays alive and its shape
+evolves.
 
 Examples:
 
-- **Adding protection.** You hold a Short Put and later open a long put
-  at a lower strike (no closing event). The group's `strategy_label`
-  evolves from `Short Put` to `Bull Put Spread`. No roll.
+- **Adding protection.** You hold a Short Put and later open a long
+  put at a lower strike (no closing event on the existing leg). The
+  group's `strategy_label` evolves from `Short Put` to `Bull Put
+  Spread`. The new long-put lot has no parent (nothing closed); the
+  short-put lot is unchanged. No group-level roll.
 
-- **Partial-leg roll.** You hold an Iron Condor and roll *only* the put
-  wing — close the put spread, open a new put spread at different
-  strikes — leaving the call spread untouched. The group still has open
-  lots (the calls), so the new puts merge into the existing group as
-  the next chapter of that position. No roll.
+- **Partial-leg roll.** You hold an Iron Condor and roll *only* the
+  put wing — close the put spread, open a new put spread at different
+  strikes — leaving the call spread untouched. The new put lots get
+  `parent_lot_id` set (lot-level continuation), but because the call
+  legs are still open, the group itself is not fully closed. The new
+  put lots merge into the existing group as the next chapter of that
+  position. No group-level roll, even though there's lot-level
+  lineage.
 
-- **Sizing up by adding contracts.** You hold a 5x position and open 5
-  more contracts at the same strikes. No closing event → adjustment.
+- **Sizing up by adding contracts.** You hold a 5x position and open
+  5 more contracts at the same strikes. No closing event → the new
+  lots have no parent → adjustment.
 
-The discriminator is **structural, not interpretive**: source still has
-open lots → adjustment; source fully closed → potential roll candidate.
-The routing rules in `_route_lot_to_group` encode this directly via the
-"any existing lot shares state" check on Rule 0.
+The discriminator for *group-level* roll is in
+`derive_rolled_from_group_id`: a target group has `rolled_from = source`
+iff every lot in the target has a `parent_lot_id` pointing into the
+same source group AND that source group is fully CLOSED. Otherwise
+NULL — partial coverage means an adjustment, not a roll.
 
 ## 4. The unified group model
 
-A `position_group` represents **one logical position at one expiration**.
-Two simultaneous similar positions on the same expiration are
-**two groups**. The system never tries to fuse parallel positions of the
-same shape on the same expiration into one group.
+A `position_group` represents **one logical position at one
+expiration**. Two simultaneous similar positions on the same
+expiration are **two groups**. The system never tries to fuse
+parallel positions of the same shape on the same expiration into one
+group.
 
-This is the same rule for both same-expiration rolls and different-
-expiration rolls:
+A group is a *view* of co-occurring lots that share state (account,
+underlying, expiration). Chain identity lives at the lot level; the
+group's `rolled_from_group_id` is derived from the lot-level lineage
+under §3's all-lots-paired-into-one-closed-source rule.
 
-- **Source fully closes** at time T1.
-- **New position opens** at time T2 (same calendar day, T2 > T1).
-- New position becomes a new group; `rolled_from_group_id` points at the
-  source group.
+Same rule for both same-expiration rolls and different-expiration
+rolls:
+
+- **Source fully closes** at time T1 (every lot has a manual
+  closing).
+- **New position opens** at time T2 (same calendar day, T2 > T1) with
+  every lot pairing into the source.
+- New position becomes a new group; `rolled_from_group_id` points at
+  the source group.
 
 The roll-counter badge in the UI counts the length of the
-`rolled_from` chain.
+`rolled_from` chain — i.e., the number of synchronized full
+close-and-reopen events.
 
 (Historical note: a previous design merged same-exp full-close-and-
 reopen sequences into a single group with a counter. This was retired
@@ -177,106 +204,104 @@ time.)
 
 10am: BTC Jul IC, STO Aug IC. 2pm: BTC Aug IC, STO Sep IC.
 
-Three groups, two links: `Jul → Aug → Sep`. Each close+reopen creates a
-separate generation. The `Aug` group was open for ~4 hours — that's
-fine; its lifetime is the only thing that matters for the model.
+Three groups, two links: `Jul → Aug → Sep`. At the lot level, each
+of the four IC legs has a chain `Jul-leg → Aug-leg → Sep-leg`, so
+the group-level lineage is a clean derivation. The `Aug` group was
+open for ~4 hours — that's fine; its lifetime is the only thing that
+matters for the model.
 
-### 5.2 Branching — one source, many children
+### 5.2 Branching — one source, multiple children
 
-You close a 5x IC at one expiration. Same day you open 3x IC at a new
-expiration AND 2x IC at a different new expiration. Both children
-match the source's signature (same shape, neutral direction).
+Branching at the **lot** level is impossible by construction: each
+lot has at most one parent (spec §0.2). Branching at the **group**
+level is possible when a single source group's lots split into
+multiple new groups.
 
-Both link as rolls of the source. The `rolled_from_group_id` graph is
-a *tree*, not a linked list.
+Worked example: you close a 5x IC at one expiration. Same day you
+open 3x IC at a new expiration AND 2x IC at a different new
+expiration. At the lot level, the 5 closes pair with the 5 opens
+(3 to one new group, 2 to the other) under closest-strike greedy
+match within each (option_type, direction) bucket. At the group
+level, both new groups have every-lot-paired-into-source, so both
+get `rolled_from_group_id = source`. The group graph branches.
 
-### 5.3 Tie-breaking among multiple sources
+The roll-chain summary handles this correctly: one summary row per
+leaf group, with `cumulative_realized_pnl` computed by walking
+**lot-level** lineage from the leaf-group's lots back to roots
+(`src/pipeline/roll_chain_summary.py`). Each lot is in exactly one
+chain's lineage, so summed cumulative P&L is additive across all
+chains — `Σ chain.cumulative_realized_pnl = Σ lot.realized_pnl`,
+no double-counting of the trunk.
 
-When a target has more than one qualifying source candidate (e.g.,
-during a cascade), the algorithm prefers:
+If the trader's intent was different — e.g., they *meant* one branch
+to be the roll continuation and the other to be a fresh trade —
+manual link/split (§6) is the override.
 
-1. **Chain-overlap** candidates over signature-only candidates
-2. **Most recently closed** source (by `closing_date` timestamp) before
-   falling back to lot count
-3. **Closest lot count** as a final tie-break
+### 5.3 No active-at-close filter is needed
 
-## 6. Active-at-close signature filter
+Under the lot-level model, a "mid-life rolled-out" leg of a source
+group naturally falls out of the pairing pool: its closing event is
+on a day other than the target's entry day, so they never enter the
+same bucket. Earlier versions of this spec called for an explicit
+"active-at-close filter" at the group level; the lot model handles
+it automatically.
 
-When computing the signature for a source candidate (rule 5 above), only
-lots that **closed on the source's `closing_day`** are included.
-Mid-life rolled-out legs (closed earlier in the source's lifetime) do
-not contribute to the signature.
-
-Worked example (real, from USO history):
-
-The source group's lifetime included a put-wing roll mid-way:
-
-```
-Jun 2:  long Put 58 (entry)            ┓
-Jun 2:  short Put 63 (entry)           ┃ original 4-leg IC
-Jun 2:  short Call 75 (entry)          ┃
-Jun 2:  long Call 80 (entry)           ┛
-Jun 17: STC long Put 58, BTC short Put 63   ← put wing rolled out
-Jun 17: BTO long Put 70, STO short Put 75   ← new put wing opens
-                                            (merged into same group as adjustment)
-Jun 27: BTC short Call 75, STC long Call 80 ┓
-Jun 27: BTC short Put 75, STC long Put 70   ┛ all 4 active legs close
-```
-
-At Jun 27 close, the *active* legs were Put 70 long, Put 75 short, Call
-75 short, Call 80 long — multiset `{(P,L):1, (P,S):1, (C,S):1, (C,L):1}`,
-which matches a fresh 4-leg IC opened the same day. The rolled-out Put
-58/63 spread is excluded from the signature.
-
-Without this filter the signature would inflate to `{(P,L):2, (P,S):2,
-(C,S):1, (C,L):1}` and the link would not form.
-
-## 7. User overrides (manual link / split)
+## 6. User overrides (manual link / split)
 
 Auto-detection aims for ~95% correctness. The remaining edges are
-covered by two manual escape hatches:
+covered by two manual escape hatches at the lot-pair level:
 
-- **Manual link.** The user explicitly designates two groups as a roll
-  chain. System writes the `rolled_from_group_id` and marks it as
-  user-overridden so subsequent reprocesses don't undo it.
+- **Manual link.** The user explicitly designates two lots as a
+  roll pair, even if the auto-pairing left them unmatched (e.g.,
+  cross-day, partition into a non-default branch, etc.). System
+  writes `parent_lot_id` and marks it as user-overridden so subsequent
+  reprocesses don't undo it.
 
-- **Manual split.** The user breaks an auto-detected roll link, marking
-  the two groups as independent.
+- **Manual split.** The user breaks an auto-detected lot pair, marking
+  the two lots as independent.
 
-Both interactions are first-class data: stored in a separate column or
-table alongside `position_groups`, read by `_detect_roll_links` but
-never overwritten by it. (Same model as `strategy_label_user_override`.)
+Both interactions are first-class data: stored in a separate column
+or table alongside `position_lots`, read by `detect_lot_lineage` but
+never overwritten by it. (Same model as
+`strategy_label_user_override`.)
 
 The UI offers two granularities:
-- **System suggestion.** When the auto-detector is uncertain (e.g., a
-  signature match with a low-confidence tie-break), it surfaces the
-  candidates as a "looks like a roll — confirm?" prompt.
-- **Direct user action.** The user can link or split any two groups
+- **System suggestion.** When the auto-pairing is uncertain (e.g., a
+  partition with strike-distance ties), it surfaces the candidates
+  as a "looks like a roll — confirm?" prompt.
+- **Direct user action.** The user can link or split any two lots
   themselves, regardless of what the system thinks.
 
-## 8. Default policy
+(Implementation status: not yet built. Tracked separately.)
 
-When ambiguous, **default to "roll."** A roll classification means the
-system tracks cumulative P&L across the chain automatically. Marking
-something as a new trade puts that work back on the user. The override
-direction is "I disagree with the auto-link" (rare); the default
-direction is "auto-link is right" (common).
+## 7. Default policy
 
-## 9. Out of scope
+When ambiguous, **default to "roll."** A roll classification means
+the system tracks cumulative P&L across the chain automatically.
+Marking something as a new trade puts that work back on the user.
+The override direction is "I disagree with the auto-pair" (rare); the
+default direction is "auto-pair is right" (common).
+
+## 8. Out of scope
 
 These cases are explicitly not handled by the roll spec:
 
 - Equity-only "rolls" (selling shares and re-buying)
 - Cross-account roll detection
-- Corporate actions (stock split, ticker change, mergers) — handled at
-  the symbol-change layer in `order_assembler.py`, not the roll layer
+- Corporate actions (stock split, ticker change, mergers) — handled
+  at the symbol-change layer in `order_assembler.py`, not the roll
+  layer
 
-## 10. Test coverage
+## 9. Test coverage
 
-Each rule above has at least one fixture under `tests/fixtures/` and a
-parameterized assertion in `tests/integration/test_roll_detection_spec.py`.
-Adding a new spec branch means adding a fixture and a row in the test
-matrix — no new test class needed.
+Each rule above has at least one test in `tests/unit/test_lot_lineage.py`
+(detection rules) and `tests/unit/test_roll_chain_summary.py`
+(group-level derivation and additivity). Worked examples like the
+IBIT roll+add (`test_roll_plus_add_pairs_only_closest_strike`) and
+the 5→3+2 partition (`test_partition_5_into_3_plus_2_cumulative_is_additive`)
+are encoded directly as test fixtures. Adding a new spec branch means
+adding a fixture and a test row — no new test class needed.
 
-(See OPT-281 for the test-matrix scaffolding and OPT-278 for the broader
-test-depth program this spec sits inside.)
+(See OPT-281 for the foundational principles §0.1/§0.2, OPT-284 for
+the lot-level migration this spec describes, and OPT-278 for the
+broader test-depth program this spec sits inside.)
