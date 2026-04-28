@@ -8,6 +8,7 @@ must emit one summary per leaf, not one per root.
 import uuid
 
 from src.database.models import (
+    LotClosing,
     PositionGroup,
     PositionGroupLot,
     PositionLot,
@@ -169,3 +170,159 @@ class TestBranchingTree:
             assert row.current_group_id == leaf
             assert row.chain_length == 3
             assert row.roll_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Additive cumulative P&L across sibling chains (OPT-284 Phase 3)
+# ---------------------------------------------------------------------------
+
+def _seed_closed_lot(session, *, group_id, strike, realized_pnl,
+                     account="ACCT", underlying="AAPL"):
+    """Closed source lot with a single MANUAL closing row carrying the
+    given realized_pnl. Used for the additivity test."""
+    txn = str(uuid.uuid4())
+    lot = PositionLot(
+        transaction_id=txn,
+        account_number=account, symbol=f"X{strike}",
+        underlying=underlying, instrument_type="EQUITY_OPTION",
+        option_type="C", strike=float(strike),
+        expiration="2025-03-21", quantity=-1, entry_price=1.0,
+        remaining_quantity=0, original_quantity=1,
+        chain_id=f"C-{txn[:8]}", status="CLOSED",
+        entry_date="2025-02-21T10:00:00+00:00",
+    )
+    session.add(lot)
+    session.add(PositionGroupLot(group_id=group_id, transaction_id=txn))
+    session.flush()
+    session.add(LotClosing(
+        lot_id=lot.id, closing_date="2025-03-14",
+        closing_price=0.5, quantity_closed=1,
+        closing_type="MANUAL", closing_order_id=f"CO-{lot.id}",
+        realized_pnl=realized_pnl,
+    ))
+    session.flush()
+    return lot
+
+
+def _seed_open_child_lot(session, *, group_id, strike, parent_lot_id,
+                         account="ACCT", underlying="AAPL"):
+    """Open child lot whose parent_lot_id points at a previously-closed
+    source lot. Carries an entry_price chosen so lot_premium is small;
+    we only assert cumulative_realized_pnl in the additivity test."""
+    txn = str(uuid.uuid4())
+    lot = PositionLot(
+        transaction_id=txn,
+        account_number=account, symbol=f"Y{strike}",
+        underlying=underlying, instrument_type="EQUITY_OPTION",
+        option_type="C", strike=float(strike),
+        expiration="2025-04-18", quantity=-1, entry_price=0.0,
+        remaining_quantity=-1, original_quantity=1,
+        chain_id=f"C-{txn[:8]}", status="OPEN",
+        entry_date="2025-03-14T10:00:00+00:00",
+        parent_lot_id=parent_lot_id,
+    )
+    session.add(lot)
+    session.add(PositionGroupLot(group_id=group_id, transaction_id=txn))
+    session.flush()
+    return lot
+
+
+class TestAdditivityAcrossSiblingChains:
+    def test_partition_5_into_3_plus_2_cumulative_is_additive(self, db):
+        """OPT-284 integrity fix: when a single source group A branches into two children B (3 lots) and C (2 lots), each lot in A pairs with exactly one child's lot. B's chain cumulative_realized_pnl must include only the 3 source lots that paired with B, and C's must include only the 2 that paired with C. Sum of chain totals = total of A's realized P&L (no double-counting of the shared trunk).
+
+Pre-Phase-3 (group-level summing): both B and C would credit ALL of A's realized P&L to their own chain → double-counted.
+        """
+        with db.get_session() as session:
+            a = _seed_group(
+                session, opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-14T10:00:00+00:00", status="CLOSED",
+            )
+            b = _seed_group(
+                session, opening_date="2025-03-14T10:00:00+00:00",
+                status="OPEN", rolled_from=a,
+            )
+            c = _seed_group(
+                session, opening_date="2025-03-14T10:00:00+00:00",
+                status="OPEN", rolled_from=a,
+            )
+            # A: 5 lots, each closed with realized_pnl=100.0 → total 500.
+            a_lots = [
+                _seed_closed_lot(
+                    session, group_id=a, strike=100 + i,
+                    realized_pnl=100.0,
+                )
+                for i in range(5)
+            ]
+            # B inherits the first 3 of A's lots.
+            for i in range(3):
+                _seed_open_child_lot(
+                    session, group_id=b, strike=110 + i,
+                    parent_lot_id=a_lots[i].id,
+                )
+            # C inherits the last 2.
+            for i in range(2):
+                _seed_open_child_lot(
+                    session, group_id=c, strike=120 + i,
+                    parent_lot_id=a_lots[3 + i].id,
+                )
+
+        populate_roll_chain_summaries(db)
+
+        with db.get_session() as session:
+            rows = {
+                row.current_group_id: row
+                for row in session.query(RollChainSummary).all()
+            }
+            assert set(rows) == {b, c}, "expected one summary per leaf"
+            assert rows[b].cumulative_realized_pnl == 300.0, (
+                "B's chain should include only the 3 source lots that "
+                "paired into B, not all 5"
+            )
+            assert rows[c].cumulative_realized_pnl == 200.0, (
+                "C's chain should include only the 2 source lots that "
+                "paired into C, not all 5"
+            )
+            total = rows[b].cumulative_realized_pnl + rows[c].cumulative_realized_pnl
+            assert total == 500.0, (
+                "Summed chain totals must equal A's full realized P&L — "
+                "this is the additivity invariant. Pre-fix: 500 + 500 = 1000."
+            )
+
+    def test_unpaired_leaf_lots_excluded_from_lineage(self, db):
+        """If a leaf-group lot has parent_lot_id=NULL (e.g., the IBIT 42C add-on), only the lots that DO have a lineage walk contribute to cumulative_realized_pnl. The unpaired lot itself contributes its open-side premium via net_premium / cumulative_premium, but no upstream realized P&L."""
+        with db.get_session() as session:
+            a = _seed_group(
+                session, opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-14T10:00:00+00:00", status="CLOSED",
+            )
+            b = _seed_group(
+                session, opening_date="2025-03-14T10:00:00+00:00",
+                status="OPEN", rolled_from=a,
+            )
+            paired_source = _seed_closed_lot(
+                session, group_id=a, strike=100, realized_pnl=100.0,
+            )
+            unpaired_source = _seed_closed_lot(
+                session, group_id=a, strike=101, realized_pnl=100.0,
+            )
+            # B has 2 lots: one paired into A's `paired_source`, one with
+            # NULL parent (the add-on case).
+            _seed_open_child_lot(
+                session, group_id=b, strike=110,
+                parent_lot_id=paired_source.id,
+            )
+            _seed_open_child_lot(
+                session, group_id=b, strike=111, parent_lot_id=None,
+            )
+
+        populate_roll_chain_summaries(db)
+
+        with db.get_session() as session:
+            row = session.query(RollChainSummary).filter_by(
+                current_group_id=b,
+            ).one()
+            # Only `paired_source`'s realized P&L (100) is in B's lineage.
+            # `unpaired_source` belongs to no chain (it stayed in A's
+            # standalone history); B doesn't inherit it.
+            assert row.cumulative_realized_pnl == 100.0

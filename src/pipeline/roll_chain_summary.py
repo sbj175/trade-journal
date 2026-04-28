@@ -60,13 +60,11 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
             if g.rolled_from_group_id:
                 children_map[g.rolled_from_group_id].append(g.group_id)
 
-        # Per spec §5.2 the rolled_from graph is a tree, not a linked list:
-        # a single source can have multiple children (parallel rolls). We
-        # produce one summary row per leaf (group with no children in the
-        # tree), walking back via rolled_from_group_id to construct the
-        # unique root→leaf path. Shared upstream history appears in
-        # multiple chains — that's correct, since each leaf is its own
-        # continuation of the same source.
+        # Per spec §5.2 / OPT-282 the group-level rolled_from graph can
+        # branch (one source group may have multiple children when its
+        # lots paired with lots in different new groups). We produce one
+        # summary row per leaf (group with no children), walking back via
+        # rolled_from_group_id to construct the unique root→leaf path.
         chains: List[List[str]] = []
         for gid, g in group_map.items():
             if gid in children_map:
@@ -88,12 +86,13 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
         if not chains:
             return 0
 
-        # Collect all group IDs across all chains for batch loading
+        # Batch-load lots for the leaf groups (we'll walk lot lineage
+        # backward from there) and for any group in a chain (for the
+        # group-level metadata only).
         all_chain_group_ids = set()
         for chain in chains:
             all_chain_group_ids.update(chain)
 
-        # Batch-load lots for all chain groups
         group_lot_rows = session.query(
             PositionGroupLot.group_id,
             PositionGroupLot.transaction_id,
@@ -107,21 +106,53 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
             group_txn_ids[gid].append(txn_id)
             all_txn_ids.add(txn_id)
 
-        # Load lots by transaction_id
-        lot_map: Dict[str, PositionLotModel] = {}
+        # Load lots both by transaction_id (for grouping) and by id (for
+        # walking parent_lot_id lineage). Include all lots in any chain
+        # group AND all their ancestors (which may not be in a chain
+        # group themselves — though typically they are).
+        lots_by_txn: Dict[str, PositionLotModel] = {}
+        lots_by_id: Dict[int, PositionLotModel] = {}
         if all_txn_ids:
-            lots = session.query(PositionLotModel).filter(
+            seed_lots = session.query(PositionLotModel).filter(
                 PositionLotModel.transaction_id.in_(list(all_txn_ids)),
             ).all()
-            for lot in lots:
-                lot_map[lot.transaction_id] = lot
+            for lot in seed_lots:
+                lots_by_txn[lot.transaction_id] = lot
+                lots_by_id[lot.id] = lot
 
-        # Load all closings for those lots
-        lot_ids = [lot.id for lot in lot_map.values()]
+        # Pull in any ancestor lots that weren't already loaded.
+        # (A leaf group's lots' parent chain may include lots from groups
+        # not in any chain, e.g., an orphan source — defensive load.)
+        missing_parent_ids: Set[int] = set()
+        for lot in list(lots_by_id.values()):
+            pid = lot.parent_lot_id
+            while pid is not None and pid not in lots_by_id and pid not in missing_parent_ids:
+                missing_parent_ids.add(pid)
+                pid = None  # placeholder; we'll re-resolve after the batch load
+        if missing_parent_ids:
+            extra = session.query(PositionLotModel).filter(
+                PositionLotModel.id.in_(list(missing_parent_ids)),
+            ).all()
+            for lot in extra:
+                lots_by_id[lot.id] = lot
+            # One more sweep in case ancestors have ancestors not yet loaded.
+            for lot in extra:
+                cur_pid = lot.parent_lot_id
+                while cur_pid is not None and cur_pid not in lots_by_id:
+                    parent = session.query(PositionLotModel).filter_by(
+                        id=cur_pid,
+                    ).first()
+                    if not parent:
+                        break
+                    lots_by_id[parent.id] = parent
+                    cur_pid = parent.parent_lot_id
+
+        # Closings for every lot we know about — covers leaf-group lots
+        # and all their ancestors.
         closings_by_lot: Dict[int, List[LotClosingModel]] = defaultdict(list)
-        if lot_ids:
+        if lots_by_id:
             closings = session.query(LotClosingModel).filter(
-                LotClosingModel.lot_id.in_(lot_ids),
+                LotClosingModel.lot_id.in_(list(lots_by_id.keys())),
             ).all()
             for c in closings:
                 closings_by_lot[c.lot_id].append(c)
@@ -132,37 +163,47 @@ def populate_roll_chain_summaries(db_manager: "DatabaseManager") -> int:
             root = group_map[chain[0]]
             current = group_map[chain[-1]]
 
-            # Compute net premium and cumulative P&L across all groups in chain
-            # Net Premium = realized P&L from closed groups + initial premium of current (open) group
+            # Walk lot-level lineage from each leaf-group lot to compute
+            # cumulative metrics. This is the OPT-284 fix: when group A
+            # branches into B and C (A's 5 lots split 3+2), B's chain
+            # totals include only the 3 source lots that paired with B,
+            # and C's totals include only the 2 that paired with C — no
+            # double-counting of the trunk across sibling chains.
+            leaf_txns = group_txn_ids.get(chain[-1], [])
+            leaf_lots = [lots_by_txn[t] for t in leaf_txns if t in lots_by_txn]
+            leaf_lot_ids = {l.id for l in leaf_lots}
+
+            lineage_lot_ids: Set[int] = set()
+            for lot in leaf_lots:
+                cur = lot
+                seen_ids: Set[int] = set()
+                while cur and cur.id not in seen_ids:
+                    seen_ids.add(cur.id)
+                    lineage_lot_ids.add(cur.id)
+                    cur = lots_by_id.get(cur.parent_lot_id) if cur.parent_lot_id else None
+
+            # Cumulative realized P&L = sum of realized_pnl over every
+            # closing on every lot in the lineage. Each lot is in exactly
+            # one chain's lineage (lot has at most one parent), so sums
+            # across summaries are additive.
             cumulative_realized_pnl = 0.0
-            per_group_realized: dict = {}
-            per_group_premium: dict = {}
+            for lid in lineage_lot_ids:
+                for c in closings_by_lot.get(lid, []):
+                    cumulative_realized_pnl += c.realized_pnl
 
-            for gid in chain:
-                group_realized = 0.0
-                group_premium = 0.0
-                for txn_id in group_txn_ids.get(gid, []):
-                    lot = lot_map.get(txn_id)
-                    if not lot:
-                        continue
-                    group_premium += lot_premium(lot)
-                    for c in closings_by_lot.get(lot.id, []):
-                        group_realized += c.realized_pnl
-                per_group_realized[gid] = group_realized
-                per_group_premium[gid] = group_premium
-                cumulative_realized_pnl += group_realized
+            # Net premium = realized P&L of all CLOSED ancestor lots in
+            # the lineage + initial premium of the open leaf-group lots.
+            net_premium = 0.0
+            ancestor_lot_ids = lineage_lot_ids - leaf_lot_ids
+            for lid in ancestor_lot_ids:
+                for c in closings_by_lot.get(lid, []):
+                    net_premium += c.realized_pnl
+            for lot in leaf_lots:
+                net_premium += lot_premium(lot)
 
-            # Net premium = sum of realized P&L from all closed groups + premium of current group
-            current_gid = chain[-1]
-            net_premium = sum(
-                per_group_realized[gid] for gid in chain[:-1]
-            ) + per_group_premium[current_gid]
-
-            # Find last_rolled date (opening_date of the most recent non-root group)
             last_rolled = None
             if len(chain) >= 2:
-                last_group = group_map[chain[-1]]
-                last_rolled = last_group.opening_date
+                last_rolled = group_map[chain[-1]].opening_date
 
             summary = RollChainSummary(
                 user_id=user_id,
