@@ -20,6 +20,48 @@ from src.services.roll_timeline import compute_roll_timeline
 router = APIRouter()
 
 
+def _txn_components(txn_id):
+    """Split a (possibly comma-separated) transaction_id into its
+    component ids. The lot manager combines multiple same-price fills
+    into one lot whose `transaction_id` is the comma-joined list of
+    underlying fill ids — fee lookups need to decompose this back into
+    individual ids to find each fill's row in `raw_transactions`.
+    """
+    return [t.strip() for t in (txn_id or '').split(',') if t.strip()]
+
+
+def compute_lot_fee_breakdown(
+    *, lot, lot_closings, fees_by_txn, closing_txn_total_qty,
+):
+    """Per-lot fee breakdown for the Ledger response.
+
+    Returns ``(opening_fees, closing_fees_per_lot_closing)``.
+
+    Opening fee sums over component transactions when the lot represents
+    combined same-price fills. Each closing record's fee is the closing
+    transaction's total fee apportioned by this closing's quantity_closed
+    (one BTC transaction can close multiple lots; the fee belongs to the
+    transaction, not to any single lot).
+    """
+    opening_fees = sum(
+        fees_by_txn.get(tid, 0) for tid in _txn_components(lot.transaction_id)
+    )
+    closing_fees = []
+    for c in lot_closings:
+        if not c.closing_transaction_id:
+            closing_fees.append(0)
+            continue
+        txn_fee = fees_by_txn.get(c.closing_transaction_id, 0)
+        txn_total_qty = closing_txn_total_qty.get(c.closing_transaction_id, 0)
+        if txn_total_qty and c.quantity_closed:
+            closing_fees.append(round(
+                txn_fee * abs(c.quantity_closed) / txn_total_qty, 4,
+            ))
+        else:
+            closing_fees.append(0)
+    return opening_fees, closing_fees
+
+
 @router.get("/api/ledger")
 async def get_ledger(account_number: str = '', underlying: str = '', db: DatabaseManager = Depends(get_db), lot_manager: LotManager = Depends(get_lot_manager), user_id: str = Depends(get_current_user_id)):
     """Main Ledger data endpoint — returns position groups with lots and derived orders."""
@@ -116,12 +158,15 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
 
     closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
 
-    # Batch-load fees from RawTransaction for opening + closing transaction IDs
-    all_txn_ids = set()
+    # Batch-load fees from RawTransaction for opening + closing transaction IDs.
+    # A lot's transaction_id can be a comma-separated string when the lot
+    # manager combined multiple same-price fills into one lot — split so
+    # each component shows up in the fee lookup.
+    all_txn_ids: set = set()
     for lots in lots_by_group.values():
         for lot in lots:
-            if lot.transaction_id:
-                all_txn_ids.add(lot.transaction_id)
+            for tid in _txn_components(lot.transaction_id):
+                all_txn_ids.add(tid)
     for lot_closings in closings_by_lot.values():
         for c in lot_closings:
             if c.closing_transaction_id:
@@ -141,6 +186,19 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
             for txn_id, commission, reg_fees, clearing in fee_rows:
                 total = (commission or 0) + (reg_fees or 0) + (clearing or 0)
                 fees_by_txn[txn_id] = round(total, 4)
+
+    # Pre-compute the total quantity closed per closing_transaction_id —
+    # one BTC transaction can close multiple lots, and the fee on that
+    # one transaction must be apportioned across the closings by their
+    # quantity_closed (not credited to every lot in full).
+    closing_txn_total_qty: Dict[str, int] = {}
+    for lot_closings in closings_by_lot.values():
+        for c in lot_closings:
+            if c.closing_transaction_id and c.quantity_closed:
+                closing_txn_total_qty[c.closing_transaction_id] = (
+                    closing_txn_total_qty.get(c.closing_transaction_id, 0)
+                    + abs(c.quantity_closed)
+                )
 
     # Build response
     result = []
@@ -169,9 +227,13 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                 open_lot_count += 1
 
             closings_data = []
-            lot_total_fees = fees_by_txn.get(lot.transaction_id, 0)
-            for c in lot_closings:
-                closing_fees = fees_by_txn.get(c.closing_transaction_id, 0) if c.closing_transaction_id else 0
+            opening_fees, per_closing_fees = compute_lot_fee_breakdown(
+                lot=lot, lot_closings=lot_closings,
+                fees_by_txn=fees_by_txn,
+                closing_txn_total_qty=closing_txn_total_qty,
+            )
+            lot_total_fees = opening_fees
+            for c, closing_fees in zip(lot_closings, per_closing_fees):
                 lot_total_fees += closing_fees
                 closings_data.append({
                     'closing_id': c.closing_id,
@@ -205,7 +267,7 @@ async def get_ledger(account_number: str = '', underlying: str = '', db: Databas
                 'realized_pnl': lot_realized,
                 'total_pnl': lot_realized,
                 'fees': round(lot_total_fees, 4),
-                'opening_fees': fees_by_txn.get(lot.transaction_id, 0),
+                'opening_fees': opening_fees,
                 'closings': closings_data,
             })
             total_fees += lot_total_fees
