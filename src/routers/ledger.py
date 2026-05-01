@@ -313,6 +313,7 @@ async def get_group_roll_chain(
     from collections import defaultdict
     from src.pipeline.lot_lineage import build_chain_attribution
     leaf_id = chain_ids[-1] if chain_ids else None
+    use_attribution = False
     attributed_lot_ids: set = set()
     if leaf_id:
         with db.get_session() as session:
@@ -333,11 +334,21 @@ async def get_group_roll_chain(
             # attributes (rolled_from_group_id, parent_lot_id, etc.) and
             # would raise DetachedInstanceError if invoked after the
             # session closes.
-            _, lot_to_leaf = build_chain_attribution(
+            chains_by_leaf, lot_to_leaf = build_chain_attribution(
                 group_map=grp_map, children_map=children_map_full,
                 lots_by_id=lots_by_id, txn_to_group=txn_to_group,
             )
-        attributed_lot_ids = {lid for lid, lf in lot_to_leaf.items() if lf == leaf_id}
+        # Attribution only applies when the requested group is the leaf
+        # of an actual chain. When the user opens the modal from a
+        # mid-chain CLOSED group, leaf_id is that midpoint, not a real
+        # chain leaf — there are no lots attributed to that key, and
+        # filtering would zero out every per-row total. Fall back to the
+        # legacy per-group sum in that case.
+        if leaf_id in chains_by_leaf:
+            use_attribution = True
+            attributed_lot_ids = {
+                lid for lid, lf in lot_to_leaf.items() if lf == leaf_id
+            }
 
     # Build ordered response
     chain_result = []
@@ -347,11 +358,16 @@ async def get_group_roll_chain(
         if not g:
             continue
         lots = lots_by_group.get(gid, [])
-        # Only attributed lots count toward THIS chain's per-row totals.
-        # Non-branching chains: every lot is attributed → identical to
-        # pre-Phase-3c behavior. Branching: source group's lots are
-        # split among children's chains by descendant lineage.
-        chain_lots = [l for l in lots if l.id in attributed_lot_ids]
+        # When the modal was opened from a chain leaf, filter to lots
+        # attributed to THIS chain (so branching scenarios don't
+        # over-credit the trunk). When opened from a midpoint or a
+        # group that isn't a chain leaf, fall back to the per-group
+        # sum — there's no single chain to attribute to.
+        chain_lots = (
+            [l for l in lots if l.id in attributed_lot_ids]
+            if use_attribution
+            else lots
+        )
         realized = sum(
             sum(c.realized_pnl for c in closings_by_lot.get(lot.id, []))
             for lot in chain_lots
