@@ -21,7 +21,12 @@ from src.database.models import (
     PositionGroupLot,
     PositionLot,
 )
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Optional
+
 from src.pipeline.lot_lineage import (
+    build_chain_attribution,
     derive_rolled_from_group_id,
     detect_lot_lineage,
 )
@@ -478,3 +483,201 @@ class TestDeriveRolledFromGroupId:
         with db.get_session() as session:
             tgt_after = session.query(PositionGroup).filter_by(group_id=tgt).one()
             assert tgt_after.rolled_from_group_id is None
+
+
+# ---------------------------------------------------------------------------
+# build_chain_attribution — pure unit tests with stub objects
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _GroupStub:
+    """Minimal stub matching the fields build_chain_attribution reads."""
+    group_id: str
+    rolled_from_group_id: Optional[str]
+    opening_date: str
+
+
+@dataclass
+class _LotStub:
+    """Minimal stub matching the fields build_chain_attribution reads."""
+    id: int
+    transaction_id: str
+    parent_lot_id: Optional[int]
+
+
+def _build_inputs(groups, lots, group_lot_links):
+    """Construct the four argument dicts build_chain_attribution wants
+    from a flat list of stub data."""
+    group_map = {g.group_id: g for g in groups}
+    children_map = defaultdict(list)
+    for g in groups:
+        if g.rolled_from_group_id:
+            children_map[g.rolled_from_group_id].append(g.group_id)
+    lots_by_id = {l.id: l for l in lots}
+    txn_to_group = {txn: gid for gid, txn in group_lot_links}
+    return dict(
+        group_map=group_map,
+        children_map=children_map,
+        lots_by_id=lots_by_id,
+        txn_to_group=txn_to_group,
+    )
+
+
+class TestBuildChainAttribution:
+    def test_partition_5_into_3_plus_2_attributes_by_descendant(self):
+        """At a 5x→3+2 partition (the structural shape OPT-284 was built to fix), each source contract attributes to whichever child its descendant ended up in. No source lot is shared between sibling chains; sibling chain totals never overlap."""
+        groups = [
+            _GroupStub("A", None, "2025-01-01"),
+            _GroupStub("B", "A", "2025-02-01"),
+            _GroupStub("C", "A", "2025-02-01"),
+        ]
+        lots = [
+            _LotStub(1, "tA1", None), _LotStub(2, "tA2", None),
+            _LotStub(3, "tA3", None), _LotStub(4, "tA4", None),
+            _LotStub(5, "tA5", None),
+            _LotStub(11, "tB1", 1), _LotStub(12, "tB2", 2), _LotStub(13, "tB3", 3),
+            _LotStub(21, "tC1", 4), _LotStub(22, "tC2", 5),
+        ]
+        links = [
+            ("A", "tA1"), ("A", "tA2"), ("A", "tA3"), ("A", "tA4"), ("A", "tA5"),
+            ("B", "tB1"), ("B", "tB2"), ("B", "tB3"),
+            ("C", "tC1"), ("C", "tC2"),
+        ]
+
+        chains_by_leaf, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        assert set(chains_by_leaf.keys()) == {"B", "C"}, "expected one chain per leaf"
+        assert lot_to_leaf[1] == "B"
+        assert lot_to_leaf[2] == "B"
+        assert lot_to_leaf[3] == "B"
+        assert lot_to_leaf[4] == "C"
+        assert lot_to_leaf[5] == "C"
+        assert lot_to_leaf[11] == "B"
+        assert lot_to_leaf[12] == "B"
+        assert lot_to_leaf[13] == "B"
+        assert lot_to_leaf[21] == "C"
+        assert lot_to_leaf[22] == "C"
+
+    def test_multi_level_branch(self):
+        """A → B + C, then C → D + E. Each lot's attribution follows its unique forward path. Lots in A whose descendants ended up in D's chain attribute to D, etc."""
+        groups = [
+            _GroupStub("A", None, "2025-01-01"),
+            _GroupStub("B", "A", "2025-02-01"),
+            _GroupStub("C", "A", "2025-02-01"),
+            _GroupStub("D", "C", "2025-03-01"),
+            _GroupStub("E", "C", "2025-03-01"),
+        ]
+        lots = [
+            _LotStub(1, "tA1", None),
+            _LotStub(2, "tA2", None),
+            _LotStub(3, "tA3", None),
+            _LotStub(11, "tB1", 1),
+            _LotStub(12, "tC1", 2),
+            _LotStub(13, "tC2", 3),
+            _LotStub(21, "tD1", 12),
+            _LotStub(22, "tE1", 13),
+        ]
+        links = [
+            ("A", "tA1"), ("A", "tA2"), ("A", "tA3"),
+            ("B", "tB1"),
+            ("C", "tC1"), ("C", "tC2"),
+            ("D", "tD1"),
+            ("E", "tE1"),
+        ]
+
+        chains_by_leaf, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        assert set(chains_by_leaf.keys()) == {"B", "D", "E"}
+        assert lot_to_leaf[1] == "B"
+        assert lot_to_leaf[2] == "D"
+        assert lot_to_leaf[3] == "E"
+        assert lot_to_leaf[11] == "B"
+        assert lot_to_leaf[12] == "D"
+        assert lot_to_leaf[13] == "E"
+        assert lot_to_leaf[21] == "D"
+        assert lot_to_leaf[22] == "E"
+
+    def test_orphan_lot_tiebreak_by_most_recent_leaf(self):
+        """A lot in a branching source group with no descendants attributes to the chain whose leaf opened most recently — deterministic tiebreak so re-runs are stable and the orphan can't end up in two chains' totals."""
+        groups = [
+            _GroupStub("A", None, "2025-01-01"),
+            _GroupStub("B", "A", "2025-02-01"),
+            _GroupStub("C", "A", "2025-03-01"),  # most recent leaf — wins tiebreak
+        ]
+        lots = [
+            _LotStub(1, "tA1", None),
+            _LotStub(2, "tA2", None),
+            _LotStub(99, "tA-orphan", None),
+            _LotStub(11, "tB1", 1),
+            _LotStub(12, "tC1", 2),
+        ]
+        links = [
+            ("A", "tA1"), ("A", "tA2"), ("A", "tA-orphan"),
+            ("B", "tB1"),
+            ("C", "tC1"),
+        ]
+
+        _, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        assert lot_to_leaf[1] == "B"
+        assert lot_to_leaf[2] == "C"
+        assert lot_to_leaf[99] == "C", (
+            "orphan lot should attribute to the chain whose leaf "
+            "(C, opened 2025-03-01) opened most recently among the "
+            "chains containing this branching group"
+        )
+
+    def test_standalone_group_lots_not_attributed(self):
+        """A group with no rolled_from in or out is not part of any chain. Its lots have no entry in lot_to_leaf and contribute to no chain summary."""
+        groups = [
+            _GroupStub("X", None, "2025-01-01"),
+        ]
+        lots = [_LotStub(1, "tX1", None)]
+        links = [("X", "tX1")]
+
+        chains_by_leaf, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        assert chains_by_leaf == {}
+        assert lot_to_leaf == {}
+
+    def test_linear_chain_all_lots_attributed_to_unique_leaf(self):
+        """Sanity: a clean A→B→C linear chain attributes every lot to the single leaf C, regardless of position in the chain."""
+        groups = [
+            _GroupStub("A", None, "2025-01-01"),
+            _GroupStub("B", "A", "2025-02-01"),
+            _GroupStub("C", "B", "2025-03-01"),
+        ]
+        lots = [
+            _LotStub(1, "tA1", None),
+            _LotStub(2, "tB1", 1),
+            _LotStub(3, "tC1", 2),
+        ]
+        links = [("A", "tA1"), ("B", "tB1"), ("C", "tC1")]
+
+        chains_by_leaf, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        assert set(chains_by_leaf.keys()) == {"C"}
+        assert chains_by_leaf["C"] == ["A", "B", "C"]
+        assert lot_to_leaf == {1: "C", 2: "C", 3: "C"}
+
+    def test_cycle_in_parent_lot_id_does_not_infinite_loop(self):
+        """Defensive smoke test: a corrupt parent_lot_id cycle must not hang the function. The visited-set guard in the forward walk catches it."""
+        groups = [
+            _GroupStub("A", None, "2025-01-01"),
+            _GroupStub("B", "A", "2025-02-01"),
+        ]
+        # 2-cycle: lot 1 → 2 → 1
+        lots = [
+            _LotStub(1, "tA1", 2),
+            _LotStub(2, "tB1", 1),
+        ]
+        links = [("A", "tA1"), ("B", "tB1")]
+
+        chains_by_leaf, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        # B is non-branching, so the cycle is irrelevant to attribution
+        # (pass 1 unique-attribution path doesn't walk children). Both
+        # lots attributed; no hang.
+        assert "B" in chains_by_leaf
+        assert 1 in lot_to_leaf
+        assert 2 in lot_to_leaf
