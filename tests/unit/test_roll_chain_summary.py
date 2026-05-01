@@ -289,8 +289,11 @@ Pre-Phase-3 (group-level summing): both B and C would credit ALL of A's realized
                 "this is the additivity invariant. Pre-fix: 500 + 500 = 1000."
             )
 
-    def test_unpaired_leaf_lots_excluded_from_lineage(self, db):
-        """If a leaf-group lot has parent_lot_id=NULL (e.g., the IBIT 42C add-on), only the lots that DO have a lineage walk contribute to cumulative_realized_pnl. The unpaired lot itself contributes its open-side premium via net_premium / cumulative_premium, but no upstream realized P&L."""
+    def test_chain_group_with_mixed_parent_lots_includes_all(self, db):
+        """A chain group can contain lots with mixed parentage — some with parent_lot_id (lineage from a prior chain), some with parent_lot_id=NULL (a fresh adjustment that day). When the group is in only ONE chain (no branching at the group level), the attribution rule includes EVERY lot in the chain group toward that chain's cumulative_realized_pnl, matching what the chain modal shows.
+
+This is the structural shape behind the user's IBIT 41-strike chain: chain root group b377a836 has lot 27754 (parent in a different upstream chain) and lot 27755 (parent=None — fresh add). Both belong to the 41-strike chain because b377a836 is in only that chain.
+        """
         with db.get_session() as session:
             a = _seed_group(
                 session, opening_date="2025-02-21T10:00:00+00:00",
@@ -300,20 +303,18 @@ Pre-Phase-3 (group-level summing): both B and C would credit ALL of A's realized
                 session, opening_date="2025-03-14T10:00:00+00:00",
                 status="OPEN", rolled_from=a,
             )
+            # A has two closed lots: one with normal lineage (paired_src),
+            # one with parent=NULL (a fresh adjustment that day).
             paired_source = _seed_closed_lot(
                 session, group_id=a, strike=100, realized_pnl=100.0,
             )
-            unpaired_source = _seed_closed_lot(
-                session, group_id=a, strike=101, realized_pnl=100.0,
+            _seed_closed_lot(  # adjustment lot in A, parent=None
+                session, group_id=a, strike=101, realized_pnl=50.0,
             )
-            # B has 2 lots: one paired into A's `paired_source`, one with
-            # NULL parent (the add-on case).
+            # B has one lot paired into A's `paired_source`.
             _seed_open_child_lot(
                 session, group_id=b, strike=110,
                 parent_lot_id=paired_source.id,
-            )
-            _seed_open_child_lot(
-                session, group_id=b, strike=111, parent_lot_id=None,
             )
 
         populate_roll_chain_summaries(db)
@@ -322,7 +323,90 @@ Pre-Phase-3 (group-level summing): both B and C would credit ALL of A's realized
             row = session.query(RollChainSummary).filter_by(
                 current_group_id=b,
             ).one()
-            # Only `paired_source`'s realized P&L (100) is in B's lineage.
-            # `unpaired_source` belongs to no chain (it stayed in A's
-            # standalone history); B doesn't inherit it.
-            assert row.cumulative_realized_pnl == 100.0
+            # All of A's lots count toward B's chain — A is in only one
+            # chain (B's), so attribution is unambiguous. Total = 100 + 50.
+            assert row.cumulative_realized_pnl == 150.0, (
+                "Both of A's lots should be attributed to B's chain — "
+                "non-branching source group, all lots flow to the single "
+                "downstream chain"
+            )
+
+    def test_lot_in_chain_does_not_pull_in_unrelated_chain(self, db):
+        """When a chain group contains a lot whose parent_lot_id points into a DIFFERENT chain (e.g., the user's lot 27754 with parent in 2f4d359d's chain), the attribution rule does NOT pull the unrelated chain's lots into this chain's cumulative. Each chain stays isolated to its own group's lots.
+        """
+        with db.get_session() as session:
+            # X → Y is a separate, completed chain ending at Y.
+            x = _seed_group(
+                session, opening_date="2025-01-01T10:00:00+00:00",
+                closing_date="2025-01-15T10:00:00+00:00", status="CLOSED",
+            )
+            y = _seed_group(
+                session, opening_date="2025-01-15T10:00:00+00:00",
+                closing_date="2025-02-01T10:00:00+00:00", status="CLOSED",
+                rolled_from=x,
+            )
+            x_lot = _seed_closed_lot(
+                session, group_id=x, strike=80, realized_pnl=200.0,
+            )
+            y_lot = _seed_closed_lot(
+                session, group_id=y, strike=82, realized_pnl=200.0,
+            )
+
+            # A → B is a separate chain. B has a lot whose parent_lot_id
+            # is y_lot (an unrelated chain's lot).
+            a = _seed_group(
+                session, opening_date="2025-02-21T10:00:00+00:00",
+                closing_date="2025-03-14T10:00:00+00:00", status="CLOSED",
+            )
+            b = _seed_group(
+                session, opening_date="2025-03-14T10:00:00+00:00",
+                status="OPEN", rolled_from=a,
+            )
+            a_lot = _seed_closed_lot(
+                session, group_id=a, strike=100, realized_pnl=100.0,
+            )
+            # Pin parent_lot_id of B's lot to y_lot — crossing chain
+            # boundary in the lot graph but not in the rolled_from graph.
+            from src.database.models import PositionLot, PositionGroupLot
+            import uuid as _uuid_inner
+            txn = str(_uuid_inner.uuid4())
+            cross_lot = PositionLot(
+                transaction_id=txn,
+                account_number="ACCT", symbol=f"Y110",
+                underlying="AAPL", instrument_type="EQUITY_OPTION",
+                option_type="C", strike=110.0,
+                expiration="2025-04-18", quantity=-1, entry_price=0.0,
+                remaining_quantity=-1, original_quantity=1,
+                chain_id=f"C-{txn[:8]}", status="OPEN",
+                entry_date="2025-03-14T10:00:00+00:00",
+                parent_lot_id=y_lot.id,  # cross-chain parent
+            )
+            session.add(cross_lot)
+            session.add(PositionGroupLot(group_id=b, transaction_id=txn))
+            session.flush()
+            # Add a normal lineage lot too so B's chain is well-formed.
+            _seed_open_child_lot(
+                session, group_id=b, strike=111,
+                parent_lot_id=a_lot.id,
+            )
+
+        populate_roll_chain_summaries(db)
+
+        with db.get_session() as session:
+            rows = {
+                r.current_group_id: r
+                for r in session.query(RollChainSummary).all()
+            }
+            # B's chain: A's 100 + B's lots. The cross-chain `cross_lot`
+            # is in group B, so it's IN this chain. Y's lots are NOT in
+            # B's chain (they're in X→Y's chain).
+            assert rows[b].cumulative_realized_pnl == 100.0, (
+                "B's chain should sum its own groups' lots only — "
+                "the cross-chain parent_lot_id link does NOT pull Y's "
+                "realized P&L into B's chain total"
+            )
+            # Y's chain: X's 200 + Y's 200.
+            assert rows[y].cumulative_realized_pnl == 400.0, (
+                "Y's chain should be unaffected by B's cross-link; "
+                "additivity preserved"
+            )

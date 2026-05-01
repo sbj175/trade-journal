@@ -306,6 +306,35 @@ async def get_group_roll_chain(
             all_lot_ids.append(lot.id)
     closings_by_lot = lot_manager.get_lot_closings_batch(all_lot_ids) if all_lot_ids else {}
 
+    # Compute lot-to-chain attribution so per-row realized/premium reflect
+    # only the lots attributed to THIS chain (OPT-284 Phase 3c). Matters
+    # at branching source groups — without this, both children's modals
+    # would over-credit the shared trunk.
+    from collections import defaultdict
+    from src.pipeline.lot_lineage import build_chain_attribution
+    leaf_id = chain_ids[-1] if chain_ids else None
+    attributed_lot_ids: set = set()
+    if leaf_id:
+        with db.get_session() as session:
+            all_groups = session.query(PositionGroup).all()
+            grp_map = {g.group_id: g for g in all_groups}
+            children_map_full: Dict[str, List[str]] = defaultdict(list)
+            for g in all_groups:
+                if g.rolled_from_group_id:
+                    children_map_full[g.rolled_from_group_id].append(g.group_id)
+            all_lots = session.query(PositionLotModel).all()
+            lots_by_id = {l.id: l for l in all_lots}
+            txn_to_group: Dict[str, str] = {}
+            for gid, txn in session.query(
+                PositionGroupLot.group_id, PositionGroupLot.transaction_id,
+            ).all():
+                txn_to_group[txn] = gid
+        _, lot_to_leaf = build_chain_attribution(
+            group_map=grp_map, children_map=children_map_full,
+            lots_by_id=lots_by_id, txn_to_group=txn_to_group,
+        )
+        attributed_lot_ids = {lid for lid, lf in lot_to_leaf.items() if lf == leaf_id}
+
     # Build ordered response
     chain_result = []
     cumulative_pnl = 0.0
@@ -314,12 +343,16 @@ async def get_group_roll_chain(
         if not g:
             continue
         lots = lots_by_group.get(gid, [])
+        # Only attributed lots count toward THIS chain's per-row totals.
+        # Non-branching chains: every lot is attributed → identical to
+        # pre-Phase-3c behavior. Branching: source group's lots are
+        # split among children's chains by descendant lineage.
+        chain_lots = [l for l in lots if l.id in attributed_lot_ids]
         realized = sum(
             sum(c.realized_pnl for c in closings_by_lot.get(lot.id, []))
-            for lot in lots
+            for lot in chain_lots
         )
-        # Initial premium for this group's lots (credits minus debits)
-        premium = group_premium_from_lots(lots)
+        premium = group_premium_from_lots(chain_lots)
         cumulative_pnl += realized
         chain_result.append({
             'group_id': gid,
@@ -327,7 +360,7 @@ async def get_group_roll_chain(
             'premium': premium,
             'realized_pnl': realized,
             'cumulative_pnl': cumulative_pnl,
-            'lot_count': len(lots),
+            'lot_count': len(chain_lots),
         })
 
     # Net Premium = sum of realized P&L from closed groups + premium of current (last) group

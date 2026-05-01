@@ -288,3 +288,117 @@ def _derive_for_group(
         return None
 
     return source_id
+
+
+def build_chain_attribution(
+    *, group_map, children_map, lots_by_id, txn_to_group,
+):
+    """Compute each lot's "home chain" — the unique chain whose cumulative
+    P&L should include it (OPT-284 Phase 3c).
+
+    Rule (one sentence): a contract belongs to the chain that its lineage
+    ends up in. Concretely, for each lot we walk forward via the
+    parent_lot_id graph (each lot has at most one child per spec §0.2)
+    until we hit a terminal lot — one with no children. The terminal
+    lot's group identifies the chain; if that group is the leaf of a
+    chain, the lot's chain is that chain. Lots whose terminal walk lands
+    in a group that's not a chain leaf are orphans; they're attributed
+    by tiebreak to the chain (containing the lot's own group) whose leaf
+    opened most recently.
+
+    This rule preserves both invariants simultaneously:
+
+      - **Per-chain math** matches the chain modal's per-group sum: in a
+        non-branching chain, every lot in any chain group is in the
+        chain (no lots are dropped, even adjustment lots with parent=NULL
+        or lots whose parent is in a different upstream chain).
+      - **Portfolio math** is additive: at a branching source group
+        (e.g., a 5x position split into a 3x and a 2x roll on the same
+        day), each of the source's contracts follows its single child
+        forward. Sibling chains never share a contract.
+
+    Returns ``(chains_by_leaf, lot_to_leaf)``:
+
+      - ``chains_by_leaf[leaf_group_id]`` = list of group_ids from root
+        to leaf (inclusive).
+      - ``lot_to_leaf[lot_id]`` = leaf_group_id of the chain this lot
+        contributes to. Lots not in any chain (e.g., standalone groups
+        with no rolled_from in or out) are absent from this dict.
+    """
+    chains_by_leaf: Dict[str, List[str]] = {}
+    for gid, g in group_map.items():
+        if gid in children_map:
+            continue  # not a leaf
+        if not g.rolled_from_group_id:
+            continue  # standalone, not a roll chain
+        chain: List[str] = []
+        cur = gid
+        seen: set = set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            chain.append(cur)
+            parent_g = group_map.get(cur)
+            cur = parent_g.rolled_from_group_id if parent_g else None
+        chain.reverse()
+        if len(chain) >= 2:
+            chains_by_leaf[gid] = chain
+
+    if not chains_by_leaf:
+        return chains_by_leaf, {}
+
+    # Group → list of leaf_ids whose chain contains it. Most groups will
+    # have exactly one entry; branching source groups will have 2+.
+    group_to_leaves: Dict[str, List[str]] = defaultdict(list)
+    for leaf_id, chain in chains_by_leaf.items():
+        for gid in chain:
+            group_to_leaves[gid].append(leaf_id)
+
+    # Lot → its child lot (each lot has at most one child per spec §0.2).
+    child_of: Dict[int, int] = {}
+    for lot in lots_by_id.values():
+        if lot.parent_lot_id is not None:
+            child_of[lot.parent_lot_id] = lot.id
+
+    lot_to_leaf: Dict[int, str] = {}
+    for lot in lots_by_id.values():
+        gid = txn_to_group.get(lot.transaction_id)
+        if gid is None or gid not in group_to_leaves:
+            continue  # lot's group isn't in any chain
+        candidate_leaves = group_to_leaves[gid]
+        if len(candidate_leaves) == 1:
+            # Unique attribution — the only chain this group is in.
+            lot_to_leaf[lot.id] = candidate_leaves[0]
+            continue
+        # Branching source group. Walk forward via children to find this
+        # lot's terminal descendant; the terminal's group identifies the
+        # chain.
+        cur = lot.id
+        visited: set = set()
+        terminal: int = lot.id
+        while cur is not None and cur not in visited:
+            visited.add(cur)
+            nxt = child_of.get(cur)
+            if nxt is None:
+                terminal = cur
+                break
+            terminal = nxt
+            cur = nxt
+        terminal_lot = lots_by_id.get(terminal)
+        if terminal_lot is None:
+            continue
+        terminal_gid = txn_to_group.get(terminal_lot.transaction_id)
+        if terminal_gid is not None and terminal_gid in chains_by_leaf:
+            # Terminal landed in a chain leaf — that's the chain.
+            lot_to_leaf[lot.id] = terminal_gid
+        else:
+            # Orphan: terminal isn't a chain leaf (or has no group).
+            # Tiebreak: among the chains containing this lot's group,
+            # pick the one whose leaf opened most recently. Stable and
+            # matches "the trader's most active continuation."
+            tiebreak_leaf = max(
+                candidate_leaves,
+                key=lambda lid: group_map[lid].opening_date or "",
+            )
+            lot_to_leaf[lot.id] = tiebreak_leaf
+
+    return chains_by_leaf, lot_to_leaf
