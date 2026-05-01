@@ -261,14 +261,16 @@ async def get_group_roll_chain(
         if not start:
             raise HTTPException(status_code=404, detail="Group not found")
 
-        # The chain returned is the unique lineage of the clicked group:
-        # walk backward via rolled_from_group_id from the clicked group
-        # all the way to root. We deliberately do NOT walk forward through
-        # children — under spec §5.2 the rolled_from graph is a tree, and
-        # walking forward would surface sibling branches that aren't part
-        # of this group's chain (e.g., a 41-strike click would otherwise
-        # also show the 43-strike sibling that branched off the same
-        # ancestor).
+        # The chain runs root → ... → clicked group → ... → leaf. We walk
+        # backward to root via rolled_from_group_id (linear by schema —
+        # each group has at most one parent), then forward from the
+        # clicked group to a leaf via children. At a forward branch
+        # (clicked group has multiple children, e.g., a partition into
+        # two same-shape positions), we pick the child whose own chain
+        # leaf opened most recently — the trader's most active
+        # continuation. The frontend can highlight the requested group
+        # within the result; the modal isn't truncated at midpoint
+        # clicks.
         chain_back: List[str] = [start.group_id]
         current = start
         visited = {current.group_id}
@@ -281,7 +283,23 @@ async def get_group_roll_chain(
             visited.add(parent.group_id)
             chain_back.append(parent.group_id)
             current = parent
-        chain_ids = list(reversed(chain_back))
+
+        chain_forward: List[str] = []
+        cur_id = start.group_id
+        while True:
+            children = session.query(PositionGroup).filter(
+                PositionGroup.rolled_from_group_id == cur_id,
+            ).all()
+            children = [c for c in children if c.group_id not in visited]
+            if not children:
+                break
+            children.sort(key=lambda c: c.opening_date or '', reverse=True)
+            picked = children[0]
+            visited.add(picked.group_id)
+            chain_forward.append(picked.group_id)
+            cur_id = picked.group_id
+
+        chain_ids = list(reversed(chain_back)) + chain_forward
 
         # Load groups for the chain — convert to dicts inside session
         chain_groups = session.query(PositionGroup).filter(
