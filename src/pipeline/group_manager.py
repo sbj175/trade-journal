@@ -89,15 +89,25 @@ def _route_lot_to_group(
         if aue_key in aue_to_group:
             gk = aue_to_group[aue_key]
             existing_lots = groups_by_key[gk]
-            # Same (account, underlying, expiration) + at least one open
-            # lot → merge. Same-shape lots co-exist in one group; the
-            # broker's multi-fill of one order, and intentional sizing-
-            # up of an existing position, are both spec §3 "adjustments"
-            # and live in the same group as the original. Genuinely
-            # parallel positions on the same expiration are out of scope
-            # for auto-detection — manual link/split (spec §6) is the
-            # override.
+            # Merge into the existing group when EITHER:
+            #   (a) any existing lot is still open (sizing-up an active
+            #       position), OR
+            #   (b) the new lot's entry_date matches an existing lot's
+            #       entry_date (broker multi-fill of one order, or a
+            #       same-day open-and-close where every lot is already
+            #       closed by routing time).
+            # The entry-date match handles the same-day-close case that
+            # the "any open lot" check misses; the open-lot check still
+            # blocks new opens from absorbing into stale closed groups
+            # whose lots all entered on a different day (the OPT-270
+            # invariant).
+            new_entry_day = str(lot.entry_date)[:10] if lot.entry_date else None
             if any(l.remaining_quantity != 0 for l in existing_lots):
+                return gk
+            if new_entry_day and any(
+                str(l.entry_date)[:10] == new_entry_day
+                for l in existing_lots if l.entry_date
+            ):
                 return gk
 
     if not lot.expiration:

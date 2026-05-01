@@ -20,6 +20,7 @@ class _Lot:
     strike: Optional[float]
     quantity: int
     remaining_quantity: int
+    entry_date: Optional[str] = None
 
     @property
     def is_long(self) -> bool:
@@ -27,13 +28,14 @@ class _Lot:
 
 
 def _opt(strike, qty=-1, remaining=None, *, chain="C1", order="O1",
-         exp=date(2026, 3, 21), option_type="C"):
+         exp=date(2026, 3, 21), option_type="C", entry_date=None):
     """Shorthand option lot. remaining defaults to qty (open)."""
     return _Lot(
         chain_id=chain, opening_order_id=order,
         account_number="ACCT", underlying="AAPL", expiration=exp,
         option_type=option_type, strike=strike, quantity=qty,
         remaining_quantity=qty if remaining is None else remaining,
+        entry_date=entry_date,
     )
 
 
@@ -144,6 +146,46 @@ class TestRule1OptionExpiration:
         gk = _route(new, groups=groups, aue=aue)
 
         assert gk == "g1"
+
+    def test_same_day_open_and_close_lots_merge(self):
+        """When a multi-fill order opens and closes within one day, every lot is already closed by the time routing runs (remaining_quantity=0). The "any open lot" check would miss this. The routing rule also merges when the new lot's entry_date matches an existing lot's entry_date — same-day-open-and-close is one logical position regardless of close timing."""
+        existing = _opt(
+            100, qty=-1, remaining=0,           # already closed
+            entry_date="2025-03-06T10:00:00+00:00",
+        )
+        groups = {"g1": [existing]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g1"}
+        new = _opt(
+            100, qty=-1, chain="C2", order="O2",
+            entry_date="2025-03-06T10:30:00+00:00",  # same day, later in the day
+        )
+
+        gk = _route(new, groups=groups, aue=aue)
+
+        assert gk == "g1", (
+            "same-day open-and-close multi-fill must merge even though "
+            "no lot in the group is still open by routing time"
+        )
+
+    def test_new_open_does_not_absorb_into_stale_closed_group(self):
+        """OPT-270 invariant preserved: a new lot opened on a different day from the only existing (closed) lot in a same-(acct, undl, exp) group should NOT merge into that stale group. The entry-date match rule kicks in only when entry_dates align."""
+        existing = _opt(
+            100, qty=-1, remaining=0,
+            entry_date="2025-01-01T10:00:00+00:00",
+        )
+        groups = {"g1": [existing]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g1"}
+        new = _opt(
+            100, qty=-1, chain="C2", order="O2",
+            entry_date="2025-03-06T10:00:00+00:00",  # different day
+        )
+
+        gk = _route(new, groups=groups, aue=aue)
+
+        assert gk is None, (
+            "new opens must not absorb into a stale closed group whose "
+            "lots entered on a different day — that's the OPT-270 case"
+        )
 
     def test_closed_group_does_not_match(self):
         """Rule 1 should not merge a new lot into a group whose lots are all already closed in the routing snapshot — that's a stale anchor."""
