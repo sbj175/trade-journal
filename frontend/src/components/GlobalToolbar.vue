@@ -104,10 +104,10 @@ onUnmounted(() => {
 
 <template>
   <!-- Section 1: Always visible — Sync, Market, Account, Quotes -->
-  <div class="bg-tv-panel border-b border-tv-border">
-    <div class="px-3 py-2 flex flex-col gap-2 md:hidden">
+  <div class="bg-tv-panel border-b border-tv-border empty:hidden" v-if="showToolbarExtras">
+    <div class="p-4 flex flex-col gap-2 md:hidden">
       <!-- Row 1: Sync + icon buttons -->
-      <div class="flex items-center gap-1.5 relative">
+      <div class="flex items-center gap-1.5 relative pl-[2px]">
         <template v-if="showToolbarExtras">
           <BaseButton variant="success" size="sm" @click="syncStore.performSync()" :disabled="syncStore.isSyncing" class="shrink-0 min-h-[44px]">
             <template #icon><BaseIcon name="sync-alt" :spin="syncStore.isSyncing" /></template>
@@ -115,7 +115,7 @@ onUnmounted(() => {
           </BaseButton>
         </template>
 
-        <div class="flex items-center gap-1.5 ml-auto">
+        <div class="flex items-center gap-1.5 ml-auto empty:hidden">
           <!-- Market Status icon -->
           <template v-if="showToolbarExtras">
             <button @click="marketStore.toggleExpanded($event)"
@@ -184,7 +184,7 @@ onUnmounted(() => {
               <BaseIcon name="filter" class="text-[11px]" />
             </button>
             <!-- Sort (page-provided via Teleport) -->
-            <div id="page-sort" class="relative"></div>
+            <div id="page-sort" class="relative empty:hidden"></div>
           </template>
         </div>
       </div>
@@ -434,7 +434,7 @@ onUnmounted(() => {
           <div class="grid transition-[grid-template-rows] duration-200 ease-in-out"
                :class="(isPositionsPage || showFilters) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
             <div class="overflow-hidden">
-              <div id="page-filters"></div>
+              <div id="page-filters" class="empty:hidden"></div>
             </div>
           </div>
 </template>

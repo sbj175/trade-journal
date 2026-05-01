@@ -7,7 +7,7 @@ defineProps({ state: Object, onboarding: Object })
 
 <template>
   <div>
-    <div class="mb-6 flex items-start justify-between">
+    <div class="mb-6 flex items-start justify-between flex-col gap-4 md:flex-row">
       <div>
         <h2 class="text-xl font-semibold text-tv-text mb-1">
           <BaseIcon name="plug" class="mr-2 text-tv-blue" />Tastytrade Connection
@@ -16,17 +16,17 @@ defineProps({ state: Object, onboarding: Object })
           {{ state.authEnabled.value ? 'Connect your Tastytrade account with one click' : 'Connect to Tastytrade using OAuth2 credentials' }}
         </p>
       </div>
-      <div v-if="state.connectionStatus.value && !onboarding.value" class="flex items-center gap-2">
+      <div v-if="state.connectionStatus.value && !onboarding.value" class="flex items-center gap-2 w-full md:w-[initial]">
         <span v-if="state.connectionStatus.value.connected"
-              class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-3 py-1 rounded text-xs font-medium inline-flex items-center gap-1">
+              class="bg-tv-green/20 text-tv-green border border-tv-green/30 px-4 py-2 rounded text-xs font-medium inline-flex items-center gap-1 w-full md:w-[initial] justify-center">
           <BaseIcon name="check-circle" />Connected
         </span>
         <span v-else-if="state.connectionStatus.value.configured"
-              class="bg-tv-red/20 text-tv-red border border-tv-red/30 px-3 py-1 rounded text-xs font-medium inline-flex items-center gap-1">
+              class="bg-tv-red/20 text-tv-red border border-tv-red/30 px-4 py-2 rounded text-xs font-medium inline-flex items-center gap-1 w-full md:w-[initial] justify-center">
           <BaseIcon name="exclamation-circle" />Connection Failed
         </span>
         <span v-else
-              class="bg-tv-amber/20 text-tv-amber border border-tv-amber/30 px-3 py-1 rounded text-xs font-medium inline-flex items-center gap-1">
+              class="bg-tv-amber/20 text-tv-amber border border-tv-amber/30 px-4 py-2 rounded text-xs font-medium inline-flex items-center gap-1 w-full md:w-[initial] justify-center">
           <BaseIcon name="info-circle" />Not Configured
         </span>
       </div>
