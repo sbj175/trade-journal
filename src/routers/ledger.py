@@ -329,10 +329,14 @@ async def get_group_roll_chain(
                 PositionGroupLot.group_id, PositionGroupLot.transaction_id,
             ).all():
                 txn_to_group[txn] = gid
-        _, lot_to_leaf = build_chain_attribution(
-            group_map=grp_map, children_map=children_map_full,
-            lots_by_id=lots_by_id, txn_to_group=txn_to_group,
-        )
+            # Run attribution INSIDE the session — it lazy-loads ORM
+            # attributes (rolled_from_group_id, parent_lot_id, etc.) and
+            # would raise DetachedInstanceError if invoked after the
+            # session closes.
+            _, lot_to_leaf = build_chain_attribution(
+                group_map=grp_map, children_map=children_map_full,
+                lots_by_id=lots_by_id, txn_to_group=txn_to_group,
+            )
         attributed_lot_ids = {lid for lid, lf in lot_to_leaf.items() if lf == leaf_id}
 
     # Build ordered response
