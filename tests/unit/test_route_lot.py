@@ -134,8 +134,8 @@ class TestRule1OptionExpiration:
 
         assert gk == "g1"
 
-    def test_structural_duplicate_does_not_merge(self):
-        """Two same-(option_type, strike, direction) lots at the same expiration should NOT merge — they're parallel positions, not the same one."""
+    def test_same_shape_lots_merge_into_one_group(self):
+        """Two lots of the same (option_type, strike, direction) at the same (account, underlying, expiration) merge into ONE position group. This is the broker-multi-fill / sizing-up case (spec §3 adjustment): two lots filled at different prices for the same shape are still one logical position. Genuinely parallel positions on the same expiration are exotic and require manual link/split (spec §6) to express."""
         existing = _opt(100, qty=-1)  # short call 100
         groups = {"g1": [existing]}
         aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g1"}
@@ -143,7 +143,7 @@ class TestRule1OptionExpiration:
 
         gk = _route(new, groups=groups, aue=aue)
 
-        assert gk is None
+        assert gk == "g1"
 
     def test_closed_group_does_not_match(self):
         """Rule 1 should not merge a new lot into a group whose lots are all already closed in the routing snapshot — that's a stale anchor."""

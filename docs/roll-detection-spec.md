@@ -167,21 +167,28 @@ NULL — partial coverage means an adjustment, not a roll.
 ## 4. The unified group model
 
 A `position_group` represents **one logical position at one
-expiration**. Two simultaneous similar positions on the same
-expiration are **two groups**. The system never tries to fuse
-parallel positions of the same shape on the same expiration into one
-group.
+expiration**. A group is a *view* of co-occurring lots that share
+state (account, underlying, expiration); chain identity lives at the
+lot level, and the group's `rolled_from_group_id` is derived from the
+lot-level lineage under §3's all-lots-paired-into-one-closed-source
+rule.
 
-A group is a *view* of co-occurring lots that share state (account,
-underlying, expiration). Chain identity lives at the lot level; the
-group's `rolled_from_group_id` is derived from the lot-level lineage
-under §3's all-lots-paired-into-one-closed-source rule.
+**Same-shape lots at the same (account, underlying, expiration) merge
+into one group.** This covers broker multi-fill (one order filled at
+multiple prices generates multiple lots), sizing-up (adding contracts
+to an existing position), and any same-day-or-later add at the same
+shape. Auto-detection treats all of these as one logical position,
+matching how brokers (TastyTrade, etc.) display the position.
 
-Same rule for both same-expiration rolls and different-expiration
-rolls:
+Genuinely parallel positions of the same shape — two distinct trade
+ideas held simultaneously at the same strike and expiration — are
+exotic and out of scope for auto-detection. The user can split them
+explicitly via manual link/split (§6).
 
-- **Source fully closes** at time T1 (every lot has a manual
-  closing).
+Roll dynamics are the same for same-expiration rolls and different-
+expiration rolls:
+
+- **Source fully closes** at time T1 (every lot has a manual closing).
 - **New position opens** at time T2 (same calendar day, T2 > T1) with
   every lot pairing into the source.
 - New position becomes a new group; `rolled_from_group_id` points at
@@ -192,11 +199,12 @@ The roll-counter badge in the UI counts the length of the
 close-and-reopen events.
 
 (Historical note: a previous design merged same-exp full-close-and-
-reopen sequences into a single group with a counter. This was retired
-in favor of the unified model; the structural rule "two simultaneous
-positions = two groups" implies that even sequential same-exp
-positions are two groups since each is the position at its moment in
-time.)
+reopen sequences into a single group with a counter. That was retired
+in favor of the lot-lineage model in OPT-284. A separate earlier rule
+"two simultaneous positions = two groups" applied the same merge-
+prevention to same-shape opens at same expiration; that was reversed
+when it was found to split multi-fill orders into spurious sibling
+groups, contradicting §3's adjustment semantics.)
 
 ## 5. Multi-roll dynamics
 

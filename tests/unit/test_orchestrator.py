@@ -912,8 +912,8 @@ class TestRollMechanics:
             f"Multi-fill roll opens should share one group, got {len(new_groups)}"
         )
 
-    def test_separate_opens_at_same_strike_and_expiration_create_separate_groups(self, db, lot_manager):
-        """Two independent short calls opened by separate broker orders at the same strike and expiration should land in two distinct groups with two distinct chain ids — they are independent positions, not one fused position. This pins the OPT-270 fix that prevents stale-expiration anchors from merging unrelated chains."""
+    def test_separate_opens_at_same_strike_and_expiration_merge_into_one_group(self, db, lot_manager):
+        """Two short calls opened by separate broker orders at the same strike and expiration land in ONE position group, regardless of whether they were filled the same day or days apart. This is the broker-multi-fill / sizing-up behavior (matches TastyTrade): same shape on the same (account, underlying, expiration) is one logical position. The two orders still get distinct chain_ids at the lot level (they're separate broker actions), but the group layer fuses them."""
         sym = "AAPL  250321C00100000"
 
         opens = [
@@ -947,10 +947,13 @@ class TestRollMechanics:
             ).count()
 
         assert len(chains) == 2, (
-            f"Two separate opens should produce two distinct chain ids, got {chains}"
+            f"Two separate broker orders should produce two distinct chain ids "
+            f"at the lot level (chain_id is per-order), got {chains}"
         )
-        assert group_count == 2, (
-            f"Two separate opens should produce two distinct groups, got {group_count}"
+        assert group_count == 1, (
+            f"Two same-shape opens at the same (account, underlying, "
+            f"expiration) should fuse into ONE group (multi-fill / sizing-up "
+            f"behavior, spec §3 adjustment), got {group_count}"
         )
 
     def test_same_expiration_full_close_and_reopen_creates_linked_groups(self, db, lot_manager):

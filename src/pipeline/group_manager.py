@@ -89,8 +89,15 @@ def _route_lot_to_group(
         if aue_key in aue_to_group:
             gk = aue_to_group[aue_key]
             existing_lots = groups_by_key[gk]
-            if (any(l.remaining_quantity != 0 for l in existing_lots)
-                and not _is_duplicate_open_lot(lot, existing_lots)):
+            # Same (account, underlying, expiration) + at least one open
+            # lot → merge. Same-shape lots co-exist in one group; the
+            # broker's multi-fill of one order, and intentional sizing-
+            # up of an existing position, are both spec §3 "adjustments"
+            # and live in the same group as the original. Genuinely
+            # parallel positions on the same expiration are out of scope
+            # for auto-detection — manual link/split (spec §6) is the
+            # override.
+            if any(l.remaining_quantity != 0 for l in existing_lots):
                 return gk
 
     if not lot.expiration:
@@ -119,27 +126,6 @@ def _update_routing_indices(
         au_to_group[(lot.account_number, lot.underlying)] = gk
     if lot.chain_id:
         chain_to_group[lot.chain_id] = gk
-
-
-def _is_duplicate_open_lot(new_lot, existing_lots) -> bool:
-    """True if any open lot in `existing_lots` matches `new_lot` on
-    (option_type, strike, direction). Equity lots are skipped — Rule 2
-    routes those.
-    """
-    if not new_lot.option_type:
-        return False
-    for existing in existing_lots:
-        if not existing.option_type:
-            continue
-        if existing.remaining_quantity == 0:
-            continue
-        if (
-            existing.option_type == new_lot.option_type
-            and existing.strike == new_lot.strike
-            and existing.is_long == new_lot.is_long
-        ):
-            return True
-    return False
 
 
 # ---------------------------------------------------------------------------
