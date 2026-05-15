@@ -1,17 +1,18 @@
 # OptionLedger Issue Archive
 
-280 issues as of 2026-05-15.
+281 issues as of 2026-05-15.
 
 ## Status summary
 
-- **Backlog**: 56
-- **In Progress**: 5
-- **Done**: 204
+- **Backlog**: 57
+- **In Progress**: 3
+- **Done**: 206
 - **Canceled**: 13
 - **Duplicate**: 2
 
 ## Backlog
 
+- [OPT-289](OPT-289.md) — Roll-detection fixture follow-ups + RollChainModal copy refresh
 - [OPT-280](OPT-280.md) — Roll detection misses same-day legged-out-and-back-in rolls (chain-only filter)
 - [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
 - [OPT-266](OPT-266.md) — Explain the roll model in-UI — help users understand same-exp vs different-exp rolls
@@ -71,8 +72,6 @@
 
 ## In Progress
 
-- [OPT-284](OPT-284.md) — OPT-284: Migrate roll lineage from group-level to lot-level (epic)
-- [OPT-281](OPT-281.md) — Formalize roll-detection spec + scenario test matrix (epic)
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
 - [OPT-236](OPT-236.md) — Reduce duplicated information between position row and expanded detail panel
 - [OPT-155](OPT-155.md) — "Move Realized P&L and Total P&L columns from Positions to Ledger page"
@@ -83,8 +82,10 @@
 - [OPT-287](OPT-287.md) — Roll lost when new leg's expiration matches a pre-existing sibling group's expiration
 - [OPT-286](OPT-286.md) — OPT-286: Ledger fee display — closing fees double-counted, combined-fill open fees lost
 - [OPT-285](OPT-285.md) — OPT-285: Same-shape opens at same expiration merge into one group
+- [OPT-284](OPT-284.md) — OPT-284: Migrate roll lineage from group-level to lot-level (epic)
 - [OPT-283](OPT-283.md) — Spec amendment: broker order/chain not authoritative for rolls (§0.1, §0.2)
 - [OPT-282](OPT-282.md) — OPT-282: roll_chain_summary loses branch heads (one summary per leaf, not per root)
+- [OPT-281](OPT-281.md) — Formalize roll-detection spec + scenario test matrix (epic)
 - [OPT-279](OPT-279.md) — Same-expiration rolls create new groups instead of staying in one
 - [OPT-277](OPT-277.md) — Remove unreachable Cash Secured Put strategy label
 - [OPT-276](OPT-276.md) — Iron Condor strike label drops legs that closed on earlier days
