@@ -1,11 +1,11 @@
 # OptionLedger Issue Archive
 
-Archived 275 issues on 2026-05-15 from Linear team OPT.
+278 issues as of 2026-05-15.
 
 ## Status summary
 
-- **Backlog**: 56
-- **In Progress**: 2
+- **Backlog**: 57
+- **In Progress**: 4
 - **Done**: 202
 - **Canceled**: 13
 - **Duplicate**: 2
@@ -17,6 +17,7 @@ Archived 275 issues on 2026-05-15 from Linear team OPT.
 - [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
 - [OPT-266](OPT-266.md) — Explain the roll model in-UI — help users understand same-exp vs different-exp rolls
 - [OPT-251](OPT-251.md) — Landing: add real product screenshots with descriptive alt text
+- [OPT-245](OPT-245.md) — Ledger expanded legs no longer show long/short direction
 - [OPT-242](OPT-242.md) — Add Google OAuth login via Supabase
 - [OPT-237](OPT-237.md) — Transactional email service
 - [OPT-232](OPT-232.md) — Tastytrade trusted partner process
@@ -73,6 +74,8 @@ Archived 275 issues on 2026-05-15 from Linear team OPT.
 
 - [OPT-284](OPT-284.md) — OPT-284: Migrate roll lineage from group-level to lot-level (epic)
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
+- [OPT-236](OPT-236.md) — Reduce duplicated information between position row and expanded detail panel
+- [OPT-155](OPT-155.md) — "Move Realized P&L and Total P&L columns from Positions to Ledger page"
 
 ## Done
 
