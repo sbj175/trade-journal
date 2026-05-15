@@ -4,9 +4,9 @@
 
 ## Status summary
 
-- **Backlog**: 57
-- **In Progress**: 2
-- **Done**: 207
+- **Backlog**: 56
+- **In Progress**: 1
+- **Done**: 209
 - **Canceled**: 13
 - **Duplicate**: 2
 
@@ -17,7 +17,6 @@
 - [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
 - [OPT-266](OPT-266.md) — Explain the roll model in-UI — help users understand same-exp vs different-exp rolls
 - [OPT-251](OPT-251.md) — Landing: add real product screenshots with descriptive alt text
-- [OPT-245](OPT-245.md) — Ledger expanded legs no longer show long/short direction
 - [OPT-242](OPT-242.md) — Add Google OAuth login via Supabase
 - [OPT-237](OPT-237.md) — Transactional email service
 - [OPT-232](OPT-232.md) — Tastytrade trusted partner process
@@ -73,7 +72,6 @@
 ## In Progress
 
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
-- [OPT-236](OPT-236.md) — Reduce duplicated information between position row and expanded detail panel
 
 ## Done
 
@@ -114,12 +112,14 @@
 - [OPT-248](OPT-248.md) — Landing: self-host or preload Google Fonts
 - [OPT-247](OPT-247.md) — Landing: precompile Tailwind instead of CDN
 - [OPT-246](OPT-246.md) — Landing page SEO: meta tags, OG, JSON-LD, favicon
+- [OPT-245](OPT-245.md) — Ledger expanded legs no longer show long/short direction
 - [OPT-244](OPT-244.md) — Roll not detected when additional leg opened alongside roll
 - [OPT-243](OPT-243.md) — Rename Chain P&L to Chain Realized, drop Net Premium, add Chain Total to position row
 - [OPT-241](OPT-241.md) — Deploy landing page to Cloudflare Pages
 - [OPT-240](OPT-240.md) — Transfer optionledger.app domain to Cloudflare
 - [OPT-239](OPT-239.md) — Prelaunch wait-list
 - [OPT-238](OPT-238.md) — Use account opened_at date to determine initial sync import range
+- [OPT-236](OPT-236.md) — Reduce duplicated information between position row and expanded detail panel
 - [OPT-235](OPT-235.md) — Pipeline not creating lots for Sell to Open transactions after roll
 - [OPT-234](OPT-234.md) — Fix broken import _recognize_from_lots in ledger_service reconciliation
 - [OPT-233](OPT-233.md) — Inline chain P&L and improved roll indicator on Positions page
