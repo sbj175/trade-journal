@@ -5,8 +5,8 @@
 ## Status summary
 
 - **Backlog**: 57
-- **In Progress**: 3
-- **Done**: 206
+- **In Progress**: 2
+- **Done**: 207
 - **Canceled**: 13
 - **Duplicate**: 2
 
@@ -74,7 +74,6 @@
 
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
 - [OPT-236](OPT-236.md) — Reduce duplicated information between position row and expanded detail panel
-- [OPT-155](OPT-155.md) — "Move Realized P&L and Total P&L columns from Positions to Ledger page"
 
 ## Done
 
@@ -172,6 +171,7 @@
 - [OPT-159](OPT-159.md) — Sync notification shows symbols from all fetched transactions, not just new ones
 - [OPT-158](OPT-158.md) — Show import summary before redirect to Positions
 - [OPT-157](OPT-157.md) — Add PostgreSQL maintenance to admin dashboard
+- [OPT-155](OPT-155.md) — "Move Realized P&L and Total P&L columns from Positions to Ledger page"
 - [OPT-154](OPT-154.md) — Add data disclosure consent screen and privacy page
 - [OPT-152](OPT-152.md) — Positions page Tastytrade-style visual refresh (experiment)
 - [OPT-149](OPT-149.md) — Tags and position notes disappear after sync
