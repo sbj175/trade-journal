@@ -6,7 +6,8 @@ import {
   getOptionType, getSignedQuantity, getExpirationDate, getStrikePrice, getDTE,
   sortedLegs,
 } from '@/composables/usePositionsDisplay'
-import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
+import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import TickerLogo from '@/components/TickerLogo.vue'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIcon from '@/components/BaseIcon.vue'
 import RollCountBadge from '@/components/RollCountBadge.vue'
@@ -38,7 +39,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
       <!-- Row 1: Symbol + P&L -->
       <div class="flex items-start justify-between gap-2">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 flex-1">
-          <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-7 h-7 rounded" loading="lazy">
+          <TickerLogo :symbol="group.underlying" />
           <span class="font-bold text-lg text-tv-text">{{ group.displayKey || group.underlying }}</span>
           <span v-show="selectedAccount === ''" class="text-xl leading-none -ml-1"
                 :style="{ color: accountDotColor(getAccountSymbol(group.accountNumber)) }"

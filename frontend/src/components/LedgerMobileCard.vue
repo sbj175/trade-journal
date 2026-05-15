@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import TickerLogo from '@/components/TickerLogo.vue'
 import BaseIcon from '@/components/BaseIcon.vue'
 import RollTimeline from '@/components/RollTimeline.vue'
 import RollCountBadge from '@/components/RollCountBadge.vue'
@@ -28,6 +29,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
          class="px-3 py-3 cursor-pointer active:bg-tv-border/20 transition-colors min-w-0">
       <!-- Top row: symbol, status, indicators, chevron -->
       <div class="flex items-center gap-2 mb-1.5 min-w-0">
+        <TickerLogo :symbol="group.underlying" />
         <span class="text-lg font-semibold text-tv-text truncate min-w-0">{{ group.underlying }}</span>
         <span v-show="selectedAccount === ''"
               class="text-xl leading-none -ml-1"

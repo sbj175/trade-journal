@@ -1,7 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 import { formatDollar, dollarSizeClass } from '@/composables/usePositionsDisplay'
-import { tickerLogoUrl, accountDotColor, getAccountTooltip } from '@/lib/constants'
+import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import TickerLogo from '@/components/TickerLogo.vue'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import PositionsExpandedPanel from '@/components/PositionsExpandedPanel.vue'
 import { DESKTOP_COLS_CLASS } from '@/lib/positionsDesktopCols'
@@ -47,7 +48,7 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
         <!-- Symbol -->
         <div class="min-w-0">
           <div class="font-semibold text-base text-tv-text flex items-center gap-1.5 min-w-0">
-            <img :src="tickerLogoUrl(group.underlying)" alt="" class="w-7 h-7 rounded flex-none" loading="lazy">
+            <TickerLogo :symbol="group.underlying" />
             <span class="truncate">{{ group.displayKey || group.underlying }}</span>
             <span v-show="selectedAccount === ''" class="text-xl leading-none flex-none"
                   :style="{ color: accountDotColor(getAccountSymbol(group.accountNumber)) }"

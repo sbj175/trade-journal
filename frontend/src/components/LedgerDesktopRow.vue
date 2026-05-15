@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { formatNumber, formatDate } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import TickerLogo from '@/components/TickerLogo.vue'
 import { LEDGER_COLS_CLASS } from '@/lib/ledgerDesktopCols'
 import BaseIcon from '@/components/BaseIcon.vue'
 import RollTimeline from '@/components/RollTimeline.vue'
@@ -39,8 +40,10 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
       <!-- Chevron -->
       <BaseIcon name="chevron-right" class="text-tv-muted transition-transform duration-200" :class="group.expanded ? 'rotate-90' : ''" />
 
-      <!-- Logo spacer -->
-      <div></div>
+      <!-- Logo -->
+      <div>
+        <TickerLogo :symbol="group.underlying" />
+      </div>
 
       <!-- Symbol + account dot -->
       <div class="flex items-center gap-1 min-w-0">

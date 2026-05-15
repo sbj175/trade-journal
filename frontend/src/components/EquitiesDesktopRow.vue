@@ -1,6 +1,7 @@
 <script setup>
 import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import TickerLogo from '@/components/TickerLogo.vue'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import { EQUITIES_COLS_CLASS } from '@/lib/equitiesDesktopCols'
 import BaseIcon from '@/components/BaseIcon.vue'
@@ -29,6 +30,7 @@ defineEmits(['toggle-expanded'])
 
       <!-- Symbol + badges -->
       <div class="flex items-center gap-2 min-w-0">
+        <TickerLogo :symbol="item.underlying" />
         <span class="text-base font-semibold text-tv-text truncate">{{ item.underlying }}</span>
         <span v-show="selectedAccount === ''"
               class="text-xl leading-none flex-none"

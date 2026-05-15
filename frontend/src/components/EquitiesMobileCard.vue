@@ -1,6 +1,7 @@
 <script setup>
 import { formatNumber, formatDate, pnlColorClass } from '@/lib/formatters'
 import { accountDotColor, getAccountTooltip } from '@/lib/constants'
+import TickerLogo from '@/components/TickerLogo.vue'
 import StreamingPrice from '@/components/StreamingPrice.vue'
 import BaseIcon from '@/components/BaseIcon.vue'
 
@@ -21,6 +22,7 @@ defineEmits(['toggle-expanded'])
     <div class="px-3 py-3">
       <!-- Top row: symbol, live price, expand chevron -->
       <div class="flex items-center gap-2 mb-2">
+        <TickerLogo :symbol="item.underlying" />
         <span class="text-lg font-semibold text-tv-text">{{ item.underlying }}</span>
         <span v-show="selectedAccount === ''"
               class="text-xl leading-none -ml-1"

@@ -285,6 +285,9 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+      <div class="hidden md:block text-center py-3">
+        <span class="text-[11px] text-tv-muted/40">Logos by <a href="https://logokit.com" target="_blank" rel="noopener" class="hover:text-tv-muted/60">LogoKit</a></span>
+      </div>
 
       <!-- Mobile sort button + dropdown -->
       <Teleport to="#page-sort">
@@ -325,6 +328,9 @@ onMounted(async () => {
           @toggle-expanded="onGroupHeaderClick(filteredGroups.find(g => g.group_id === $event))"
           @open-roll-chain="rollChainModal = $event"
         />
+      </div>
+      <div class="md:hidden text-center py-3">
+        <span class="text-[11px] text-tv-muted/40">Logos by <a href="https://logokit.com" target="_blank" rel="noopener" class="hover:text-tv-muted/60">LogoKit</a></span>
       </div>
     </template>
 
