@@ -4,15 +4,14 @@
 
 ## Status summary
 
-- **Backlog**: 57
-- **In Progress**: 4
+- **Backlog**: 56
+- **In Progress**: 5
 - **Done**: 204
 - **Canceled**: 13
 - **Duplicate**: 2
 
 ## Backlog
 
-- [OPT-281](OPT-281.md) — Formalize roll-detection spec + scenario test matrix (epic)
 - [OPT-280](OPT-280.md) — Roll detection misses same-day legged-out-and-back-in rolls (chain-only filter)
 - [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
 - [OPT-266](OPT-266.md) — Explain the roll model in-UI — help users understand same-exp vs different-exp rolls
@@ -73,6 +72,7 @@
 ## In Progress
 
 - [OPT-284](OPT-284.md) — OPT-284: Migrate roll lineage from group-level to lot-level (epic)
+- [OPT-281](OPT-281.md) — Formalize roll-detection spec + scenario test matrix (epic)
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
 - [OPT-236](OPT-236.md) — Reduce duplicated information between position row and expanded detail panel
 - [OPT-155](OPT-155.md) — "Move Realized P&L and Total P&L columns from Positions to Ledger page"

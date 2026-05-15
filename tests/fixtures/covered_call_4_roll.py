@@ -19,6 +19,17 @@ from datetime import datetime, date
 from tests.conftest import make_option_transaction
 
 
+SPEC_SECTION = "§5.1 (cascade rolls), §4 (group model)"
+
+DESCRIPTION = (
+    "A 4-roll covered-call ladder producing a 5-deep chain of position "
+    "groups. Each generation closes via a manual BTC and opens a new "
+    "short call at the next expiration; lot lineage is the source of "
+    "truth, rolled_from_group_id is derived from it. Locks in chain "
+    "inheritance, rolled_from linkage, and strategy-label stability."
+)
+
+
 _ACCT = "ACCT-COV-CALL"
 _UNDERLYING = "ZTEST"
 _QTY = 32
@@ -78,3 +89,51 @@ def transactions():
         ))
 
     return txs
+
+
+def expected():
+    """Expected canonical post-pipeline state.
+
+    Five groups in chain order (G1 ← G2 ← G3 ← G4 ← G5). Each group is
+    one short call lot; the first four are CLOSED (rolled out), the last
+    is OPEN. One roll-chain summary row with length 5, roll_count 4
+    (one per leaf — only G5 is a leaf here).
+    """
+    return {
+        "underlying": _UNDERLYING,
+        "groups": [
+            {
+                "strategy_label": "Short Call",
+                "status": "CLOSED",
+                "rolled_from": None,
+                "lots": [{"option_type": "Call", "strike": 38.0, "expiration": "2025-02-13", "quantity": -_QTY}],
+            },
+            {
+                "strategy_label": "Short Call",
+                "status": "CLOSED",
+                "rolled_from": "G1",
+                "lots": [{"option_type": "Call", "strike": 39.5, "expiration": "2025-02-20", "quantity": -_QTY}],
+            },
+            {
+                "strategy_label": "Short Call",
+                "status": "CLOSED",
+                "rolled_from": "G2",
+                "lots": [{"option_type": "Call", "strike": 40.0, "expiration": "2025-02-27", "quantity": -_QTY}],
+            },
+            {
+                "strategy_label": "Short Call",
+                "status": "CLOSED",
+                "rolled_from": "G3",
+                "lots": [{"option_type": "Call", "strike": 39.0, "expiration": "2025-03-06", "quantity": -_QTY}],
+            },
+            {
+                "strategy_label": "Short Call",
+                "status": "OPEN",
+                "rolled_from": "G4",
+                "lots": [{"option_type": "Call", "strike": 39.0, "expiration": "2025-03-13", "quantity": -_QTY}],
+            },
+        ],
+        "roll_chains": [
+            {"chain_length": 5, "roll_count": 4},
+        ],
+    }
