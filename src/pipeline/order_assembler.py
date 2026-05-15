@@ -289,8 +289,15 @@ def normalize_transactions(transactions: List[Transaction]) -> List[Transaction]
 
 def classify_order(transactions: List[Transaction]) -> OrderType:
     """Classify order as OPENING, ROLLING, or CLOSING."""
-    has_opening = any(tx.is_opening for tx in transactions)
-    has_closing = any(tx.is_closing for tx in transactions)
+    has_opening = False
+    has_closing = False
+    for tx in transactions:
+        if tx.is_opening:
+            has_opening = True
+        if tx.is_closing:
+            has_closing = True
+        if has_opening and has_closing:
+            break
 
     if has_opening and not has_closing:
         return OrderType.OPENING
