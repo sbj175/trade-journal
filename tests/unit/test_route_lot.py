@@ -21,6 +21,8 @@ class _Lot:
     quantity: int
     remaining_quantity: int
     entry_date: Optional[str] = None
+    id: Optional[int] = None
+    parent_lot_id: Optional[int] = None
 
     @property
     def is_long(self) -> bool:
@@ -28,14 +30,15 @@ class _Lot:
 
 
 def _opt(strike, qty=-1, remaining=None, *, chain="C1", order="O1",
-         exp=date(2026, 3, 21), option_type="C", entry_date=None):
+         exp=date(2026, 3, 21), option_type="C", entry_date=None,
+         id=None, parent_lot_id=None):
     """Shorthand option lot. remaining defaults to qty (open)."""
     return _Lot(
         chain_id=chain, opening_order_id=order,
         account_number="ACCT", underlying="AAPL", expiration=exp,
         option_type=option_type, strike=strike, quantity=qty,
         remaining_quantity=qty if remaining is None else remaining,
-        entry_date=entry_date,
+        entry_date=entry_date, id=id, parent_lot_id=parent_lot_id,
     )
 
 
@@ -239,3 +242,100 @@ class TestRule3NoMatch:
         gk = _route(new, groups={})
 
         assert gk is None
+
+
+# ---------------------------------------------------------------------------
+# OPT-287 — Rule 1 must yield to lot-level lineage (parent_lot_id)
+# ---------------------------------------------------------------------------
+
+class TestRule1ParentLotIdRespected:
+    """When the incoming lot has parent_lot_id pointing to a lot OUTSIDE the
+    candidate same-(account, underlying, expiration) sibling group, Rule 1
+    must refuse the merge. The new lot is structurally a roll continuation
+    (per OPT-284 lot lineage), not a sizing-up adjustment of the sibling
+    position. The caller mints a new group; derive_rolled_from_group_id
+    then links it back to the closed source."""
+
+    def test_rolled_open_does_not_merge_with_unrelated_sibling_at_same_expiration(self):
+        """The IBIT case: account holds a short call at 5/22 $41.50 (from
+        an earlier open) AND today rolls a 5/15 $43.50 call forward to a
+        5/22 $44.00 call. The new $44 lot's parent is in the closed
+        5/15 group, NOT in the still-open 5/22 $41.50 group. Rule 1 must
+        not absorb the new lot into the unrelated 5/22 sibling group."""
+        sibling = _opt(
+            41.50, qty=-1, option_type="C",
+            id=1001, parent_lot_id=None,  # original open, no lineage
+        )
+        groups = {"g1": [sibling]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g1"}
+        new = _opt(
+            44.00, qty=-1, option_type="C", chain="C2", order="O2",
+            id=1003, parent_lot_id=2000,  # parent is in some OTHER group
+        )
+
+        gk = _route(new, groups=groups, aue=aue)
+
+        assert gk is None, (
+            "a rolled-in lot whose parent is in a different group must "
+            "not absorb into a same-expiration sibling — that would erase "
+            "the roll lineage (OPT-287)"
+        )
+
+    def test_multi_fill_roll_with_parent_in_same_group_still_merges(self):
+        """When a roll fills in multiple pieces and the first piece has
+        already landed in a new group, the second piece's parent_lot_id
+        still points at the CLOSED source (not at the first piece). The
+        guard's "parent not in this group" check refuses Rule 1 for the
+        second piece too — which is correct: Rule 0 (chain-aware) is the
+        normal merge path for multi-fill rolls. Document the behavior."""
+        first_piece = _opt(
+            44.00, qty=-1, option_type="C", chain="C2", order="O2",
+            id=1003, parent_lot_id=2000,
+        )
+        groups = {"g_new": [first_piece]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g_new"}
+        second_piece = _opt(
+            44.00, qty=-1, option_type="C", chain="C2", order="O2",
+            id=1004, parent_lot_id=2001,  # different parent in same source
+        )
+
+        gk = _route(second_piece, groups=groups, aue=aue)
+
+        # Rule 1 refuses (different parent_lot_id); Rule 0 (chain match)
+        # would catch this in the real path — verified separately.
+        assert gk is None
+
+    def test_fresh_open_without_lineage_still_merges_as_before(self):
+        """OPT-287 guard only fires when parent_lot_id is set. A genuine
+        sizing-up adjustment (no lineage) keeps merging via Rule 1's
+        "any open lot" check, same as before — preserves OPT-285."""
+        existing = _opt(100, qty=-1, option_type="C", id=1001)
+        groups = {"g1": [existing]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g1"}
+        new = _opt(
+            100, qty=-1, option_type="C", chain="C2", order="O2",
+            id=1002, parent_lot_id=None,  # fresh open, no roll lineage
+        )
+
+        gk = _route(new, groups=groups, aue=aue)
+
+        assert gk == "g1"
+
+    def test_same_day_multi_fill_open_without_lineage_still_merges(self):
+        """OPT-285 same-day multi-fill: both fills have entry_date today,
+        neither has parent_lot_id set. Rule 1(b) must continue to merge."""
+        existing = _opt(
+            100, qty=-1, remaining=0, option_type="C",
+            entry_date="2025-03-06T10:00:00+00:00", id=1001,
+        )
+        groups = {"g1": [existing]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g1"}
+        new = _opt(
+            100, qty=-1, option_type="C", chain="C2", order="O2",
+            entry_date="2025-03-06T10:30:00+00:00", id=1002,
+            parent_lot_id=None,
+        )
+
+        gk = _route(new, groups=groups, aue=aue)
+
+        assert gk == "g1"

@@ -161,18 +161,23 @@ def reprocess(
     if equity_lots_netted:
         logger.info("Stage 4: equity netting closed %d lot sides", equity_lots_netted)
 
+    # ── Step 4b: Lot-level roll lineage (OPT-284 Phase 2) ─────────────
+    # Pairs same-day, structurally compatible closes/opens at the lot
+    # level and sets position_lots.parent_lot_id — the single source of
+    # truth for chain lineage. Must run BEFORE group routing (OPT-287)
+    # so the router can consult parent_lot_id and refuse to merge rolled
+    # opens into unrelated same-expiration sibling groups.
+    lots_paired = detect_lot_lineage(db_manager)
+    logger.info("Stage 4b: paired %d lots into lineage", lots_paired)
+
     # ── Step 5: Group Manager (strategy + persistence) ────────────────
     persister = GroupPersister(db_manager, lot_manager)
     groups_processed = persister.process_groups(account_number=account_number)
     logger.info("Stage 5: processed %d groups", groups_processed)
 
-    # ── Step 5b: Lot-level roll detection (OPT-284 Phase 2) ───────────
-    # Pairs same-day, structurally compatible closes/opens at the lot
-    # level. Sets position_lots.parent_lot_id — the single source of
-    # truth for chain lineage. position_groups.rolled_from_group_id is
-    # then derived from it.
-    lots_paired = detect_lot_lineage(db_manager)
-    logger.info("Stage 5b: paired %d lots into lineage", lots_paired)
+    # ── Step 5c: Derive rolled_from_group_id from lot lineage ─────────
+    # position_groups.rolled_from_group_id is a derived view of
+    # position_lots.parent_lot_id, computed once groups exist.
     rolled_from_changes = derive_rolled_from_group_id(db_manager)
     logger.info("Stage 5c: updated rolled_from_group_id on %d groups", rolled_from_changes)
 

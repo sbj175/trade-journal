@@ -41,6 +41,7 @@ class Lot:
     derived_from_lot_id: Optional[int]
     derivation_type: Optional[str]  # ASSIGNMENT, EXERCISE
     status: str  # OPEN, CLOSED, PARTIAL
+    parent_lot_id: Optional[int] = None  # Roll lineage (OPT-284): the lot this one continues
 
     @property
     def is_short(self) -> bool:
@@ -116,6 +117,7 @@ class LotManager:
             derived_from_lot_id=row.derived_from_lot_id,
             derivation_type=row.derivation_type,
             status=row.status or 'OPEN',
+            parent_lot_id=row.parent_lot_id,
         )
 
     @staticmethod

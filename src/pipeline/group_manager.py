@@ -72,8 +72,12 @@ def _route_lot_to_group(
          falls through here so a same-day reopen mints a new group;
          lot-level lineage detection then derives rolled_from_group_id,
          per spec §4 (OPT-284 Phase 2).
-      1. option lot: same (account, underlying, expiration), open, and not a
-         structural duplicate of an existing open lot.
+      1. option lot: same (account, underlying, expiration), open, and
+         not a structural duplicate of an existing open lot. OPT-287:
+         when the new lot has parent_lot_id pointing outside this
+         candidate group, treat it as a roll continuation and refuse
+         the merge so a fresh group is minted (rolled_from is then set
+         by derive_rolled_from_group_id).
       2. equity lot: same (account, underlying), open.
     """
     if lot.chain_id and lot.chain_id in chain_to_group:
@@ -101,14 +105,30 @@ def _route_lot_to_group(
             # blocks new opens from absorbing into stale closed groups
             # whose lots all entered on a different day (the OPT-270
             # invariant).
+            #
+            # OPT-287 guard: if the incoming lot has parent_lot_id set
+            # (the open side of a roll, per OPT-284 lineage) AND the
+            # parent is not among this candidate group's lots, the new
+            # lot is structurally a roll continuation, not an adjustment
+            # of this group. Refuse the merge so the caller mints a new
+            # group; derive_rolled_from_group_id then sets the link from
+            # lot lineage. Same-order multi-fills keep merging because
+            # their parent_lot_id (when set) points at a sibling lot
+            # that DID land in this group.
+            parent_id = getattr(lot, "parent_lot_id", None)
+            roll_continuation = (
+                parent_id is not None
+                and not any(l.id == parent_id for l in existing_lots)
+            )
             new_entry_day = str(lot.entry_date)[:10] if lot.entry_date else None
-            if any(l.remaining_quantity != 0 for l in existing_lots):
-                return gk
-            if new_entry_day and any(
-                str(l.entry_date)[:10] == new_entry_day
-                for l in existing_lots if l.entry_date
-            ):
-                return gk
+            if not roll_continuation:
+                if any(l.remaining_quantity != 0 for l in existing_lots):
+                    return gk
+                if new_entry_day and any(
+                    str(l.entry_date)[:10] == new_entry_day
+                    for l in existing_lots if l.entry_date
+                ):
+                    return gk
 
     if not lot.expiration:
         au_key = (lot.account_number, lot.underlying)
