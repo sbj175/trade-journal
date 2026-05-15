@@ -4,15 +4,14 @@
 
 ## Status summary
 
-- **Backlog**: 58
+- **Backlog**: 57
 - **In Progress**: 4
-- **Done**: 203
+- **Done**: 204
 - **Canceled**: 13
 - **Duplicate**: 2
 
 ## Backlog
 
-- [OPT-288](OPT-288.md) — Consolidate group routing and roll-lineage derivation into one stage with parent_lot_id as the canonical signal
 - [OPT-281](OPT-281.md) — Formalize roll-detection spec + scenario test matrix (epic)
 - [OPT-280](OPT-280.md) — Roll detection misses same-day legged-out-and-back-in rolls (chain-only filter)
 - [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
@@ -80,6 +79,7 @@
 
 ## Done
 
+- [OPT-288](OPT-288.md) — Consolidate group routing and roll-lineage derivation into one stage with parent_lot_id as the canonical signal
 - [OPT-287](OPT-287.md) — Roll lost when new leg's expiration matches a pre-existing sibling group's expiration
 - [OPT-286](OPT-286.md) — OPT-286: Ledger fee display — closing fees double-counted, combined-fill open fees lost
 - [OPT-285](OPT-285.md) — OPT-285: Same-shape opens at same expiration merge into one group

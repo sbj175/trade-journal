@@ -52,13 +52,29 @@ def _equity(qty=100, remaining=None):
     )
 
 
-def _route(lot, *, groups, aue=None, au=None, chains=None):
+def _route(lot, *, groups, aue=None, au=None, chains=None, lot_id_to_group=None):
+    """Call _route_lot_to_group and return just the group_key, for
+    backward compatibility with the bulk of these tests. New tests that
+    care about rolled_from_group_key should call _route_decision instead."""
     return _route_lot_to_group(
         lot,
         groups_by_key=groups,
         aue_to_group=aue or {},
         au_to_group=au or {},
         chain_to_group=chains or {},
+        lot_id_to_group=lot_id_to_group,
+    ).group_key
+
+
+def _route_decision(lot, *, groups, aue=None, au=None, chains=None, lot_id_to_group=None):
+    """Full RoutingDecision (OPT-288)."""
+    return _route_lot_to_group(
+        lot,
+        groups_by_key=groups,
+        aue_to_group=aue or {},
+        au_to_group=au or {},
+        chain_to_group=chains or {},
+        lot_id_to_group=lot_id_to_group,
     )
 
 
@@ -281,29 +297,26 @@ class TestRule1ParentLotIdRespected:
             "the roll lineage (OPT-287)"
         )
 
-    def test_multi_fill_roll_with_parent_in_same_group_still_merges(self):
-        """When a roll fills in multiple pieces and the first piece has
-        already landed in a new group, the second piece's parent_lot_id
-        still points at the CLOSED source (not at the first piece). The
-        guard's "parent not in this group" check refuses Rule 1 for the
-        second piece too — which is correct: Rule 0 (chain-aware) is the
-        normal merge path for multi-fill rolls. Document the behavior."""
+    def test_multi_fill_roll_pieces_with_shared_chain_merge_via_rule_0(self):
+        """A roll filling in multiple pieces with a shared chain_id
+        is normally caught by Rule 0 (chain-aware routing). Verify
+        end-to-end: when chain_to_group is populated, the second
+        piece merges into the first piece's group."""
         first_piece = _opt(
             44.00, qty=-1, option_type="C", chain="C2", order="O2",
             id=1003, parent_lot_id=2000,
         )
         groups = {"g_new": [first_piece]}
         aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g_new"}
+        chains = {"C2": "g_new"}
         second_piece = _opt(
             44.00, qty=-1, option_type="C", chain="C2", order="O2",
-            id=1004, parent_lot_id=2001,  # different parent in same source
+            id=1004, parent_lot_id=2001,
         )
 
-        gk = _route(second_piece, groups=groups, aue=aue)
+        gk = _route(second_piece, groups=groups, aue=aue, chains=chains)
 
-        # Rule 1 refuses (different parent_lot_id); Rule 0 (chain match)
-        # would catch this in the real path — verified separately.
-        assert gk is None
+        assert gk == "g_new"
 
     def test_fresh_open_without_lineage_still_merges_as_before(self):
         """OPT-287 guard only fires when parent_lot_id is set. A genuine
@@ -339,3 +352,80 @@ class TestRule1ParentLotIdRespected:
         gk = _route(new, groups=groups, aue=aue)
 
         assert gk == "g1"
+
+    def test_new_group_for_roll_carries_rolled_from_group_key(self):
+        """OPT-288: when routing falls through to "mint new group" because
+        the lot is a roll continuation, the RoutingDecision must also
+        carry rolled_from_group_key pointing at the parent's group.
+        That lets the caller set rolled_from_group_id atomically at
+        group creation instead of deriving it after the fact."""
+        # Closed source group g_src holds the parent lot (id=2000).
+        parent_lot = _opt(
+            43.50, qty=-1, remaining=0, option_type="C",
+            id=2000, exp=date(2026, 3, 19),
+        )
+        # Unrelated sibling group g_sib at the rolled-to expiration.
+        sibling_lot = _opt(
+            41.50, qty=-1, option_type="C", id=3000,
+            exp=date(2026, 3, 26),
+        )
+        groups = {"g_src": [parent_lot], "g_sib": [sibling_lot]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 26)): "g_sib"}
+        lot_id_to_group = {2000: "g_src", 3000: "g_sib"}
+
+        # New rolled-in lot at the sibling's expiration but different
+        # strike. Parent is in g_src (closed), not in g_sib.
+        new = _opt(
+            44.00, qty=-1, option_type="C", chain="C2", order="O2",
+            id=2001, parent_lot_id=2000, exp=date(2026, 3, 26),
+        )
+
+        decision = _route_decision(
+            new, groups=groups, aue=aue, lot_id_to_group=lot_id_to_group,
+        )
+
+        assert decision.group_key is None, "must mint a new group"
+        assert decision.rolled_from_group_key == "g_src", (
+            "RoutingDecision must surface the closed source's group_key "
+            "so the caller can set rolled_from_group_id at mint time"
+        )
+
+    def test_new_group_for_fresh_open_has_no_rolled_from(self):
+        """A fresh open (no parent_lot_id) that falls through to "mint
+        new group" must NOT have rolled_from_group_key set."""
+        new = _opt(100, qty=-1, option_type="C", id=4001, parent_lot_id=None)
+
+        decision = _route_decision(new, groups={})
+
+        assert decision.group_key is None
+        assert decision.rolled_from_group_key is None
+
+    def test_multi_fill_roll_no_chain_id_merges_via_opening_order_id(self):
+        """OPT-288 / Scenario D: a roll fills in two broker pieces that
+        share opening_order_id but have NULL chain_id (Tastytrade
+        occasionally omits chain_id). Rule 0 (chain-aware) can't fire
+        since chain_id is None. The two roll-fills must still end up
+        in ONE new group, not be split into two.
+
+        Fix: Rule 1's "roll continuation" check must merge when an
+        existing lot in the candidate group shares the new lot's
+        opening_order_id — the broker has already told us these
+        belong together.
+        """
+        first_fill = _opt(
+            44.00, qty=-1, option_type="C", chain=None, order="O_ROLL",
+            id=1003, parent_lot_id=2000,  # parent in closed source group
+        )
+        groups = {"g_new": [first_fill]}
+        aue = {("ACCT", "AAPL", date(2026, 3, 21)): "g_new"}
+        second_fill = _opt(
+            44.00, qty=-1, option_type="C", chain=None, order="O_ROLL",
+            id=1004, parent_lot_id=2001,  # different lot, same closed source
+        )
+
+        gk = _route(second_fill, groups=groups, aue=aue)
+
+        assert gk == "g_new", (
+            "two roll fills sharing opening_order_id must end up in "
+            "ONE new group even when chain_id is null on both"
+        )

@@ -15,7 +15,7 @@ import uuid as _uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, date
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from src.models.lot_manager import Lot
 from src.pipeline.strategy_engine import recognize, lots_to_legs
@@ -41,6 +41,21 @@ class GroupSpec:
     status: str                             # OPEN or CLOSED
     opening_date: Optional[datetime]
     lot_transaction_ids: List[str]
+    rolled_from_group_key: Optional[str] = None   # OPT-288: set at routing time
+
+
+class RoutingDecision(NamedTuple):
+    """Output of `_route_lot_to_group`. Either merge into an existing
+    group OR mint a new one (optionally with `rolled_from` recorded
+    upfront, per OPT-288).
+
+    - `group_key` set, `rolled_from_group_key` None → merge into group_key
+    - `group_key` None, `rolled_from_group_key` set → mint NEW group rolled
+      from `rolled_from_group_key` (per parent_lot_id lineage)
+    - both None → mint a fresh new group (no lineage)
+    """
+    group_key: Optional[str]
+    rolled_from_group_key: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -54,15 +69,17 @@ def _route_lot_to_group(
     aue_to_group: Dict[Tuple[str, str, date], str],
     au_to_group: Dict[Tuple[str, str], str],
     chain_to_group: Dict[str, str],
-) -> Optional[str]:
-    """Decide which existing group_key a lot should join, or None if none fit.
+    lot_id_to_group: Optional[Dict[int, str]] = None,
+) -> RoutingDecision:
+    """Decide where a lot belongs: existing group, new group, or new
+    group rolled from a closed predecessor.
 
     See docs/roll-detection-spec.md §3-§4 for the rule semantics this
     implements.
 
     Pure: reads the index dicts, never mutates them. The caller mints a
-    new group key on None and then adds the lot via its own add helper
-    (which is responsible for updating the indices).
+    new group key when `group_key is None` and then adds the lot via
+    its own add helper (which is responsible for updating the indices).
 
     Rules in priority order:
       0. chain-aware: same chain_id AND any existing lot in the group
@@ -70,23 +87,32 @@ def _route_lot_to_group(
          opening_order_id. Captures adjustments (open lot still around)
          and multi-fill opens (same order_id). A fully-closed source
          falls through here so a same-day reopen mints a new group;
-         lot-level lineage detection then derives rolled_from_group_id,
-         per spec §4 (OPT-284 Phase 2).
+         OPT-288 sets rolled_from atomically via lot_id_to_group.
       1. option lot: same (account, underlying, expiration), open, and
          not a structural duplicate of an existing open lot. OPT-287:
          when the new lot has parent_lot_id pointing outside this
-         candidate group, treat it as a roll continuation and refuse
-         the merge so a fresh group is minted (rolled_from is then set
-         by derive_rolled_from_group_id).
+         candidate group AND no multi-fill sibling lives here, treat
+         it as a roll continuation and refuse the merge so a fresh
+         group is minted with rolled_from set.
       2. equity lot: same (account, underlying), open.
+
+    OPT-288: when a lot has `parent_lot_id` set and the routing falls
+    through to "mint new group," the returned RoutingDecision also
+    carries `rolled_from_group_key` so the caller sets the lineage
+    link at group creation time, not as a post-hoc derivation pass.
     """
+    parent_id = getattr(lot, "parent_lot_id", None)
+    rolled_from_gk: Optional[str] = None
+    if parent_id is not None and lot_id_to_group is not None:
+        rolled_from_gk = lot_id_to_group.get(parent_id)
+
     if lot.chain_id and lot.chain_id in chain_to_group:
         gk = chain_to_group[lot.chain_id]
         for existing in groups_by_key[gk]:
             if (existing.remaining_quantity != 0
                 or (lot.opening_order_id
                     and existing.opening_order_id == lot.opening_order_id)):
-                return gk
+                return RoutingDecision(group_key=gk)
 
     if lot.expiration:
         aue_key = (lot.account_number, lot.underlying, lot.expiration)
@@ -106,38 +132,45 @@ def _route_lot_to_group(
             # whose lots all entered on a different day (the OPT-270
             # invariant).
             #
-            # OPT-287 guard: if the incoming lot has parent_lot_id set
-            # (the open side of a roll, per OPT-284 lineage) AND the
-            # parent is not among this candidate group's lots, the new
-            # lot is structurally a roll continuation, not an adjustment
-            # of this group. Refuse the merge so the caller mints a new
-            # group; derive_rolled_from_group_id then sets the link from
-            # lot lineage. Same-order multi-fills keep merging because
-            # their parent_lot_id (when set) points at a sibling lot
-            # that DID land in this group.
-            parent_id = getattr(lot, "parent_lot_id", None)
-            roll_continuation = (
-                parent_id is not None
-                and not any(l.id == parent_id for l in existing_lots)
-            )
+            # OPT-287 / OPT-288 guard: if the incoming lot has
+            # parent_lot_id set, only merge when structurally part of
+            # the same position. Two ways to qualify:
+            #   - parent_in_group: the parent lot itself is here.
+            #   - multi_fill_sibling: another lot here shares the new
+            #     lot's opening_order_id (covers Tastytrade multi-fill
+            #     rolls where chain_id is null — OPT-288 Scenario D).
+            # Otherwise refuse the merge so a new group is minted with
+            # rolled_from_group_key carrying the source group's key.
+            if parent_id is not None:
+                parent_in_group = any(l.id == parent_id for l in existing_lots)
+                multi_fill_sibling = (
+                    lot.opening_order_id is not None
+                    and any(
+                        l.opening_order_id == lot.opening_order_id
+                        for l in existing_lots
+                    )
+                )
+                roll_continuation = not parent_in_group and not multi_fill_sibling
+            else:
+                roll_continuation = False
             new_entry_day = str(lot.entry_date)[:10] if lot.entry_date else None
             if not roll_continuation:
                 if any(l.remaining_quantity != 0 for l in existing_lots):
-                    return gk
+                    return RoutingDecision(group_key=gk)
                 if new_entry_day and any(
                     str(l.entry_date)[:10] == new_entry_day
                     for l in existing_lots if l.entry_date
                 ):
-                    return gk
+                    return RoutingDecision(group_key=gk)
 
     if not lot.expiration:
         au_key = (lot.account_number, lot.underlying)
         if au_key in au_to_group:
             gk = au_to_group[au_key]
             if any(l.remaining_quantity != 0 for l in groups_by_key[gk]):
-                return gk
+                return RoutingDecision(group_key=gk)
 
-    return None
+    return RoutingDecision(group_key=None, rolled_from_group_key=rolled_from_gk)
 
 
 def _update_routing_indices(
@@ -147,15 +180,21 @@ def _update_routing_indices(
     aue_to_group: Dict[Tuple[str, str, date], str],
     au_to_group: Dict[Tuple[str, str], str],
     chain_to_group: Dict[str, str],
+    lot_id_to_group: Optional[Dict[int, str]] = None,
 ) -> None:
     """Point each routing index at `gk` for whichever facets `lot` exposes:
-    expiration → aue, no expiration → au, chain_id → chain."""
+    expiration → aue, no expiration → au, chain_id → chain. OPT-288:
+    also records lot.id → gk so subsequent lots can resolve their
+    parent_lot_id to its destination group for atomic rolled_from setting.
+    """
     if lot.expiration:
         aue_to_group[(lot.account_number, lot.underlying, lot.expiration)] = gk
     else:
         au_to_group[(lot.account_number, lot.underlying)] = gk
     if lot.chain_id:
         chain_to_group[lot.chain_id] = gk
+    if lot_id_to_group is not None and getattr(lot, "id", None) is not None:
+        lot_id_to_group[lot.id] = gk
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +234,12 @@ def assign_lots_to_groups(
     au_to_group: Dict[Tuple[str, str], str] = {}
     # chain_id -> group_key  (chain-aware routing for partial rolls)
     chain_to_group: Dict[str, str] = {}
+    # lot.id -> group_key  (OPT-288: lets a rolled-open lot resolve its
+    # parent_lot_id to the source group at routing time)
+    lot_id_to_group: Dict[int, str] = {}
+    # group_key -> rolled_from group_key (OPT-288: lineage link captured
+    # at mint time, propagated into the resulting GroupSpec)
+    rolled_from_map: Dict[str, str] = {}
     # group_key counter
     group_counter = 0
 
@@ -207,22 +252,28 @@ def assign_lots_to_groups(
         groups[gk].append(lot)
         _update_routing_indices(
             lot, gk,
-            aue_to_group=aue_to_group, au_to_group=au_to_group, chain_to_group=chain_to_group,
+            aue_to_group=aue_to_group, au_to_group=au_to_group,
+            chain_to_group=chain_to_group, lot_id_to_group=lot_id_to_group,
         )
 
     # --- Step 2: Assign each lot to a group --------------------------------
     # See _route_lot_to_group for the rule semantics.
     for lot in sorted_lots:
-        gk = _route_lot_to_group(
+        decision = _route_lot_to_group(
             lot,
             groups_by_key=groups,
             aue_to_group=aue_to_group,
             au_to_group=au_to_group,
             chain_to_group=chain_to_group,
+            lot_id_to_group=lot_id_to_group,
         )
-        if gk is None:
+        if decision.group_key is None:
             gk = _new_group_key()
             groups[gk] = []
+            if decision.rolled_from_group_key:
+                rolled_from_map[gk] = decision.rolled_from_group_key
+        else:
+            gk = decision.group_key
         _add_lot_to_group(lot, gk)
 
     # --- Step 3 & 4: Build GroupSpec results with strategy labels ----------
@@ -257,6 +308,9 @@ def assign_lots_to_groups(
             # but NOT if all lots share a chain (single position lifecycle).
             if not single_chain and sr.sub_strategies and len(set(n for n, _ in sr.sub_strategies)) > 1:
                 sub_groups = _split_lots_by_partition(lot_list, legs, sr.sub_strategies)
+                # All sub-groups inherit the parent's rolled_from since
+                # they're a strategy-based subdivision of one routed group.
+                parent_rolled_from = rolled_from_map.get(gk)
                 for sub_label, sub_lots in sub_groups:
                     has_open = any(lot.remaining_quantity != 0 for lot in sub_lots)
                     result.append(GroupSpec(
@@ -267,6 +321,7 @@ def assign_lots_to_groups(
                         status="OPEN" if has_open else "CLOSED",
                         opening_date=min(lot.entry_date for lot in sub_lots),
                         lot_transaction_ids=[lot.transaction_id for lot in sub_lots],
+                        rolled_from_group_key=parent_rolled_from,
                     ))
                 continue
             strategy_label = sr.name
@@ -288,6 +343,7 @@ def assign_lots_to_groups(
             status=status,
             opening_date=opening_date,
             lot_transaction_ids=[lot.transaction_id for lot in lot_list],
+            rolled_from_group_key=rolled_from_map.get(gk),
         ))
 
     # --- Step 5: Upgrade Short Call → Covered Call where shares exist -------
@@ -627,6 +683,12 @@ class GroupPersister:
             au_to_group: Dict[Tuple[str, str], str] = {}
             # chain_id -> group_id  (chain-aware routing for partial rolls)
             chain_to_group: Dict[str, str] = {}
+            # lot.id -> group_id  (OPT-288: parent-lot lookup for atomic
+            # rolled_from setting at routing time)
+            lot_id_to_group: Dict[int, str] = {}
+            # group_id -> rolled_from_group_id (OPT-288: captured at mint
+            # time, written to PositionGroup at creation)
+            new_group_rolled_from: Dict[str, str] = {}
             # group_id -> set of Lot objects (for open-check)
             group_lots: Dict[str, List[Lot]] = defaultdict(list)
 
@@ -644,7 +706,8 @@ class GroupPersister:
                 group_lots[group_id].append(lot)
                 _update_routing_indices(
                     lot, group_id,
-                    aue_to_group=aue_to_group, au_to_group=au_to_group, chain_to_group=chain_to_group,
+                    aue_to_group=aue_to_group, au_to_group=au_to_group,
+                    chain_to_group=chain_to_group, lot_id_to_group=lot_id_to_group,
                 )
 
             # =================================================================
@@ -657,22 +720,28 @@ class GroupPersister:
                 txn_to_group[lot.transaction_id] = group_id
                 _update_routing_indices(
                     lot, group_id,
-                    aue_to_group=aue_to_group, au_to_group=au_to_group, chain_to_group=chain_to_group,
+                    aue_to_group=aue_to_group, au_to_group=au_to_group,
+                    chain_to_group=chain_to_group, lot_id_to_group=lot_id_to_group,
                 )
 
             sorted_new = sorted(new_lots, key=lambda lot: lot.entry_date)
             for lot in sorted_new:
-                gk = _route_lot_to_group(
+                decision = _route_lot_to_group(
                     lot,
                     groups_by_key=group_lots,
                     aue_to_group=aue_to_group,
                     au_to_group=au_to_group,
                     chain_to_group=chain_to_group,
+                    lot_id_to_group=lot_id_to_group,
                 )
-                if gk is None:
+                if decision.group_key is None:
                     gk = str(_uuid.uuid4())
                     group_lots[gk] = []
                     new_groups_created += 1
+                    if decision.rolled_from_group_key:
+                        new_group_rolled_from[gk] = decision.rolled_from_group_key
+                else:
+                    gk = decision.group_key
                 _add_new_lot(lot, gk)
 
             # Persist new group-lot links
@@ -684,7 +753,10 @@ class GroupPersister:
                     user_id=user_id,
                 ))
 
-            # Create PositionGroup rows for newly created groups
+            # Create PositionGroup rows for newly created groups. OPT-288:
+            # rolled_from_group_id is set at creation time from routing;
+            # derive_rolled_from_group_id runs later as a safety-net
+            # back-fill but should be a no-op for these groups.
             now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             for gid, lots_in_group in group_lots.items():
                 if gid not in all_group_ids and lots_in_group:
@@ -696,6 +768,7 @@ class GroupPersister:
                         strategy_label=None,  # set in Phase 4
                         status="OPEN",
                         opening_date=None,
+                        rolled_from_group_id=new_group_rolled_from.get(gid),
                         updated_at=now_str,
                     ))
                     all_group_ids.add(gid)
