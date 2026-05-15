@@ -9,14 +9,8 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const allNavLinks = [
-  {
-    to: '/positions',
-    label: 'Positions',
-    children: [
-      { to: '/positions/options', label: 'Options' },
-      { to: '/positions/equities', label: 'Equities' },
-    ],
-  },
+  { to: '/positions/options', label: 'Options' },
+  { to: '/positions/equities', label: 'Equities' },
   { to: '/ledger', label: 'Ledger' },
   { to: '/reports', label: 'Reports' },
   { to: '/risk', label: 'Risk', enabled: () => authStore.riskPageEnabled },
@@ -26,6 +20,7 @@ const navLinks = computed(() => allNavLinks.filter(l => !l.enabled || l.enabled(
 
 const openDropdown = ref(null)
 const mobileMenuOpen = ref(false)
+const userDropdownOpen = ref(false)
 const isDark = ref(!document.documentElement.classList.contains('light'))
 
 function toggleTheme() {
@@ -52,6 +47,19 @@ function toggleMobileMenu() {
 function closeMobileMenu() {
   mobileMenuOpen.value = false
 }
+
+const currentPageLabel = computed(() => {
+  for (const link of allNavLinks) {
+    if (link.children) {
+      const child = link.children.find(c => route.path === c.to)
+      if (child) return child.label
+    } else if (route.path === link.to || route.path.startsWith(link.to + '/')) {
+      return link.label
+    }
+  }
+  if (route.path === '/settings') return 'Settings'
+  return route.meta.title ?? ''
+})
 
 watch(
   () => route.path,
@@ -82,7 +90,29 @@ watch(
             </span>
           </router-link>
 
+          <!-- Mobile page title -->
+          <span
+            v-if="currentPageLabel"
+            class="md:hidden border-l border-tv-border pl-3 text-sm font-medium text-tv-muted truncate"
+          >{{ currentPageLabel }}</span>
+
           <!-- Desktop nav -->
+          <div class="hidden md:flex items-center h-full gap-1">
+            <router-link
+              v-for="link in navLinks"
+              :key="link.to"
+              :to="link.to"
+              class="h-full flex items-center px-3.5 text-sm font-semibold tracking-wide border-b-2 transition-colors"
+              :class="isActiveParent(link)
+                ? 'text-tv-text border-tv-blue'
+                : 'text-tv-muted border-transparent hover:text-tv-text'"
+            >
+              {{ link.label }}
+            </router-link>
+          </div>
+
+          <!--
+          DROPDOWN NAV (reserved for future use):
           <div class="hidden md:flex items-center h-full gap-1">
             <template v-for="link in navLinks" :key="link.to">
               <div
@@ -100,7 +130,6 @@ watch(
                   {{ link.label }}
                   <BaseIcon name="chevron-down" class="text-[9px] ml-1.5 opacity-50" />
                 </span>
-
                 <div
                   v-show="openDropdown === link.to"
                   class="absolute top-full left-0 mt-0 bg-tv-panel border border-tv-border rounded shadow-lg py-1 min-w-[140px] z-50"
@@ -119,7 +148,6 @@ watch(
                   </router-link>
                 </div>
               </div>
-
               <router-link
                 v-else
                 :to="link.to"
@@ -132,49 +160,72 @@ watch(
               </router-link>
             </template>
           </div>
+          -->
         </div>
 
         <!-- Right -->
         <div class="flex items-center shrink-0 gap-2 sm:gap-5 text-sm">
-          <!-- Desktop auth/settings -->
-          <div
-            v-if="authStore.authEnabled && authStore.userEmail"
-            class="hidden md:flex items-center gap-3 border-l border-tv-border pl-5"
-          >
-            <span
-              class="text-tv-muted text-xs truncate max-w-[150px]"
-              :title="authStore.userEmail"
-            >
-              {{ authStore.userEmail }}
-            </span>
-            <BaseButton variant="ghost" size="sm" icon="sign-out-alt" @click="authStore.signOut()" title="Sign out" class="hover:text-tv-red" />
-          </div>
-
-          <router-link
-            v-if="route.path !== '/settings'"
-            to="/settings"
-            class="hidden md:flex border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
-          >
-            <BaseIcon name="cog" size="sm" />
-          </router-link>
-
-          <span
-            v-else
-            class="hidden md:flex border-l border-tv-border pl-5 text-tv-blue items-center gap-1.5"
-          >
-            <BaseIcon name="cog" size="sm" />
-            <span class="text-sm font-medium">Settings</span>
-          </span>
-
           <!-- Theme toggle (desktop) -->
           <button
             type="button"
-            class="hidden md:flex border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
+            class="hidden md:flex text-tv-muted hover:text-tv-text transition-colors"
             :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
             @click="toggleTheme"
           >
             <BaseIcon :name="isDark ? 'sun' : 'moon'" size="sm" />
           </button>
+
+          <!-- User dropdown (desktop, auth enabled) -->
+          <div
+            v-if="authStore.authEnabled && authStore.userEmail"
+            class="hidden md:relative md:flex items-center border-l border-tv-border pl-5"
+            @mouseenter="userDropdownOpen = true"
+            @mouseleave="userDropdownOpen = false"
+          >
+            <button class="flex items-center gap-1.5 text-tv-muted hover:text-tv-text transition-colors text-xs">
+              <BaseIcon name="user-circle" size="sm" class="shrink-0" />
+              <span class="truncate max-w-[150px]" :title="authStore.userEmail">{{ authStore.userEmail }}</span>
+              <BaseIcon name="chevron-down" class="text-[9px] opacity-50 transition-transform duration-150" :class="userDropdownOpen ? 'rotate-180' : ''" />
+            </button>
+
+            <div v-if="userDropdownOpen" class="absolute top-full right-0 pt-1.5 z-50 min-w-[160px]">
+              <div class="bg-tv-panel border border-tv-border rounded shadow-lg py-1">
+                <router-link
+                  to="/settings"
+                  class="flex items-center justify-between px-4 py-2 text-sm transition-colors"
+                  :class="route.path === '/settings' ? 'text-tv-blue bg-tv-blue/10' : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20'"
+                >
+                  Settings
+                  <BaseIcon name="cog" size="xs" class="ml-3" />
+                </router-link>
+                <button
+                  @click="authStore.signOut()"
+                  class="w-full flex items-center justify-between px-4 py-2 text-sm text-tv-muted hover:text-tv-red hover:bg-tv-border/20 transition-colors text-left"
+                >
+                  Sign out
+                  <BaseIcon name="sign-out-alt" size="xs" class="ml-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings standalone (desktop, no auth) -->
+          <template v-else>
+            <router-link
+              v-if="route.path !== '/settings'"
+              to="/settings"
+              class="hidden md:flex gap-1.5 items-center border-l border-tv-border pl-5 text-tv-muted hover:text-tv-text transition-colors"
+            >
+              <BaseIcon name="cog" size="sm" /> Settings
+            </router-link>
+            <span
+              v-else
+              class="hidden md:flex border-l border-tv-border pl-5 text-tv-blue items-center gap-1.5"
+            >
+              <BaseIcon name="cog" size="sm" />
+              <span class="text-sm font-medium">Settings</span>
+            </span>
+          </template>
 
           <!-- Theme toggle (mobile) -->
           <button
@@ -194,7 +245,32 @@ watch(
             aria-label="Toggle navigation menu"
             @click="toggleMobileMenu"
           >
-            <BaseIcon :name="mobileMenuOpen ? 'times' : 'bars'" size="md" />
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line
+                x1="2" y1="4" x2="16" y2="4"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                class="transition-all duration-300 ease-in-out"
+                :style="mobileMenuOpen
+                  ? { transformBox: 'fill-box', transformOrigin: 'center', transform: 'translateY(5px) rotate(45deg)' }
+                  : { transformBox: 'fill-box', transformOrigin: 'center' }"
+              />
+              <line
+                x1="2" y1="9" x2="16" y2="9"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                class="transition-all duration-300 ease-in-out"
+                :style="mobileMenuOpen
+                  ? { opacity: 0, transformBox: 'fill-box', transformOrigin: 'center', transform: 'scaleX(0)' }
+                  : { opacity: 1, transformBox: 'fill-box', transformOrigin: 'center' }"
+              />
+              <line
+                x1="2" y1="14" x2="16" y2="14"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                class="transition-all duration-300 ease-in-out"
+                :style="mobileMenuOpen
+                  ? { transformBox: 'fill-box', transformOrigin: 'center', transform: 'translateY(-5px) rotate(-45deg)' }
+                  : { transformBox: 'fill-box', transformOrigin: 'center' }"
+              />
+            </svg>
           </button>
         </div>
       </div>
@@ -212,13 +288,14 @@ watch(
             v-for="child in link.children"
             :key="child.to"
             :to="child.to"
-            class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+            class="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
             :class="route.path === child.to
               ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
               : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
             @click="closeMobileMenu"
           >
             {{ child.label }}
+            <span v-if="route.path === child.to" class="w-1.5 h-1.5 rounded-full bg-tv-blue shrink-0"></span>
           </router-link>
         </template>
 
@@ -226,26 +303,28 @@ watch(
         <router-link
           v-else
           :to="link.to"
-          class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+          class="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
           :class="isActiveParent(link)
             ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
             : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
           @click="closeMobileMenu"
         >
           {{ link.label }}
+          <span v-if="isActiveParent(link)" class="w-1.5 h-1.5 rounded-full bg-tv-blue shrink-0"></span>
         </router-link>
       </template>
 
       <!-- Settings -->
       <router-link
         to="/settings"
-        class="block rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+        class="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
         :class="route.path === '/settings'
           ? 'text-tv-text bg-tv-blue/10 border border-tv-blue/30'
           : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20 border border-transparent'"
         @click="closeMobileMenu"
       >
         Settings
+        <span v-if="route.path === '/settings'" class="w-1.5 h-1.5 rounded-full bg-tv-blue shrink-0"></span>
       </router-link>
 
       <div

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useConfirm } from '@/composables/useConfirm'
@@ -23,8 +23,23 @@ const { show: confirmShow, title: confirmTitle, message: confirmMessage, confirm
 const route = useRoute()
 const router = useRouter()
 
+const tabs = [
+  { id: 'connection', icon: 'fa-plug', label: 'Connection' },
+  { id: 'accounts', icon: 'fa-university', label: 'Accounts' },
+  { id: 'import', icon: 'fa-file-import', label: 'Import Trades' },
+  { id: 'privacy', icon: 'fa-eye-slash', label: 'Privacy' },
+  { id: 'targets', icon: 'fa-bullseye', label: 'Strategy Targets' },
+  { id: 'alerts', icon: 'fa-bell', label: 'Roll Alerts' },
+  // { id: 'tags', icon: 'fa-tags', label: 'Tags' },
+]
+
 const notification = ref(null)
 const activeTab = ref('connection')
+const mobileDropdownOpen = ref(false)
+
+watch(activeTab, (tab) => {
+  router.replace({ query: { ...route.query, tab } })
+})
 
 function showNotification(message, type) {
   notification.value = { message, type }
@@ -74,30 +89,69 @@ onMounted(async () => {
     </div>
   </Transition>
 
-  <div class="flex" style="height: calc(100vh - 56px)">
+  <div class="md:flex md:h-[calc(100vh-56px)]">
 
-    <!-- Left Sidebar Tabs -->
-    <div class="w-56 flex-shrink-0 bg-tv-panel border-r border-tv-border py-4">
+    <!-- Mobile dropdown nav -->
+    <div class="md:hidden border-b border-tv-border bg-tv-panel">
+      <div class="relative px-3 py-2">
+        <div v-if="mobileDropdownOpen" class="fixed inset-0 z-10" @click="mobileDropdownOpen = false"></div>
+
+        <button
+          @click="mobileDropdownOpen = !mobileDropdownOpen"
+          class="relative z-20 w-full flex items-center gap-2 px-3 py-2.5 rounded border text-sm font-medium transition-colors bg-tv-bg border-tv-border text-tv-text"
+        >
+          <i class="fas text-xs text-tv-blue" :class="tabs.find(t => t.id === activeTab)?.icon"></i>
+          <span class="flex-1 text-left">{{ tabs.find(t => t.id === activeTab)?.label }}</span>
+          <i
+            v-if="activeTab === 'connection'"
+            class="fas fa-circle text-[5px]"
+            :class="connectionState.connectionStatus.value?.connected ? 'text-tv-green' : 'text-tv-red'"
+          ></i>
+          <i class="fas fa-chevron-down text-xs text-tv-muted transition-transform duration-150" :class="mobileDropdownOpen ? 'rotate-180' : ''"></i>
+        </button>
+
+        <div
+          v-if="mobileDropdownOpen"
+          class="absolute z-20 left-3 right-3 top-full mt-1 bg-tv-panel border border-tv-border rounded shadow-lg py-1"
+        >
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            @click="activeTab = tab.id; mobileDropdownOpen = false"
+            class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors text-left"
+            :class="activeTab === tab.id
+              ? 'text-tv-blue bg-tv-blue/10'
+              : 'text-tv-muted hover:text-tv-text hover:bg-tv-border/20'"
+          >
+            <i class="fas w-4 text-center text-xs" :class="tab.icon"></i>
+            <span class="flex-1">{{ tab.label }}</span>
+            <i
+              v-if="tab.id === 'connection'"
+              class="fas fa-circle text-[5px]"
+              :class="connectionState.connectionStatus.value?.connected ? 'text-tv-green' : 'text-tv-red'"
+            ></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desktop sidebar -->
+    <div class="hidden md:flex md:flex-col w-56 flex-shrink-0 bg-tv-panel border-r border-tv-border py-4">
       <div class="px-3 mb-4">
         <h1 class="text-lg font-semibold text-tv-text">
           <i class="fas fa-cog mr-2 text-tv-blue"></i>Settings
         </h1>
       </div>
       <nav class="space-y-0.5 px-2">
-        <button v-for="tab in [
-          { id: 'connection', icon: 'fa-plug', label: 'Connection' },
-          { id: 'accounts', icon: 'fa-university', label: 'Accounts' },
-          { id: 'import', icon: 'fa-file-import', label: 'Import Trades' },
-          { id: 'privacy', icon: 'fa-eye-slash', label: 'Privacy' },
-          { id: 'targets', icon: 'fa-bullseye', label: 'Strategy Targets' },
-          { id: 'alerts', icon: 'fa-bell', label: 'Roll Alerts' },
-          { id: 'tags', icon: 'fa-tags', label: 'Tags' },
-        ]" :key="tab.id"
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
           @click="activeTab = tab.id"
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left"
+          class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors text-left border"
           :class="activeTab === tab.id
-            ? 'bg-tv-blue/15 text-tv-blue border border-tv-blue/30'
-            : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border border-transparent'">
+            ? 'bg-tv-blue/15 text-tv-blue border-tv-blue/30'
+            : 'text-tv-muted hover:text-tv-text hover:bg-tv-bg border-transparent'"
+        >
           <i class="fas w-4 text-center" :class="tab.icon"></i>
           <span>{{ tab.label }}</span>
           <span v-if="tab.id === 'connection'" class="ml-auto">
@@ -108,8 +162,8 @@ onMounted(async () => {
       </nav>
     </div>
 
-    <!-- Right Content Area -->
-    <div class="flex-1 overflow-y-auto tv-scrollbar p-6">
+    <!-- Content area -->
+    <div class="flex-1 overflow-y-auto tv-scrollbar p-4 md:p-6">
       <!-- Save status indicator -->
       <div class="flex items-center justify-end mb-4 h-5">
         <span v-if="targetsState.saveStatus.value === 'pending'" class="text-xs text-tv-muted">

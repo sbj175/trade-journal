@@ -23,6 +23,20 @@ defineEmits(['sort'])
     <!-- Strategy (not sortable) -->
     <div>Strategy</div>
 
+    <!-- Realized P&L -->
+    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
+         @click="$emit('sort', 'realized_pnl')">
+      Realized P&amp;L
+      <span v-show="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </div>
+
+    <!-- % Return -->
+    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
+         @click="$emit('sort', 'return_percent')">
+      % Return
+      <span v-show="sortColumn === 'return_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+    </div>
+
     <!-- Status -->
     <div class="cursor-pointer hover:text-tv-text flex items-center gap-1"
          @click="$emit('sort', 'status')">
@@ -44,12 +58,6 @@ defineEmits(['sort'])
       <span v-show="sortColumn === 'closing_date'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </div>
 
-    <!-- Rolls (center, not sortable) -->
-    <div class="text-center">Rolls</div>
-
-    <!-- Notes spacer -->
-    <div></div>
-
     <!-- Initial Premium -->
     <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
          @click="$emit('sort', 'initial_premium')">
@@ -57,18 +65,10 @@ defineEmits(['sort'])
       <span v-show="sortColumn === 'initial_premium'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
     </div>
 
-    <!-- Realized P&L -->
-    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
-         @click="$emit('sort', 'realized_pnl')">
-      Realized P&amp;L
-      <span v-show="sortColumn === 'realized_pnl'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </div>
+    <!-- Rolls (center, not sortable) -->
+    <div class="text-center">Rolls</div>
 
-    <!-- % Return -->
-    <div class="text-right cursor-pointer hover:text-tv-text flex items-center justify-end gap-1"
-         @click="$emit('sort', 'return_percent')">
-      % Return
-      <span v-show="sortColumn === 'return_percent'" class="text-tv-blue">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
-    </div>
+    <!-- Notes spacer -->
+    <div></div>
   </div>
 </template>
