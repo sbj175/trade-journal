@@ -75,3 +75,6 @@ supabase/
 
 # Local-only design/analysis docs
 *.local.md
+
+# Local-only Linear archive tooling — contains plaintext redaction map
+scripts/archive_linear.py

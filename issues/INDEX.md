@@ -1,0 +1,301 @@
+# OptionLedger Issue Archive
+
+Archived 275 issues on 2026-05-15 from Linear team OPT.
+
+## Status summary
+
+- **Backlog**: 56
+- **In Progress**: 2
+- **Done**: 202
+- **Canceled**: 13
+- **Duplicate**: 2
+
+## Backlog
+
+- [OPT-281](OPT-281.md) — Formalize roll-detection spec + scenario test matrix (epic)
+- [OPT-280](OPT-280.md) — Roll detection misses same-day legged-out-and-back-in rolls (chain-only filter)
+- [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
+- [OPT-266](OPT-266.md) — Explain the roll model in-UI — help users understand same-exp vs different-exp rolls
+- [OPT-251](OPT-251.md) — Landing: add real product screenshots with descriptive alt text
+- [OPT-242](OPT-242.md) — Add Google OAuth login via Supabase
+- [OPT-237](OPT-237.md) — Transactional email service
+- [OPT-232](OPT-232.md) — Tastytrade trusted partner process
+- [OPT-231](OPT-231.md) — Retro Tagging Wizard
+- [OPT-227](OPT-227.md) — Insights Trade Questionnaire
+- [OPT-226](OPT-226.md) — Key Dashboards
+- [OPT-225](OPT-225.md) — Websocket stats in admin
+- [OPT-224](OPT-224.md) — optionincome.io
+- [OPT-223](OPT-223.md) — Websocket management
+- [OPT-222](OPT-222.md) — Answer basic questions
+- [OPT-219](OPT-219.md) — Use TT account opened_at date for automatic import range
+- [OPT-209](OPT-209.md) — Link exercised/assigned equity lots to their source option group
+- [OPT-199](OPT-199.md) — Redesign position grouping: strategy-only groups with roll chain visualization
+- [OPT-198](OPT-198.md) — Background sync with account selection and progress widget
+- [OPT-197](OPT-197.md) — Add TradingView chart widget with dynamic position watchlist
+- [OPT-195](OPT-195.md) — Research market data providers for broker-agnostic quotes
+- [OPT-189](OPT-189.md) — Custom domain: app.optionledger.app → Railway
+- [OPT-180](OPT-180.md) — Feature backlog: data quality, analysis, workflow, and polish improvements
+- [OPT-179](OPT-179.md) — SaaS Launch: Deployment, Onboarding, CI/CD & Monetization
+- [OPT-178](OPT-178.md) — Ongoing: Security hardening and vulnerability review
+- [OPT-172](OPT-172.md) — Audit backend for unused API endpoints
+- [OPT-166](OPT-166.md) — Replace quote polling with true TT DXLink streaming
+- [OPT-156](OPT-156.md) — Expand roll analysis reward:risk to Iron Condors and other defined-risk strategies
+- [OPT-153](OPT-153.md) — Tastytrade API Terms of Service — SaaS compliance review
+- [OPT-151](OPT-151.md) — P/L Open bar indicator (Tastytrade-style)
+- [OPT-150](OPT-150.md) — JWT token logged in plaintext in uvicorn access log
+- [OPT-144](OPT-144.md) — Shared quote broadcaster for multi-user WebSocket scaling
+- [OPT-138](OPT-138.md) — Evaluate Supabase as hosting platform for limited beta
+- [OPT-137](OPT-137.md) — Beta capacity gate — limit signups and show waitlist page when full
+- [OPT-133](OPT-133.md) — Research: AI Insights integration for OptionLedger
+- [OPT-130](OPT-130.md) — Email campaign manager
+- [OPT-129](OPT-129.md) — Email setup
+- [OPT-128](OPT-128.md) — Improve Ledger display for ACAT transfers and general UI polish
+- [OPT-108](OPT-108.md) — Review use of browser local storage
+- [OPT-99](OPT-99.md) — Address codebase deprecations and anti-patterns
+- [OPT-98](OPT-98.md) — Migrate from deprecated on_event to lifespan context manager
+- [OPT-87](OPT-87.md) — Sync progress numbers during initial transaction loading would be helpful
+- [OPT-79](OPT-79.md) — Add per-share/per-contract values to Positions page
+- [OPT-72](OPT-72.md) — Align Ledger strategy labels with standard naming convention
+- [OPT-68](OPT-68.md) — Manual Position Entry for Edge Cases
+- [OPT-61](OPT-61.md) — All settings need to be in the DB
+- [OPT-58](OPT-58.md) — Consider changing the options modeling to mirror OptionStrat
+- [OPT-55](OPT-55.md) — Stream progress updates during Initial Sync
+- [OPT-49](OPT-49.md) — Issue reporting feature
+- [OPT-42](OPT-42.md) — Consider trade "repair" suggestions
+- [OPT-34](OPT-34.md) — Multi-tenant migration plan
+- [OPT-30](OPT-30.md) — Reports page "drill down" to Chains
+- [OPT-24](OPT-24.md) — HIGH LEVEL REVIEW - assessment of missing metrics and features
+- [OPT-22](OPT-22.md) — Aesthetics
+- [OPT-21](OPT-21.md) — Consistency
+- [OPT-8](OPT-8.md) — Investigate keyboard shortcuts
+
+## In Progress
+
+- [OPT-284](OPT-284.md) — OPT-284: Migrate roll lineage from group-level to lot-level (epic)
+- [OPT-269](OPT-269.md) — Mobile header should surface the current page name
+
+## Done
+
+- [OPT-286](OPT-286.md) — OPT-286: Ledger fee display — closing fees double-counted, combined-fill open fees lost
+- [OPT-285](OPT-285.md) — OPT-285: Same-shape opens at same expiration merge into one group
+- [OPT-283](OPT-283.md) — Spec amendment: broker order/chain not authoritative for rolls (§0.1, §0.2)
+- [OPT-282](OPT-282.md) — OPT-282: roll_chain_summary loses branch heads (one summary per leaf, not per root)
+- [OPT-279](OPT-279.md) — Same-expiration rolls create new groups instead of staying in one
+- [OPT-277](OPT-277.md) — Remove unreachable Cash Secured Put strategy label
+- [OPT-276](OPT-276.md) — Iron Condor strike label drops legs that closed on earlier days
+- [OPT-275](OPT-275.md) — Multi-fill same-order opens split into separate groups when later closed
+- [OPT-274](OPT-274.md) — Tighten Rule 1 group routing: require chain overlap with open lots
+- [OPT-273](OPT-273.md) — Same-direction multi-leg roll collapses parallel chains in position_ledger
+- [OPT-272](OPT-272.md) — Test strategy + coverage growth (epic)
+- [OPT-270](OPT-270.md) — Roll chain breaks when two independent positions on the same underlying are rolled on the same day
+- [OPT-268](OPT-268.md) — Mirror OPT-263 roll timeline on Positions page + drop order-artifact fields
+- [OPT-267](OPT-267.md) — Remove the "Partially rolled" ⓘ indicator — redundant after OPT-263
+- [OPT-265](OPT-265.md) — Audit raw_transaction string fields for defensive ingestion normalization
+- [OPT-264](OPT-264.md) — Both-legs-ITM call spread expiration creates phantom equity lot
+- [OPT-263](OPT-263.md) — Rolled position groups display is confusing — strategy label, Rolls column, visual stages
+- [OPT-262](OPT-262.md) — Roll detection misses puts-only roll on multi-leg Iron Condor
+- [OPT-261](OPT-261.md) — Position groups don't reset when all lots close before new lots open
+- [OPT-260](OPT-260.md) — Strategy engine missing Call/Put Butterfly pattern (3-leg 1:2:1)
+- [OPT-259](OPT-259.md) — Replace account icon with colored left border on position cards
+- [OPT-258](OPT-258.md) — Add stock logos to Ledger and Equities pages
+- [OPT-257](OPT-257.md) — Add stock logos next to ticker symbols using LogoKit API
+- [OPT-256](OPT-256.md) — Speed on mobile
+- [OPT-255](OPT-255.md) — Landing: adopt tastytrade lowercase brand convention (hybrid)
+- [OPT-254](OPT-254.md) — Landing: normalize Tastytrade capitalization
+- [OPT-253](OPT-253.md) — Landing: remove outdated tastytrade comment claim
+- [OPT-252](OPT-252.md) — Landing: Google Search Console verification meta tag
+- [OPT-250](OPT-250.md) — Landing: add robots.txt and sitemap.xml
+- [OPT-249](OPT-249.md) — Landing: keyword-targeted H2 copy for SEO
+- [OPT-248](OPT-248.md) — Landing: self-host or preload Google Fonts
+- [OPT-247](OPT-247.md) — Landing: precompile Tailwind instead of CDN
+- [OPT-246](OPT-246.md) — Landing page SEO: meta tags, OG, JSON-LD, favicon
+- [OPT-244](OPT-244.md) — Roll not detected when additional leg opened alongside roll
+- [OPT-243](OPT-243.md) — Rename Chain P&L to Chain Realized, drop Net Premium, add Chain Total to position row
+- [OPT-241](OPT-241.md) — Deploy landing page to Cloudflare Pages
+- [OPT-240](OPT-240.md) — Transfer optionledger.app domain to Cloudflare
+- [OPT-239](OPT-239.md) — Prelaunch wait-list
+- [OPT-238](OPT-238.md) — Use account opened_at date to determine initial sync import range
+- [OPT-235](OPT-235.md) — Pipeline not creating lots for Sell to Open transactions after roll
+- [OPT-234](OPT-234.md) — Fix broken import _recognize_from_lots in ledger_service reconciliation
+- [OPT-233](OPT-233.md) — Inline chain P&L and improved roll indicator on Positions page
+- [OPT-230](OPT-230.md) — Calculate and store Realized Volatility
+- [OPT-229](OPT-229.md) — Retrieve / Cache Historical Prices
+- [OPT-228](OPT-228.md) — Historical prices API -- tiingo.com
+- [OPT-221](OPT-221.md) — Live prices not updating
+- [OPT-220](OPT-220.md) — Roll chain premium computed in two places — consolidate to single source
+- [OPT-218](OPT-218.md) — WebSocket reconnect spams 403 after session expires
+- [OPT-217](OPT-217.md) — Research: Partial roll strategy label preservation for multi-leg positions
+- [OPT-216](OPT-216.md) — Unified Toolbar across all pages
+- [OPT-214](OPT-214.md) — Replace browser-native confirm dialogs with app-styled modal
+- [OPT-213](OPT-213.md) — Market status indicator with expandable session details
+- [OPT-212](OPT-212.md) — Account selection for Tastytrade sync
+- [OPT-211](OPT-211.md) — Roll chain summary table + surface on Options Positions page
+- [OPT-210](OPT-210.md) — Ledger: Surface fees column in detail rows
+- [OPT-208](OPT-208.md) — Extract page logic into composables for all pages
+- [OPT-207](OPT-207.md) — Ledger: Close Status detail + group by close disposition
+- [OPT-206](OPT-206.md) — Improvements to Strategy detection
+- [OPT-205](OPT-205.md) — Positions sub-navigation: Equities and Options pages
+- [OPT-204](OPT-204.md) — Ledger: Consolidate lots by strike
+- [OPT-203](OPT-203.md) — Remove chain graph derivation (Stage 4) from pipeline
+- [OPT-202](OPT-202.md) — Group-level roll chain tracking
+- [OPT-200](OPT-200.md) — Group-level roll chain tracking via rolled_from_group_id
+- [OPT-194](OPT-194.md) — Research Option Income
+- [OPT-191](OPT-191.md) — Research using SnapTrade
+- [OPT-188](OPT-188.md) — Bear ZEBRA being recognized as a Bull ZEBRA
+- [OPT-187](OPT-187.md) — Remove dead orders/order_positions tables and related code
+- [OPT-186](OPT-186.md) — ZEBRA strategy not detected by new strategy engine pipeline
+- [OPT-185](OPT-185.md) — Make Risk page visibility configurable via .env
+- [OPT-184](OPT-184.md) — Rules-based advice engine for Roll Analysis
+- [OPT-183](OPT-183.md) — Research: Add EV (Expected Value) to Roll Analysis
+- [OPT-182](OPT-182.md) — Add "Delta per qty" to Roll Analysis Greeks section
+- [OPT-181](OPT-181.md) — New positions from sync not added to WebSocket price feed until page refresh
+- [OPT-177](OPT-177.md) — Add strategy and tag filters to Ledger, strategy filters to Reports
+- [OPT-176](OPT-176.md) — P&L Event Table for Accurate Time-Based Reporting
+- [OPT-175](OPT-175.md) — Build shared DateFilter component (TT-style calendar picker)
+- [OPT-174](OPT-174.md) — Empty source group left behind after accepting merge suggestion
+- [OPT-173](OPT-173.md) — Sync/reprocessing undoes user group merges
+- [OPT-170](OPT-170.md) — Ledger group merge suggestions: detect potential multi-group strategies
+- [OPT-169](OPT-169.md) — Migrate Reports page from order_chains to position_groups + lots
+- [OPT-168](OPT-168.md) — Covered Calls misclassified as Short Call + Shares due to equity/option group separation
+- [OPT-167](OPT-167.md) — Replace Time dropdown with date range filters on Reports page
+- [OPT-165](OPT-165.md) — Fix Positions page financial column data overlap
+- [OPT-164](OPT-164.md) — Design refresh: bolder, cleaner financial look
+- [OPT-163](OPT-163.md) — Convert MPA to Vue Router SPA
+- [OPT-162](OPT-162.md) — Create shared design token system
+- [OPT-160](OPT-160.md) — Sort ledger lot legs by strike ascending within same expiration
+- [OPT-159](OPT-159.md) — Sync notification shows symbols from all fetched transactions, not just new ones
+- [OPT-158](OPT-158.md) — Show import summary before redirect to Positions
+- [OPT-157](OPT-157.md) — Add PostgreSQL maintenance to admin dashboard
+- [OPT-154](OPT-154.md) — Add data disclosure consent screen and privacy page
+- [OPT-152](OPT-152.md) — Positions page Tastytrade-style visual refresh (experiment)
+- [OPT-149](OPT-149.md) — Tags and position notes disappear after sync
+- [OPT-148](OPT-148.md) — Enforce tenant isolation on DELETE/UPDATE ORM operations
+- [OPT-147](OPT-147.md) — Fix account balances multi-tenant scoping bug
+- [OPT-146](OPT-146.md) — Ledger page position notes not saving reliably
+- [OPT-145](OPT-145.md) — Move Reprocess Chains from Settings to Admin Dashboard
+- [OPT-143](OPT-143.md) — Dockerization + Docker Compose for dev environment
+- [OPT-142](OPT-142.md) — Consolidate duplicate option legs on Positions page
+- [OPT-141](OPT-141.md) — Fix Alpine error: duplicate :key in option legs x-for causes rendering failure
+- [OPT-140](OPT-140.md) — Fix: Positions page 500 error — string vs date comparison on lot expiration
+- [OPT-139](OPT-139.md) — Beta Capacity Gate
+- [OPT-136](OPT-136.md) — Add PostgreSQL database health panel to admin dashboard
+- [OPT-135](OPT-135.md) — Implement tagging on Position Groups (same level as Strategy)
+- [OPT-134](OPT-134.md) — Add Greeks to Roll Analysis box + redesign layout
+- [OPT-132](OPT-132.md) — Add group-level and order-level notes to Ledger page
+- [OPT-131](OPT-131.md) — Fix strategy label for rolled spreads in closed groups
+- [OPT-127](OPT-127.md) — Fix business-key PKs across 8 tables for multi-tenant support
+- [OPT-126](OPT-126.md) — Major multi-tenant issue
+- [OPT-125](OPT-125.md) — Saved script for creating an iron condor across 2 orders - test data
+- [OPT-124](OPT-124.md) — Remove positions_inventory table and PositionInventoryManager
+- [OPT-123](OPT-123.md) — Cross-order Strategy Engine: position-snapshot recognition
+- [OPT-122](OPT-122.md) — Create an admin web app
+- [OPT-121](OPT-121.md) — Architecture: Redesigned data pipeline with cross-order strategy recognition
+- [OPT-119](OPT-119.md) — Research: Futures transaction handling on import
+- [OPT-118](OPT-118.md) — Separate Connection & Import into dedicated setup page
+- [OPT-117](OPT-117.md) — Redesign login page
+- [OPT-116](OPT-116.md) — Gracefully handle closing transactions with no matching opening lot
+- [OPT-115](OPT-115.md) — Preserve user group assignments across reprocess-chains
+- [OPT-114](OPT-114.md) — Positions page only shows 1 of 76 open positions after Initial Sync
+- [OPT-113](OPT-113.md) — Per-user Tastytrade OAuth credential management
+- [OPT-112](OPT-112.md) — Add a configuration banner to server logging
+- [OPT-111](OPT-111.md) — Get screenshots out of git
+- [OPT-110](OPT-110.md) — Implement Supabase Auth integration (Phase 1 auth)
+- [OPT-109](OPT-109.md) — Add user_id to all tables + tenant scoping (Phase 1)
+- [OPT-107](OPT-107.md) — PostgreSQL Migration (Local Docker)
+- [OPT-106](OPT-106.md) — Need to hide the "move lots" button when the Order View is active
+- [OPT-105](OPT-105.md) — SQLAlchemy ORM migration + Alembic setup
+- [OPT-104](OPT-104.md) — Add comprehensive backend test suite and fix Long Call detection bug
+- [OPT-103](OPT-103.md) — Newly added shares should be added into the existing group where shares are already (assuming that exists).
+- [OPT-102](OPT-102.md) — Sync Output Message
+- [OPT-101](OPT-101.md) — Phase 1: Extract inline Alpine components and add Vite build step
+- [OPT-100](OPT-100.md) — Frontend migration: Alpine.js → Vue 3
+- [OPT-97](OPT-97.md) — Filter expired option legs from Positions page
+- [OPT-96](OPT-96.md) — Auto-close expired options?
+- [OPT-95](OPT-95.md) — Position page column alignment
+- [OPT-94](OPT-94.md) — Position page - how we display zeros
+- [OPT-93](OPT-93.md) — Ability to move shares by Leg
+- [OPT-92](OPT-92.md) — Auto Sync Behavior
+- [OPT-91](OPT-91.md) — 0 DTE options are not showing a "0" in the DTE column on the Positions page.
+- [OPT-90](OPT-90.md) — The default strategy name for a shares-only position is being set to "Ungrouped". Let's change that to "Shares".
+- [OPT-89](OPT-89.md) — %Max on Credit spreads?
+- [OPT-86](OPT-86.md) — Server log output seems to include some extras for certain symbols debugged in the past. Examples: GOOG, USO, CSX.
+- [OPT-85](OPT-85.md) — Symbol filter is over-matching
+- [OPT-84](OPT-84.md) — Total Return incorrect for rolled positions on Positions page
+- [OPT-83](OPT-83.md) — Remove the "-dense" nomenclature on the pages
+- [OPT-82](OPT-82.md) — Ledger page should aggregate share lots into a position row which can in turn be expanded to show the lots
+- [OPT-78](OPT-78.md) — Unify Positions page grouping with Ledger (equity + options)
+- [OPT-76](OPT-76.md) — Ledger account selector doesn't persist across page navigation
+- [OPT-75](OPT-75.md) — Break up the monolithic code files into more manageable pieces
+- [OPT-74](OPT-74.md) — There is a bug in the time filtering on the Ledger
+- [OPT-73](OPT-73.md) — Refine Positions page display: grouping, density, per-share values
+- [OPT-71](OPT-71.md) — Call assignment creates equity lot with wrong direction
+- [OPT-70](OPT-70.md) — Ledger Positions view: clean up cost basis, realized P&L, and $0.00 display
+- [OPT-69](OPT-69.md) — Create equity lots from synced stock transactions
+- [OPT-67](OPT-67.md) — position_groups can go stale when chain IDs change during reprocessing
+- [OPT-66](OPT-66.md) — Handle "Symbol Change" transactions in order processing
+- [OPT-65](OPT-65.md) — Ledger page: position-centric view with action toggle
+- [OPT-64](OPT-64.md) — Allow user to override strategy label on order chains
+- [OPT-63](OPT-63.md) — Research: Wingman trial — competitive analysis for chain grouping design
+- [OPT-62](OPT-62.md) — Short call opening orders don't merge into existing chains with open stock lots
+- [OPT-60](OPT-60.md) — Drop tables
+- [OPT-57](OPT-57.md) — Manual chain merge: select and merge chains within the same underlying
+- [OPT-54](OPT-54.md) — Chain-as-source-of-truth: Unify Positions and Chains architecture
+- [OPT-53](OPT-53.md) — Implement OAuth2 Authorization Code flow for user onboarding
+- [OPT-52](OPT-52.md) — Landing Page
+- [OPT-51](OPT-51.md) — Backend Migration: Need a phased implementation plan for full SAAS
+- [OPT-50](OPT-50.md) — Share comments between Positions and Chains
+- [OPT-48](OPT-48.md) — Move processing to back end
+- [OPT-47](OPT-47.md) — Upgrade the python SDK to re-enable authentication
+- [OPT-45](OPT-45.md) — Roll helper
+- [OPT-44](OPT-44.md) — Settings page
+- [OPT-43](OPT-43.md) — Wingman parity
+- [OPT-41](OPT-41.md) — Flags
+- [OPT-40](OPT-40.md) — Positions page Exp display on the legs is formatted wrong.
+- [OPT-39](OPT-39.md) — Positions page DTE seems to be off by +1
+- [OPT-38](OPT-38.md) — Balances do not update with a Positions page Sync
+- [OPT-37](OPT-37.md) — Add additional filters to the chains page
+- [OPT-36](OPT-36.md) — Add additional info to the Chains page
+- [OPT-33](OPT-33.md) — There needs to be an automatic timeout logout
+- [OPT-31](OPT-31.md) — Chains filters should be more like on Reports page
+- [OPT-29](OPT-29.md) — Implement Notes
+- [OPT-28](OPT-28.md) — Displaying large values
+- [OPT-27](OPT-27.md) — Positions page - cannot sort by IVR or %Max
+- [OPT-26](OPT-26.md) — Position legs sort issue
+- [OPT-25](OPT-25.md) — Fix position display for Shares
+- [OPT-20](OPT-20.md) — Fix display of ASSIGNED transactions
+- [OPT-19](OPT-19.md) — Chain link on Positions page should only open that chain
+- [OPT-17](OPT-17.md) — Need an account identifier or symbol on the Positions and Chains pages.
+- [OPT-16](OPT-16.md) — Fix display of EXPIRATION transactions
+- [OPT-15](OPT-15.md) — Display a popup showing how many transactions / orders were imported following a Sync on the Chains page
+- [OPT-14](OPT-14.md) — Chains page, complex order chain, order shown out of sequence
+- [OPT-13](OPT-13.md) — Chains page, scrap order dropdown?
+- [OPT-12](OPT-12.md) — Chains page calculations
+- [OPT-11](OPT-11.md) — Sort ability on page headers
+- [OPT-10](OPT-10.md) — Sync slow on Chains page
+- [OPT-7](OPT-7.md) — Symbol removed when account changed
+- [OPT-6](OPT-6.md) — Review Chains page headers
+- [OPT-5](OPT-5.md) — Possible Chains bug
+- [OPT-3](OPT-3.md) — Connect your tools
+- [OPT-2](OPT-2.md) — Set up your teams
+- [OPT-1](OPT-1.md) — Get familiar with Linear
+
+## Canceled
+
+- [OPT-271](OPT-271.md) — Full reprocess is not idempotent — stale duplicate position_groups accumulate
+- [OPT-201](OPT-201.md) — Lot-level Roll Chain Tracking (Phase 1 & 2)
+- [OPT-171](OPT-171.md) — Add setting to toggle ledger merge suggestions on/off
+- [OPT-161](OPT-161.md) — Full UI design refresh — Refined Terminal aesthetic
+- [OPT-120](OPT-120.md) — Documentation: Data pipeline from raw transactions to position groups
+- [OPT-88](OPT-88.md) — Why is there a WOLF1 symbol in the Roth IRA?
+- [OPT-77](OPT-77.md) — Positions page too crowded — add column visibility or display modes
+- [OPT-59](OPT-59.md) — DSL for testing
+- [OPT-46](OPT-46.md) — Investigate the WOLF chain - it was a strange scenario
+- [OPT-35](OPT-35.md) — Authentication Fails in Windows Tauri app
+- [OPT-32](OPT-32.md) — Sync Behavior Documentation
+- [OPT-18](OPT-18.md) — Time filter doesn't filter unless it finds data
+- [OPT-4](OPT-4.md) — Import your data
+
+## Duplicate
+
+- [OPT-56](OPT-56.md) — Add onboarding page for Initial Sync
+- [OPT-23](OPT-23.md) — Multi-tenant support
