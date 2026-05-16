@@ -110,17 +110,9 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           @click="$emit('open-roll-chain', group)" />
       </div>
 
-      <!-- Badges -->
-      <div v-if="(group.rollAnalysis?.badges?.length > 0) || (group.tags?.length > 0)"
+      <!-- Tags -->
+      <div v-if="group.tags?.length > 0"
            class="flex flex-wrap items-center gap-1 mt-1.5">
-        <span v-for="badge in (group.rollAnalysis?.badges || [])" :key="badge.label"
-              class="text-[10px] px-1.5 py-0.5 rounded-sm border leading-3"
-              :class="{
-                'bg-tv-green/20 text-tv-green border-tv-green/50': badge.color === 'green',
-                'bg-tv-red/20 text-tv-red border-tv-red/50': badge.color === 'red',
-                'bg-tv-amber/20 text-tv-amber border-tv-amber/50': badge.color === 'yellow',
-                'bg-tv-orange/20 text-tv-orange border-tv-orange/50': badge.color === 'orange'
-              }">{{ badge.label }}</span>
         <span v-for="tag in (group.tags || [])" :key="tag.id"
               class="text-[10px] px-1.5 py-0.5 rounded-full border leading-3"
               :style="`background: ${tag.color}20; color: ${tag.color}; border-color: ${tag.color}50`">
