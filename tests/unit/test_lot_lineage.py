@@ -660,6 +660,64 @@ class TestBuildChainAttribution:
         assert chains_by_leaf["C"] == ["A", "B", "C"]
         assert lot_to_leaf == {1: "C", 2: "C", 3: "C"}
 
+    def test_opt290_forward_walk_into_unrelated_chain_falls_back_to_orphan_tiebreak(self):
+        """OPT-290: when a spurious parent_lot_id link bridges two unrelated
+        chains, walking forward from a lot in the older chain can land at
+        the newer chain's leaf. Attribution must NOT cross that bridge —
+        the lot's source group isn't in the newer chain. Fall back to the
+        orphan tiebreak constrained to legitimate candidate leaves.
+
+        Repro shape (simplified from the IBIT Roth case):
+
+          - Chain 1: A → B  (A=2025-01-01, B=2025-01-15)  — older
+          - Chain 2: X → Y  (X=2025-02-01, Y=2025-02-15)  — newer
+          - Lot 1 lives in group A. Lot 2 lives in group B.
+          - A bad pairing sets lot 11's parent_lot_id = lot 2, bridging
+            the two chains via parent_lot_id even though A/B have no
+            rolled_from link to X/Y.
+          - Walking forward from lot 1 reaches Y (chain 2's leaf), but
+            A is not in chain 2's group list. Pre-fix, lot 1 would be
+            attributed to chain 2 (wrong). Post-fix, lot 1 attributes
+            to B via orphan tiebreak.
+        """
+        groups = [
+            # Chain 1 (older)
+            _GroupStub("A", None, "2025-01-01"),
+            _GroupStub("B", "A", "2025-01-15"),
+            # Chain 2 (newer) — structurally unrelated (no rolled_from link)
+            _GroupStub("X", None, "2025-02-01"),
+            _GroupStub("Y", "X", "2025-02-15"),
+            # Force group A to be "branching" so the forward-walk path
+            # is taken (the unique-attribution path doesn't walk).
+            _GroupStub("B2", "A", "2025-01-15"),
+        ]
+        lots = [
+            _LotStub(1, "tA1", None),       # in A — the "old chain" lot
+            _LotStub(2, "tB1", 1),          # in B — A's normal descendant
+            _LotStub(3, "tB2-1", None),     # in B2 — keeps the chain
+            _LotStub(11, "tX1", 2),         # in X — SPURIOUS parent=2 (bridges)
+            _LotStub(12, "tY1", 11),        # in Y — normal descendant of X
+        ]
+        links = [
+            ("A", "tA1"),
+            ("B", "tB1"),
+            ("B2", "tB2-1"),
+            ("X", "tX1"),
+            ("Y", "tY1"),
+        ]
+
+        _, lot_to_leaf = build_chain_attribution(**_build_inputs(groups, lots, links))
+
+        # Pre-fix bug: lot 1 would attribute to "Y" because the forward
+        # walk 1→2→11→12 lands at Y. Post-fix: Y is not in candidate_leaves
+        # for group A (which has chains {B, B2}), so we fall back to
+        # orphan tiebreak. B2 opens latest among {B, B2} (same date — ties
+        # break deterministically); whichever wins, it must NOT be Y.
+        assert lot_to_leaf[1] in {"B", "B2"}, (
+            f"lot 1 attributed to {lot_to_leaf[1]!r}; OPT-290 regression — "
+            "the forward walk crossed into chain 2 via a spurious bridge."
+        )
+
     def test_cycle_in_parent_lot_id_does_not_infinite_loop(self):
         """Defensive smoke test: a corrupt parent_lot_id cycle must not hang the function. The visited-set guard in the forward walk catches it."""
         groups = [

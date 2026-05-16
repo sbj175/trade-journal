@@ -387,14 +387,21 @@ def build_chain_attribution(
         if terminal_lot is None:
             continue
         terminal_gid = txn_to_group.get(terminal_lot.transaction_id)
-        if terminal_gid is not None and terminal_gid in chains_by_leaf:
-            # Terminal landed in a chain leaf — that's the chain.
+        if (terminal_gid is not None
+                and terminal_gid in chains_by_leaf
+                and terminal_gid in candidate_leaves):
+            # Terminal landed in a chain leaf that contains this lot's
+            # source group — that's the chain.
             lot_to_leaf[lot.id] = terminal_gid
         else:
-            # Orphan: terminal isn't a chain leaf (or has no group).
-            # Tiebreak: among the chains containing this lot's group,
-            # pick the one whose leaf opened most recently. Stable and
-            # matches "the trader's most active continuation."
+            # Orphan: terminal isn't a chain leaf, has no group, OR the
+            # forward walk crossed into a chain that doesn't contain
+            # this lot's source group (OPT-290 — happens when an upstream
+            # parent_lot_id link jumps between structurally unrelated
+            # chains via a spurious pairing). Tiebreak among the chains
+            # legitimately containing this lot's group: pick the one
+            # whose leaf opened most recently. Stable and matches "the
+            # trader's most active continuation."
             tiebreak_leaf = max(
                 candidate_leaves,
                 key=lambda lid: group_map[lid].opening_date or "",
