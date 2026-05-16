@@ -1,12 +1,12 @@
 # OptionLedger Issue Archive
 
-282 issues as of 2026-05-16.
+283 issues as of 2026-05-16.
 
 ## Status summary
 
 - **Backlog**: 56
 - **In Progress**: 1
-- **Done**: 210
+- **Done**: 211
 - **Canceled**: 13
 - **Duplicate**: 2
 
@@ -75,6 +75,7 @@
 
 ## Done
 
+- [OPT-291](OPT-291.md) — Remove roll-analysis signal badges from Options positions list
 - [OPT-290](OPT-290.md) — roll_chain_summaries drift under incremental sync — chain values diverge from per-rung modal
 - [OPT-288](OPT-288.md) — Consolidate group routing and roll-lineage derivation into one stage with parent_lot_id as the canonical signal
 - [OPT-287](OPT-287.md) — Roll lost when new leg's expiration matches a pre-existing sibling group's expiration

@@ -84,7 +84,7 @@ defineEmits(['sort'])
     <!-- Notes spacer -->
     <div></div>
 
-    <!-- Tags / Signals -->
-    <div class="text-right">Tags / Signals</div>
+    <!-- Tags -->
+    <div class="text-right">Tags</div>
   </div>
 </template>

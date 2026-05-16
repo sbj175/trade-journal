@@ -122,19 +122,8 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           <BaseIcon name="sticky-note" size="sm" class="text-tv-amber" v-show="notesState.getPositionComment(group)" title="Has notes" />
         </div>
 
-        <!-- Tags / Roll badges -->
+        <!-- Tags -->
         <div class="relative flex flex-nowrap items-center justify-end gap-2 min-w-0" data-tag-popover @click.stop>
-          <template v-if="group.rollAnalysis && group.rollAnalysis.badges.length > 0">
-            <span v-for="badge in group.rollAnalysis.badges" :key="badge.label"
-                  class="text-[11px] px-2 py-0.5 rounded-sm border leading-4 flex-none"
-                  :class="{
-                    'bg-tv-green/20 text-tv-green border-tv-green/50': badge.color === 'green',
-                    'bg-tv-red/20 text-tv-red border-tv-red/50': badge.color === 'red',
-                    'bg-tv-amber/20 text-tv-amber border-tv-amber/50': badge.color === 'yellow',
-                    'bg-tv-orange/20 text-tv-orange border-tv-orange/50': badge.color === 'orange'
-                  }">{{ badge.label }}</span>
-          </template>
-
           <span v-for="tag in (group.tags || [])" :key="tag.id"
                 class="text-[11px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 leading-4 flex-none"
                 :style="`background: ${tag.color}20; color: ${tag.color}; border-color: ${tag.color}50`">
