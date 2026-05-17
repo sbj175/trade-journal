@@ -8,7 +8,7 @@ import { gcd } from '@/lib/math'
 
 export function useLedgerGroups(Auth, state) {
   const {
-    groups, filteredGroups, accounts, selectedAccount, loading,
+    groups, filteredGroups, groupsAfterNonDateFilters, accounts, selectedAccount, loading,
     filterUnderlying, filterDirection, filterType, filterStrategy, filterTagIds,
     filterRollsOnly, showOpen, showClosed, sortColumn, sortDirection,
     dateFrom, dateTo, stats,
@@ -112,6 +112,13 @@ export function useLedgerGroups(Auth, state) {
 
     if (!showOpen.value) filtered = filtered.filter(g => g.status !== 'OPEN')
     if (!showClosed.value) filtered = filtered.filter(g => g.status !== 'CLOSED')
+
+    // Snapshot the pre-date-filter set: needed for event-sourced overview stats
+    // so monthly/range totals reconcile (groups outside the date window can still
+    // contribute closings that fall inside it — and vice versa).
+    if (groupsAfterNonDateFilters) {
+      groupsAfterNonDateFilters.value = [...filtered]
+    }
 
     if (dateFrom.value || dateTo.value) {
       const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null

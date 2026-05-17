@@ -1,11 +1,11 @@
 # OptionLedger Issue Archive
 
-283 issues as of 2026-05-16.
+284 issues as of 2026-05-17.
 
 ## Status summary
 
 - **Backlog**: 56
-- **In Progress**: 1
+- **In Progress**: 2
 - **Done**: 211
 - **Canceled**: 13
 - **Duplicate**: 2
@@ -71,6 +71,7 @@
 
 ## In Progress
 
+- [OPT-292](OPT-292.md) — Ledger overview stats over-count P&L across date ranges
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
 
 ## Done

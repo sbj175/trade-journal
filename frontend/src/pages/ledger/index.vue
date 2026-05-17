@@ -114,19 +114,78 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 const rollChainOpen = computed(() => !!rollChainModal.value)
 useBackDismiss(rollChainOpen, () => { rollChainModal.value = null })
 
-// Aggregate header stats
+// Aggregate header stats — event-sourced when a date filter is active.
+//
+// Without a date filter, totals fall through to the group-level rollups (same
+// as before). When a date filter is active, we sum closing events whose
+// closing_date falls inside the window — so monthly sums reconcile to range
+// sums, and a group spanning multiple months gets apportioned across them
+// instead of being counted in full inside every window it touches.
+const dateFilterActive = computed(() => !!(dateFrom.value || dateTo.value))
+
 const closedFilteredGroups = computed(() => filteredGroups.value.filter(g => g.status !== 'OPEN'))
-const totalRealized = computed(() => filteredGroups.value.reduce((sum, g) => sum + (g.realized_pnl || 0), 0))
-const winCount = computed(() => closedFilteredGroups.value.filter(g => (g.realized_pnl || 0) > 0).length)
+
+// Realized in window per group: sum of closings whose closing_date lies in
+// [dateFrom, dateTo]. Returns the group's full realized_pnl when no filter.
+function groupInWindowRealized(g) {
+  if (!dateFilterActive.value) return g.realized_pnl || 0
+  const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
+  const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
+  let sum = 0
+  for (const lot of g.lots || []) {
+    for (const c of lot.closings || []) {
+      if (!c.closing_date) continue
+      const d = new Date(c.closing_date)
+      if (from && d < from) continue
+      if (to && d > to) continue
+      sum += c.realized_pnl || 0
+    }
+  }
+  return sum
+}
+
+const totalRealized = computed(() =>
+  filteredGroups.value.reduce((sum, g) => sum + groupInWindowRealized(g), 0)
+)
+
+// Win % and Wtd % scope: groups with closing activity inside the window. When
+// no date filter is active, fall back to the previous "all closed groups in
+// filter" scope so behavior matches today.
+const winRateScope = computed(() => {
+  if (!dateFilterActive.value) return closedFilteredGroups.value
+  return filteredGroups.value.filter(g => {
+    // A group is in scope if it has at least one closing event in the window.
+    for (const lot of g.lots || []) {
+      for (const c of lot.closings || []) {
+        if (!c.closing_date) continue
+        const d = new Date(c.closing_date)
+        const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
+        const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
+        if (from && d < from) continue
+        if (to && d > to) continue
+        return true
+      }
+    }
+    return false
+  })
+})
+
+const winCount = computed(() => {
+  if (!dateFilterActive.value) {
+    return closedFilteredGroups.value.filter(g => (g.realized_pnl || 0) > 0).length
+  }
+  return winRateScope.value.filter(g => groupInWindowRealized(g) > 0).length
+})
 const winRatePct = computed(() => {
-  const n = closedFilteredGroups.value.length
+  const n = winRateScope.value.length
   return n > 0 ? (winCount.value / n) * 100 : null
 })
+
 const weightedReturnPct = computed(() => {
-  const closed = closedFilteredGroups.value
+  const scope = winRateScope.value
   let num = 0, den = 0
-  for (const g of closed) {
-    num += g.realized_pnl || 0
+  for (const g of scope) {
+    num += groupInWindowRealized(g)
     den += Math.abs(g.initialPremium || 0)
   }
   return den > 0 ? (num / den) * 100 : null
@@ -224,15 +283,25 @@ onMounted(async () => {
           ${{ formatNumber(totalRealized) }}
         </span>
         <InfoPopover>
-          Sum of realized P&amp;L across every group in the current filter — including partial closes and rolls on still-open groups.
+          <template v-if="dateFilterActive">
+            Sum of realized P&amp;L from closing events whose <strong>close date</strong> falls inside the selected window. Monthly totals will add up to the same range as a single query.
+          </template>
+          <template v-else>
+            Sum of realized P&amp;L across every group in the current filter — including partial closes and rolls on still-open groups.
+          </template>
         </InfoPopover>
       </span>
       <span class="text-tv-muted whitespace-nowrap md:relative md:bottom-[-2px]">
         Win:
         <span class="text-tv-text">{{ winRatePct != null ? formatNumber(winRatePct) + '%' : '\u2014' }}</span>
-        <span v-if="winRatePct != null" class="text-tv-muted">({{ closedFilteredGroups.length }})</span>
+        <span v-if="winRatePct != null" class="text-tv-muted">({{ winRateScope.length }})</span>
         <InfoPopover>
-          Percent of <strong>closed</strong> groups in the current filter with realized P&amp;L &gt; 0. The number in parentheses is how many closed groups went into the calculation.
+          <template v-if="dateFilterActive">
+            Percent of groups whose closing activity inside the window netted positive realized P&amp;L. The number in parentheses is how many groups had closings in the window.
+          </template>
+          <template v-else>
+            Percent of <strong>closed</strong> groups in the current filter with realized P&amp;L &gt; 0. The number in parentheses is how many closed groups went into the calculation.
+          </template>
         </InfoPopover>
       </span>
       <span class="text-tv-muted whitespace-nowrap md:relative md:bottom-[-2px]">
@@ -240,12 +309,18 @@ onMounted(async () => {
         <span :class="weightedReturnPct > 0 ? 'text-tv-green' : weightedReturnPct < 0 ? 'text-tv-red' : 'text-tv-text'">
           {{ weightedReturnPct != null ? formatNumber(weightedReturnPct) + '%' : '\u2014' }}
         </span>
-        <span v-if="weightedReturnPct != null" class="text-tv-muted">({{ closedFilteredGroups.length }})</span>
+        <span v-if="weightedReturnPct != null" class="text-tv-muted">({{ winRateScope.length }})</span>
         <InfoPopover>
-          <div class="mb-1"><strong>Weighted % return</strong> across closed groups in the current filter.</div>
-          <div class="text-tv-muted">Formula: sum(realized P&amp;L) &divide; sum(|initial premium|) &times; 100. This is your actual return on capital deployed — unlike a simple average, it accounts for the size of each position.</div>
+          <div class="mb-1"><strong>Weighted % return</strong><template v-if="dateFilterActive"> on groups with closing activity in the window</template><template v-else> across closed groups in the current filter</template>.</div>
+          <div class="text-tv-muted">Formula: sum(realized P&amp;L<template v-if="dateFilterActive"> in window</template>) &divide; sum(|initial premium|) &times; 100. This is your actual return on capital deployed — unlike a simple average, it accounts for the size of each position.</div>
         </InfoPopover>
       </span>
+    </div>
+
+    <!-- Scope caption: makes the list-vs-totals split explicit when a date filter is active -->
+    <div v-if="dateFilterActive"
+         class="bg-tv-panel/60 border-b border-tv-border px-5 py-1 text-[11px] text-tv-muted leading-tight">
+      Totals reflect closing activity inside the selected window. The list below shows groups that touched the window for any reason (opening, rolling, partial close, or close).
     </div>
 
     <!-- Loading State -->
