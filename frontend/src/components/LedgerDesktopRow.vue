@@ -160,11 +160,11 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
       </div>
 
       <!-- Realized P&L -->
-      <div class="text-right text-base font-medium"
+      <div class="text-right text-base font-medium whitespace-nowrap"
            :class="group.realized_pnl >= 0 ? 'text-tv-green' : 'text-tv-red'">
         {{ group.realized_pnl ? '$' + formatNumber(group.realized_pnl) : '' }}
         <i v-if="group.hasClosingsOutsideWindow"
-           class="fas fa-circle-info text-tv-muted text-[10px] ml-1 align-middle cursor-help"
+           class="fas fa-circle-info text-tv-muted text-[10px] ml-1.5 align-middle cursor-help"
            :title="`Row shows the full realized P&L for this group. Inside the selected date range: $${formatNumber(group.inWindowRealized || 0)}. The remainder was recognized outside the range, which is why this row’s value can exceed (or differ from) what it contributes to the Realized total above.`"></i>
       </div>
 
