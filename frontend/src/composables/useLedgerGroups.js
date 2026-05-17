@@ -189,10 +189,39 @@ export function useLedgerGroups(Auth, state) {
 
     filteredGroups.value = filtered
 
+    // Pre-compute the date window once for the per-row enrichment below.
+    const _from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
+    const _to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
+    const _dateActive = !!(_from || _to)
+
     for (const group of filteredGroups.value) {
       group.initialPremium = groupInitialPremium(group)
       const basis = Math.abs(group.initialPremium || 0)
       group.returnPercent = basis > 0 ? ((group.realized_pnl || 0) / basis) * 100 : null
+
+      // Date-window slice of realized P&L for this group: needed by the
+      // overview totals (so monthly vs range reconciles) and by the per-row
+      // mismatch flag (so the user knows when a row's displayed Realized
+      // includes activity outside the window).
+      if (_dateActive) {
+        let inWindow = 0, total = 0
+        for (const lot of group.lots || []) {
+          for (const c of lot.closings || []) {
+            const rp = c.realized_pnl || 0
+            total += rp
+            if (!c.closing_date) continue
+            const d = new Date(c.closing_date)
+            if (_from && d < _from) continue
+            if (_to && d > _to) continue
+            inWindow += rp
+          }
+        }
+        group.inWindowRealized = inWindow
+        group.hasClosingsOutsideWindow = Math.abs(total - inWindow) > 0.005
+      } else {
+        group.inWindowRealized = group.realized_pnl || 0
+        group.hasClosingsOutsideWindow = false
+      }
       group.optionLegs = groupedOptionLegs(group)
       group.equityAgg = equityAggregate(group)
       group.hasEquityLots = openEquityLots(group).length > 0

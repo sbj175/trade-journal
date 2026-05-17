@@ -125,27 +125,11 @@ const dateFilterActive = computed(() => !!(dateFrom.value || dateTo.value))
 
 const closedFilteredGroups = computed(() => filteredGroups.value.filter(g => g.status !== 'OPEN'))
 
-// Realized in window per group: sum of closings whose closing_date lies in
-// [dateFrom, dateTo]. Returns the group's full realized_pnl when no filter.
-function groupInWindowRealized(g) {
-  if (!dateFilterActive.value) return g.realized_pnl || 0
-  const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
-  const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
-  let sum = 0
-  for (const lot of g.lots || []) {
-    for (const c of lot.closings || []) {
-      if (!c.closing_date) continue
-      const d = new Date(c.closing_date)
-      if (from && d < from) continue
-      if (to && d > to) continue
-      sum += c.realized_pnl || 0
-    }
-  }
-  return sum
-}
-
+// Realized in window per group: read the enriched field set by applyFilters
+// in useLedgerGroups. Falls through to the group's full realized_pnl when no
+// date filter is active.
 const totalRealized = computed(() =>
-  filteredGroups.value.reduce((sum, g) => sum + groupInWindowRealized(g), 0)
+  filteredGroups.value.reduce((sum, g) => sum + (g.inWindowRealized || 0), 0)
 )
 
 // Win % and Wtd % scope: groups with closing activity inside the window. When
@@ -153,28 +137,34 @@ const totalRealized = computed(() =>
 // filter" scope so behavior matches today.
 const winRateScope = computed(() => {
   if (!dateFilterActive.value) return closedFilteredGroups.value
-  return filteredGroups.value.filter(g => {
-    // A group is in scope if it has at least one closing event in the window.
-    for (const lot of g.lots || []) {
-      for (const c of lot.closings || []) {
-        if (!c.closing_date) continue
-        const d = new Date(c.closing_date)
-        const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
-        const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
-        if (from && d < from) continue
-        if (to && d > to) continue
-        return true
-      }
-    }
-    return false
-  })
+  // A group is in scope if any of its closings fall inside the window.
+  return filteredGroups.value.filter(g =>
+    Math.abs(g.inWindowRealized || 0) > 0.005 || hasAnyClosingInWindow(g)
+  )
 })
+
+// Detect "in-window but $0 realized" closings, so a break-even close still
+// counts toward the win-rate denominator.
+function hasAnyClosingInWindow(g) {
+  const from = dateFrom.value ? new Date(dateFrom.value + 'T00:00:00') : null
+  const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null
+  for (const lot of g.lots || []) {
+    for (const c of lot.closings || []) {
+      if (!c.closing_date) continue
+      const d = new Date(c.closing_date)
+      if (from && d < from) continue
+      if (to && d > to) continue
+      return true
+    }
+  }
+  return false
+}
 
 const winCount = computed(() => {
   if (!dateFilterActive.value) {
     return closedFilteredGroups.value.filter(g => (g.realized_pnl || 0) > 0).length
   }
-  return winRateScope.value.filter(g => groupInWindowRealized(g) > 0).length
+  return winRateScope.value.filter(g => (g.inWindowRealized || 0) > 0).length
 })
 const winRatePct = computed(() => {
   const n = winRateScope.value.length
@@ -185,7 +175,7 @@ const weightedReturnPct = computed(() => {
   const scope = winRateScope.value
   let num = 0, den = 0
   for (const g of scope) {
-    num += groupInWindowRealized(g)
+    num += g.inWindowRealized || 0
     den += Math.abs(g.initialPremium || 0)
   }
   return den > 0 ? (num / den) * 100 : null
