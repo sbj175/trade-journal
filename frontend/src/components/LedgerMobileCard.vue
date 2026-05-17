@@ -88,6 +88,9 @@ const rollCount = computed(() => Number(props.group.roll_count || 0))
           <div class="text-tv-muted uppercase tracking-wide">Realized P&amp;L</div>
           <div class="text-sm font-medium leading-tight" :class="pnlColorClass(group.realized_pnl)">
             {{ group.realized_pnl ? '$' + formatNumber(group.realized_pnl) : '—' }}
+            <i v-if="group.hasClosingsOutsideWindow"
+               class="fas fa-circle-info text-tv-muted text-[10px] ml-1 align-middle cursor-help"
+               :title="`Row shows full realized P&L. Inside range: $${formatNumber(group.inWindowRealized || 0)}. Remainder was recognized outside the selected range.`"></i>
           </div>
           <div class="text-[11px] leading-tight"
                :class="group.returnPercent > 0 ? 'text-tv-green' : group.returnPercent < 0 ? 'text-tv-red' : 'text-tv-muted'">
