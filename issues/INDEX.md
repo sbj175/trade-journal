@@ -6,8 +6,7 @@
 
 - **Backlog**: 56
 - **In Progress**: 1
-- **In Review**: 1
-- **Done**: 213
+- **Done**: 214
 - **Canceled**: 13
 - **Duplicate**: 2
 
@@ -74,12 +73,9 @@
 
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
 
-## In Review
-
-- [OPT-294](OPT-294.md) — Partial sync drops Rolled tag on existing chains (full reprocess restores it)
-
 ## Done
 
+- [OPT-294](OPT-294.md) — Partial sync drops Rolled tag on existing chains (full reprocess restores it)
 - [OPT-293](OPT-293.md) — Roll Analysis — show 50% loss and 50% max-profit exit prices for vertical spreads
 - [OPT-292](OPT-292.md) — Ledger overview stats over-count P&L across date ranges
 - [OPT-291](OPT-291.md) — Remove roll-analysis signal badges from Options positions list
