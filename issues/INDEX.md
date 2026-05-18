@@ -1,11 +1,11 @@
 # OptionLedger Issue Archive
 
-284 issues as of 2026-05-17.
+285 issues as of 2026-05-18.
 
 ## Status summary
 
 - **Backlog**: 56
-- **In Progress**: 1
+- **In Progress**: 2
 - **Done**: 212
 - **Canceled**: 13
 - **Duplicate**: 2
@@ -71,6 +71,7 @@
 
 ## In Progress
 
+- [OPT-293](OPT-293.md) — Roll Analysis — show 50% loss and 50% max-profit exit prices for vertical spreads
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
 
 ## Done

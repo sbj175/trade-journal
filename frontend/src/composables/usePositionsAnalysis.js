@@ -208,6 +208,27 @@ export function getRollAnalysis(group, {
   const profitTarget = targets.profit_target_pct || 50
   const lossLimit = targets.loss_target_pct || 100
 
+  // Per-share exit prices for the trader's standard close-out rules. Pulled
+  // from the same StrategyTarget row the rest of the app uses; default to
+  // 50% / 50% when unset (the rules engine's `lossLimit = 100` default is a
+  // *no-stop* sentinel for alerting, not the right default for an exit-price
+  // suggestion — keep them as separate variables on purpose).
+  const exitProfitPct = targets.profit_target_pct ?? 50
+  const exitLossPct = targets.loss_target_pct ?? 50
+  const basisPerShare = numContracts > 0 ? totalCostBasis / (numContracts * 100) : 0
+  let profitExitPrice = null, lossExitPrice = null
+  if (basisPerShare > 0 && spreadWidth > 0) {
+    if (isCredit) {
+      // Credit: opened at +C, close by buying back. Lower buy-back = more profit kept.
+      profitExitPrice = basisPerShare * (1 - exitProfitPct / 100)
+      lossExitPrice = basisPerShare + (spreadWidth - basisPerShare) * (exitLossPct / 100)
+    } else {
+      // Debit: opened at -D, close by selling back. Higher sell-back = more profit.
+      profitExitPrice = basisPerShare + (spreadWidth - basisPerShare) * (exitProfitPct / 100)
+      lossExitPrice = basisPerShare * (1 - exitLossPct / 100)
+    }
+  }
+
   // Net position Greeks
   const longGreeks = getLegGreeks(longLeg, underlyingPrice, underlyingQuotes, getMinDTEFn)
   const shortGreeks = getLegGreeks(shortLeg, underlyingPrice, underlyingQuotes, getMinDTEFn)
@@ -272,5 +293,6 @@ export function getRollAnalysis(group, {
     maxLoss: formatNumber(effectiveMaxLoss, 0),
     netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev, evTooltip,
     badges, borderColor, signals,
+    exitProfitPct, exitLossPct, profitExitPrice, lossExitPrice,
   }
 }

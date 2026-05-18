@@ -56,6 +56,18 @@ defineEmits(['toggle-roll-analysis-mode'])
             {{ group.rollAnalysis.rewardToRisk }}
           </span>
         </div>
+        <div v-if="group.rollAnalysis.profitExitPrice != null"
+             class="flex justify-between gap-3"
+             :title="`Per-share close-out price that captures ${group.rollAnalysis.exitProfitPct}% of max profit (configure in Settings → Strategy Targets).`">
+          <span class="text-tv-blue/70 cursor-help border-b border-dotted border-tv-blue/30">{{ group.rollAnalysis.exitProfitPct }}% Profit Exit</span>
+          <span class="font-medium text-tv-blue">${{ group.rollAnalysis.profitExitPrice.toFixed(2) }}</span>
+        </div>
+        <div v-if="group.rollAnalysis.lossExitPrice != null"
+             class="flex justify-between gap-3"
+             :title="`Per-share close-out price that caps the loss at ${group.rollAnalysis.exitLossPct}% of max loss (configure in Settings → Strategy Targets).`">
+          <span class="text-tv-blue/70 cursor-help border-b border-dotted border-tv-blue/30">{{ group.rollAnalysis.exitLossPct }}% Loss Exit</span>
+          <span class="font-medium text-tv-blue">${{ group.rollAnalysis.lossExitPrice.toFixed(2) }}</span>
+        </div>
       </div>
 
       <!-- Greeks -->
