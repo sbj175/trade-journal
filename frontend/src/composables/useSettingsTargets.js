@@ -2,6 +2,7 @@
  * Strategy target loading, saving (with debounce), reset, and category filtering.
  */
 import { ref, computed } from 'vue'
+import { useTargetsStore } from '@/stores/targets'
 
 const CREDIT_NAMES = ['Bull Put Spread', 'Bear Call Spread', 'Iron Condor', 'Iron Butterfly',
   'Covered Call', 'Short Put', 'Short Call',
@@ -16,6 +17,18 @@ const EQUITY_NAMES = ['Shares']
 export function useSettingsTargets(Auth, { showNotification }) {
   const targets = ref([])
   const saveStatus = ref(null)
+  const targetsStore = useTargetsStore()
+
+  // Keep the Pinia targets store in sync with whatever Settings just wrote
+  // so consumers reading targetsStore.targetsMap (e.g. Roll Analysis on the
+  // Positions page) reflect the change immediately, not on next page reload.
+  function syncStore(list) {
+    const merged = { ...targetsStore.targetsMap.value }
+    for (const t of list) {
+      if (t.strategy_name) merged[t.strategy_name] = t
+    }
+    targetsStore.targetsMap.value = merged
+  }
 
   const creditStrategies = computed(() => targets.value.filter(t => CREDIT_NAMES.includes(t.strategy_name)))
   const debitStrategies = computed(() => targets.value.filter(t => DEBIT_NAMES.includes(t.strategy_name)))
@@ -54,6 +67,7 @@ export function useSettingsTargets(Auth, { showNotification }) {
         body: JSON.stringify(payload),
       })
       if (resp.ok) {
+        syncStore(payload)
         saveStatus.value = 'saved'
         setTimeout(() => { if (saveStatus.value === 'saved') saveStatus.value = null }, 2000)
       } else {
@@ -71,6 +85,7 @@ export function useSettingsTargets(Auth, { showNotification }) {
       const resp = await Auth.authFetch('/api/settings/targets/reset', { method: 'POST' })
       if (resp.ok) {
         await loadTargets()
+        syncStore(targets.value)
         showNotification('Targets reset to defaults', 'success')
       } else {
         showNotification('Failed to reset targets', 'error')
