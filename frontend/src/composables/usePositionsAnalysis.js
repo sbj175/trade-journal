@@ -3,7 +3,6 @@
  * Pure functions — no reactive state dependencies.
  */
 import { formatNumber } from '@/lib/formatters'
-import { evaluateRules } from '@/lib/rules'
 import { getGroupStrategyLabel } from '@/composables/usePositionsDisplay'
 
 export function normalCDF(x) {
@@ -190,23 +189,25 @@ export function getRollAnalysis(group, {
 
   const dte = getMinDTEFn(group) || 0
 
-  // Delta saturation
-  let deltaSaturation = '0.0'
-  let deltaSatTooltip = 'Delta Saturation: abs(short delta) as a percentage\nMeasures how close the short strike is to being ATM'
-  const iv = getEffectiveIV(underlyingQuotes, underlying)
-  if (iv > 0 && dte > 0) {
-    const T = dte / 365
-    const shortDelta = Math.abs(bsDelta(underlyingPrice, shortStrike, T, 0.04, iv, getOptType(shortLeg) === 'C'))
-    deltaSaturation = (shortDelta * 100).toFixed(1)
-    deltaSatTooltip = `Delta Saturation = abs(short Δ) × 100\n= abs(${bsDelta(underlyingPrice, shortStrike, T, 0.04, iv, getOptType(shortLeg) === 'C').toFixed(4)}) × 100\n= ${deltaSaturation}%\n\nUnderlying: $${underlyingPrice.toFixed(2)} | Short strike: $${shortStrike}\nIV: ${(iv * 100).toFixed(1)}% | DTE: ${dte}`
-  }
-
-  const proximityToShort = ((Math.abs(underlyingPrice - shortStrike) / underlyingPrice) * 100).toFixed(1)
-
-  // Strategy targets
+  // Per-share exit prices for the trader's standard close-out rules. Pulled
+  // from the same StrategyTarget row the rest of the app uses; default to
+  // 50% / 50% when unset.
   const targets = strategyTargets?.[strategy] || {}
-  const profitTarget = targets.profit_target_pct || 50
-  const lossLimit = targets.loss_target_pct || 100
+  const exitProfitPct = targets.profit_target_pct ?? 50
+  const exitLossPct = targets.loss_target_pct ?? 50
+  const basisPerShare = numContracts > 0 ? totalCostBasis / (numContracts * 100) : 0
+  let profitExitPrice = null, lossExitPrice = null
+  if (basisPerShare > 0 && spreadWidth > 0) {
+    if (isCredit) {
+      // Credit: opened at +C, close by buying back. Lower buy-back = more profit kept.
+      profitExitPrice = basisPerShare * (1 - exitProfitPct / 100)
+      lossExitPrice = basisPerShare + (spreadWidth - basisPerShare) * (exitLossPct / 100)
+    } else {
+      // Debit: opened at -D, close by selling back. Higher sell-back = more profit.
+      profitExitPrice = basisPerShare + (spreadWidth - basisPerShare) * (exitProfitPct / 100)
+      lossExitPrice = basisPerShare * (1 - exitLossPct / 100)
+    }
+  }
 
   // Net position Greeks
   const longGreeks = getLegGreeks(longLeg, underlyingPrice, underlyingQuotes, getMinDTEFn)
@@ -223,54 +224,55 @@ export function getRollAnalysis(group, {
   const qtyGcd = gcd(longQty, shortQty)
   const deltaPerQty = qtyGcd > 0 ? netDelta / qtyGcd : netDelta
 
-  // EV
-  const pItm = Math.min(Math.abs(shortGreeks.delta), 1)
-  const pOtm = 1 - pItm
-  const ev = (pOtm * effectiveMaxProfit) - (pItm * effectiveMaxLoss)
-  const evTooltip = `EV = P(OTM) × Max Profit − P(ITM) × Max Loss\n= ${(pOtm * 100).toFixed(1)}% × $${effectiveMaxProfit.toFixed(0)} − ${(pItm * 100).toFixed(1)}% × $${effectiveMaxLoss.toFixed(0)}\n= $${ev.toFixed(0)}${useChainMode ? `\n(adjusted for $${formatNumber(realizedPnL, 0)} realized from rolls)` : ''}`
-
-  // Rules engine
-  const openPctMaxProfit = ((openPnL / maxProfit) * 100)
-  const openPctMaxLoss = openPnL < 0 ? ((Math.abs(openPnL) / maxLoss) * 100) : 0
-  const openRewardRemaining = maxProfit - openPnL
-  const openRiskRemaining = maxLoss + openPnL
-  const openRR = openRiskRemaining > 0 ? openRewardRemaining / openRiskRemaining : 99
-  const ruleMetrics = {
-    pctMaxProfit: openPctMaxProfit,
-    pctMaxLoss: openPctMaxLoss,
-    currentPnL: openPnL,
-    rewardToRiskRaw: openRR,
-    proximityToShort: parseFloat(proximityToShort),
-    deltaSaturation: parseFloat(deltaSaturation),
-    netTheta,
-    dte,
-    isCredit,
-    maxProfit,
-    maxLoss,
-    profitTarget,
-    lossLimit,
+  // Current per-share market value of the spread (the order price to close
+  // now). Derived from openPnL vs the entry basis — sign convention flips
+  // between debit (sell-to-close, want price up) and credit (buy-to-close,
+  // want price down).
+  let currentPricePerShare = null
+  if (basisPerShare > 0 && numContracts > 0) {
+    const openPnLPerShare = openPnL / (numContracts * 100)
+    currentPricePerShare = isCredit
+      ? basisPerShare - openPnLPerShare
+      : basisPerShare + openPnLPerShare
   }
-  const signals = evaluateRules(ruleMetrics)
 
-  const badges = signals.map(s => ({ label: s.label, color: s.color }))
-
-  let borderColor = 'blue'
-  if (signals.length > 0) {
-    const topColor = signals[0].color
-    if (topColor === 'red') borderColor = 'red'
-    else if (topColor === 'orange' || topColor === 'yellow') borderColor = 'yellow'
-    else if (topColor === 'green') borderColor = 'green'
+  // Context column — Entry / Current / two target exits, sorted highest-to-
+  // lowest by per-share price so the relative order across debit vs credit
+  // (and across different stages of the trade) reads naturally.
+  const contextRows = []
+  if (basisPerShare > 0) {
+    contextRows.push({ label: 'Entry Price', value: basisPerShare })
   }
+  if (currentPricePerShare != null) {
+    contextRows.push({ label: 'Current Price', value: currentPricePerShare })
+  }
+  if (profitExitPrice != null) {
+    contextRows.push({
+      label: `${exitProfitPct}% Max Profit Exit`,
+      value: profitExitPrice,
+      tooltip: `Per-share close-out price at which ${exitProfitPct}% of max profit is captured (configure in Settings → Strategy Targets).`,
+    })
+  }
+  if (lossExitPrice != null) {
+    contextRows.push({
+      label: `${exitLossPct}% Max Loss Exit`,
+      value: lossExitPrice,
+      tooltip: `Per-share close-out price at which ${exitLossPct}% of max loss is realized (configure in Settings → Strategy Targets).`,
+    })
+  }
+  contextRows.sort((a, b) => b.value - a.value)
 
   return {
     pnlLabel, pnlValue, pnlPositive, pnlTooltip,
     pctMaxProfit, pctMaxLoss, rewardToRisk, rewardToRiskRaw,
     rewardRemaining: formatNumber(rewardRemaining, 0),
     riskRemaining: formatNumber(riskRemaining, 0),
-    deltaSaturation, deltaSatTooltip, proximityToShort, isCredit,
+    isCredit,
     maxProfit: formatNumber(effectiveMaxProfit, 0),
     maxLoss: formatNumber(effectiveMaxLoss, 0),
-    netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega, ev, evTooltip,
-    badges, borderColor, signals,
+    netDelta, deltaPerQty, qtyGcd, netGamma, netTheta, netVega,
+    exitProfitPct, exitLossPct, profitExitPrice, lossExitPrice,
+    entryPricePerShare: basisPerShare, currentPricePerShare,
+    contextRows,
   }
 }

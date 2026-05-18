@@ -1,12 +1,12 @@
 # OptionLedger Issue Archive
 
-284 issues as of 2026-05-17.
+285 issues as of 2026-05-18.
 
 ## Status summary
 
 - **Backlog**: 56
 - **In Progress**: 1
-- **Done**: 212
+- **Done**: 213
 - **Canceled**: 13
 - **Duplicate**: 2
 
@@ -75,6 +75,7 @@
 
 ## Done
 
+- [OPT-293](OPT-293.md) — Roll Analysis — show 50% loss and 50% max-profit exit prices for vertical spreads
 - [OPT-292](OPT-292.md) — Ledger overview stats over-count P&L across date ranges
 - [OPT-291](OPT-291.md) — Remove roll-analysis signal badges from Options positions list
 - [OPT-290](OPT-290.md) — roll_chain_summaries drift under incremental sync — chain values diverge from per-rung modal
