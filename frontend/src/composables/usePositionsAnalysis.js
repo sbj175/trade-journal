@@ -97,6 +97,9 @@ export function getRollAnalysis(group, {
   getGroupOpenPnLFn, getMinDTEFn,
 }) {
   const strategy = getGroupStrategyLabel(group)
+  if (strategy === 'Covered Call') {
+    return getCoveredCallAnalysis(group, { rollAnalysisMode })
+  }
   const supportedStrategies = ['Bull Call Spread', 'Bear Put Spread', 'Bull Put Spread', 'Bear Call Spread']
   if (!supportedStrategies.includes(strategy)) return null
   if (!rollAlertSettings.enabled) return null
@@ -274,5 +277,69 @@ export function getRollAnalysis(group, {
     exitProfitPct, exitLossPct, profitExitPrice, lossExitPrice,
     entryPricePerShare: basisPerShare, currentPricePerShare,
     contextRows,
+  }
+}
+
+/**
+ * Covered-call branch (OPT-295). Surfaces the per-contract BTC price at which
+ * closing the current open leg leaves the entire roll chain net-flat.
+ *
+ *   chain_breakeven = (current_leg_premium + cumulative_prior_realized)
+ *                       / (contracts × 100)
+ *
+ * When prior chain realized is positive (the typical case after several
+ * successful rolls), the trader has a cushion — BTC well above the original
+ * premium still keeps the chain in profit. When prior realized is negative,
+ * the cushion shrinks and the threshold can even go negative (chain too deep
+ * underwater for this leg alone to recover).
+ */
+export function getCoveredCallAnalysis(group, { rollAnalysisMode }) {
+  const positions = group.positions || []
+  const isShort = (p) => p.quantity_direction === 'Short' || (p.quantity || 0) < 0
+  const getOptType = (p) => {
+    if (p.option_type === 'Call') return 'C'
+    if (p.option_type === 'Put') return 'P'
+    const match = (p.symbol || '').match(/\d{6}([CP])/)
+    return match ? match[1] : null
+  }
+
+  const shortCall = positions.find(p =>
+    p.instrument_type && p.instrument_type.includes('OPTION')
+    && isShort(p)
+    && getOptType(p) === 'C'
+  )
+  if (!shortCall) return null
+
+  const numContracts = Math.abs(shortCall.quantity || 0)
+  const currentPremium = Math.abs(shortCall.cost_basis || 0)
+  const cumulativePriorRealized = group.roll_chain?.cumulative_realized_pnl || 0
+
+  // For covered calls the per-leg B/E equals premium/(contracts*100) which
+  // is just the per-share premium received — same number you already see in
+  // the row above. The interesting number is the chain B/E: the per-contract
+  // debit at which closing this open leg leaves the *entire* roll chain net
+  // flat. So we always compute the chain version and skip the Chain/Open
+  // toggle for CCs.
+  const useChainMode = true
+  const showModeToggle = false
+
+  const breakEvenTotal = currentPremium + cumulativePriorRealized
+  const breakEvenPerContract = numContracts > 0
+    ? breakEvenTotal / (numContracts * 100)
+    : null
+
+  return {
+    kind: 'covered_call',
+    useChainMode,
+    showModeToggle,
+    currentPremium,
+    currentPremiumFormatted: formatNumber(currentPremium, 0),
+    cumulativePriorRealized,
+    cumulativePriorRealizedAbsFormatted: formatNumber(Math.abs(cumulativePriorRealized), 0),
+    numContracts,
+    breakEvenTotal,
+    breakEvenTotalAbsFormatted: formatNumber(Math.abs(breakEvenTotal), 0),
+    breakEvenPerContract,
+    breakEvenPerContractFormatted: breakEvenPerContract != null ? breakEvenPerContract.toFixed(2) : null,
   }
 }
