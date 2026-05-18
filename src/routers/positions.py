@@ -1,15 +1,16 @@
 """Position routes — current positions and open chains."""
 
 import json as _json
+from collections import defaultdict
 from datetime import date, datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from sqlalchemy import func
 
-from src.database.models import OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RollChainSummary, Tag
+from src.database.models import LotClosing as LotClosingModel, OrderChainCache, PositionGroup, PositionGroupLot, PositionGroupTag, PositionLot as PositionLotModel, RollChainSummary, Tag
 from src.database.db_manager import DatabaseManager
 from src.models.lot_manager import LotManager
 from src.dependencies import get_db, get_lot_manager, get_current_user_id
@@ -170,6 +171,59 @@ async def get_open_chains(account_number: Optional[str] = None, db: DatabaseMana
                         "cumulative_premium": rc.cumulative_premium,
                         "cumulative_realized_pnl": rc.cumulative_realized_pnl,
                     }
+
+            # OPT-296: cumulative_realized_pnl from the cached row can lag the
+            # actual leg-by-leg sum if populate_roll_chain_summaries hasn't
+            # re-run since the most recent affecting close. The Analysis-panel
+            # Chain B/E derives directly from this number and OPT-295 surfaced
+            # a 6¢-per-share / $440 discrepancy on a live chain because of it.
+            # Recompute it on-the-fly here so the wire-payload always matches
+            # what the Roll Chain modal already shows (it sums leg-by-leg).
+            if roll_chain_by_group:
+                with db.get_session() as session:
+                    chain_groups_by_open: Dict[str, List[str]] = {}
+                    all_chain_gids: Set[str] = set()
+                    for open_gid in roll_chain_by_group.keys():
+                        chain = [open_gid]
+                        cursor = open_gid
+                        visited = {open_gid}
+                        # Walk ancestors via rolled_from_group_id; visited set
+                        # protects against any pathological cycle.
+                        while True:
+                            parent = session.query(
+                                PositionGroup.rolled_from_group_id,
+                            ).filter(
+                                PositionGroup.group_id == cursor,
+                            ).scalar()
+                            if not parent or parent in visited:
+                                break
+                            visited.add(parent)
+                            chain.append(parent)
+                            cursor = parent
+                        chain_groups_by_open[open_gid] = chain
+                        all_chain_gids.update(chain)
+
+                    realized_per_group: Dict[str, float] = defaultdict(float)
+                    if all_chain_gids:
+                        rows = session.query(
+                            PositionGroupLot.group_id,
+                            LotClosingModel.realized_pnl,
+                        ).join(
+                            PositionLotModel,
+                            PositionLotModel.transaction_id == PositionGroupLot.transaction_id,
+                        ).join(
+                            LotClosingModel,
+                            LotClosingModel.lot_id == PositionLotModel.id,
+                        ).filter(
+                            PositionGroupLot.group_id.in_(list(all_chain_gids)),
+                        ).all()
+                        for gid, realized in rows:
+                            realized_per_group[gid] += realized or 0.0
+
+                    for open_gid, chain in chain_groups_by_open.items():
+                        roll_chain_by_group[open_gid]["cumulative_realized_pnl"] = sum(
+                            realized_per_group.get(g, 0.0) for g in chain
+                        )
 
             result = {}
 
