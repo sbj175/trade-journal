@@ -1,11 +1,12 @@
 # OptionLedger Issue Archive
 
-285 issues as of 2026-05-18.
+286 issues as of 2026-05-18.
 
 ## Status summary
 
 - **Backlog**: 56
 - **In Progress**: 1
+- **In Review**: 1
 - **Done**: 213
 - **Canceled**: 13
 - **Duplicate**: 2
@@ -72,6 +73,10 @@
 ## In Progress
 
 - [OPT-269](OPT-269.md) — Mobile header should surface the current page name
+
+## In Review
+
+- [OPT-294](OPT-294.md) — Partial sync drops Rolled tag on existing chains (full reprocess restores it)
 
 ## Done
 
