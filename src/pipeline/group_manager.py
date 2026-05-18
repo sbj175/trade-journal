@@ -666,6 +666,56 @@ class GroupPersister:
             ).filter(PositionGroupLot.user_id == user_id).all()
             txn_to_group: Dict[str, str] = {row[0]: row[1] for row in existing_links}
 
+            # =================================================================
+            # Phase 1.5: Repair structural invariant violations (OPT-294)
+            # =================================================================
+            # `clear_all_lots(underlyings=…)` preserves PositionGroupLot rows
+            # by design (transaction_id is stable across rebuilds), and Phase 3
+            # below only routes lots whose txn lacks a link — so once a link
+            # exists, the OPT-287/288 parent_lot_id routing guards never
+            # re-evaluate it. If an earlier sync persisted a link that breaks
+            # the roll-boundary invariant (child lot's parent in the SAME
+            # group at a different strike / expiration / option_type), the
+            # bad state survives every subsequent partial sync and the
+            # rolled_from derivation can never fire. Detect and delete those
+            # links here so Phase 3 re-routes the orphan lots freshly.
+            lots_orm_by_txn: Dict[str, PositionLotModel] = {
+                row.transaction_id: row for row in all_lot_rows
+            }
+            lots_orm_by_id: Dict[int, PositionLotModel] = {
+                row.id: row for row in all_lot_rows
+            }
+            invalid_txns: List[str] = []
+            for txn_id, group_id in list(txn_to_group.items()):
+                child = lots_orm_by_txn.get(txn_id)
+                if child is None or child.parent_lot_id is None:
+                    continue
+                parent = lots_orm_by_id.get(child.parent_lot_id)
+                if parent is None:
+                    continue
+                if txn_to_group.get(parent.transaction_id) != group_id:
+                    continue  # parent in different group — not a same-group violation
+                structurally_mismatched = (
+                    (parent.strike or 0) != (child.strike or 0)
+                    or (parent.expiration or "") != (child.expiration or "")
+                    or (parent.option_type or "") != (child.option_type or "")
+                )
+                if structurally_mismatched:
+                    invalid_txns.append(txn_id)
+
+            if invalid_txns:
+                session.query(PositionGroupLot).filter(
+                    PositionGroupLot.user_id == user_id,
+                    PositionGroupLot.transaction_id.in_(invalid_txns),
+                ).delete(synchronize_session=False)
+                for txn_id in invalid_txns:
+                    txn_to_group.pop(txn_id, None)
+                session.flush()
+                logger.info(
+                    "Phase 1.5: removed %d structurally-invalid group links (roll-boundary violations)",
+                    len(invalid_txns),
+                )
+
             # Identify new lots (transaction_id has no group link)
             new_lots = [lot for lot in all_lots if lot.transaction_id not in txn_to_group]
 

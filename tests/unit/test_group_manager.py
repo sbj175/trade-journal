@@ -552,3 +552,108 @@ class TestGroupPersister:
             assert len(groups) == 1
             assert groups[0].group_id == merged_group_id
             assert link_txns == set(txn_ids)
+
+    def test_self_heal_splits_roll_boundary_violation(self, db, lot_manager):
+        """OPT-294: process_groups must repair a position_group_lots row whose
+        lot's parent_lot_id points to another lot in the SAME group at a
+        different strike — a structurally impossible state that survives
+        partial syncs because clear_all_lots(underlyings=…) preserves group
+        links and the routing pass only touches lots without an existing link.
+
+        The 5WZ26959 IBIT chain (issue OPT-294) hit exactly this: a 41.0 CLOSED
+        lot and a 41.5 OPEN lot sat in one group, leaving the rolled_from tag
+        empty even though parent_lot_id was set correctly.
+        """
+        from src.database.models import (
+            LotClosing as LotClosingModel,
+            PositionGroup,
+            PositionGroupLot,
+        )
+
+        broken_gid = "broken-roll-group"
+        parent_txn = "tx-parent-41p0"
+        child_txn = "tx-child-41p5"
+
+        with db.get_session() as session:
+            parent = self._insert_lot(
+                session,
+                transaction_id=parent_txn,
+                symbol="IBIT  260522C00041000",
+                underlying="IBIT",
+                strike=41.0,
+                expiration="2026-05-22",
+                option_type="Call",
+                quantity=-1,
+                remaining_quantity=0,
+                status="CLOSED",
+                entry_date="2026-04-24T19:00:00",
+            )
+            session.add(LotClosingModel(
+                lot_id=parent.id,
+                closing_order_id="ORD-ROLL",
+                closing_transaction_id=None,
+                quantity_closed=1,
+                closing_price=0.10,
+                closing_date="2026-05-01T14:00:00",
+                closing_type="MANUAL",
+                realized_pnl=140.0,
+            ))
+            child = self._insert_lot(
+                session,
+                transaction_id=child_txn,
+                symbol="IBIT  260522C00041500",
+                underlying="IBIT",
+                strike=41.5,
+                expiration="2026-05-22",
+                option_type="Call",
+                quantity=-1,
+                remaining_quantity=-1,
+                status="OPEN",
+                entry_date="2026-05-01T14:00:00",
+                parent_lot_id=parent.id,
+            )
+
+            session.add(PositionGroup(
+                group_id=broken_gid,
+                account_number="ACCT1",
+                underlying="IBIT",
+                strategy_label=None,
+                status="OPEN",
+                rolled_from_group_id=None,
+            ))
+            session.add(PositionGroupLot(
+                group_id=broken_gid,
+                transaction_id=parent_txn,
+            ))
+            session.add(PositionGroupLot(
+                group_id=broken_gid,
+                transaction_id=child_txn,
+            ))
+
+        persister = GroupPersister(db, lot_manager)
+        persister.process_groups()
+
+        with db.get_session() as session:
+            links = session.query(PositionGroupLot).all()
+            txn_to_group = {l.transaction_id: l.group_id for l in links}
+
+            # The child lot must end up in a different group than the parent.
+            assert txn_to_group[parent_txn] != txn_to_group[child_txn], (
+                "self-heal must split the structurally-invalid group "
+                "so the rolled-out 41.0 lot and the rolled-into 41.5 lot "
+                "live in distinct groups"
+            )
+            # The original group_id must survive on whichever lot kept it.
+            assert broken_gid in (txn_to_group[parent_txn], txn_to_group[child_txn])
+
+            # The child lot's group must record the roll lineage. Phase 3
+            # captures rolled_from_group_id at mint time via the OPT-288 path;
+            # derive_rolled_from_group_id (not run by process_groups) would
+            # be the orchestrator-level safety net.
+            child_group = session.query(PositionGroup).filter(
+                PositionGroup.group_id == txn_to_group[child_txn],
+            ).one()
+            assert child_group.rolled_from_group_id == txn_to_group[parent_txn], (
+                "child lot's new group must have rolled_from_group_id pointing "
+                "at the parent lot's group"
+            )
