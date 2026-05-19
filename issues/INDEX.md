@@ -1,10 +1,10 @@
 # OptionLedger Issue Archive
 
-291 issues as of 2026-05-19.
+292 issues as of 2026-05-19.
 
 ## Status summary
 
-- **Backlog**: 57
+- **Backlog**: 58
 - **In Progress**: 1
 - **Done**: 218
 - **Canceled**: 13
@@ -12,6 +12,7 @@
 
 ## Backlog
 
+- [OPT-300](OPT-300.md) — Improve the onboarding flow
 - [OPT-299](OPT-299.md) — Reorganize Settings sections under broader categories (Display / Data / Trading / Account)
 - [OPT-289](OPT-289.md) — Roll-detection fixture follow-ups + RollChainModal copy refresh
 - [OPT-280](OPT-280.md) — Roll detection misses same-day legged-out-and-back-in rolls (chain-only filter)
