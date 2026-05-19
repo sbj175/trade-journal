@@ -51,6 +51,19 @@
   --tv-purple: 112 80 160;      /* #7050a0 — dusty mauve */
 }
 
+/* Colorblind-friendly (Okabe-Ito): override only the up/down accents
+   so the green↔red axis shifts toward cyan↔orange, keeping red-green
+   colorblind users able to distinguish on the blue-yellow axis. Class
+   composes with the dark default and the .light theme block. */
+:root.cvd {
+  --tv-green:  0 208 149;       /* #00d095 — cyan-leaning green (dark) */
+  --tv-red:    255 111 60;      /* #ff6f3c — orange-leaning red (dark) */
+}
+:root.light.cvd {
+  --tv-green:  0 117 79;        /* #00754f — deep teal (light, WCAG-AA) */
+  --tv-red:    194 64 28;       /* #c2401c — burnt orange (light, WCAG-AA) */
+}
+
 /* =================================================================
    Base
    ================================================================= */

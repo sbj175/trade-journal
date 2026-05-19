@@ -10,6 +10,7 @@ import { useSettingsTargets } from '@/composables/useSettingsTargets'
 import { useSettingsTags } from '@/composables/useSettingsTags'
 import { useSettingsSync } from '@/composables/useSettingsSync'
 import { useSettingsPreferences } from '@/composables/useSettingsPreferences'
+import SettingsGeneral from '@/components/SettingsGeneral.vue'
 import SettingsConnection from '@/components/SettingsConnection.vue'
 import SettingsAccounts from '@/components/SettingsAccounts.vue'
 import SettingsImport from '@/components/SettingsImport.vue'
@@ -24,6 +25,7 @@ const route = useRoute()
 const router = useRouter()
 
 const tabs = [
+  { id: 'general', icon: 'fa-cog', label: 'General' },
   { id: 'connection', icon: 'fa-plug', label: 'Connection' },
   { id: 'accounts', icon: 'fa-university', label: 'Accounts' },
   { id: 'import', icon: 'fa-file-import', label: 'Import Trades' },
@@ -177,6 +179,7 @@ onMounted(async () => {
         </span>
       </div>
 
+      <SettingsGeneral v-show="activeTab === 'general'" />
       <SettingsConnection v-show="activeTab === 'connection'" :state="connectionState" :onboarding="onboarding" />
       <SettingsAccounts v-show="activeTab === 'accounts'" :state="accountsState" :onboarding="onboarding" @go-to-import="activeTab = 'import'" />
       <SettingsImport v-show="activeTab === 'import'" :state="syncState" :onboarding="onboarding" />
