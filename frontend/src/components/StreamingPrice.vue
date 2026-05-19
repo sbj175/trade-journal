@@ -11,12 +11,20 @@ defineProps({
     <div class="flex items-center gap-2">
       <div class="w-20 px-2 py-1 rounded-sm text-base font-medium border text-right"
            style="font-variant-numeric: tabular-nums"
-           :class="(quote.change || 0) >= 0 ? 'bg-tv-green/20 text-tv-green border-tv-green/50' : 'bg-tv-border text-tv-muted border-tv-border'">
+           :class="(quote.change || 0) > 0
+             ? 'bg-tv-green/20 text-tv-green border-tv-green/50'
+             : (quote.change || 0) < 0
+               ? 'bg-tv-red/20 text-tv-red border-tv-red/50'
+               : 'bg-tv-border text-tv-muted border-tv-border'">
         {{ formatNumber(quote.price || 0) }}
       </div>
       <div class="w-16 text-right text-sm"
            style="font-variant-numeric: tabular-nums"
-           :class="(quote.change || 0) >= 0 ? 'text-tv-green' : 'text-tv-muted'">
+           :class="(quote.change || 0) > 0
+             ? 'text-tv-green'
+             : (quote.change || 0) < 0
+               ? 'text-tv-red'
+               : 'text-tv-muted'">
         {{ ((quote.change || 0) >= 0 ? '+' : '') + (quote.changePercent || 0).toFixed(2) + '%' }}
       </div>
     </div>

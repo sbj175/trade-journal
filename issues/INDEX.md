@@ -1,12 +1,12 @@
 # OptionLedger Issue Archive
 
-288 issues as of 2026-05-18.
+289 issues as of 2026-05-19.
 
 ## Status summary
 
 - **Backlog**: 56
 - **In Progress**: 1
-- **Done**: 216
+- **Done**: 217
 - **Canceled**: 13
 - **Duplicate**: 2
 
@@ -75,6 +75,7 @@
 
 ## Done
 
+- [OPT-297](OPT-297.md) — Streaming underlying price — restore red treatment when the day's change is negative
 - [OPT-296](OPT-296.md) — Chain cumulative realized — compute on-the-fly so Analysis B/E matches Roll Chain modal exactly
 - [OPT-295](OPT-295.md) — Analysis panel — surface chain break-even close price on covered calls
 - [OPT-294](OPT-294.md) — Partial sync drops Rolled tag on existing chains (full reprocess restores it)
