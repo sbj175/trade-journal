@@ -5,14 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OptionLedger</title>
 
-    <!-- Theme init: must run before any rendering to prevent flash.
-         Dark is default (:root CSS vars); light applied via .light class. -->
+    <!-- Theme + palette init: must run before any rendering to prevent flash.
+         Dark is default (:root CSS vars); light applied via .light class.
+         Colorblind-friendly accent palette applied via .cvd class (OPT-298). -->
     <script>
       (function() {
         var saved = localStorage.getItem('theme');
         var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (saved === 'light' || (!saved && !prefersDark)) {
           document.documentElement.classList.add('light');
+        }
+        if (localStorage.getItem('colorblindPalette') === 'true') {
+          document.documentElement.classList.add('cvd');
         }
       })();
     </script>

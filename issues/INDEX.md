@@ -1,17 +1,18 @@
 # OptionLedger Issue Archive
 
-289 issues as of 2026-05-19.
+291 issues as of 2026-05-19.
 
 ## Status summary
 
-- **Backlog**: 56
+- **Backlog**: 57
 - **In Progress**: 1
-- **Done**: 217
+- **Done**: 218
 - **Canceled**: 13
 - **Duplicate**: 2
 
 ## Backlog
 
+- [OPT-299](OPT-299.md) — Reorganize Settings sections under broader categories (Display / Data / Trading / Account)
 - [OPT-289](OPT-289.md) — Roll-detection fixture follow-ups + RollChainModal copy refresh
 - [OPT-280](OPT-280.md) — Roll detection misses same-day legged-out-and-back-in rolls (chain-only filter)
 - [OPT-278](OPT-278.md) — Test depth — fixture library, golden snapshots, property-based (epic)
@@ -75,6 +76,7 @@
 
 ## Done
 
+- [OPT-298](OPT-298.md) — Settings — General section + colorblind-friendly palette toggle (Okabe-Ito)
 - [OPT-297](OPT-297.md) — Streaming underlying price — restore red treatment when the day's change is negative
 - [OPT-296](OPT-296.md) — Chain cumulative realized — compute on-the-fly so Analysis B/E matches Roll Chain modal exactly
 - [OPT-295](OPT-295.md) — Analysis panel — surface chain break-even close price on covered calls
